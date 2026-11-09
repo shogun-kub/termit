@@ -57,6 +57,7 @@ const (
 	CodeNotFound     = "not_found"
 	CodeConflict     = "conflict"
 	CodeInternal     = "internal_error"
+	CodeUnavailable  = "unavailable"
 )
 
 // Service executes operations against the registry.
@@ -70,6 +71,9 @@ type Service struct {
 	NewCode func() (string, error)
 	// Master seals the subscription token so the CLI can print a usable URL after a rotation.
 	Master []byte
+	// Runner is the scheduler. `check now` uses it; the rest of the admin surface does not, so a
+	// server without a scheduler still administers nodes.
+	Runner *sched.Runner
 }
 
 // New validates the wiring.
@@ -112,6 +116,8 @@ func (s *Service) Handle(ctx context.Context, req Request) (any, *Error) {
 		return s.setUVState(ctx, req.Args, store.StateRemoved, sched.EventAdminRemove, "removed by an operator")
 	case "uv.forget":
 		return s.forgetUV(ctx, req.Args)
+	case "check.now":
+		return s.checkNow(ctx, req.Args)
 	case "sub.rotate":
 		return s.rotateSubToken(ctx, req.Args)
 	default:

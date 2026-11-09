@@ -362,6 +362,8 @@ func runUV(args []string, stdout, stderr io.Writer) int {
 		return runUVState(args[0], args[1:], stdout, stderr)
 	case "forget":
 		return runUVForget(args[1:], stdout, stderr)
+	case "check":
+		return runCheck(args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "mn uv: unknown subcommand %q\n", args[0])
 		return exitUsage
@@ -507,5 +509,47 @@ func runUVDecide(decision string, args []string, stdout, stderr io.Writer) int {
 		return exitOK
 	}
 	fmt.Fprintf(stdout, "%s: %s -> %s\n", result.Node.Domain, decision, result.Node.State)
+	return exitOK
+}
+
+// runCheck is `mn uv check now <node>`: one cycle, synchronously, with the scheduler's own error text.
+func runCheck(args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 || args[0] != "now" {
+		fmt.Fprintln(stderr, "mn uv check: the only subcommand in this build is now")
+		return exitUsage
+	}
+	flags, configPath, socket, token := uvFlags("uv check now", stderr)
+	if err := flags.Parse(flagsFirst(args[1:], map[string]bool{})); err != nil {
+		return exitUsage
+	}
+	if flags.NArg() != 1 {
+		fmt.Fprintln(stderr, "mn uv check now: one node id or domain is required")
+		return exitUsage
+	}
+	client, err := adminClient(*configPath, *socket, *token)
+	if err != nil {
+		fmt.Fprintf(stderr, "mn uv check now: %v\n", err)
+		return exitFailure
+	}
+	var result struct {
+		Node     map[string]any `json:"node"`
+		Event    string         `json:"event"`
+		State    string         `json:"state"`
+		Changed  bool           `json:"changed"`
+		Reason   string         `json:"reason"`
+		Attempts int            `json:"attempts"`
+		Class    string         `json:"class"`
+	}
+	callCtx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	if err := client.Call(callCtx, "check.now", map[string]string{"id": flags.Arg(0)}, &result); err != nil {
+		fmt.Fprintf(stderr, "mn uv check now: %v\n", err)
+		return exitFailure
+	}
+	fmt.Fprintf(stdout, "event:    %s\n", result.Event)
+	fmt.Fprintf(stdout, "attempts: %d\n", result.Attempts)
+	fmt.Fprintf(stdout, "class:    %s\n", result.Class)
+	fmt.Fprintf(stdout, "state:    %s (changed: %v)\n", result.State, result.Changed)
+	fmt.Fprintf(stdout, "reason:   %s\n", result.Reason)
 	return exitOK
 }

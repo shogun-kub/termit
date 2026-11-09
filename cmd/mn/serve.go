@@ -61,6 +61,12 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 	}
 	defer func() { _ = db.Close() }()
 
+	scheduler := newScheduler(schedulerConfig{
+		CheckInterval: cfg.Policy.CheckInterval,
+		Retries:       cfg.Policy.ProbeRetries,
+		Logger:        logger,
+	}, db, schedProber(cfg, logger))
+
 	handler, err := buildHandler(cfg, db, logger)
 	if err != nil {
 		fmt.Fprintf(stderr, "mn serve: %v\n", err)
@@ -84,6 +90,7 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 		adminService, err := admin.New(db)
 		if err == nil {
 			adminService.Master = mustMasterKey(cfg, logger)
+			adminService.Runner = scheduler
 		}
 		if err != nil {
 			fmt.Fprintf(stderr, "mn serve: %v\n", err)
@@ -100,6 +107,14 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 	// Retention runs in the server because nothing else is running: probe results are telemetry and age
 	// out at 90 days, audit records are evidence and age out at a year.
 	go retention(ctx, db, logger)
+
+	// The scheduler is what turns probe results into state changes. It is optional: without a prober
+	// every node would simply be unknown, and the server would still serve.
+	go func() {
+		if err := scheduler.Run(ctx); err != nil && ctx.Err() == nil {
+			logger.Warn("scheduler stopped", "err", err)
+		}
+	}()
 
 	serveErr := make(chan error, 1)
 	if *plainHTTP {

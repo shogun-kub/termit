@@ -22,11 +22,14 @@ CREATE TABLE IF NOT EXISTS uv (
     failed_cycles   INTEGER NOT NULL DEFAULT 0,
     credential_epoch INTEGER NOT NULL DEFAULT 1,
     invite_id       TEXT NOT NULL DEFAULT '',
-    notes           TEXT NOT NULL DEFAULT ''
+    notes           TEXT NOT NULL DEFAULT '',
+    next_check_at   TEXT,
+    last_check_at   TEXT
 );
 
 CREATE INDEX IF NOT EXISTS uv_state ON uv (state);
 CREATE INDEX IF NOT EXISTS uv_last_seen ON uv (last_seen_at);
+CREATE INDEX IF NOT EXISTS uv_next_check ON uv (next_check_at);
 
 CREATE TABLE IF NOT EXISTS uv_event (
     id        INTEGER PRIMARY KEY AUTOINCREMENT,

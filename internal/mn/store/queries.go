@@ -51,7 +51,11 @@ type UV struct {
 	// AgentKeySealed is the agent key again under the master key, so an operator can read it back
 	// without rotating it and breaking a node that is working.
 	AgentKeySealed string
-	SubTokenHash   string
+	// NextCheckAt is when the scheduler wants to look again; zero until it is first scheduled.
+	NextCheckAt *time.Time
+	// LastCheckAt is when it last looked.
+	LastCheckAt  *time.Time
+	SubTokenHash string
 	// SubTokenSealed is the token again, encrypted under the master key: the digest finds a node by the
 	// token, and this is what lets MN put the token back into a URL at sync.
 	SubTokenSealed string
@@ -156,18 +160,19 @@ func scanNullTime(value sql.NullString) (*time.Time, error) {
 
 const uvColumns = `id, label, domain, self_uuid, probe_uuid, profile_json, state, state_reason,
 	created_at, approved_at, last_seen_at, last_request_ip, agent_version,
-	agent_key_hash, agent_key_sealed, sub_token_hash, sub_token_sealed, failed_cycles, credential_epoch, invite_id, notes`
+	agent_key_hash, agent_key_sealed, sub_token_hash, sub_token_sealed, failed_cycles, credential_epoch, invite_id, notes,
+next_check_at, last_check_at`
 
 func scanUV(row interface{ Scan(...any) error }) (UV, error) {
 	var (
-		uv                     UV
-		createdAt              string
-		approvedAt, lastSeenAt sql.NullString
+		uv                                               UV
+		createdAt                                        string
+		approvedAt, lastSeenAt, nextCheckAt, lastCheckAt sql.NullString
 	)
 	err := row.Scan(&uv.ID, &uv.Label, &uv.Domain, &uv.SelfUUID, &uv.ProbeUUID, &uv.ProfileJSON,
 		&uv.State, &uv.StateReason, &createdAt, &approvedAt, &lastSeenAt, &uv.LastRequestIP,
 		&uv.AgentVersion, &uv.AgentKeyHash, &uv.AgentKeySealed, &uv.SubTokenHash, &uv.SubTokenSealed, &uv.FailedCycles,
-		&uv.CredentialEpoch, &uv.InviteID, &uv.Notes)
+		&uv.CredentialEpoch, &uv.InviteID, &uv.Notes, &nextCheckAt, &lastCheckAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return UV{}, ErrNotFound
@@ -179,6 +184,12 @@ func scanUV(row interface{ Scan(...any) error }) (UV, error) {
 	}
 	if uv.ApprovedAt, err = scanNullTime(approvedAt); err != nil {
 		return UV{}, fmt.Errorf("store: parse approved_at: %w", err)
+	}
+	if uv.NextCheckAt, err = scanNullTime(nextCheckAt); err != nil {
+		return UV{}, fmt.Errorf("store: parse next_check_at: %w", err)
+	}
+	if uv.LastCheckAt, err = scanNullTime(lastCheckAt); err != nil {
+		return UV{}, fmt.Errorf("store: parse last_check_at: %w", err)
 	}
 	if uv.LastSeenAt, err = scanNullTime(lastSeenAt); err != nil {
 		return UV{}, fmt.Errorf("store: parse last_seen_at: %w", err)
@@ -195,11 +206,11 @@ func (s *Store) CreateUV(ctx context.Context, uv UV) error {
 		return fmt.Errorf("store: %q is not a state", uv.State)
 	}
 	_, err := s.db.ExecContext(ctx, `INSERT INTO uv (`+uvColumns+`)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		uv.ID, uv.Label, uv.Domain, uv.SelfUUID, uv.ProbeUUID, uv.ProfileJSON, string(uv.State),
 		uv.StateReason, formatTime(uv.CreatedAt), nullableTime(uv.ApprovedAt), nullableTime(uv.LastSeenAt),
 		uv.LastRequestIP, uv.AgentVersion, uv.AgentKeyHash, uv.AgentKeySealed, uv.SubTokenHash, uv.SubTokenSealed, uv.FailedCycles,
-		uv.CredentialEpoch, uv.InviteID, uv.Notes)
+		uv.CredentialEpoch, uv.InviteID, uv.Notes, nullableTime(uv.NextCheckAt), nullableTime(uv.LastCheckAt))
 	return wrapDuplicate(err, "store: create node "+uv.ID)
 }
 
@@ -239,11 +250,11 @@ func (s *Store) CreateUVRedeemingInvite(ctx context.Context, uv UV, invite Invit
 		}
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO uv (`+uvColumns+`)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		uv.ID, uv.Label, uv.Domain, uv.SelfUUID, uv.ProbeUUID, uv.ProfileJSON, string(uv.State),
 		uv.StateReason, formatTime(uv.CreatedAt), nullableTime(uv.ApprovedAt), nullableTime(uv.LastSeenAt),
 		uv.LastRequestIP, uv.AgentVersion, uv.AgentKeyHash, uv.AgentKeySealed, uv.SubTokenHash, uv.SubTokenSealed, uv.FailedCycles,
-		uv.CredentialEpoch, uv.InviteID, uv.Notes); err != nil {
+		uv.CredentialEpoch, uv.InviteID, uv.Notes, nullableTime(uv.NextCheckAt), nullableTime(uv.LastCheckAt)); err != nil {
 		return wrapDuplicate(err, "store: create node "+uv.ID)
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO uv_event (uv_id, at, from_state, to_state, reason, actor)
