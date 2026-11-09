@@ -535,7 +535,7 @@ add` (4) after a peer credential was removed from the core config, then `0` agai
 
 Purpose: the three scenarios from the concept, end to end, verified in the lab.
 
-### M3.1 Scheduler and state machine (MN)
+### M3.1 Scheduler and state machine (MN) — **in progress**
 
 - Queue keyed by `next_check_at` with jitter; worker pool; per-node serialization.
 - Retry policy inside a cycle (3 × 10 min, configurable); cycle outcome aggregation (`ok`, `failed`,
@@ -543,6 +543,24 @@ Purpose: the three scenarios from the concept, end to end, verified in the lab.
 - Pure transition table + side effects (peer invalidation, subscription ETag bump, audit event).
 - `mn check now`, `mn policy set`, `mn uv block|unblock|rm` (admin override, audited).
 - Retention job (checks 90 d, audit 1 y).
+
+Done so far:
+
+| Piece | State |
+|---|---|
+| Transition table, pure, full cross-product under test | done (`internal/mn/sched`) |
+| `mn uv block` / `unblock` / `rm` through the same table, audited | done |
+| `mn uv forget` — frees a removed node's domain | done |
+| Retention (checks 90 d, audit 1 y, at start and daily) | done |
+| Queue, per-node serialisation, in-cycle retries, aggregator, `mn check now`, `mn policy set` | not yet |
+
+The table is the contract M3.2 and the scenario milestones build on: `active → unavailable` on the
+first failed cycle, `unavailable → blocked` on the second, `blocked → active` only through an explicit
+unblock, and `unknown` never moves anything.
+
+Lab: block, block again ("nothing changed", one event row), unblock, rm, approve-after-rm refused with
+`conflict`; a sync attempt after removal answered `node_inactive`; `uv forget` freed the domain and uv2
+re-enrolled as a new node.
 
 ### M3.2 Agent loop (UV)
 
