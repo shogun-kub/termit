@@ -17,6 +17,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/shogun-kub/termit/internal/mn/sched"
 	"github.com/shogun-kub/termit/internal/mn/secret"
 	"github.com/shogun-kub/termit/internal/mn/store"
 )
@@ -96,13 +97,21 @@ func (s *Service) Handle(ctx context.Context, req Request) (any, *Error) {
 	case "uv.show":
 		return s.showUV(ctx, req.Args)
 	case "uv.approve":
-		return s.setUVState(ctx, req.Args, store.StateActive, "approved by an operator")
+		return s.setUVState(ctx, req.Args, store.StateActive, sched.EventApprove, "approved by an operator")
 	case "uv.reject":
-		return s.setUVState(ctx, req.Args, store.StateRemoved, "rejected by an operator")
+		return s.setUVState(ctx, req.Args, store.StateRemoved, sched.EventReject, "rejected by an operator")
 	case "uv.reissue":
 		return s.reissueAgentKey(ctx, req.Args)
 	case "uv.agentkey":
 		return s.showAgentKey(ctx, req.Args)
+	case "uv.block":
+		return s.setUVState(ctx, req.Args, store.StateBlocked, sched.EventAdminBlock, "blocked by an operator")
+	case "uv.unblock":
+		return s.setUVState(ctx, req.Args, store.StateActive, sched.EventAdminUnblock, "unblocked by an operator")
+	case "uv.rm":
+		return s.setUVState(ctx, req.Args, store.StateRemoved, sched.EventAdminRemove, "removed by an operator")
+	case "uv.forget":
+		return s.forgetUV(ctx, req.Args)
 	case "sub.rotate":
 		return s.rotateSubToken(ctx, req.Args)
 	default:
@@ -327,7 +336,7 @@ func (s *Service) resolveUV(ctx context.Context, selector string) (store.UV, *Er
 	return store.UV{}, &Error{Code: CodeInternal, Detail: err.Error()}
 }
 
-func (s *Service) setUVState(ctx context.Context, raw json.RawMessage, to store.State, reason string) (any, *Error) {
+func (s *Service) setUVState(ctx context.Context, raw json.RawMessage, to store.State, event sched.Event, reason string) (any, *Error) {
 	var args inviteIDArgs
 	if err := json.Unmarshal(raw, &args); err != nil || args.ID == "" {
 		return nil, &Error{Code: CodeBadRequest, Detail: "a node id or domain is required"}
@@ -336,11 +345,21 @@ func (s *Service) setUVState(ctx context.Context, raw json.RawMessage, to store.
 	if refused != nil {
 		return nil, refused
 	}
-	if string(node.State) == string(to) {
-		return map[string]any{"node": view(node), "changed": false}, nil
+	// The operator's intent goes through the same table as the machine's: a command that the table
+	// calls a no-op must not move anything, and a move the table forbids is refused here rather than
+	// silently accepted.
+	outcome := sched.Transition(sched.State(node.State), event)
+	if !outcome.Changed {
+		if string(node.State) == string(to) {
+			return map[string]any{"node": view(node), "changed": false}, nil
+		}
+		return nil, &Error{Code: CodeConflict, Detail: fmt.Sprintf("%s: %s", outcome.Reason, node.State)}
+	}
+	if reason == "" {
+		reason = outcome.Reason
 	}
 	now := s.Now().UTC()
-	event, err := s.Store.SetUVState(ctx, node.ID, to, reason, "admin", now)
+	record, err := s.Store.SetUVState(ctx, node.ID, to, reason, "admin", now)
 	if err != nil {
 		return nil, &Error{Code: CodeInternal, Detail: err.Error()}
 	}
@@ -351,7 +370,7 @@ func (s *Service) setUVState(ctx context.Context, raw json.RawMessage, to store.
 	}
 	if err := s.Store.AppendAudit(ctx, store.AuditRecord{
 		At: now, Actor: "admin", Action: string(to), Target: node.ID,
-		DetailJSON: fmt.Sprintf(`{"from":%q,"to":%q}`, event.FromState, event.ToState),
+		DetailJSON: fmt.Sprintf(`{"from":%q,"to":%q}`, record.FromState, record.ToState),
 	}); err != nil {
 		return nil, &Error{Code: CodeInternal, Detail: err.Error()}
 	}
@@ -360,6 +379,36 @@ func (s *Service) setUVState(ctx context.Context, raw json.RawMessage, to store.
 		return nil, &Error{Code: CodeInternal, Detail: err.Error()}
 	}
 	return map[string]any{"node": view(updated), "changed": true}, nil
+}
+
+// forgetUV erases a removed node so its domain can be registered again. The audit trail keeps the
+// record of what happened; the row is gone because a domain can only belong to one active node.
+func (s *Service) forgetUV(ctx context.Context, raw json.RawMessage) (any, *Error) {
+	var args inviteIDArgs
+	if err := json.Unmarshal(raw, &args); err != nil || args.ID == "" {
+		return nil, &Error{Code: CodeBadRequest, Detail: "a node id or domain is required"}
+	}
+	node, refused := s.resolveUV(ctx, args.ID)
+	if refused != nil {
+		return nil, refused
+	}
+	if node.State != store.StateRemoved {
+		return nil, &Error{Code: CodeConflict,
+			Detail: fmt.Sprintf("node %s is %s; remove it first, and only then forget it", node.ID, node.State)}
+	}
+	if err := s.Store.ForgetUV(ctx, node.ID); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, &Error{Code: CodeNotFound, Detail: "no such node"}
+		}
+		return nil, &Error{Code: CodeInternal, Detail: err.Error()}
+	}
+	if err := s.Store.AppendAudit(ctx, store.AuditRecord{
+		At: s.Now().UTC(), Actor: "admin", Action: "uv.forget", Target: node.ID,
+		DetailJSON: fmt.Sprintf(`{"domain":%q}`, node.Domain),
+	}); err != nil {
+		return nil, &Error{Code: CodeInternal, Detail: err.Error()}
+	}
+	return map[string]any{"id": node.ID, "domain": node.Domain, "forgotten": true}, nil
 }
 
 // rotateSubToken issues a new subscription token. The old one stops working immediately; the URL is

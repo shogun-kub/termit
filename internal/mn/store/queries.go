@@ -475,3 +475,38 @@ func expectOne(res sql.Result, id string) error {
 	}
 	return nil
 }
+
+// ForgetUV deletes a removed node and everything hanging off it, freeing its domain for a fresh
+// enrollment. It refuses anything that is not removed: deleting a live node by mistake would take its
+// history with it.
+func (s *Store) ForgetUV(ctx context.Context, id string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("store: begin forget: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var state State
+	if err := tx.QueryRowContext(ctx, `SELECT state FROM uv WHERE id = ?`, id).Scan(&state); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		return fmt.Errorf("store: read state: %w", err)
+	}
+	if state != StateRemoved {
+		return fmt.Errorf("store: node %s is %s, not removed", id, state)
+	}
+	for _, statement := range []string{
+		`DELETE FROM uv_event WHERE uv_id = ?`,
+		`DELETE FROM "check" WHERE uv_id = ?`,
+		`DELETE FROM uv WHERE id = ?`,
+	} {
+		if _, err := tx.ExecContext(ctx, statement, id); err != nil {
+			return fmt.Errorf("store: forget node %s: %w", id, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("store: commit forget: %w", err)
+	}
+	return nil
+}

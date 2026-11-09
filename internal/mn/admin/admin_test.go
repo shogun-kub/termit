@@ -262,3 +262,96 @@ func TestAgentKeyCanBeReadBack(t *testing.T) {
 		t.Fatal("uv.agentkey invented a key for a node that has none")
 	}
 }
+
+func TestOperatorOverrideFollowsTheStateTable(t *testing.T) {
+	t.Parallel()
+	client, db := start(t)
+	ctx := context.Background()
+	if err := db.CreateUV(ctx, store.UV{ID: "uv_1", Domain: "one.example.com", SelfUUID: "u1",
+		State: store.StateActive, CreatedAt: testNow, CredentialEpoch: 1}); err != nil {
+		t.Fatalf("CreateUV: %v", err)
+	}
+
+	type answer struct {
+		Node struct {
+			ID    string `json:"id"`
+			State string `json:"state"`
+		} `json:"node"`
+		Changed bool `json:"changed"`
+	}
+
+	var blocked answer
+	if err := call(ctx, client, "uv.block", map[string]string{"id": "uv_1", "reason": "abuse report"}, &blocked); err != nil {
+		t.Fatalf("uv.block: %v", err)
+	}
+	if blocked.Node.State != string(store.StateBlocked) || !blocked.Changed {
+		t.Errorf("block: state=%s changed=%v", blocked.Node.State, blocked.Changed)
+	}
+
+	// Blocking a blocked node is a no-op, and a no-op writes nothing.
+	var again answer
+	if err := call(ctx, client, "uv.block", map[string]string{"id": "uv_1"}, &again); err != nil {
+		t.Fatalf("second uv.block: %v", err)
+	}
+	if again.Changed {
+		t.Error("blocking a blocked node reported a change")
+	}
+	if events, err := db.UVEvents(ctx, "uv_1", 10); err != nil || len(events) != 1 {
+		t.Errorf("events = %d (err %v), want exactly the one real transition", len(events), err)
+	}
+
+	var unblocked answer
+	if err := call(ctx, client, "uv.unblock", map[string]string{"id": "one.example.com"}, &unblocked); err != nil {
+		t.Fatalf("uv.unblock: %v", err)
+	}
+	if unblocked.Node.State != string(store.StateActive) || !unblocked.Changed {
+		t.Errorf("unblock: state=%s changed=%v", unblocked.Node.State, unblocked.Changed)
+	}
+
+	var removed answer
+	if err := call(ctx, client, "uv.rm", map[string]string{"id": "uv_1"}, &removed); err != nil {
+		t.Fatalf("uv.rm: %v", err)
+	}
+	if removed.Node.State != string(store.StateRemoved) {
+		t.Errorf("rm: state=%s", removed.Node.State)
+	}
+
+	// Removal is final: approving a removed node is refused, not silently accepted.
+	if err := call(ctx, client, "uv.approve", map[string]string{"id": "uv_1"}, &removed); err == nil {
+		t.Error("uv.approve accepted a removed node")
+	}
+}
+
+func TestForgetFreesTheDomainOnlyAfterRemoval(t *testing.T) {
+	t.Parallel()
+	client, db := start(t)
+	ctx := context.Background()
+	if err := db.CreateUV(ctx, store.UV{ID: "uv_1", Domain: "one.example.com", SelfUUID: "u1",
+		State: store.StateActive, CreatedAt: testNow, CredentialEpoch: 1}); err != nil {
+		t.Fatalf("CreateUV: %v", err)
+	}
+
+	// A live node is not forgotten by accident.
+	if err := call(ctx, client, "uv.forget", map[string]string{"id": "uv_1"}, &struct{}{}); err == nil {
+		t.Fatal("uv.forget erased a live node")
+	}
+	if _, err := db.UVByID(ctx, "uv_1"); err != nil {
+		t.Fatalf("the live node is gone: %v", err)
+	}
+
+	if err := call(ctx, client, "uv.rm", map[string]string{"id": "uv_1"}, &struct{}{}); err != nil {
+		t.Fatalf("uv.rm: %v", err)
+	}
+	if err := call(ctx, client, "uv.forget", map[string]string{"id": "uv_1"}, &struct{}{}); err != nil {
+		t.Fatalf("uv.forget: %v", err)
+	}
+	if _, err := db.UVByID(ctx, "uv_1"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("the node survived forget: %v", err)
+	}
+
+	// The domain is free again: the same domain can be registered for a new node.
+	if err := db.CreateUV(ctx, store.UV{ID: "uv_2", Domain: "one.example.com", SelfUUID: "u2",
+		State: store.StatePending, CreatedAt: testNow, CredentialEpoch: 1}); err != nil {
+		t.Fatalf("the domain is still taken: %v", err)
+	}
+}

@@ -197,6 +197,77 @@ func runUVReissue(args []string, stdout, stderr io.Writer) int {
 	return exitOK
 }
 
+// runUVState is the operator override for one node: block it, let it back in, or remove it. Each one
+// goes through the same state table the automatic checks use.
+func runUVState(verb string, args []string, stdout, stderr io.Writer) int {
+	flags, configPath, socket, token := uvFlags("uv "+verb, stderr)
+	reason := flags.String("reason", "", "why, recorded with the state change")
+	if err := flags.Parse(flagsFirst(args, map[string]bool{"reason": true})); err != nil {
+		return exitUsage
+	}
+	if flags.NArg() != 1 {
+		fmt.Fprintf(stderr, "mn uv %s: one node id or domain is required\n", verb)
+		return exitUsage
+	}
+	client, err := adminClient(*configPath, *socket, *token)
+	if err != nil {
+		fmt.Fprintf(stderr, "mn uv %s: %v\n", verb, err)
+		return exitFailure
+	}
+	var result struct {
+		Node struct {
+			ID    string `json:"id"`
+			State string `json:"state"`
+		} `json:"node"`
+		Changed bool `json:"changed"`
+	}
+	callCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	args2 := map[string]string{"id": flags.Arg(0)}
+	if *reason != "" {
+		args2["reason"] = *reason
+	}
+	if err := client.Call(callCtx, "uv."+verb, args2, &result); err != nil {
+		fmt.Fprintf(stderr, "mn uv %s: %v\n", verb, err)
+		return exitFailure
+	}
+	if !result.Changed {
+		fmt.Fprintf(stdout, "node %s is already %s; nothing changed\n", result.Node.ID, result.Node.State)
+		return exitOK
+	}
+	fmt.Fprintf(stdout, "node %s is now %s\n", result.Node.ID, result.Node.State)
+	return exitOK
+}
+
+// runUVForget erases a removed node, which is what frees its domain for a new enrollment.
+func runUVForget(args []string, stdout, stderr io.Writer) int {
+	flags, configPath, socket, token := uvFlags("uv forget", stderr)
+	if err := flags.Parse(flagsFirst(args, map[string]bool{})); err != nil {
+		return exitUsage
+	}
+	if flags.NArg() != 1 {
+		fmt.Fprintln(stderr, "mn uv forget: one node id or domain is required")
+		return exitUsage
+	}
+	client, err := adminClient(*configPath, *socket, *token)
+	if err != nil {
+		fmt.Fprintf(stderr, "mn uv forget: %v\n", err)
+		return exitFailure
+	}
+	var result struct {
+		ID     string `json:"id"`
+		Domain string `json:"domain"`
+	}
+	callCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := client.Call(callCtx, "uv.forget", map[string]string{"id": flags.Arg(0)}, &result); err != nil {
+		fmt.Fprintf(stderr, "mn uv forget: %v\n", err)
+		return exitFailure
+	}
+	fmt.Fprintf(stdout, "forgot %s (%s); the domain can be enrolled again\n", result.ID, result.Domain)
+	return exitOK
+}
+
 // runUVAgentKey prints a node's current key: for an owner who lost it, without breaking the node.
 func runUVAgentKey(args []string, stdout, stderr io.Writer) int {
 	flags, configPath, socket, token := uvFlags("uv agentkey", stderr)
@@ -273,7 +344,7 @@ func runSub(args []string, stdout, stderr io.Writer) int {
 // runUV dispatches `mn uv …`.
 func runUV(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "mn uv: one of list, show, approve, reject, reissue, agentkey is required")
+		fmt.Fprintln(stderr, "mn uv: one of list, show, approve, reject, reissue, agentkey, block, unblock, rm, forget is required")
 		return exitUsage
 	}
 	switch args[0] {
@@ -287,6 +358,10 @@ func runUV(args []string, stdout, stderr io.Writer) int {
 		return runUVReissue(args[1:], stdout, stderr)
 	case "agentkey":
 		return runUVAgentKey(args[1:], stdout, stderr)
+	case "block", "unblock", "rm":
+		return runUVState(args[0], args[1:], stdout, stderr)
+	case "forget":
+		return runUVForget(args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "mn uv: unknown subcommand %q\n", args[0])
 		return exitUsage
