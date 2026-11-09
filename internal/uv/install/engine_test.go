@@ -225,8 +225,11 @@ func TestEngineInstallsAndReusesState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second Run: %v", err)
 	}
-	if counts := secondReport.Counts(); counts[state.StepPresent] != len(second.Steps())-skippedSteps {
-		t.Fatalf("second run counts = %v, want every step after preflight to be present: %+v", counts, secondReport.Steps)
+	// Every generated artifact is present; `start` alone runs, because it restarts the agent so a
+	// replaced binary or unit takes effect. That restart is the upgrade, not a loss of idempotency.
+	if counts := secondReport.Counts(); counts[state.StepPresent] != len(second.Steps())-skippedSteps-1 ||
+		counts[state.StepOK] != 1 {
+		t.Fatalf("second run counts = %v, want every step after preflight present except start: %+v", counts, secondReport.Steps)
 	}
 	if second.State().Identity.SelfUUID != identity {
 		t.Error("a re-run regenerated the identity")

@@ -63,7 +63,8 @@ func Diagnose(ctx context.Context, opts DiagnoseOptions) []Check {
 
 func diagnoseServices(ctx context.Context, exec Executor) Check {
 	var down, unknown []string
-	for _, unit := range []string{service.XrayUnitName, nginxUnit, service.RenewTimerName} {
+	units := []string{service.XrayUnitName, nginxUnit, service.RenewTimerName, service.AgentUnitName}
+	for _, unit := range units {
 		res, err := exec.Run(ctx, Cmd{Name: "systemctl", Args: []string{"is-active", "--quiet", unit}})
 		switch {
 		case err == nil:
@@ -75,13 +76,13 @@ func diagnoseServices(ctx context.Context, exec Executor) Check {
 		}
 	}
 	switch {
-	case len(unknown) == 3:
+	case len(unknown) == len(units):
 		return Check{Name: "services", Status: StatusSkip, Detail: "systemctl could not be asked"}
 	case len(down) > 0:
 		return Check{Name: "services", Status: StatusFail, Detail: "not running: " + strings.Join(down, ", "),
 			Hint: "systemctl status <unit>; `uv init` starts them again"}
 	}
-	return Check{Name: "services", Status: StatusOK, Detail: "core, web tier and the renewal timer are running"}
+	return Check{Name: "services", Status: StatusOK, Detail: "core, web tier, renewal timer and agent are running"}
 }
 
 func diagnoseCertificate(cfg *config.Config, st *state.State, now time.Time) Check {

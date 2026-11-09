@@ -42,11 +42,23 @@ func (s *unitsStep) unitFiles() (map[string][]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	var readable []string
+	if s.e.cfg.MN.CAFile != "" {
+		readable = append(readable, filepath.Dir(s.e.cfg.MN.CAFile))
+	}
+	agentUnit, err := service.Agent(binary, s.e.configPath, []string{
+		s.e.cfg.Paths.ConfigDir,
+		s.e.cfg.Paths.StateDir,
+	}, readable)
+	if err != nil {
+		return nil, err
+	}
 	return map[string][]byte{
 		filepath.Join(s.e.cfg.Paths.UnitDir, service.XrayUnitName):   xrayUnit,
 		s.e.cfg.Paths.NginxDropIn:                                    dropIn,
 		filepath.Join(s.e.cfg.Paths.UnitDir, service.RenewUnitName):  renewUnit,
 		filepath.Join(s.e.cfg.Paths.UnitDir, service.RenewTimerName): renewTimer,
+		filepath.Join(s.e.cfg.Paths.UnitDir, service.AgentUnitName):  agentUnit,
 	}, nil
 }
 

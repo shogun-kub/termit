@@ -8,12 +8,16 @@ package service
 
 import (
 	"fmt"
+	"path"
 	"path/filepath"
 	"strings"
 )
 
 // XrayUnitName is the unit that runs the proxy core.
 const XrayUnitName = "termit-xray.service"
+
+// AgentUnitName is the long-running agent: the daily cycle, the local self-check and the peer sync.
+const AgentUnitName = "termit-uv-agent.service"
 
 // RenewUnitName and RenewTimerName run `renew-cert` on a schedule. The timer, not the agent, owns the
 // clock: a daily oneshot is easier to inspect than a sleep loop, and it survives a reboot.
@@ -83,6 +87,116 @@ AmbientCapabilities=
 WantedBy=multi-user.target
 `, binary, config)
 	return []byte(b.String()), nil
+}
+
+// Agent renders the long-running node agent: the daily cycle, the self-check and the peer sync. It
+// runs as root because it rewrites the core's configuration and asks systemd to restart the core,
+// and it is confined to exactly the paths it writes plus the files it has to read. writable and
+// readable come from the configuration, not from this file.
+func Agent(binary, config string, writable, readable []string) ([]byte, error) {
+	if !filepath.IsAbs(binary) && !strings.HasPrefix(binary, "/") {
+		return nil, fmt.Errorf("service: binary %q must be an absolute path", binary)
+	}
+	if !filepath.IsAbs(config) && !strings.HasPrefix(config, "/") {
+		return nil, fmt.Errorf("service: config %q must be an absolute path", config)
+	}
+	paths, err := absolutePaths(writable)
+	if err != nil {
+		return nil, err
+	}
+	readOnly, err := absolutePaths(readable)
+	if err != nil {
+		return nil, err
+	}
+	var b strings.Builder
+	b.WriteString(unitHeader)
+	fmt.Fprintf(&b, `
+[Unit]
+Description=Termit node agent
+Documentation=https://github.com/shogun-kub/termit
+After=network-online.target termit-xray.service
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStart=%s agent -v --config %s
+Restart=on-failure
+RestartSec=30s
+Nice=10
+
+# The agent needs root for two reasons: the core config is 0640 root:termit, and a validated restart
+# goes through systemd. Everything else is taken away, and its writes are confined to the paths below.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=%s
+`, binary, config, strings.Join(paths, " "))
+	if len(readOnly) > 0 {
+		fmt.Fprintf(&b, "ReadOnlyPaths=%s\n", strings.Join(readOnly, " "))
+	}
+	// ProtectHome= hides /home, /root and /run/user, including paths a unit explicitly asked to read
+	// with ReadOnlyPaths= (the mount ordering is not something a unit can rely on). The MN CA file is
+	// operator-supplied and may live there, so the hardening is dropped when it would break a read
+	// the unit was configured for.
+	if hidesAReadablePath(readOnly) {
+		b.WriteString("# ProtectHome is off: a readable path (the MN CA file) lives under a home directory.\n")
+	} else {
+		b.WriteString("ProtectHome=yes\n")
+	}
+	b.WriteString(`PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target
+`)
+	return []byte(b.String()), nil
+}
+
+// hidesAReadablePath reports whether any path lies under a directory ProtectHome= makes inaccessible.
+func hidesAReadablePath(paths []string) bool {
+	for _, p := range paths {
+		switch {
+		case p == "/root" || strings.HasPrefix(p, "/root/"),
+			p == "/home" || strings.HasPrefix(p, "/home/"),
+			p == "/run/user" || strings.HasPrefix(p, "/run/user/"):
+			return true
+		}
+	}
+	return false
+}
+
+// absolutePaths validates and de-duplicates a list for ReadWritePaths. systemd refuses a relative
+// path there, and a typo must fail the unit render instead of producing a unit that cannot start.
+func absolutePaths(paths []string) ([]string, error) {
+	seen := make(map[string]bool, len(paths))
+	out := make([]string, 0, len(paths))
+	for _, p := range paths {
+		if p == "" {
+			continue
+		}
+		if !filepath.IsAbs(p) && !strings.HasPrefix(p, "/") {
+			return nil, fmt.Errorf("service: writable path %q must be absolute", p)
+		}
+		clean := path.Clean(p)
+		if seen[clean] {
+			continue
+		}
+		seen[clean] = true
+		out = append(out, clean)
+	}
+	return out, nil
 }
 
 // Renew renders the oneshot unit that renews the certificate once. The binary is the one that wrote

@@ -27,12 +27,12 @@
       "settings": {
         "clients": [
           {
-            "id": "8f1c2d3e-4a5b-4c6d-8e7f-90a1b2c3d4e5",
-            "email": "owner"
-          },
-          {
             "id": "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
             "email": "family-tablet"
+          },
+          {
+            "id": "8f1c2d3e-4a5b-4c6d-8e7f-90a1b2c3d4e5",
+            "email": "owner"
           }
         ],
         "decryption": "none"
@@ -58,7 +58,19 @@
   "outbounds": [
     {
       "tag": "direct",
-      "protocol": "freedom"
+      "protocol": "freedom",
+      "settings": {
+        "finalRules": [
+          {
+            "action": "allow",
+            "network": "tcp",
+            "ip": [
+              "127.0.0.0/8"
+            ],
+            "port": "80"
+          }
+        ]
+      }
     },
     {
       "tag": "block",

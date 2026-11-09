@@ -12,7 +12,6 @@ import (
 	"github.com/shogun-kub/termit/internal/proto"
 	"github.com/shogun-kub/termit/internal/uv/agent"
 	"github.com/shogun-kub/termit/internal/uv/config"
-	"github.com/shogun-kub/termit/internal/uv/service"
 	"github.com/shogun-kub/termit/internal/uv/state"
 )
 
@@ -59,8 +58,17 @@ func (a *application) runSync(args []string) int {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
+	// One reconciliation at a time: the agent service runs the same cycle, and two writers must not
+	// interleave a staged config with the other's rename.
+	unlock, err := state.Lock(cfg.Paths.StatePath() + ".lock")
+	if err != nil {
+		fmt.Fprintf(stderr, "uv sync: %v\n", err)
+		return exitFailure
+	}
+	defer unlock()
+
 	remote := agent.Remote{BaseURL: cfg.MN.URL, CAFile: cfg.MN.CAFile}
-	answer, err := remote.Fetch(ctx, st.Credentials.AgentKey)
+	answer, err := remote.Fetch(ctx, st.Credentials.AgentKey, proto.SyncRequest{AgentVersion: proto.APIVersion})
 	if err != nil {
 		fmt.Fprintf(stderr, "uv sync: %v\n", err)
 		return exitFailure
@@ -79,15 +87,9 @@ func (a *application) runSync(args []string) int {
 
 	if *dryRun || *check {
 		// A check must answer the question without answering it by changing the answer: generate what
-		// the core would get, compare, and leave the file alone.
-		preview := agent.Applier{
-			Binary:     cfg.Paths.XrayBinary(),
-			ConfigPath: cfg.Paths.XrayConfig,
-			Path:       "/" + st.Identity.XHTTPPath + "/",
-			SelfUUID:   st.Identity.SelfUUID,
-			SelfEmail:  "owner",
-		}
-		result, err := preview.Preview(answer, st.LocalUsers)
+		// the core would get, compare it with the file and with the running client set, and leave both
+		// alone.
+		result, err := a.applier(cfg, st).Preview(ctx, answer, st.LocalUsers)
 		if err != nil {
 			fmt.Fprintf(stderr, "uv sync: %v\n", err)
 			return exitFailure
@@ -97,6 +99,9 @@ func (a *application) runSync(args []string) int {
 			return exitOK
 		}
 		fmt.Fprintf(stdout, "drift: %d to add, %d to remove\n", len(result.Added), len(result.Removed))
+		if result.HotNote != "" {
+			fmt.Fprintf(stdout, "  note: %s\n", result.HotNote)
+		}
 		for _, id := range result.Added {
 			fmt.Fprintf(stdout, "  + %s\n", id)
 		}
@@ -110,23 +115,23 @@ func (a *application) runSync(args []string) int {
 		return exitOK
 	}
 
-	applier := agent.Applier{
-		Binary:     cfg.Paths.XrayBinary(),
-		ConfigPath: cfg.Paths.XrayConfig,
-		Path:       "/" + st.Identity.XHTTPPath + "/",
-		SelfUUID:   st.Identity.SelfUUID,
-		SelfEmail:  "owner",
-		Runner:     execRunner{},
-		Owner:      "root:termit",
-		Unit:       service.XrayUnitName,
-	}
+	applier := a.applier(cfg, st)
 	result, err := applier.Apply(ctx, answer, st.LocalUsers)
 	if err != nil {
 		fmt.Fprintf(stderr, "uv sync: %v\n", err)
 		return exitFailure
 	}
 
-	st.Peers = peersOf(answer)
+	st.Peers = agent.PeersFrom(answer)
+	now := a.now().UTC()
+	st.Schedule.LastSyncAt = now
+	st.Schedule.LastResult = "ok"
+	st.Schedule.Failures = 0
+	enrolledAt := time.Time{}
+	if st.Credentials != nil {
+		enrolledAt = st.Credentials.EnrolledAt
+	}
+	st.Schedule.NextSyncAt = agent.NextDue(now, answer, enrolledAt, st.Identity.SelfUUID)
 	st.Touch()
 	if err := st.Save(filepath.Join(cfg.Paths.StateDir, "state.json")); err != nil {
 		fmt.Fprintf(stderr, "uv sync: %v\n", err)
@@ -134,10 +139,18 @@ func (a *application) runSync(args []string) int {
 	}
 
 	switch {
-	case result.Unchanged:
+	case result.Unchanged && len(result.Added) == 0 && len(result.Removed) == 0:
 		fmt.Fprintf(stdout, "already in sync: %d client(s), %d peer(s)\n", result.Clients, len(answer.Peers))
 	default:
-		fmt.Fprintf(stdout, "applied: %d client(s), %d peer(s)\n", result.Clients, len(answer.Peers))
+		mode := "restart"
+		if result.Hot {
+			mode = "hot API"
+		}
+		fmt.Fprintf(stdout, "applied: %d client(s), %d peer(s) via %s (canary=%v)\n",
+			result.Clients, len(answer.Peers), mode, result.CanaryRan)
+		if result.HotNote != "" {
+			fmt.Fprintf(stdout, "  why not hot: %s\n", result.HotNote)
+		}
 		for _, id := range result.Added {
 			fmt.Fprintf(stdout, "  + %s\n", id)
 		}
@@ -145,22 +158,6 @@ func (a *application) runSync(args []string) int {
 			fmt.Fprintf(stdout, "  - %s\n", id)
 		}
 	}
+	fmt.Fprintf(stdout, "next sync: %s\n", st.Schedule.NextSyncAt.Format(time.RFC3339))
 	return exitOK
-}
-
-// peersOf stores what the server said, so `uv status` can report the peer set without a network call.
-func peersOf(answer proto.SyncResponse) []state.Peer {
-	out := make([]state.Peer, 0, len(answer.Peers))
-	for _, peer := range answer.Peers {
-		out = append(out, state.Peer{
-			ID:       peer.ID,
-			Domain:   peer.Domain,
-			Label:    peer.Label,
-			UUID:     peer.UUID,
-			Path:     peer.Path,
-			State:    peer.State,
-			Degraded: peer.Degraded,
-		})
-	}
-	return out
 }

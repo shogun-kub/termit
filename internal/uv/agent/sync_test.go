@@ -64,7 +64,7 @@ func TestFetchSendsTheAgentKeyAndReadsTheAnswer(t *testing.T) {
 	defer server.Close()
 
 	remote := agent.Remote{BaseURL: server.URL}
-	got, err := remote.Fetch(context.Background(), "agent-key")
+	got, err := remote.Fetch(context.Background(), "agent-key", proto.SyncRequest{})
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
@@ -87,7 +87,7 @@ func TestFetchReportsARefusal(t *testing.T) {
 	}))
 	defer server.Close()
 
-	_, err := agent.Remote{BaseURL: server.URL}.Fetch(context.Background(), "key")
+	_, err := agent.Remote{BaseURL: server.URL}.Fetch(context.Background(), "key", proto.SyncRequest{})
 	if err == nil {
 		t.Fatal("Fetch accepted a refusal")
 	}
@@ -98,10 +98,10 @@ func TestFetchReportsARefusal(t *testing.T) {
 
 func TestFetchRefusesToRunUnenrolled(t *testing.T) {
 	t.Parallel()
-	if _, err := (agent.Remote{BaseURL: "https://mn.example.com"}).Fetch(context.Background(), ""); err == nil {
+	if _, err := (agent.Remote{BaseURL: "https://mn.example.com"}).Fetch(context.Background(), "", proto.SyncRequest{}); err == nil {
 		t.Fatal("Fetch ran without an agent key")
 	}
-	if _, err := (agent.Remote{}).Fetch(context.Background(), "key"); err == nil {
+	if _, err := (agent.Remote{}).Fetch(context.Background(), "key", proto.SyncRequest{}); err == nil {
 		t.Fatal("Fetch ran without a server")
 	}
 }
@@ -181,8 +181,8 @@ func TestApplyDropsAPeerThatLeft(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
-	if len(result.Removed) != 1 || result.Removed[0] != peerUUID {
-		t.Errorf("removed = %v, want the departed peer", result.Removed)
+	if len(result.Removed) != 1 || result.Removed[0] != "peer-uv_two@termit" {
+		t.Errorf("removed = %v, want the departed peer's email", result.Removed)
 	}
 	body, err := os.ReadFile(filepath.Join(dir, "xray.json"))
 	if err != nil {
@@ -235,7 +235,7 @@ func TestPreviewReportsDriftWithoutWriting(t *testing.T) {
 	app.Unit = "termit-xray.service"
 
 	// Nothing on disk yet: everything is drift, and the preview must not create the file.
-	first, err := app.Preview(answer(), nil)
+	first, err := app.Preview(context.Background(), answer(), nil)
 	if err != nil {
 		t.Fatalf("Preview: %v", err)
 	}
@@ -250,7 +250,7 @@ func TestPreviewReportsDriftWithoutWriting(t *testing.T) {
 	if _, err := app.Apply(context.Background(), answer(), nil); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
-	second, err := app.Preview(answer(), nil)
+	second, err := app.Preview(context.Background(), answer(), nil)
 	if err != nil {
 		t.Fatalf("Preview: %v", err)
 	}

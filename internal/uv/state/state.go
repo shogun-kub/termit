@@ -54,6 +54,53 @@ type Credentials struct {
 	SubToken        string `json:"sub_token,omitempty"`
 	ProbeUUID       string `json:"probe_uuid,omitempty"`
 	SubscriptionURL string `json:"subscription_url,omitempty"`
+	// EnrolledAt is when the server accepted this node. The first scheduled cycle never runs before
+	// EnrolledAt + 2 h: the enrollment checks and the first sync need time to settle, and a node that
+	// syncs while the server is still probing it produces a false failure.
+	EnrolledAt time.Time `json:"enrolled_at,omitempty"`
+}
+
+// Schedule is the agent loop's persisted timing. It lives in the state file so a restart of the
+// service does not re-run a cycle the node already did, and so `uv status` can say when the next one
+// is due without asking the network.
+type Schedule struct {
+	// LastSyncAt is when the last cycle fetched the desired state, successfully or not.
+	LastSyncAt time.Time `json:"last_sync_at,omitempty"`
+	// NextSyncAt is when the loop may run again. Empty means "not planned yet".
+	NextSyncAt time.Time `json:"next_sync_at,omitempty"`
+	// LastResult is the outcome of the last cycle: ok, failed or unknown.
+	LastResult string `json:"last_result,omitempty"`
+	// Failures is the number of consecutive cycles that could not reach the server. It drives the
+	// exponential backoff and resets on the first success.
+	Failures int `json:"failures,omitempty"`
+}
+
+// SelfCheckItem is one local check the agent ran before its sync.
+type SelfCheckItem struct {
+	Name string `json:"name"`
+	OK   bool   `json:"ok"`
+	// Unknown means the check could not be performed. It is not a failure of the node.
+	Unknown bool   `json:"unknown,omitempty"`
+	Detail  string `json:"detail,omitempty"`
+}
+
+// SelfCheckReport is the local half of a node's health, kept so `uv status` can show it offline.
+type SelfCheckReport struct {
+	At        time.Time       `json:"at"`
+	OK        bool            `json:"ok"`
+	LatencyMS int             `json:"latency_ms,omitempty"`
+	Items     []SelfCheckItem `json:"items,omitempty"`
+}
+
+// ErrorClass names the first item that failed, or is empty when the node looked healthy. It is the
+// only part of the self-check that travels to the server: the sync report has no room for detail.
+func (r SelfCheckReport) ErrorClass() string {
+	for _, item := range r.Items {
+		if !item.OK && !item.Unknown {
+			return item.Name
+		}
+	}
+	return ""
 }
 
 // Peer is one node this node may dial. UUID is the pair credential, valid on this pair only.
@@ -147,8 +194,11 @@ type State struct {
 	// Credentials are nil until the node enrolls with a management server.
 	Credentials *Credentials `json:"credentials,omitempty"`
 	// Peers is the set the server last handed out; it is what the core was configured with.
-	Peers    []Peer `json:"peers,omitempty"`
-	Manifest []Path `json:"manifest,omitempty"`
+	Peers    []Peer   `json:"peers,omitempty"`
+	Schedule Schedule `json:"schedule,omitempty"`
+	// LastSelfCheck is what the agent loop observed locally before its last sync.
+	LastSelfCheck *SelfCheckReport `json:"last_self_check,omitempty"`
+	Manifest      []Path           `json:"manifest,omitempty"`
 
 	dirty bool
 }
@@ -272,6 +322,9 @@ func WriteFileAtomic(filename string, data []byte, perm os.FileMode) error {
 
 // ErrNotInstalled reports that no state file exists.
 var ErrNotInstalled = errors.New("node is not installed")
+
+// ErrLocked reports that another process is already doing the same work.
+var ErrLocked = errors.New("another run holds the lock")
 
 // LoadInstalled loads state and converts a missing file into ErrNotInstalled.
 func LoadInstalled(filename string) (*State, error) {

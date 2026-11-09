@@ -162,6 +162,79 @@ func TestGenerateShape(t *testing.T) {
 	}
 }
 
+func TestGenerateSortsClients(t *testing.T) {
+	t.Parallel()
+	first, err := xray.Generate(testSpec())
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	spec := testSpec()
+	spec.Clients[0], spec.Clients[1] = spec.Clients[1], spec.Clients[0]
+	second, err := xray.Generate(spec)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	// The installer and the daily reconcile must produce the same bytes for the same set; an order
+	// difference would make every sync look like drift.
+	if !bytes.Equal(first, second) {
+		t.Error("the client order changed the generated document")
+	}
+}
+
+func TestGenerateAllowsOnlyTheCanaryLoopbackTarget(t *testing.T) {
+	t.Parallel()
+	data, err := xray.Generate(testSpec())
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	var doc struct {
+		Outbounds []struct {
+			Tag      string `json:"tag"`
+			Settings struct {
+				FinalRules []struct {
+					Action  string   `json:"action"`
+					Network string   `json:"network"`
+					IP      []string `json:"ip"`
+					Port    string   `json:"port"`
+				} `json:"finalRules"`
+			} `json:"settings"`
+		} `json:"outbounds"`
+	}
+	if err := json.Unmarshal(data, &doc); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	var direct *struct {
+		Tag      string `json:"tag"`
+		Settings struct {
+			FinalRules []struct {
+				Action  string   `json:"action"`
+				Network string   `json:"network"`
+				IP      []string `json:"ip"`
+				Port    string   `json:"port"`
+			} `json:"finalRules"`
+		} `json:"settings"`
+	}
+	for i := range doc.Outbounds {
+		if doc.Outbounds[i].Tag == "direct" {
+			direct = &doc.Outbounds[i]
+		}
+	}
+	if direct == nil {
+		t.Fatal("no direct outbound")
+	}
+	rules := direct.Settings.FinalRules
+	if len(rules) != 1 {
+		t.Fatalf("final rules = %+v, want exactly the canary exception", rules)
+	}
+	rule := rules[0]
+	if rule.Action != "allow" || rule.Network != "tcp" || rule.Port != "80" {
+		t.Errorf("rule = %+v, want an allow for tcp :80", rule)
+	}
+	if len(rule.IP) != 1 || rule.IP[0] != "127.0.0.0/8" {
+		t.Errorf("rule ips = %v, want exactly the loopback range", rule.IP)
+	}
+}
+
 func TestGenerateRefusesBrokenSpecs(t *testing.T) {
 	t.Parallel()
 	cases := []struct {

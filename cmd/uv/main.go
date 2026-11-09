@@ -98,6 +98,10 @@ func (a *application) run(args []string) int {
 		return a.runEnroll(rest)
 	case "sync":
 		return a.runSync(rest)
+	case "agent":
+		return a.runAgent(rest)
+	case "unblock":
+		return a.runUnblock(rest)
 	case "uri":
 		return a.runURI(rest)
 	case "version":
@@ -106,7 +110,7 @@ func (a *application) run(args []string) int {
 	case "help", "-h", "--help":
 		a.usage(a.stdout)
 		return exitOK
-	case "unblock", "migrate", "warp":
+	case "migrate", "warp":
 		return a.notImplemented(command)
 	default:
 		fmt.Fprintf(a.stderr, "uv: unknown command %q\n\n", command)
@@ -136,14 +140,17 @@ Commands:
   renew-site   regenerate the decoy site and its nginx fragment
   enroll       register this node with the management server
   sync         reconcile the core with the server's peer set; --check reports drift
+  agent        run the long-running node loop (the systemd service); --once runs one cycle
+  unblock      ask the server to verify this node and lift a block
   uninstall    remove Termit from this node
   version      print build and protocol version
   help         show this help
 
 Planned, not in this build:
-  unblock, migrate, warp
+  migrate, warp
 
-Exit status: 0 success, 1 failure, 2 usage error, 3 command not implemented,\n             4 sync --check found drift.
+Exit status: 0 success, 1 failure, 2 usage error, 3 command not implemented,
+             4 sync --check found drift.
 
 Configuration lives in /etc/termit/uv/config.yaml and state in /var/lib/termit/uv/;
 both paths are overridable in the configuration file, and the configuration path with

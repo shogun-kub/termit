@@ -27,6 +27,39 @@ type jsonStatus struct {
 	LastRun      string       `json:"last_run,omitempty"`
 	LastRunAt    *time.Time   `json:"last_run_at,omitempty"`
 	LastRunSteps []stepStatus `json:"last_run_steps,omitempty"`
+
+	Enrolled      bool           `json:"enrolled"`
+	EnrolledAt    *time.Time     `json:"enrolled_at,omitempty"`
+	Subscription  string         `json:"subscription_url,omitempty"`
+	Peers         []jsonPeer     `json:"peers,omitempty"`
+	LastSyncAt    *time.Time     `json:"last_sync_at,omitempty"`
+	NextSyncAt    *time.Time     `json:"next_sync_at,omitempty"`
+	LastSyncState string         `json:"last_sync_result,omitempty"`
+	SyncFailures  int            `json:"sync_failures,omitempty"`
+	SelfCheck     *jsonSelfCheck `json:"self_check,omitempty"`
+}
+
+// jsonPeer is one peer as the server last described it. The pair credential is not printed.
+type jsonPeer struct {
+	ID       string `json:"id"`
+	Domain   string `json:"domain"`
+	State    string `json:"state"`
+	Degraded bool   `json:"degraded,omitempty"`
+}
+
+// jsonSelfCheck is the last local check, with the item names that failed or could not run.
+type jsonSelfCheck struct {
+	At         time.Time           `json:"at"`
+	OK         bool                `json:"ok"`
+	ErrorClass string              `json:"error_class,omitempty"`
+	Items      []jsonSelfCheckItem `json:"items,omitempty"`
+}
+
+type jsonSelfCheckItem struct {
+	Name    string `json:"name"`
+	OK      bool   `json:"ok"`
+	Unknown bool   `json:"unknown,omitempty"`
+	Detail  string `json:"detail,omitempty"`
 }
 
 // stepStatus is one journaled step.
@@ -87,6 +120,42 @@ the last install run. Secrets are shown as sha256 prefixes only.`)
 	if node.Certificate != nil {
 		out.Certificate = describeCertificate(node.Certificate.NotAfter, a.now())
 	}
+	if node.Credentials != nil && node.Credentials.AgentKey != "" {
+		out.Enrolled = true
+		out.Subscription = node.Credentials.SubscriptionURL
+		if !node.Credentials.EnrolledAt.IsZero() {
+			enrolledAt := node.Credentials.EnrolledAt
+			out.EnrolledAt = &enrolledAt
+		}
+	}
+	for _, peer := range node.Peers {
+		out.Peers = append(out.Peers, jsonPeer{
+			ID: peer.ID, Domain: peer.Domain, State: peer.State, Degraded: peer.Degraded,
+		})
+	}
+	if !node.Schedule.LastSyncAt.IsZero() {
+		last := node.Schedule.LastSyncAt
+		out.LastSyncAt = &last
+	}
+	if !node.Schedule.NextSyncAt.IsZero() {
+		next := node.Schedule.NextSyncAt
+		out.NextSyncAt = &next
+	}
+	out.LastSyncState = node.Schedule.LastResult
+	out.SyncFailures = node.Schedule.Failures
+	if node.LastSelfCheck != nil {
+		self := &jsonSelfCheck{
+			At:         node.LastSelfCheck.At,
+			OK:         node.LastSelfCheck.OK,
+			ErrorClass: node.LastSelfCheck.ErrorClass(),
+		}
+		for _, item := range node.LastSelfCheck.Items {
+			self.Items = append(self.Items, jsonSelfCheckItem{
+				Name: item.Name, OK: item.OK, Unknown: item.Unknown, Detail: item.Detail,
+			})
+		}
+		out.SelfCheck = self
+	}
 	if last := journal.Last(); last != nil {
 		out.LastRun = last.Result
 		out.LastRunAt = &last.StartedAt
@@ -126,6 +195,45 @@ the last install run. Secrets are shown as sha256 prefixes only.`)
 		fmt.Fprintf(a.stdout, "certificate:  %s\n", out.Certificate)
 	} else {
 		fmt.Fprintln(a.stdout, "certificate:  not issued")
+	}
+	if out.Enrolled {
+		enrolled := "enrolled"
+		if out.EnrolledAt != nil {
+			enrolled += " " + out.EnrolledAt.UTC().Format(time.RFC3339)
+		}
+		fmt.Fprintf(a.stdout, "management:   %s\n", enrolled)
+		if out.Subscription != "" {
+			fmt.Fprintf(a.stdout, "subscribe:    %s\n", out.Subscription)
+		}
+	} else {
+		fmt.Fprintln(a.stdout, "management:   not enrolled")
+	}
+	if len(node.Peers) > 0 {
+		domains := make([]string, 0, len(node.Peers))
+		for _, peer := range node.Peers {
+			label := peer.Domain
+			if peer.Degraded {
+				label += " (degraded)"
+			}
+			domains = append(domains, label)
+		}
+		fmt.Fprintf(a.stdout, "peers:        %d (%s)\n", len(node.Peers), strings.Join(domains, ", "))
+	} else if out.Enrolled {
+		fmt.Fprintln(a.stdout, "peers:        none")
+	}
+	if out.LastSyncAt != nil {
+		fmt.Fprintf(a.stdout, "last sync:    %s %s\n", orDefault(out.LastSyncState, "unknown"),
+			out.LastSyncAt.UTC().Format(time.RFC3339))
+	}
+	if out.NextSyncAt != nil {
+		fmt.Fprintf(a.stdout, "next sync:    %s\n", out.NextSyncAt.UTC().Format(time.RFC3339))
+	}
+	if out.SelfCheck != nil {
+		state := "ok"
+		if !out.SelfCheck.OK {
+			state = "failed (" + out.SelfCheck.ErrorClass + ")"
+		}
+		fmt.Fprintf(a.stdout, "self-check:   %s %s\n", state, out.SelfCheck.At.UTC().Format(time.RFC3339))
 	}
 	if last := journal.Last(); last != nil {
 		fmt.Fprintf(a.stdout, "last run:     %s, %s\n", last.Result, last.StartedAt.Format(time.RFC3339))

@@ -100,6 +100,7 @@ func (a *application) runEnroll(args []string) int {
 		SubToken:        answer.SubToken,
 		ProbeUUID:       answer.ProbeUUID,
 		SubscriptionURL: answer.SubscriptionURL,
+		EnrolledAt:      a.now().UTC(),
 	}
 	st.Touch()
 	if err := st.Save(filepath.Join(cfg.Paths.StateDir, "state.json")); err != nil {

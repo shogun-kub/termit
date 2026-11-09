@@ -38,6 +38,19 @@ func (s *xrayConfigStep) spec() (xray.Spec, error) {
 	for _, user := range s.e.st.LocalUsers {
 		spec.Clients = append(spec.Clients, xray.Client{ID: user.ID, Email: localEmail(user)})
 	}
+	// An enrolled node has two more kinds of client that must survive any local regeneration: the
+	// server's probe credential, without which the next remote check fails, and every peer's pair
+	// credential, without which the mesh loses this node. `uv device add` used to write a config that
+	// dropped both, and the node looked broken minutes later.
+	if s.e.st.Credentials != nil && s.e.st.Credentials.ProbeUUID != "" {
+		spec.Clients = append(spec.Clients, xray.Client{ID: s.e.st.Credentials.ProbeUUID, Email: "probe@termit"})
+	}
+	for _, peer := range s.e.st.Peers {
+		if peer.UUID == "" {
+			continue
+		}
+		spec.Clients = append(spec.Clients, xray.Client{ID: peer.UUID, Email: "peer-" + peer.ID + "@termit"})
+	}
 	return spec, nil
 }
 

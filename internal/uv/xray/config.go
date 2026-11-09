@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -108,6 +109,15 @@ func Generate(spec Spec) ([]byte, error) {
 	for _, client := range spec.Clients {
 		clients = append(clients, Client{ID: strings.ToLower(client.ID), Email: client.Email})
 	}
+	// The caller's order must not reach the file. Two code paths generate this config — the installer
+	// and the daily reconcile — and a different order in the same set would look like drift and cost
+	// a restart every day.
+	sort.Slice(clients, func(i, j int) bool {
+		if clients[i].ID != clients[j].ID {
+			return clients[i].ID < clients[j].ID
+		}
+		return clients[i].Email < clients[j].Email
+	})
 
 	config := config{
 		Log: logConfig{LogLevel: spec.LogLevel},
@@ -135,7 +145,17 @@ func Generate(spec Spec) ([]byte, error) {
 			},
 		},
 		Outbounds: []outbound{
-			{Tag: "direct", Protocol: "freedom"},
+			{
+				Tag:      "direct",
+				Protocol: "freedom",
+				// The core's default safety policy blocks private and reserved destinations for a VLESS
+				// inbound. The one exception is the node's own web tier on loopback: the canary proves
+				// a client set carries traffic by fetching the decoy through the tunnel, and the decoy
+				// on :80 is public anyway, so this exposes nothing that a stranger cannot already reach.
+				Settings: freedomSettings{FinalRules: []finalRule{{
+					Action: "allow", Network: "tcp", IP: []string{"127.0.0.0/8"}, Port: "80",
+				}}},
+			},
 			{Tag: "block", Protocol: "blackhole"},
 		},
 		Routing: routing{
@@ -216,6 +236,20 @@ type sniffing struct {
 type outbound struct {
 	Tag      string `json:"tag"`
 	Protocol string `json:"protocol"`
+	Settings any    `json:"settings,omitempty"`
+}
+
+// freedomSettings carries the only freedom option we set: an allow rule for the canary's loopback
+// target. Everything else keeps the core's default safety policy.
+type freedomSettings struct {
+	FinalRules []finalRule `json:"finalRules,omitempty"`
+}
+
+type finalRule struct {
+	Action  string   `json:"action"`
+	Network string   `json:"network,omitempty"`
+	IP      []string `json:"ip,omitempty"`
+	Port    string   `json:"port,omitempty"`
 }
 
 type routing struct {

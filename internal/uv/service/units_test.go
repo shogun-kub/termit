@@ -74,6 +74,50 @@ func TestNginxDropIn(t *testing.T) {
 	}
 }
 
+func TestAgentUnit(t *testing.T) {
+	t.Parallel()
+	unit, err := service.Agent("/usr/bin/termit-uv", "/etc/termit/uv/config.yaml",
+		[]string{"/etc/termit/uv", "/var/lib/termit/uv"}, []string{"/root"})
+	if err != nil {
+		t.Fatalf("Agent: %v", err)
+	}
+	text := string(unit)
+	for _, want := range []string{
+		"ExecStart=/usr/bin/termit-uv agent -v --config /etc/termit/uv/config.yaml",
+		"Restart=on-failure",
+		"NoNewPrivileges=yes",
+		"ProtectSystem=strict",
+		"ReadWritePaths=/etc/termit/uv /var/lib/termit/uv",
+		"ReadOnlyPaths=/root",
+		"WantedBy=multi-user.target",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("agent unit is missing %q", want)
+		}
+	}
+	// /root is hidden by ProtectHome, so the hardening would make the CA file unreadable. A unit that
+	// cannot read its own config input must not pretend to be hardened.
+	if strings.Contains(text, "ProtectHome=yes") {
+		t.Error("agent unit sets ProtectHome while it must read a file under /root")
+	}
+	plain, err := service.Agent("/usr/bin/termit-uv", "/etc/termit/uv/config.yaml",
+		[]string{"/etc/termit/uv"}, []string{"/etc/termit/uv/ca.pem"})
+	if err != nil {
+		t.Fatalf("Agent: %v", err)
+	}
+	if !strings.Contains(string(plain), "ProtectHome=yes") {
+		t.Error("agent unit dropped ProtectHome for a readable path outside home")
+	}
+	// The agent writes the core config and asks systemd to restart the core; it must not run without
+	// a writable path for either.
+	if _, err := service.Agent("/usr/bin/termit-uv", "/etc/termit/uv/config.yaml", []string{"relative/path"}, nil); err == nil {
+		t.Error("Agent accepted a relative writable path")
+	}
+	if _, err := service.Agent("termit-uv", "/etc/termit/uv/config.yaml", nil, nil); err == nil {
+		t.Error("Agent accepted a relative binary path")
+	}
+}
+
 func TestRenewUnit(t *testing.T) {
 	t.Parallel()
 	unit, err := service.Renew("/usr/bin/termit-uv", "/etc/termit/uv/config.yaml")
