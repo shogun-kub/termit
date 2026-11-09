@@ -25,7 +25,7 @@ import (
 
 // SchemaVersion is the schema this build understands. A database with a higher version is refused
 // rather than migrated down: an older binary writing a newer schema is how registries get corrupted.
-const SchemaVersion = 1
+const SchemaVersion = 2
 
 //go:embed schema.sql
 var schemaFS embed.FS
@@ -116,6 +116,12 @@ func (s *Store) Version(ctx context.Context) (int, error) {
 	return version, nil
 }
 
+// migrations carry an existing database to a later version, keyed by the version they produce. A fresh
+// database gets the whole schema instead, so this map records what changed rather than duplicating it.
+var migrations = map[int][]string{
+	2: {`ALTER TABLE uv ADD COLUMN sub_token_sealed TEXT NOT NULL DEFAULT ''`},
+}
+
 // migrate brings a database to SchemaVersion. Version 0 is a fresh file: the schema is applied as one
 // transaction and the version recorded afterwards, so a crash leaves either nothing or everything.
 func (s *Store) migrate(ctx context.Context) error {
@@ -128,6 +134,10 @@ func (s *Store) migrate(ctx context.Context) error {
 		return nil
 	case version > SchemaVersion:
 		return fmt.Errorf("store: %s has schema %d, this build understands %d: upgrade Termit", s.path, version, SchemaVersion)
+	}
+
+	if version > 0 {
+		return s.applyMigrations(ctx, version)
 	}
 
 	schema, err := schemaFS.ReadFile("schema.sql")
@@ -150,6 +160,35 @@ func (s *Store) migrate(ctx context.Context) error {
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("store: commit migration: %w", err)
+	}
+	return nil
+}
+
+// applyMigrations runs the statements between the database's version and this build's, each step in its
+// own transaction, so a failure leaves the database at a version that is still understood.
+func (s *Store) applyMigrations(ctx context.Context, from int) error {
+	for version := from + 1; version <= SchemaVersion; version++ {
+		statements, ok := migrations[version]
+		if !ok {
+			return fmt.Errorf("store: %s is at schema %d and this build has no migration to %d", s.path, from, version)
+		}
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("store: begin migration to %d: %w", version, err)
+		}
+		for _, statement := range statements {
+			if _, err := tx.ExecContext(ctx, statement); err != nil {
+				_ = tx.Rollback()
+				return fmt.Errorf("store: migrate to %d: %w", version, err)
+			}
+		}
+		if _, err := tx.ExecContext(ctx, fmt.Sprintf("PRAGMA user_version = %d", version)); err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("store: record version %d: %w", version, err)
+		}
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("store: commit migration to %d: %w", version, err)
+		}
 	}
 	return nil
 }

@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS uv (
     agent_version   TEXT NOT NULL DEFAULT '',
     agent_key_hash  TEXT NOT NULL DEFAULT '',
     sub_token_hash  TEXT NOT NULL DEFAULT '',
+    sub_token_sealed TEXT NOT NULL DEFAULT '',
     failed_cycles   INTEGER NOT NULL DEFAULT 0,
     credential_epoch INTEGER NOT NULL DEFAULT 1,
     invite_id       TEXT NOT NULL DEFAULT '',
