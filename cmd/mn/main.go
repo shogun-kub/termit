@@ -30,13 +30,17 @@ func run(args []string, stdout, stderr *os.File) int {
 		return runInit(args[1:], stdout, stderr)
 	case "serve":
 		return runServe(args[1:], stdout, stderr)
+	case "backup":
+		return runBackup(args[1:], stdout, stderr)
+	case "restore":
+		return runRestore(args[1:], stdout, stderr)
 	case "version":
 		fmt.Fprintln(stdout, version.String("termit-mn"))
 		return exitOK
 	case "help", "-h", "--help":
 		usage(stdout)
 		return exitOK
-	case "invite", "uv", "check", "policy", "sub", "backup", "restore", "status":
+	case "invite", "uv", "check", "policy", "sub", "status":
 		fmt.Fprintf(stderr, "mn %s: not in this build yet\n", args[0])
 		return exitFailure
 	default:
@@ -55,6 +59,8 @@ Usage:
 Server:
   init         create config, database, master key and the first invite
   serve        run the HTTP API, subscription endpoint and scheduler
+  backup       write a consistent snapshot
+  restore      restore from a snapshot
 
 Admin:
   invite       create, list and revoke invite codes
@@ -62,8 +68,6 @@ Admin:
   check        run health checks now
   policy       read and change scheduler thresholds
   sub          show and rotate subscription tokens
-  backup       write a consistent snapshot
-  restore      restore from a snapshot
   status       show server, scheduler and prober health
 
   version      print build and protocol version

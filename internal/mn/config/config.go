@@ -53,8 +53,11 @@ type Config struct {
 
 // ACME is the certificate authority this server uses for its own TLS.
 type ACME struct {
-	Directory       string `yaml:"directory"`
-	Email           string `yaml:"email"`
+	Directory string `yaml:"directory"`
+	Email     string `yaml:"email"`
+	// ChallengeListen is where HTTP-01 challenges are answered while an order is in flight. The
+	// listener exists only for the duration of the order.
+	ChallengeListen string `yaml:"challenge_listen"`
 	SkipTLSVerify   bool   `yaml:"skip_tls_verify,omitempty"`
 	RenewBeforeDays int    `yaml:"renew_before_days"`
 }
@@ -154,6 +157,9 @@ func (c *Config) Validate() error {
 	if _, _, err := net.SplitHostPort(c.Listen); err != nil {
 		problems = append(problems, fmt.Errorf("listen %q is not host:port: %w", c.Listen, err))
 	}
+	if _, _, err := net.SplitHostPort(c.ACME.ChallengeListen); err != nil {
+		problems = append(problems, fmt.Errorf("acme.challenge_listen %q is not host:port: %w", c.ACME.ChallengeListen, err))
+	}
 	switch c.Enrollment.Mode {
 	case ModeInvite, ModeInviteApproval, ModeOpen:
 	default:
@@ -215,6 +221,9 @@ func (c *Config) applyDefaults() {
 	}
 	if c.ACME.Directory == "" {
 		c.ACME.Directory = acme.DefaultDirectory
+	}
+	if c.ACME.ChallengeListen == "" {
+		c.ACME.ChallengeListen = ":80"
 	}
 	if c.ACME.RenewBeforeDays == 0 {
 		c.ACME.RenewBeforeDays = int(acme.DefaultRenewBefore.Hours() / 24)

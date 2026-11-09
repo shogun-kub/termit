@@ -11,12 +11,11 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 	"time"
 
+	"github.com/shogun-kub/termit/internal/mn/cert"
 	"github.com/shogun-kub/termit/internal/mn/config"
 	"github.com/shogun-kub/termit/internal/mn/store"
 	"github.com/shogun-kub/termit/internal/version"
@@ -35,6 +34,7 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 	flags.SetOutput(stderr)
 	configPath := flags.String("config", defaultConfigPath, "path to config.yaml")
 	verbose := flags.Bool("v", false, "log at info level")
+	plainHTTP := flags.Bool("http", false, "serve plain HTTP; development only, never on a public address")
 	if err := flags.Parse(args); err != nil {
 		return exitUsage
 	}
@@ -71,15 +71,21 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 		ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelWarn),
 	}
 
-	certPath := filepath.Join(cfg.CertDir(), "fullchain.pem")
-	keyPath := filepath.Join(cfg.CertDir(), "privkey.pem")
 	serveErr := make(chan error, 1)
-	if fileExists(certPath) && fileExists(keyPath) {
-		logger.Info("serving TLS", "domain", cfg.Domain, "listen", cfg.Listen)
-		go func() { serveErr <- server.ListenAndServeTLS(certPath, keyPath) }()
-	} else {
-		fmt.Fprintf(stderr, "mn serve: no certificate at %s; serving plain HTTP — finish ACME or install one\n", certPath)
+	if *plainHTTP {
+		fmt.Fprintln(stderr, "mn serve: --http is set; the API is not encrypted")
 		go func() { serveErr <- server.ListenAndServe() }()
+	} else {
+		// Issuing blocks startup on purpose: a management API that silently falls back to HTTP is
+		// worse than one that refuses to start.
+		tlsPaths, err := cert.Ensure(ctx, cert.Options{Config: cfg, Logger: logger})
+		if err != nil {
+			fmt.Fprintf(stderr, "mn serve: %v\n", err)
+			return exitFailure
+		}
+		logger.Info("serving TLS", "domain", cfg.Domain, "listen", cfg.Listen,
+			"not_after", tlsPaths.NotAfter.UTC().Format(time.RFC3339))
+		go func() { serveErr <- server.ListenAndServeTLS(tlsPaths.CertPath, tlsPaths.KeyPath) }()
 	}
 
 	select {
@@ -154,11 +160,6 @@ func isLoopback(remoteAddr string) bool {
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
-}
-
-func fileExists(path string) bool {
-	info, err := os.Stat(path)
-	return err == nil && info.Mode().IsRegular()
 }
 
 // sha256Of is the short identity of the master key: never the key itself.
