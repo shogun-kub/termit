@@ -257,3 +257,33 @@ object (it validates the inbound, so `listen` and `port` have to be present) add
 `xray api rmu -tag=proxy <email>` removed it. M1.5 restarts the core instead, because a restart costs
 one connection and only happens when the generated config changes; the API path belongs with the daily
 peer sync in M3, where the client set actually changes.
+
+## S11 (M1.4) — Certificates on a host whose :80 belongs to nginx
+
+Issuing for `termit-uv1.lan` against Pebble took one run once the challenge had somewhere to land. The
+flow that shipped: the ACME client writes `/.well-known/acme-challenge/<token>` into the webroot nginx
+already serves, nginx answers, the client deletes the token. No second listener on `:80`, so the
+promise that Termit never takes a public port from another service stays true.
+
+What the lab showed:
+
+- Pebble issues a 90-day certificate; `fullchain.pem` is `0644`, `privkey.pem` and `account.key` are
+  `0600`.
+- The vhost flips to TLS **in the same `uv init`**: the certificate step notices that the web step's
+  output no longer matches and runs it again, rather than leaving the node serving plain HTTP until
+  the next run.
+- Tokens do not accumulate: after a successful order the webroot holds no files.
+
+Two things worth remembering:
+
+1. **`--force` was silently a no-op.** The engine's `Force` bypasses a step's `Check`, but the step
+   called `acme.Ensure`, which decides from the clock — so the certificate was left alone and the
+   serial never changed. `Force` has to reach the step: `stepEnv.forced` is now set around `Run`, and
+   the certificate step calls `acme.Issue` when it is true. The lesson is general: "run it anyway" is
+   not the same instruction as "your effect is missing", and a step whose `Run` is not idempotent
+   must be able to tell the two apart.
+2. **A renewal failure must not cost the node its certificate.** Drilled by pointing the ACME
+   directory at a dead port: the run fails, `uv status` says `last run: failed` /
+   `certificate failed`, and the old certificate keeps serving (`200`). Nothing is written until the
+   CA returns the chain, and `writeCertificate` writes the key before the certificate so a reader never
+   sees one without the other.

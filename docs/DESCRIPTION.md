@@ -573,6 +573,18 @@ ACME is configured by directory URL (`acme.directory`, or `--acme-ca`), defaulti
 production. `--acme-skip-tls-verify` exists only so the lab can use a self-signed ACME endpoint, and
 `uv doctor` reports it as a warning while it is on. The same knobs exist on MN.
 
+The HTTP-01 challenge is answered by nginx: the client writes the token into the webroot nginx serves
+and removes it afterwards. Termit never binds a public port for the challenge, so the promise that it
+takes no port from another service holds here too.
+
+Certificates are issued during `uv init` and renewed by `termit-uv-renew.timer` — daily, jittered by
+up to an hour, `Persistent` so a missed run happens after a reboot. A renewal is due when the
+certificate is inside `acme.renew_before_days` of expiry (default 30). `uv renew-cert` runs the same
+check on demand and `--force` replaces the certificate whatever the clock says, which is what a drill
+or a recovered CA needs. Failure never costs the node its certificate: nothing is written until the
+CA returns a chain, the old file keeps serving, and `uv status` reports `last run: failed` with the
+failing step.
+
 `uv init` converges one step at a time: `preflight`, `user`, `dirs`, `packages`, `xray-binary`,
 `identity`, `decoy`, `xray-config`, `web`, `units`, `start`. A step whose effect is already present
 does nothing, an interrupted run resumes, and `--only/--skip/--force/--dry-run` make the pipeline

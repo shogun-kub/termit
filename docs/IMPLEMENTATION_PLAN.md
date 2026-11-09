@@ -218,13 +218,41 @@ Measured on `termit-uv1` (nginx 1.26.3, the node's own site tree):
 
 The site tree moved to `/var/www/termit/{site,acme}`: nginx runs as `www-data` and could not traverse
 `/var/lib/termit` (0750), so the decoy returned `403`. State and certificates stay in `/var/lib/termit/uv`.
-### M1.4 Certificate lifecycle
+### M1.4 Certificate lifecycle — **done**
 
-- Issue on init, renew on a schedule derived from `NotAfter` (e.g. at 2/3 of lifetime), retry with
-  backoff, surface failures in `uv status`.
-- Reload strategy: hot config path if Xray supports it, otherwise a restart at a jittered low-traffic
-  moment, gated by `xray -test`.
-- `uv renew-cert --force` for drills; it must work without touching the decoy.
+Built:
+
+| Piece | Where | Notes |
+|---|---|---|
+| Challenge publication | `internal/uv/acme` | `Config.ChallengeDir` writes the token into the webroot nginx serves; `ChallengeHandler` stays for tests and for a host where Termit owns `:80` |
+| Step | `internal/uv/install/certificate.go` | issues when absent or inside the renewal window, records `NotAfter` in the state, then rewrites the vhost and reloads nginx |
+| Schedule | `internal/uv/service` | `termit-uv-renew.timer` (`OnCalendar=daily`, `RandomizedDelaySec=1h`, `Persistent=true`) runs `termit-uv-renew.service` → `<binary> renew-cert --config …` |
+| Drill | `uv renew-cert [--force]` | without `--force` it is the same check `uv init` makes; with it the certificate is replaced regardless |
+| Reporting | `uv status` | `certificate: expires … (in N days)`, and a failed run shows up as `last run: failed` with the failing step |
+
+Measured on `termit-uv1` against Pebble:
+
+| Check | Result |
+|---|---|
+| `uv init` with `--acme-ca …/dir` | `certificate ok`; `fullchain.pem` `0644`, `privkey.pem` `0600`, `account.key` `0600` |
+| Issued certificate | `issuer=CN=Pebble Intermediate CA …`, 90 days |
+| Vhost after issuance | flipped from plain HTTP to TLS in the same run (`web` ran again inside the certificate step) |
+| `GET https://…/` | `200` over HTTP/2; `:80` → `301` |
+| `vless://` through the issued certificate | `200` |
+| `uv renew-cert` (not due) | `certificate present, valid until …`, exit 0 |
+| `uv renew-cert --force` | new serial, node kept serving, challenge files removed from the webroot |
+| Renewal against a dead CA | fails loudly, `last run: failed` + `certificate failed` in `uv status`, **the certificate and the site stay untouched**, and the next run succeeds once the CA is back |
+| `uv init` afterwards | 1 ok, 11 present, nothing pending |
+
+One finding, recorded in `SPIKES.md` S11: `--force` initially changed nothing. The engine's `Force`
+skips the step's `Check`, but the step itself called `acme.Ensure`, which renews only inside the
+window — so the flag had no effect and the serial stayed the same. The step now reads
+`stepEnv.forced` and calls `acme.Issue` in that case. A forced run must mean *do it again*, not
+*skip the check*.
+
+Deliberately different from the plan: the timer, not the agent, owns the renewal clock. There is no
+agent loop yet (M3), and a daily oneshot is easier to inspect, survives a reboot via `Persistent` and
+needs no backoff logic of its own — a failure is retried tomorrow and visible in `uv status` today.
 
 ### M1.5 Config generation, units, hot API — **done**
 
