@@ -48,9 +48,27 @@ func (r staticResolver) Lookup(ctx context.Context, domain string) ([]net.IP, er
 	return out, nil
 }
 
-type fakeProber struct{ outcome enroll.Outcome }
+type fakeProber struct {
+	outcome enroll.Outcome
+	// seen records the pin the enrollment passed to the probe.
+	seen string
+}
 
-func (p fakeProber) Probe(ctx context.Context, target enroll.Target) enroll.Outcome { return p.outcome }
+func (p *fakeProber) Probe(ctx context.Context, target enroll.Target) enroll.Outcome {
+	p.seen = target.Pin
+	return p.outcome
+}
+
+type fakeCerts struct{ err error }
+
+const testPin = "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899"
+
+func (c fakeCerts) Check(ctx context.Context, domain string) (enroll.Pin, error) {
+	if c.err != nil {
+		return enroll.Pin{}, c.err
+	}
+	return enroll.Pin{Fingerprint: testPin, NotAfter: testNow.Add(60 * 24 * time.Hour)}, nil
+}
 
 func newService(t *testing.T, mode string, resolver enroll.Resolver, prober enroll.Prober) (*enroll.Service, *store.Store) {
 	t.Helper()
@@ -61,7 +79,7 @@ func newService(t *testing.T, mode string, resolver enroll.Resolver, prober enro
 	t.Cleanup(func() { _ = db.Close() })
 	resolvers := []enroll.Resolver{resolver}
 	service, err := enroll.New(enroll.Options{
-		Store: db, Mode: mode, Resolvers: resolvers, Prober: prober,
+		Store: db, Mode: mode, Resolvers: resolvers, Prober: prober, Certs: fakeCerts{},
 		Now:   func() time.Time { return testNow },
 		NewID: func() string { return "uv_test" },
 	})
@@ -97,7 +115,7 @@ func request(t *testing.T, code string) proto.EnrollRequest {
 
 func TestEnrollActivatesWithAValidInvite(t *testing.T) {
 	t.Parallel()
-	service, db := newService(t, config.ModeInvite, staticResolver{ips: []string{testIP}}, fakeProber{})
+	service, db := newService(t, config.ModeInvite, staticResolver{ips: []string{testIP}}, &fakeProber{})
 	createInvite(t, db, "ABCD-EFGH", 1, nil)
 
 	result, err := service.Enroll(context.Background(), request(t, "abcd-efgh"), testIP, "termit-uv/test")
@@ -140,7 +158,7 @@ func TestEnrollActivatesWithAValidInvite(t *testing.T) {
 
 func TestEnrollParksTheNodeInApprovalMode(t *testing.T) {
 	t.Parallel()
-	service, db := newService(t, config.ModeInviteApproval, staticResolver{ips: []string{testIP}}, fakeProber{})
+	service, db := newService(t, config.ModeInviteApproval, staticResolver{ips: []string{testIP}}, &fakeProber{})
 	createInvite(t, db, "CODE-1234", 1, nil)
 
 	result, err := service.Enroll(context.Background(), request(t, "CODE-1234"), testIP, "termit-uv/test")
@@ -174,34 +192,34 @@ func TestEnrollRefusals(t *testing.T) {
 	}{
 		{
 			name: "unknown invite", code: "NOPE-NOPE", noInvite: true,
-			resolve: staticResolver{ips: []string{testIP}}, prober: fakeProber{},
+			resolve: staticResolver{ips: []string{testIP}}, prober: &fakeProber{},
 			want: proto.CodeInviteInvalid,
 		},
 		{
 			name: "expired invite", code: "OLD-CODE", invite: &expired, uses: 1,
-			resolve: staticResolver{ips: []string{testIP}}, prober: fakeProber{}, want: proto.CodeInviteInvalid,
+			resolve: staticResolver{ips: []string{testIP}}, prober: &fakeProber{}, want: proto.CodeInviteInvalid,
 		},
 		{
 			name: "exhausted invite", code: "USED-UP", uses: 1, drain: true,
-			resolve: staticResolver{ips: []string{testIP}}, prober: fakeProber{}, want: proto.CodeInviteExhausted,
+			resolve: staticResolver{ips: []string{testIP}}, prober: &fakeProber{}, want: proto.CodeInviteExhausted,
 		},
 		{
 			name: "domain resolves elsewhere", code: "CODE-A", uses: 1,
-			resolve: staticResolver{ips: []string{"198.51.100.7"}}, prober: fakeProber{}, want: proto.CodeDNSMismatch,
+			resolve: staticResolver{ips: []string{"198.51.100.7"}}, prober: &fakeProber{}, want: proto.CodeDNSMismatch,
 		},
 		{
 			name: "no resolver answers", code: "CODE-B", uses: 1,
-			resolve: staticResolver{err: errors.New("timeout")}, prober: fakeProber{}, want: proto.CodeDNSMismatch,
+			resolve: staticResolver{err: errors.New("timeout")}, prober: &fakeProber{}, want: proto.CodeDNSMismatch,
 		},
 		{
 			name: "prober cannot check", code: "CODE-C", uses: 1,
-			resolve: staticResolver{ips: []string{testIP}}, prober: fakeProber{outcome: enroll.Outcome{Unknown: true}},
+			resolve: staticResolver{ips: []string{testIP}}, prober: &fakeProber{outcome: enroll.Outcome{Unknown: true}},
 			want: proto.CodeCheckFailed,
 		},
 		{
 			name: "node does not proxy", code: "CODE-D", uses: 1,
 			resolve: staticResolver{ips: []string{testIP}},
-			prober:  fakeProber{outcome: enroll.Outcome{Class: "tunnel_closed", Err: errors.New("closed")}},
+			prober:  &fakeProber{outcome: enroll.Outcome{Class: "tunnel_closed", Err: errors.New("closed")}},
 			want:    proto.CodeCheckFailed,
 		},
 	} {
@@ -245,7 +263,7 @@ func TestEnrollRefusals(t *testing.T) {
 
 func TestEnrollRefusesADuplicateDomain(t *testing.T) {
 	t.Parallel()
-	service, db := newService(t, config.ModeInvite, staticResolver{ips: []string{testIP}}, fakeProber{})
+	service, db := newService(t, config.ModeInvite, staticResolver{ips: []string{testIP}}, &fakeProber{})
 	createInvite(t, db, "CODE-ONE", 2, nil)
 	createInvite(t, db, "CODE-TWO", 2, nil)
 
@@ -261,7 +279,7 @@ func TestEnrollRefusesADuplicateDomain(t *testing.T) {
 
 func TestEnrollRefusesAMismatchedURL(t *testing.T) {
 	t.Parallel()
-	service, db := newService(t, config.ModeInvite, staticResolver{ips: []string{testIP}}, fakeProber{})
+	service, db := newService(t, config.ModeInvite, staticResolver{ips: []string{testIP}}, &fakeProber{})
 	createInvite(t, db, "CODE-X", 1, nil)
 
 	req := request(t, "CODE-X")
@@ -273,9 +291,59 @@ func TestEnrollRefusesAMismatchedURL(t *testing.T) {
 	}
 }
 
+func TestEnrollPinsTheCheckedCertificate(t *testing.T) {
+	t.Parallel()
+	prober := &fakeProber{}
+	service, db := newService(t, config.ModeInvite, staticResolver{ips: []string{testIP}}, prober)
+	createInvite(t, db, "PIN-PIN1", 1, nil)
+
+	if _, err := service.Enroll(context.Background(), request(t, "PIN-PIN1"), testIP, "agent"); err != nil {
+		t.Fatalf("Enroll: %v", err)
+	}
+	if prober.seen != testPin {
+		t.Errorf("the probe was not pinned to the checked certificate: %q", prober.seen)
+	}
+}
+
+func TestEnrollRefusesABadCertificate(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		err  error
+	}{
+		{"expired", errors.New("tls_expiring: the certificate expires in 24h")},
+		{"untrusted", errors.New("tls_invalid: x509: certificate signed by unknown authority")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			db, err := store.Open(context.Background(), store.Options{Path: t.TempDir() + "/termit.db"})
+			if err != nil {
+				t.Fatalf("Open: %v", err)
+			}
+			t.Cleanup(func() { _ = db.Close() })
+			service, err := enroll.New(enroll.Options{
+				Store: db, Mode: config.ModeInvite,
+				Resolvers: []enroll.Resolver{staticResolver{ips: []string{testIP}}},
+				Prober:    &fakeProber{}, Certs: fakeCerts{err: tc.err},
+				Now: func() time.Time { return testNow }, NewID: func() string { return "uv_test" },
+			})
+			if err != nil {
+				t.Fatalf("enroll.New: %v", err)
+			}
+			createInvite(t, db, "CERT-"+tc.name, 1, nil)
+
+			_, err = service.Enroll(context.Background(), request(t, "CERT-"+tc.name), testIP, "agent")
+			var refused *enroll.Error
+			if !errors.As(err, &refused) || refused.Code != proto.CodeCheckFailed {
+				t.Fatalf("Enroll = %v, want %s", err, proto.CodeCheckFailed)
+			}
+		})
+	}
+}
+
 func TestEnrollOpenModeNeedsNoInvite(t *testing.T) {
 	t.Parallel()
-	service, _ := newService(t, config.ModeOpen, staticResolver{ips: []string{testIP}}, fakeProber{})
+	service, _ := newService(t, config.ModeOpen, staticResolver{ips: []string{testIP}}, &fakeProber{})
 
 	result, err := service.Enroll(context.Background(), request(t, ""), testIP, "agent")
 	if err != nil {

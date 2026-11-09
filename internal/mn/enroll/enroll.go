@@ -25,6 +25,19 @@ type Target struct {
 	Domain string
 	Path   string
 	UUID   string
+	// Pin is the leaf certificate fingerprint the probe must accept and nothing else.
+	Pin string
+}
+
+// Pin is what the certificate check produced: the identity the tunnel probe will insist on.
+type Pin struct {
+	Fingerprint string
+	NotAfter    time.Time
+}
+
+// CertChecker reads the certificate a node presents.
+type CertChecker interface {
+	Check(ctx context.Context, domain string) (Pin, error)
 }
 
 // Outcome is one probe result. Class is empty on success; ClassUnknown means the prober could not do
@@ -54,6 +67,7 @@ type Options struct {
 	// Resolvers are consulted in order; every one that answers must agree with the source address.
 	Resolvers []Resolver
 	Prober    Prober
+	Certs     CertChecker
 	Now       func() time.Time
 	// NewID returns a node id; tests set it.
 	NewID func() string
@@ -74,6 +88,9 @@ func New(opts Options) (*Service, error) {
 	}
 	if opts.Prober == nil {
 		return nil, errors.New("enroll: a prober is required")
+	}
+	if opts.Certs == nil {
+		return nil, errors.New("enroll: a certificate checker is required")
 	}
 	if opts.Now == nil {
 		opts.Now = time.Now
@@ -270,13 +287,19 @@ func (s *Service) checkDNS(ctx context.Context, domain, sourceIP string) error {
 	return nil
 }
 
-// checkNode probes the node through its own credential. The probe credential exists but the node
-// learns it only in the response, so enrollment uses the self credential the URL already carries.
+// checkNode reads the node's certificate, then probes the tunnel pinned to exactly that certificate.
+// The probe credential exists but the node learns it only in the response, so enrollment uses the self
+// credential the URL already carries.
 func (s *Service) checkNode(ctx context.Context, profile proto.Profile) error {
+	pin, err := s.opts.Certs.Check(ctx, profile.Domain)
+	if err != nil {
+		return refuse(502, proto.CodeCheckFailed, err.Error())
+	}
 	outcome := s.opts.Prober.Probe(ctx, Target{
 		Domain: profile.Domain,
 		Path:   profile.Path,
 		UUID:   profile.UUID,
+		Pin:    pin.Fingerprint,
 	})
 	if outcome.Unknown {
 		return refuse(503, proto.CodeCheckFailed, "the prober could not check this node; retry")

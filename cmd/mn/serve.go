@@ -147,6 +147,7 @@ func buildHandler(cfg *config.Config, db *store.Store, logger *slog.Logger) (htt
 		Policy:    cfg.Policy,
 		Resolvers: resolvers,
 		Prober:    prober,
+		Certs:     newCertChecker(cfg),
 	})
 	if err != nil {
 		return nil, err

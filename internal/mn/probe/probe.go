@@ -10,6 +10,7 @@ package probe
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -211,6 +212,17 @@ func (w *Worker) probeOne(ctx context.Context, t Target, socksPort int) Result {
 	defer func() { _ = conn.Close() }()
 	_ = conn.SetDeadline(time.Now().Add(w.cfg.Timeout))
 
+	// The probe URL decides whether the tunnel carries TLS: sending a plain GET to :443 is what a
+	// 400 from the web server looks like, and it is not the node's fault.
+	if port == 443 {
+		tlsConn := tls.Client(conn, &tls.Config{ServerName: host, MinVersion: tls.VersionTLS12})
+		if err := tlsConn.HandshakeContext(ctx); err != nil {
+			res.Latency = time.Since(start)
+			res.Class, res.Err = classify(err)
+			return res
+		}
+		conn = tlsConn
+	}
 	status, err := httpStatusThroughTunnel(conn, host)
 	res.Latency = time.Since(start)
 	if err != nil {

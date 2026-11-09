@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"crypto/x509"
 	"log/slog"
+	"os"
 	"path/filepath"
 
+	"github.com/shogun-kub/termit/internal/mn/certcheck"
 	"github.com/shogun-kub/termit/internal/mn/config"
 	"github.com/shogun-kub/termit/internal/mn/enroll"
 	"github.com/shogun-kub/termit/internal/mn/probe"
@@ -42,13 +45,14 @@ type workerProber struct {
 
 func (p workerProber) Probe(ctx context.Context, target enroll.Target) enroll.Outcome {
 	results, err := p.worker.Probe(ctx, []probe.Target{{
-		ID:         target.Domain,
-		Address:    target.Domain,
-		Port:       443,
-		ServerName: target.Domain,
-		Path:       target.Path,
-		Mode:       "packet-up",
-		UUID:       target.UUID,
+		ID:               target.Domain,
+		Address:          target.Domain,
+		Port:             443,
+		ServerName:       target.Domain,
+		Path:             target.Path,
+		Mode:             "packet-up",
+		UUID:             target.UUID,
+		PinnedCertSHA256: target.Pin,
 	}})
 	if err != nil {
 		return enroll.Outcome{Unknown: true, Err: err}
@@ -71,4 +75,32 @@ type unknownProber struct{}
 
 func (unknownProber) Probe(ctx context.Context, target enroll.Target) enroll.Outcome {
 	return enroll.Outcome{Unknown: true}
+}
+
+// certChecker adapts certcheck to the narrow interface enrollment needs.
+type certChecker struct {
+	roots *x509.CertPool
+}
+
+// newCertChecker builds the checker, trusting prober.ca_file when it is set. A private CA is a
+// configuration value, not something to install into the host's trust store.
+func newCertChecker(cfg *config.Config) enroll.CertChecker {
+	checker := certChecker{}
+	if cfg.Prober.CAFile != "" {
+		pem, err := os.ReadFile(cfg.Prober.CAFile) // #nosec G304 -- the operator configured this path.
+		if err != nil {
+			// Without the bundle the chain check fails later with a clear message; enrollment then
+			// refuses rather than silently trusting nothing.
+			return checker
+		}
+		pool := x509.NewCertPool()
+		pool.AppendCertsFromPEM(pem)
+		checker.roots = pool
+	}
+	return checker
+}
+
+func (c certChecker) Check(ctx context.Context, domain string) (enroll.Pin, error) {
+	result, err := certcheck.Check(ctx, domain, certcheck.Options{Roots: c.roots})
+	return enroll.Pin{Fingerprint: result.Fingerprint, NotAfter: result.NotAfter}, err
 }
