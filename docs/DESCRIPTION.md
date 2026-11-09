@@ -535,12 +535,24 @@ curl -fsSL https://get.termit.example/uv.sh | sudo bash -s -- \
 
 The bootstrap verifies a release checksum (and signature when configured), installs `termit-uv`,
 pinned `xray-core`, and optionally `cloudflare-warp`, then runs `uv init`. Non-interactive by design;
-`--yes` for unattended runs, `uv doctor` for diagnosis, `uv uninstall [--purge]` for removal.
+`uv doctor` for diagnosis, `uv uninstall [--purge]` for removal.
 
-ACME is configured by directory URL, defaulting to Let's Encrypt production. `--acme-ca` (or
-`acme.directory_url` in the config) points it at staging or at a lab CA; `--acme-skip-verify` exists
-only so the lab can use a self-signed ACME endpoint, and `uv doctor` prints a warning while it is
-enabled. The same knobs exist on MN.
+The Xray release is pinned in the binary with a per-architecture SHA-256 taken from the release's
+`.dgst` file. The archive is verified before anything is extracted, cached by digest, and a mismatch
+is refused instead of installed. `xray.download_base` (or `--xray-download-base`) points at a mirror,
+a `file://` URL or a local directory when GitHub is unreachable or the host is air-gapped;
+`xray.sha256.<arch>` overrides the digest for a re-packed build.
+
+Configuration is `/etc/termit/uv/config.yaml` — strict YAML, `schema_version: 1` — and holds decisions
+only: domain, ACME account, pinned core, decoy template, paths. Everything generated once (node
+identity, decoy seed, installed core digest, certificate expiry, and the manifest of created paths)
+lives in `/var/lib/termit/uv/state.json`, mode `0600`. Re-running `uv init` or editing the
+configuration therefore never regenerates a credential, and `uv uninstall` removes exactly what the
+manifest lists.
+
+ACME is configured by directory URL (`acme.directory`, or `--acme-ca`), defaulting to Let's Encrypt
+production. `--acme-skip-tls-verify` exists only so the lab can use a self-signed ACME endpoint, and
+`uv doctor` reports it as a warning while it is on. The same knobs exist on MN.
 
 `termit-uv` runs as a systemd service (agent + ACME + decoy + scheduler), hardened with
 `NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome`, a private `/tmp`, and only the capabilities

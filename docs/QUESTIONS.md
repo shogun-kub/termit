@@ -20,6 +20,10 @@ Legend: **Q** = question, **Rec** = recommended default, **Why** = what changes 
 | Subscription format | **Both**: base64 `vless://` list on `/sub/{token}`, sing-box JSON on `/sub/{token}/json`. |
 | Q1.2 Licence | **Public, AGPL-3.0**. |
 | Q9.4 Test strategy | The maintainer provides **three Debian machines over SSH (1 MN, 2 UV) with LAN DNS**. That is the primary acceptance environment; Docker Compose is a developer convenience. See `IMPLEMENTATION_PLAN.md` §7 for what the lab still needs. |
+| Config and state format | **YAML config** (`/etc/termit/uv/config.yaml`, strict, `schema_version: 1`) for decisions, **JSON state** (`/var/lib/termit/uv/state.json`, `0600`) for everything generated once. No secret is ever written to the config. |
+| Xray release | **Pinned in code** (26.11.9) with a per-architecture SHA-256 from the release `.dgst`, verified before extraction. `download_base` accepts GitHub, a mirror, a `file://` URL or a local directory; `sha256.<arch>` overrides the pin. |
+| Uninstall semantics | **Manifest-driven**: units, installed core and the generated nginx vhost always; config, state, certificates and the service user only with `--purge`; packages and other nginx sites never. |
+| Privilege split | Xray runs as the unprivileged system user `termit`; the agent stays root because it rewrites nginx configuration and reloads nginx. |
 
 The remaining questions below are still open; the ones that matter before M1 are repeated in
 `IMPLEMENTATION_PLAN.md` §9.

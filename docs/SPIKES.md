@@ -169,3 +169,24 @@ Two consequences for M2:
 
 Config pitfall: xray expects `routing` to be an object (`{"rules": [...]}`); a bare array is rejected
 at config load with exit status 23.
+
+## S8 (M1.2) — Is the pinned Xray archive verifiable, and does a mirror or a local copy work?
+
+**Yes, and the digest is the only thing that needs trusting.** The lab's GitHub downloads returned
+`504` intermittently during M0, so the installer had to be able to take the archive from somewhere
+else without weakening the check.
+
+- The release publishes one `<asset>.dgst` per archive. For `v26.11.9` the SHA2-256 values are
+  `b651f7e1…5f82` (`Xray-linux-64.zip`) and `64ed6858…30be` (`Xray-linux-arm64-v8a.zip`); both are in
+  the table in `internal/uv/install/xray.go`.
+- The downloaded archive hashed to exactly the published `b651f7e1…5f82`, so a mirror that serves the
+  same bytes is safe: the digest, not the source, is what the installer trusts.
+- The archive is flat — `xray` (0755), `geoip.dat`, `geosite.dat`, `README.md`, `LICENSE` — so the
+  installer extracts only `xray` and never unpacks into a directory tree.
+- `download_base` accepts an HTTP(S) URL, a `file://` URL, or an absolute directory. On the node, a
+  local directory cut the whole `uv init` from 2 m 28 s to 0.7 s with the digest still verified.
+- A mismatching archive is refused *before* extraction, and a cached archive whose digest no longer
+  matches is deleted and downloaded again rather than trusted.
+
+Decision: keep the digest table in code, allow `xray.sha256.<arch>` for a re-packed or self-built
+core, and treat the archive as the only artifact whose provenance matters.

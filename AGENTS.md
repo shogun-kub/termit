@@ -302,6 +302,11 @@ Decided already (`SPIKES.md` S6): ACME uses `golang.org/x/crypto/acme`, not `leg
 Do not replace it without a strong reason — the challenge handler and the PEM file layout are ours
 either way.
 
+Decided already (M1.1): configuration is parsed with `gopkg.in/yaml.v3`, because the loader needs
+strict unknown-field rejection and the owner edits the file by hand. Rejected: JSON (no comments, no
+comfortable hand-editing) and a hand-written YAML subset (a parser nobody asked for). The dependency
+is a leaf: nothing else imports it.
+
 ## 9. Git workflow
 
 - Never commit: `references/`, build output, `.dev/`, lab credentials, `*.pem`, `*.key`, SQLite

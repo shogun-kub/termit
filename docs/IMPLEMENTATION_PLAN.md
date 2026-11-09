@@ -119,24 +119,51 @@ Purpose: a fully working node with no MN involved. This is the first shippable a
 install it, get a valid certificate, see a decoy site, and connect with a manually built
 `vless://` URI.
 
-### M1.1 CLI, config, state
+### M1.1 CLI, config, state — **done**
 
-- Subcommands: `init`, `doctor`, `status`, `renew-site`, `renew-cert`, `warp`, `uninstall`, `version`.
-- Strict YAML config (`schema_version: 1`), defaults, validation with actionable messages.
-- Atomic state persistence, `0600`, schema-versioned.
-- `uv init` is idempotent: on re-run it reads existing state and converges instead of regenerating.
+- `uv init`, `doctor`, `status`, `uninstall` and `version` are implemented. The rest of the command
+  set is declared and exits `3` ("not implemented in this build"), so a caller script can tell "not
+  written yet" from "failed".
+- Configuration: strict YAML (`KnownFields`), `schema_version: 1`, defaults for every field, and one
+  message listing *all* validation problems. It holds only what the owner decides — domain, ACME
+  account, pinned core, decoy template, paths — never a generated value.
+- State (`state.json`, `0600`): identity, decoy seed and template, installed core version and digest,
+  certificate expiry, and the manifest of every path, user and unit Termit created. Schema-versioned.
+- Journal (`install-journal.json`, `0600`, last 20 runs): one record per step, so `uv status` can say
+  where a run stopped and an unfinished run reads as "interrupted".
+- Re-running `uv init` is a no-op: every step reports `present` and `state.json` stays
+  byte-identical (verified on the lab, same sha256 before and after).
 
-### M1.2 Install engine
+### M1.2 Install engine — **done**
 
-- Ordered, resumable steps with a journal (so a failed install can be retried): preflight → packages
-  → users/dirs → xray binary (pinned, SHA-256 verified, **configurable download base**: GitHub release
-  assets returned 504 from the lab network, so a mirror or a self-hosted copy must be selectable) →
-  identity → certificate → decoy → xray+nginx config → units → start → self-test → summary.
-- Preflight (`uv doctor`): root, Debian ≥ 13 (warn on 12), systemd, clock offset, free `:80`/`:443`,
-  DNS A record equals the box's address, outbound TLS to the ACME directory, `/dev/net/tun` presence
-  for WARP, disk and memory minimums.
-- `uv uninstall --purge` removes what Termit created and nothing else; the manifest of created paths
-  is part of the state.
+- Ordered steps, each with `Check` ("is my effect already present?") and `Run`: `preflight` → `user`
+  → `dirs` → `packages` → `xray-binary` → `identity`. A failing step stops the run and is journaled;
+  the next run resumes at the first unsatisfied step. `--only`/`--skip`/`--dry-run` exist for
+  debugging and are covered by tests.
+- Preflight: root, Debian ≥ 13 (12 warns), systemd, architecture, clock, ownership of :80/:443, DNS,
+  ACME directory reachability, `/dev/net/tun` when WARP is enabled, free space (measured on the
+  nearest existing ancestor, so it works before the first install), memory, apt.
+- Core: a pinned release table with a per-architecture SHA-256 that is **verified before anything is
+  extracted**; the archive is cached by digest, a mismatch is refused rather than installed, and the
+  installed binary is checked by running `xray version` and hashing it into the state.
+  `xray.download_base` accepts an HTTP(S) URL, a `file://` URL or an absolute directory — a mirror or
+  an air-gapped copy — and `xray.sha256.<arch>` overrides the pin for a re-packed release.
+- `uv uninstall [--purge]` walks the manifest backwards and removes only what is in it. Without
+  `--purge` it keeps `/etc/termit/uv` and `/var/lib/termit/uv`, so a reinstall keeps the identity;
+  packages are never removed, and no other nginx site is touched. `--purge` also removes the two
+  trees, their now-empty `termit` parents and the service user.
+
+Measured on `termit-uv1` (Debian 13, 1 vCPU / 1 GiB), 2026-11-09:
+
+| Run | Result |
+|---|---|
+| fresh `uv init` | 2 m 28 s total, 2 m 21 s of it the 35 MiB core download through a mirror |
+| second `uv init` | 0.4 s, five steps `present`, `state.json` byte-identical |
+| `uv uninstall --purge` | no files, no user, no units left; nginx and its default site untouched |
+
+The certificate, decoy, generated Xray/nginx configuration, units and self-test belong to M1.3–M1.5;
+until they land `uv init` ends by naming them instead of pretending the node proxies traffic.
+
 
 ### M1.3 Decoy site
 
@@ -405,9 +432,9 @@ Answered:
   implementation follows the reference's `warp-cli` proxy mode, which is known to work; the lab can
   only verify that WARP is detected as unsupported and refused with a clear reason.
 
-Still needed:
-
-- Whether the ACME server for the lab is Pebble run on the MN container (preferred) or external.
+Answered during M1: the lab ACME is **Pebble on the MN container** (`httpPort: 80`, directory
+`https://termit-mn.lan:14000/dir`), which is what M0.3 and every lab install ran against. Pebble's
+self-signed chain is why `acme.skip_tls_verify` exists.
 
 ## 8. Estimated effort
 
