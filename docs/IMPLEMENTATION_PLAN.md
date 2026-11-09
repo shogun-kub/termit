@@ -305,12 +305,42 @@ Deliberately different from the plan:
   supervised so far.
 
 
-### M1.6 Standalone acceptance
+### M1.6 Standalone acceptance — **done**
 
-On a fresh lab UV machine: `uv init --domain uv1.lab.internal --acme-ca http://…/dir` →
-`uv doctor` green → browser shows the decoy with the lab CA trusted → `curl` through a hand-built
-`vless://` URI returns `204` → `systemctl reboot` → everything returns → `uv uninstall --purge`
-leaves no listeners, no units, no files outside the manifest.
+Run on `termit-uv1` as a full cycle: clean host → install → verify → reboot → verify → uninstall →
+audit → install again.
+
+| Step | Result |
+|---|---|
+| Fresh `uv init` (Pebble, new empty host) | 11 ok, 1 present (`packages`); the certificate is issued in the same run |
+| `uv doctor` | 16 ok, 1 warn (the host sees its own name as `127.0.1.1`), 1 skip (no `/dev/net/tun`), exit 0 |
+| Decoy, certificate verified against the lab root | `200` over HTTP/2 |
+| `POST` the form | `401` with `Set-Cookie` and `X-Request-Id` |
+| `uv uri` → a client built from that URI | `https://example.com` through the tunnel: `200` |
+| `systemctl reboot` | all three units `active` + `enabled`, no stale listeners, site `200`, certificate serial unchanged, tunnel `200`, `uv doctor` green |
+| `uv uninstall --purge` | `/etc/termit`, `/var/lib/termit`, `/usr/lib/termit`, `/var/www/termit` gone; units gone; user gone; `8443`/`10085` closed; the stock vhost back in `sites-enabled` and answering `200`; nginx and `ca-certificates` still installed |
+| Install again afterwards | 11 ok — a second node from scratch on the same host |
+
+What the acceptance found, and what changed because of it:
+
+1. **Uninstall removed directories in the same pass as the files they held**, so `site/assets` was
+   attempted before `boot.js` inside it was gone, and `/var/www/termit` survived with an empty
+   `assets/` in it. The walk is now three passes — files, then the service user, then directories
+   deepest-first — and the decoy step records the subdirectories it creates instead of only the files.
+2. **Uninstall tried to remove directories the distribution owns**: `/etc/systemd/system` and
+   `/etc/nginx/sites-available` were recorded as ours. The units and web steps no longer record a
+   parent that is not Termit's.
+3. **The `sites-enabled` parking fix from S10 had never reached the code.** `disableStockSite` still
+   renamed the file in place, and since Debian\'s include is a glob nginx kept loading it. It only
+   surfaced because the audit after uninstall showed `enabled: default.termit-disabled` instead of
+   `default`. It now parks the file in `sites-available/` and the restore works.
+4. **`uv doctor` had no node half at all**, so "doctor green" would have meant "the host could be
+   installed", not "the node works". It now also checks the state, the three units, the certificate
+   window (fail when expired, warn under two weeks), the decoy against its seed, and that the core
+   accepts its generated config.
+
+Also added for the acceptance and for ordinary use: `uv uri`, which prints the `vless://` URI for the
+node\'s own device. Without it a standalone node had no way to hand its owner a working client.
 
 ---
 

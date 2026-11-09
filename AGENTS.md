@@ -87,8 +87,9 @@ The agent may restart its own services and rewrite Xray config. It must never:
 ## 3. Repository layout
 
 ```
-cmd/uv/                 entry point: subcommand dispatch (init, doctor, status, sync, unblock,
-                        migrate, warp, renew-site, uninstall, version)
+cmd/uv/                 entry point: subcommand dispatch (init, doctor, status, device, uri,
+                        renew-cert, renew-site, uninstall, version; sync, unblock, migrate and warp
+                        are not in this build yet)
 cmd/mn/                 entry point: serve, init, invite, uv, check, policy, sub, status, backup,
                         restore, version
 internal/cred/          pair-credential derivation (shared, has test vectors — do not change

@@ -585,6 +585,10 @@ or a recovered CA needs. Failure never costs the node its certificate: nothing i
 CA returns a chain, the old file keeps serving, and `uv status` reports `last run: failed` with the
 failing step.
 
+`uv uninstall` removes exactly what the manifest lists, plus the vhost and the units, and puts the
+distribution's default vhost back where it found it. It never removes packages: nginx may serve other
+sites on the host, and it stays running with the stock page once Termit's vhost is gone.
+
 `uv init` converges one step at a time: `preflight`, `user`, `dirs`, `packages`, `xray-binary`,
 `identity`, `decoy`, `xray-config`, `web`, `units`, `start`. A step whose effect is already present
 does nothing, an interrupted run resumes, and `--only/--skip/--force/--dry-run` make the pipeline
@@ -598,7 +602,13 @@ generator, so the switch happens on the next `uv init` after issuance.
 
 The owner's own devices are local users: `uv device list`, `uv device add --label phone`,
 `uv device remove phone`. They live in the state file, are written into the core config, and are never
-sent to MN — a family phone is not a mesh participant.
+sent to MN — a family phone is not a mesh participant. `uv uri` prints the `vless://` URI for the
+node's own device; it is the one place a credential is printed on purpose, to stdout only.
+
+`uv doctor` answers two different questions. The host half ("could this machine be a node") is the
+preflight checks; the node half ("is it working") covers the state, the three units, the certificate
+window, the decoy against its seed, and whether the core accepts its generated config. A check that
+cannot be performed is a skip, never a failure: an unavailable `systemctl` says nothing about a node.
 
 `termit-uv` runs as a systemd service (agent + ACME + decoy + scheduler), hardened with
 `NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome`, a private `/tmp`, and only the capabilities

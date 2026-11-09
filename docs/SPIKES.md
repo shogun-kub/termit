@@ -287,3 +287,30 @@ Two things worth remembering:
    `certificate failed`, and the old certificate keeps serving (`200`). Nothing is written until the
    CA returns the chain, and `writeCertificate` writes the key before the certificate so a reader never
    sees one without the other.
+## S12 (M1.6) — A whole lifecycle on one box
+
+Fresh host → install → reboot → uninstall → install again, all on `termit-uv1`. The node survived the
+reboot on its own and the second install produced a different identity and certificate, which is the
+point of keeping generated state out of the config.
+
+Three defects only a full cycle exposes:
+
+1. **Uninstall left `/var/www/termit` behind.** It walked the manifest backwards in one pass, so a
+   directory could be attempted before the file inside it had been removed; the decoy step also never
+   recorded `assets/` at all, only the files in it. Both are fixed: the manifest walk is three passes
+   (files, user, directories deepest-first) and the decoy records its subdirectories.
+2. **Uninstall tried to delete directories that belong to the distribution** — `/etc/systemd/system`
+   and `/etc/nginx/sites-available` had been recorded as Termit\'s. The steps now record a parent only
+   when it is ours.
+3. **The parking fix from S10 was never in the code.** The audit after uninstall showed
+   `enabled: default.termit-disabled` — the file was still inside `sites-enabled`, still loaded by the
+   glob, still `default_server` for the bare address. Fixed for real this time, and the restore after
+   uninstall is now exercised by the acceptance run.
+
+Two smaller observations:
+
+- `systemctl reload nginx` is graceful: a request issued in the same second can still be answered by
+  the old worker, so a check run immediately after a reload may see the previous vhost. Not a defect —
+  poll or wait a second before concluding anything.
+- The stock Debian vhost answers `200` again after uninstall, which is the behaviour an operator
+  expects: Termit removes what it created and puts back what it moved.
