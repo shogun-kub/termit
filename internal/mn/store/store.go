@@ -25,7 +25,7 @@ import (
 
 // SchemaVersion is the schema this build understands. A database with a higher version is refused
 // rather than migrated down: an older binary writing a newer schema is how registries get corrupted.
-const SchemaVersion = 4
+const SchemaVersion = 5
 
 //go:embed schema.sql
 var schemaFS embed.FS
@@ -126,6 +126,7 @@ var migrations = map[int][]string{
 		`ALTER TABLE uv ADD COLUMN last_check_at TEXT`,
 		`CREATE INDEX IF NOT EXISTS uv_next_check ON uv (next_check_at)`,
 	},
+	5: {`ALTER TABLE uv ADD COLUMN cert_sha256 TEXT NOT NULL DEFAULT ''`},
 }
 
 // migrate brings a database to SchemaVersion. Version 0 is a fresh file: the schema is applied as one

@@ -54,7 +54,11 @@ type UV struct {
 	// NextCheckAt is when the scheduler wants to look again; zero until it is first scheduled.
 	NextCheckAt *time.Time
 	// LastCheckAt is when it last looked.
-	LastCheckAt  *time.Time
+	LastCheckAt *time.Time
+	// CertSHA256 is the leaf certificate the node presented when it enrolled. The prober pins it,
+	// because xray verifies against its own embedded roots: a private CA or a self-signed leaf would
+	// otherwise fail a check the node itself has nothing to do with (see SPIKES S15).
+	CertSHA256   string
 	SubTokenHash string
 	// SubTokenSealed is the token again, encrypted under the master key: the digest finds a node by the
 	// token, and this is what lets MN put the token back into a URL at sync.
@@ -161,7 +165,7 @@ func scanNullTime(value sql.NullString) (*time.Time, error) {
 const uvColumns = `id, label, domain, self_uuid, probe_uuid, profile_json, state, state_reason,
 	created_at, approved_at, last_seen_at, last_request_ip, agent_version,
 	agent_key_hash, agent_key_sealed, sub_token_hash, sub_token_sealed, failed_cycles, credential_epoch, invite_id, notes,
-next_check_at, last_check_at`
+next_check_at, last_check_at, cert_sha256`
 
 func scanUV(row interface{ Scan(...any) error }) (UV, error) {
 	var (
@@ -172,7 +176,7 @@ func scanUV(row interface{ Scan(...any) error }) (UV, error) {
 	err := row.Scan(&uv.ID, &uv.Label, &uv.Domain, &uv.SelfUUID, &uv.ProbeUUID, &uv.ProfileJSON,
 		&uv.State, &uv.StateReason, &createdAt, &approvedAt, &lastSeenAt, &uv.LastRequestIP,
 		&uv.AgentVersion, &uv.AgentKeyHash, &uv.AgentKeySealed, &uv.SubTokenHash, &uv.SubTokenSealed, &uv.FailedCycles,
-		&uv.CredentialEpoch, &uv.InviteID, &uv.Notes, &nextCheckAt, &lastCheckAt)
+		&uv.CredentialEpoch, &uv.InviteID, &uv.Notes, &nextCheckAt, &lastCheckAt, &uv.CertSHA256)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return UV{}, ErrNotFound
@@ -206,11 +210,11 @@ func (s *Store) CreateUV(ctx context.Context, uv UV) error {
 		return fmt.Errorf("store: %q is not a state", uv.State)
 	}
 	_, err := s.db.ExecContext(ctx, `INSERT INTO uv (`+uvColumns+`)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		uv.ID, uv.Label, uv.Domain, uv.SelfUUID, uv.ProbeUUID, uv.ProfileJSON, string(uv.State),
 		uv.StateReason, formatTime(uv.CreatedAt), nullableTime(uv.ApprovedAt), nullableTime(uv.LastSeenAt),
 		uv.LastRequestIP, uv.AgentVersion, uv.AgentKeyHash, uv.AgentKeySealed, uv.SubTokenHash, uv.SubTokenSealed, uv.FailedCycles,
-		uv.CredentialEpoch, uv.InviteID, uv.Notes, nullableTime(uv.NextCheckAt), nullableTime(uv.LastCheckAt))
+		uv.CredentialEpoch, uv.InviteID, uv.Notes, nullableTime(uv.NextCheckAt), nullableTime(uv.LastCheckAt), uv.CertSHA256)
 	return wrapDuplicate(err, "store: create node "+uv.ID)
 }
 
@@ -250,11 +254,11 @@ func (s *Store) CreateUVRedeemingInvite(ctx context.Context, uv UV, invite Invit
 		}
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO uv (`+uvColumns+`)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		uv.ID, uv.Label, uv.Domain, uv.SelfUUID, uv.ProbeUUID, uv.ProfileJSON, string(uv.State),
 		uv.StateReason, formatTime(uv.CreatedAt), nullableTime(uv.ApprovedAt), nullableTime(uv.LastSeenAt),
 		uv.LastRequestIP, uv.AgentVersion, uv.AgentKeyHash, uv.AgentKeySealed, uv.SubTokenHash, uv.SubTokenSealed, uv.FailedCycles,
-		uv.CredentialEpoch, uv.InviteID, uv.Notes, nullableTime(uv.NextCheckAt), nullableTime(uv.LastCheckAt)); err != nil {
+		uv.CredentialEpoch, uv.InviteID, uv.Notes, nullableTime(uv.NextCheckAt), nullableTime(uv.LastCheckAt), uv.CertSHA256); err != nil {
 		return wrapDuplicate(err, "store: create node "+uv.ID)
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO uv_event (uv_id, at, from_state, to_state, reason, actor)

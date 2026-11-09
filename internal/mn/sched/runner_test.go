@@ -42,7 +42,7 @@ func unknownResult() probe.Result {
 
 type staticTargeter struct{ ok bool }
 
-func (s staticTargeter) Target(node store.UV) (probe.Target, bool) {
+func (s staticTargeter) Target(_ context.Context, node store.UV) (probe.Target, bool) {
 	return probe.Target{ID: node.ID, Address: node.Domain, Port: 443, ServerName: node.Domain, Path: "/secret/"}, s.ok
 }
 

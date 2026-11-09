@@ -65,7 +65,7 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 		CheckInterval: cfg.Policy.CheckInterval,
 		Retries:       cfg.Policy.ProbeRetries,
 		Logger:        logger,
-	}, db, schedProber(cfg, logger))
+	}, db, schedProber(cfg, logger), newCertChecker(cfg))
 
 	handler, err := buildHandler(cfg, db, logger)
 	if err != nil {

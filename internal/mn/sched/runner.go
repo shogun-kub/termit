@@ -43,9 +43,10 @@ type Prober interface {
 }
 
 // Targeter builds the probe target for a node. It returns ok=false when the node cannot be probed yet,
-// which is unknown, not a failure.
+// which is unknown, not a failure. It takes a context because a targeter may have to read the node's
+// certificate the first time.
 type Targeter interface {
-	Target(node store.UV) (probe.Target, bool)
+	Target(ctx context.Context, node store.UV) (probe.Target, bool)
 }
 
 // Cycle is what one node's check produced.
@@ -89,7 +90,7 @@ func (r *Runner) CheckNow(ctx context.Context, node store.UV) (Cycle, error) {
 func (r *Runner) check(ctx context.Context, node store.UV, retries RetryPolicy) (Cycle, error) {
 	cycle := Cycle{Node: node}
 
-	target, ok := r.target(node)
+	target, ok := r.target(ctx, node)
 	if !ok {
 		// Nothing to probe: unknown, and no state change. This is the "missing prober" branch, not a
 		// verdict about the node.
@@ -235,11 +236,11 @@ func (r *Runner) record(ctx context.Context, uvID string, result probe.Result) e
 	})
 }
 
-func (r *Runner) target(node store.UV) (probe.Target, bool) {
+func (r *Runner) target(ctx context.Context, node store.UV) (probe.Target, bool) {
 	if r.Targeter == nil {
 		return probe.Target{}, false
 	}
-	return r.Targeter.Target(node)
+	return r.Targeter.Target(ctx, node)
 }
 
 func (r *Runner) sleep(ctx context.Context, d time.Duration) bool {

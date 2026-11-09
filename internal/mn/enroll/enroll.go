@@ -164,7 +164,8 @@ func (s *Service) Enroll(ctx context.Context, req proto.EnrollRequest, sourceIP 
 	if err := s.checkDNS(ctx, req.Domain, sourceIP); err != nil {
 		return Result{}, err
 	}
-	if err := s.checkNode(ctx, profile); err != nil {
+	certPin, err := s.checkNode(ctx, profile)
+	if err != nil {
 		return Result{}, err
 	}
 
@@ -187,6 +188,7 @@ func (s *Service) Enroll(ctx context.Context, req proto.EnrollRequest, sourceIP 
 		Domain:          strings.ToLower(req.Domain),
 		SelfUUID:        profile.UUID,
 		ProfileJSON:     string(profileJSON),
+		CertSHA256:      certPin,
 		State:           state,
 		StateReason:     "enrolled from " + sourceIP,
 		CreatedAt:       now,
@@ -306,10 +308,10 @@ func (s *Service) checkDNS(ctx context.Context, domain, sourceIP string) error {
 // checkNode reads the node's certificate, then probes the tunnel pinned to exactly that certificate.
 // The probe credential exists but the node learns it only in the response, so enrollment uses the self
 // credential the URL already carries.
-func (s *Service) checkNode(ctx context.Context, profile proto.Profile) error {
+func (s *Service) checkNode(ctx context.Context, profile proto.Profile) (string, error) {
 	pin, err := s.opts.Certs.Check(ctx, profile.Domain)
 	if err != nil {
-		return refuse(502, proto.CodeCheckFailed, err.Error())
+		return "", refuse(502, proto.CodeCheckFailed, err.Error())
 	}
 	outcome := s.opts.Prober.Probe(ctx, Target{
 		Domain: profile.Domain,
@@ -318,15 +320,17 @@ func (s *Service) checkNode(ctx context.Context, profile proto.Profile) error {
 		Pin:    pin.Fingerprint,
 	})
 	if outcome.Unknown {
-		return refuse(503, proto.CodeCheckFailed, "the prober could not check this node; retry")
+		return "", refuse(503, proto.CodeCheckFailed, "the prober could not check this node; retry")
 	}
 	if outcome.Err != nil {
-		return refuse(502, proto.CodeCheckFailed, outcome.Err.Error())
+		return "", refuse(502, proto.CodeCheckFailed, outcome.Err.Error())
 	}
 	if outcome.Class != "" {
-		return refuse(502, proto.CodeCheckFailed, "the node did not answer as a proxy: "+outcome.Class)
+		return "", refuse(502, proto.CodeCheckFailed, "the node did not answer as a proxy: "+outcome.Class)
 	}
-	return nil
+	// The fingerprint is kept: every later check pins the same leaf instead of trusting a root store
+	// the prober does not use.
+	return pin.Fingerprint, nil
 }
 
 // digestCode normalises the code the way the owner reads it back: grouped, upper case, and with the

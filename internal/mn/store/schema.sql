@@ -24,7 +24,8 @@ CREATE TABLE IF NOT EXISTS uv (
     invite_id       TEXT NOT NULL DEFAULT '',
     notes           TEXT NOT NULL DEFAULT '',
     next_check_at   TEXT,
-    last_check_at   TEXT
+    last_check_at   TEXT,
+    cert_sha256     TEXT NOT NULL DEFAULT ''
 );
 
 CREATE INDEX IF NOT EXISTS uv_state ON uv (state);
