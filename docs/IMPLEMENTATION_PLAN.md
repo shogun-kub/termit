@@ -470,13 +470,29 @@ Still to do in this milestone:
   acceptance above — a subscription carries self credentials — but M2.5 and the mesh need it.
 - Revocation as an explicit operation (today `sub rotate` supersedes a token rather than revoking it).
 
-### M2.5 Sync v0
+### M2.5 Sync v0 — **in progress**
 
-- `POST /api/v1/agent/sync` returning the complete peer set with pairwise credentials, the
-  subscription URL, policy hints, and `next_sync_after`.
-- `uv sync` applies it with the hot API + reconcile logic and reports what changed.
-- Acceptance: two lab UVs enroll; each subscription contains both nodes; a `curl` through any
-  subscription URI works from a third machine; pulling a node's plug makes its probe fail.
+Done:
+
+| Piece | Where | Notes |
+|---|---|---|
+| Derivation | `internal/cred` | HMAC over master key, epoch and both ids; order independent; two vectors frozen in the tests |
+| `POST /api/v1/agent/sync` | `internal/mn/server/sync.go` | bearer agent key; the complete peer set, never a delta; each peer carries the pair credential for that relationship; a node's own entry is left out |
+| Policy hints | response | `check_interval`, `sync_interval`, `min_sync_delay`, `next_sync_after` |
+| Tests | `internal/mn/server/sync_test.go` | pair credential vs self credential, degraded marking, byte-identical repeats, unknown key, removed node, unknown field |
+| `mn uv reissue` | admin socket | a lost agent key can be replaced; the old one stops at once |
+
+Lab: uv1's sync returned uv2 with pair `9821a6ed-3746-47b3-a5d2-149af557bf2f`; uv2's sync returned the
+same value for uv1 — the property the derivation exists for. A wrong key answered `401`.
+
+Still to do in this milestone:
+
+- `uv sync` on the node: apply the desired set through the Xray API, with a validated restart as the
+  fallback, and report what changed.
+- `subscription_url` in the sync response is empty: MN keeps only the token digest. Encrypting the
+  token under the master key is the change that closes it; a truncated URL would be worse than none.
+- Acceptance item still open: "pulling a node's plug makes its probe fail" belongs to the scheduler
+  (M3.1), not to M2.
 
 ---
 
