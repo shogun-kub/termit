@@ -19,9 +19,9 @@ type jsonCheck struct {
 }
 
 func (a *application) runDoctor(args []string) int {
-	flags := a.newFlagSet("doctor", `Checks whether this host can run a Termit node: root, Debian release,
-systemd, architecture, clock, free :80/:443, DNS, the ACME directory, TUN, disk and memory.
-It changes nothing.`)
+	flags := a.newFlagSet("doctor", `Checks the host and the node. For the host: root, Debian release,
+systemd, architecture, clock, free :80/:443, DNS, the ACME directory, TUN, disk and memory. For an
+installed node: state, services, certificate, decoy and proxy config. It changes nothing.`)
 	configFlag := flags.String("config", configPathDefault(), "path to config.yaml")
 	jsonOut := flags.Bool("json", false, "print the report as JSON")
 	if err := flags.Parse(args); err != nil {
@@ -87,5 +87,13 @@ func (a *application) diagnose(path string) []install.Check {
 		Arch:   runtime.GOARCH,
 		Now:    a.now,
 	})
-	return append([]install.Check{configCheck}, report.Checks...)
+	checks := append([]install.Check{configCheck}, report.Checks...)
+	// The host half says whether this machine can run a node; the node half says whether it is
+	// working. doctor is what an operator reaches for when a node misbehaves, so it answers both.
+	checks = append(checks, install.Diagnose(ctx, install.DiagnoseOptions{
+		Config: cfg,
+		Exec:   a.exec,
+		Now:    a.now,
+	})...)
+	return checks
 }

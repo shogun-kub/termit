@@ -86,7 +86,11 @@ func (s *unitsStep) Run(ctx context.Context) error {
 		if err := state.WriteFileAtomic(name, content, 0o644); err != nil {
 			return fmt.Errorf("write %s: %w", name, err)
 		}
-		s.e.st.AddPath(filepath.Dir(name), state.KindDir, "units", now)
+		// /etc/systemd/system is the distribution's; only a directory we created (the nginx drop-in)
+		// is ours to remove.
+		if dir := filepath.Dir(name); dir != s.e.cfg.Paths.UnitDir {
+			s.e.st.AddPath(dir, state.KindDir, "units", now)
+		}
 		s.e.st.AddPath(name, state.KindFile, "units", now)
 	}
 	s.e.st.AddPath(filepath.Join(s.e.cfg.Paths.UnitDir, service.XrayUnitName), state.KindUnit, "units", now)

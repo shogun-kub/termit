@@ -77,7 +77,12 @@ func (s *decoyStep) Run(context.Context) error {
 	now := s.e.now()
 	s.e.st.AddPath(s.e.cfg.Paths.SiteDir, state.KindDir, "decoy", now)
 	for _, name := range files {
-		s.e.st.AddPath(filepath.Join(s.e.cfg.Paths.SiteDir, filepath.FromSlash(name)), state.KindFile, "decoy", now)
+		full := filepath.Join(s.e.cfg.Paths.SiteDir, filepath.FromSlash(name))
+		s.e.st.AddPath(full, state.KindFile, "decoy", now)
+		// The tree has a subdirectory (assets); recording only files leaves it behind on uninstall.
+		if dir := filepath.Dir(full); dir != s.e.cfg.Paths.SiteDir {
+			s.e.st.AddPath(dir, state.KindDir, "decoy", now)
+		}
 	}
 	s.e.st.AddPath(path.Dir(s.e.cfg.Paths.DecoySnippet), state.KindDir, "decoy", now)
 	s.e.st.AddPath(s.e.cfg.Paths.DecoySnippet, state.KindFile, "decoy", now)

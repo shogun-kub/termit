@@ -119,7 +119,6 @@ func (s *webStep) Run(ctx context.Context) error {
 	}
 
 	now := s.e.now()
-	s.e.st.AddPath(filepath.Dir(target), state.KindDir, "web", now)
 	s.e.st.AddPath(target, state.KindFile, "web", now)
 	s.e.st.AddPath(s.e.cfg.Paths.SitesEnabled, state.KindSymlink, "web", now)
 	s.e.st.AddPath(filepath.Dir(s.e.cfg.Paths.DecoySnippet), state.KindDir, "web", now)
@@ -162,7 +161,9 @@ func (s *webStep) enable(_ context.Context, content []byte) error {
 // renamed, not deleted, and `uv uninstall` puts it back.
 func (s *webStep) disableStockSite() error {
 	link := filepath.Join(filepath.Dir(s.e.cfg.Paths.SitesEnabled), stockSite)
-	disabled := link + disabledBy
+	// Anything inside sites-enabled is loaded: Debian's include is a glob, so renaming in place would
+	// keep nginx reading the file. It is parked next to the available vhosts, where nothing loads it.
+	disabled := filepath.Join(filepath.Dir(s.e.cfg.Paths.NginxSite), stockSite+disabledBy)
 	if _, err := os.Lstat(link); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil

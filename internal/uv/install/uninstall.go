@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/shogun-kub/termit/internal/uv/service"
 	"log/slog"
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -17,7 +19,7 @@ import (
 
 // unitNames are the services Termit supervises. They are listed here as well as in the manifest so
 // uninstall stops them even when an older install never recorded them.
-var unitNames = []string{"termit-xray.service", "termit-uv.service"}
+var unitNames = []string{"termit-xray.service", service.RenewTimerName, service.RenewUnitName, "termit-uv.service"}
 
 // UninstallOptions configure an uninstall.
 type UninstallOptions struct {
@@ -78,43 +80,65 @@ func Uninstall(ctx context.Context, opts UninstallOptions) (*UninstallReport, er
 		}
 	}
 
-	// 2. Walk the manifest backwards: files first, then the directories that held them.
+	// 2. Three passes over the manifest: the things that hold bytes, then the user, then the
+	// directories that held them. A directory cannot go before what is inside it, and the manifest is
+	// written in creation order, so one pass can only work by accident.
+	managed := func(path string) bool {
+		return isUnder(path, cfg.Paths.ConfigDir) || isUnder(path, cfg.Paths.StateDir)
+	}
+	skip := func(entry state.Path) bool {
+		return entry.Path == cfg.Paths.NginxSite // removed below, together with the nginx reload
+	}
+
 	for i := len(st.Manifest) - 1; i >= 0; i-- {
 		entry := st.Manifest[i]
-		managed := isUnder(entry.Path, cfg.Paths.ConfigDir) || isUnder(entry.Path, cfg.Paths.StateDir)
-
-		if entry.Kind == state.KindUser {
-			if !opts.Purge {
-				report.Kept = append(report.Kept, "user "+entry.Path)
-				continue
-			}
-			if opts.DryRun {
-				report.Removed = append(report.Removed, "user "+entry.Path)
-				continue
-			}
-			if _, err := opts.Exec.Run(ctx, Cmd{Name: "userdel", Args: []string{entry.Path}}); err != nil && exitCode(err) != 6 {
-				report.Warnings = append(report.Warnings, fmt.Sprintf("remove user %s: %v", entry.Path, err))
-			} else {
-				report.Removed = append(report.Removed, "user "+entry.Path)
-			}
+		if entry.Kind == state.KindDir || entry.Kind == state.KindUser || skip(entry) {
 			continue
 		}
-
-		if !opts.Purge && managed {
+		if !opts.Purge && managed(entry.Path) {
 			report.Kept = append(report.Kept, entry.Path)
 			continue
 		}
-		if entry.Path == cfg.Paths.NginxSite {
-			continue // removed below, together with the nginx reload
-		}
-		if entry.Kind == state.KindDir {
-			if managed {
-				continue // the purge below removes the whole tree
-			}
-			report.removeDir(entry.Path, opts.DryRun)
+		report.removeFile(entry.Path, opts.DryRun)
+	}
+
+	for i := len(st.Manifest) - 1; i >= 0; i-- {
+		entry := st.Manifest[i]
+		if entry.Kind != state.KindUser {
 			continue
 		}
-		report.removeFile(entry.Path, opts.DryRun)
+		if !opts.Purge {
+			report.Kept = append(report.Kept, "user "+entry.Path)
+			continue
+		}
+		if opts.DryRun {
+			report.Removed = append(report.Removed, "user "+entry.Path)
+			continue
+		}
+		if _, err := opts.Exec.Run(ctx, Cmd{Name: "userdel", Args: []string{entry.Path}}); err != nil && exitCode(err) != 6 {
+			report.Warnings = append(report.Warnings, fmt.Sprintf("remove user %s: %v", entry.Path, err))
+		} else {
+			report.Removed = append(report.Removed, "user "+entry.Path)
+		}
+	}
+
+	// Deepest first, so a directory is empty by the time its turn comes.
+	dirs := make([]string, 0, len(st.Manifest))
+	for _, entry := range st.Manifest {
+		if entry.Kind != state.KindDir || skip(entry) {
+			continue
+		}
+		dirs = append(dirs, entry.Path)
+	}
+	sort.Slice(dirs, func(i, j int) bool { return len(dirs[i]) > len(dirs[j]) })
+	for _, dir := range dirs {
+		if managed(dir) {
+			if !opts.Purge {
+				report.Kept = append(report.Kept, dir)
+			}
+			continue // a purged tree goes as a whole below
+		}
+		report.removeDir(dir, opts.DryRun)
 	}
 
 	// 3. Debian's own vhost goes back before the vhost directory is touched. It was moved aside so
@@ -208,6 +232,22 @@ func (r *UninstallReport) removeFile(target string, dryRun bool) {
 
 // removeDir removes a directory only when it is empty: a directory that still holds something the
 // manifest does not know about is left alone and reported.
+// pruneEmptyDirs removes empty directories below target, deepest first. ACME leaves an empty
+// .well-known/acme-challenge behind, and a directory that is not empty cannot be removed — but only
+// empty directories are touched, so nothing the owner put there is at risk.
+func pruneEmptyDirs(target string) {
+	var dirs []string
+	_ = filepath.WalkDir(target, func(path string, entry os.DirEntry, err error) error {
+		if err == nil && entry.IsDir() && path != target {
+			dirs = append(dirs, path)
+		}
+		return nil
+	})
+	for i := len(dirs) - 1; i >= 0; i-- {
+		_ = os.Remove(dirs[i])
+	}
+}
+
 func (r *UninstallReport) removeDir(target string, dryRun bool) {
 	if dryRun {
 		r.Removed = append(r.Removed, target)

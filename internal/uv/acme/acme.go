@@ -227,6 +227,14 @@ func (m *Manager) retractChallenge(token string) {
 		return
 	}
 	_ = os.Remove(m.challengePath(token))
+	// Remove the now-empty .well-known tree: a webroot that keeps empty directories is a fingerprint
+	// and blocks the removal of the webroot itself.
+	for _, dir := range []string{
+		filepath.Dir(m.challengePath(token)),
+		filepath.Dir(filepath.Dir(m.challengePath(token))),
+	} {
+		_ = os.Remove(dir) // only succeeds when empty, which is the point
+	}
 }
 
 // NeedsRenewal reports whether a certificate expiring at notAfter should be replaced at now.

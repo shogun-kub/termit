@@ -92,6 +92,8 @@ func (a *application) run(args []string) int {
 		return a.runRenewSite(rest)
 	case "renew-cert":
 		return a.runRenewCert(rest)
+	case "uri":
+		return a.runURI(rest)
 	case "version":
 		fmt.Fprintln(a.stdout, version.String("termit-uv"))
 		return exitOK
@@ -124,6 +126,7 @@ Commands:
   status       show node state, identity and last install
   device       list, add or remove the owner's own devices
   renew-cert   renew the TLS certificate (--force to replace it)
+  uri          print the vless:// URI for this node's own device
   renew-site   regenerate the decoy site and its nginx fragment
   uninstall    remove Termit from this node
   version      print build and protocol version
