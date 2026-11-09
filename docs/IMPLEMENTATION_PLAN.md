@@ -349,7 +349,7 @@ node\'s own device. Without it a standalone node had no way to hand its owner a 
 Purpose: a management server that accepts nodes, verifies them, and serves subscriptions. Still no
 daily loop: sync exists but the UV drives it manually (`uv sync`).
 
-### M2.1 Store and bootstrap — **in progress**
+### M2.1 Store and bootstrap — **done**
 
 Done:
 
@@ -373,7 +373,7 @@ Still to do in this milestone:
   TLS by default rather than by luck.
 - `mn backup` / `mn restore` on top of `store.Backup`, with a schema-version guard on restore.
 
-### M2.2 Enrollment — **in progress**
+### M2.2 Enrollment — **done**
 
 Done:
 
@@ -418,7 +418,15 @@ Still to do in this milestone:
 - The second node (termit-uv2 has no install yet).
 - `SPIKES.md` S15 write-up of the two probe defects.
 
-### M2.3 Prober
+### M2.3 Prober — **in progress**
+
+Done: the xray-core worker, the certificate checker with a 14-day minimum validity and a pinned leaf, the
+two-resolver DNS check (system plus an optional second one, `prober.ca_file` for a private CA), the
+result model with stable classes, and the circuit breaker: three consecutive worker failures open it for
+five minutes, during which every target answers `worker_unavailable` without starting the core.
+
+Remaining: the decoy-specific check (today the decoy is proven by the TLS + tunnel checks, not by an
+HTML assertion), and the scheduler that consumes the classes (M3.1).
 
 - `probe.Prober` interface; xray-core worker implementation from M0.4; cert/decoy checker; DNS
   checker with two resolvers (`system`, DoH) and `extra_roots` for the lab.
@@ -427,7 +435,7 @@ Still to do in this milestone:
 - Per-node concurrency limits, global worker pool, circuit breaker: if the worker is unhealthy, all
   results become `unknown` and the scheduler is told not to act (invariant 2).
 
-### M2.4 Subscription and credentials — **in progress**
+### M2.4 Subscription and credentials — **done**
 
 Done:
 
@@ -470,7 +478,7 @@ Still to do in this milestone:
   acceptance above — a subscription carries self credentials — but M2.5 and the mesh need it.
 - Revocation as an explicit operation (today `sub rotate` supersedes a token rather than revoking it).
 
-### M2.5 Sync v0 — **in progress**
+### M2.5 Sync v0 — **done**
 
 Done:
 
@@ -485,14 +493,29 @@ Done:
 Lab: uv1's sync returned uv2 with pair `9821a6ed-3746-47b3-a5d2-149af557bf2f`; uv2's sync returned the
 same value for uv1 — the property the derivation exists for. A wrong key answered `401`.
 
-Still to do in this milestone:
+Also done since:
 
-- `uv sync` on the node: apply the desired set through the Xray API, with a validated restart as the
-  fallback, and report what changed.
-- `subscription_url` in the sync response is empty: MN keeps only the token digest. Encrypting the
-  token under the master key is the change that closes it; a truncated URL would be worse than none.
-- Acceptance item still open: "pulling a node's plug makes its probe fail" belongs to the scheduler
-  (M3.1), not to M2.
+- `uv sync` (`internal/uv/agent`): fetch, generate, `xray -test`, install, restart, roll back on a
+  refused restart. Client order is sorted, so an unchanged set touches nothing.
+- `subscription_url` is no longer empty. The token is stored twice — a digest that answers lookups and
+  an AES-GCM copy sealed under the master key — so MN can print the URL again without the database
+  alone revealing it. Schema v2 with a migration map carries existing databases forward.
+
+Lab evidence for this milestone:
+
+| Step | Result |
+|---|---|
+| `uv sync` on uv1 and uv2 | `applied: 3 client(s), 1 peer(s)`; second run `already in sync` |
+| pair credential `9821a6ed-…` | the same on both sides; a client with it reached `example.com` through uv2, HTTP 200 |
+| `sync` after rotating a token | `subscription_url` equals the URL the rotation printed |
+| live schema | `PRAGMA user_version` = 2, `sub_token_sealed` present |
+
+Two defects found and fixed by these runs: the applier wrote the core's config as `root:root`, which
+stopped both nodes (a failed unit also hits systemd's start rate limiter, so a plain restart was not
+enough); and `openssl verify` without `-untrusted` misreports a valid chain.
+
+Acceptance item deliberately left to M3: "pulling a node's plug makes its probe fail" is the
+scheduler's job (§7.2), not this milestone's.
 
 ---
 
