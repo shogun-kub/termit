@@ -584,6 +584,32 @@ own class and count as unknown, so our own misconfiguration can never block a no
   verify with a canary connection, report the applied state and `xray -test` result.
 - `uv unblock`, `uv migrate --relocate`, `uv status --json`.
 
+Done so far:
+
+| Piece | State |
+|---|---|
+| Loop: state lock, daily jittered cycle from the server's schedule, 5 min → 1 h backoff, `agent` unit with `-v` | done (`internal/uv/agent`) |
+| Self-check: `xray`, `proxy`, `api`, `web`, `certificate`, `warp`; `unknown` is reported, never a failure | done |
+| Reconcile: desired vs file vs the core's own client answer, hot API first, validated restart fallback, canary, rollback | done |
+| `uv agent [--once]`, `uv status --json` (schedule, self-check, peers, enrollment), `uv unblock` | done |
+| `uv migrate --relocate` | deferred to M3.5: it belongs to Scenario C, where the endpoint actually changes |
+
+The reconcile order is the contract: the file is compared with the desired set *and* the running core
+is asked what it serves, because an API update or a hand edit can leave the core different from a
+correct file. Only the client set may go through the API; a path, port or stream change is always a
+validated restart, and the canary (`127.0.0.1:80` through the local tunnel, `Host` = the node domain)
+runs after either path and before the result is reported. `uv sync --check` reads the live set too and
+exits 4 on drift.
+
+Lab: the agent ran on both UVs, reported seven self-check items, wrote `next_sync_at` a day out with
+per-node jitter, and `mn uv show` printed the self-check. A device added to the state landed through
+the hot API with the core's `MainPID` unchanged; the same held for removing a peer after `mn uv
+block`, and re-adding it after `uv unblock` (the MN verified DNS and the decoy and moved the node back
+to `active`). Two defects surfaced: the desired-set map is `id → email` and the reconciler initially
+read it as `email → id`, so every hot verification failed and every change fell back to a restart;
+and the agent unit's `ProtectHome=yes` hides `/root`, so a CA file there was unreadable and the unit
+now drops `ProtectHome` when a configured readable path lives under a home directory.
+
 ### M3.3 Scenario A acceptance
 
 Enroll two UVs → wait for one cycle (or `mn check now`) → both nodes present in each other's Xray

@@ -316,8 +316,14 @@ Rules (all thresholds configurable on MN, defaults in parentheses):
 7. Daily cycle, per UV, at its own random time: local self-check → `POST /api/v1/agent/sync`
    (agent key) with the check report → MN runs/refreshes its own checks if due → response carries the
    desired peer list, the add/remove delta, the subscription URL, and the next due time.
-8. UV reconciles `clients()` to the desired set (hot Xray API add/remove, config file rewrite +
-   validated restart as fallback), records the new state, and sleeps until the next due time.
+8. UV reconciles the running core with the desired set: the generated config is compared with the
+   file **and** the core is asked which clients it actually serves, so an API update or a hand edit
+   cannot hide behind a correct file. When the client set is the only difference, additions and
+   removals go through the Xray API; anything else is one `xray -test`-validated restart. A canary
+   connection through the local tunnel proves the result after either path, and any failure restores
+   the previous file and restarts. `uv sync --check` reports the same drift (live set included) and
+   exits `4` without changing anything; `uv status --json` exposes the schedule, the last self-check
+   and the peer list.
 9. MN's state machine reacts to the check results (§7.2) and notifies affected peers through their
    next sync.
 
@@ -330,7 +336,8 @@ Rules (all thresholds configurable on MN, defaults in parentheses):
    domain/URL.
 4. On success: state → `active`, `failed_cycles = 0`, peers re-add it at their next sync. On failure:
    `blocked` remains, the response says which check failed.
-5. The normal daily loop resumes.
+5. The command then runs a normal sync, so a successful unblock converges the node's own set
+   immediately instead of waiting for the daily cycle. The normal daily loop resumes either way.
 
 ### 7.5 Scenario C — the server changed
 
@@ -567,7 +574,10 @@ only: domain, ACME account, pinned core, decoy template, paths. Everything gener
 identity, decoy seed, installed core digest, certificate expiry, and the manifest of created paths)
 lives in `/var/lib/termit/uv/state.json`, mode `0600`. Re-running `uv init` or editing the
 configuration therefore never regenerates a credential, and `uv uninstall` removes exactly what the
-manifest lists.
+manifest lists. The same file carries the agent's own bookkeeping — `schedule` (last and next sync,
+last result, failure count), `last_self_check`, the peer list and `credentials.enrolled_at` — because
+the loop must survive a reboot without asking MN when it last ran. New fields are additive and
+`schema_version` only moves when an old file must be rewritten.
 
 ACME is configured by directory URL (`acme.directory`, or `--acme-ca`), defaulting to Let's Encrypt
 production. `--acme-skip-tls-verify` exists only so the lab can use a self-signed ACME endpoint, and
@@ -610,11 +620,21 @@ preflight checks; the node half ("is it working") covers the state, the three un
 window, the decoy against its seed, and whether the core accepts its generated config. A check that
 cannot be performed is a skip, never a failure: an unavailable `systemctl` says nothing about a node.
 
-`termit-uv` runs as a systemd service (agent + ACME + decoy + scheduler), hardened with
-`NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome`, a private `/tmp`, and only the capabilities
-it needs. Xray runs under its own generated unit as the unprivileged `termit` user, with an empty
-capability set, `ProtectSystem=strict`, `SystemCallFilter=@system-service` and
-`MemoryDenyWriteExecute`. It reads one config file and owns nothing else.
+The node's clock belongs to `termit-uv-agent`: it wakes at the server-given `next_sync_at` (a day out,
+jittered per node), runs the local self-check, syncs, and retries a failed cycle on a 5 min → 1 h
+backoff. `uv agent --once` runs one cycle by hand, `uv status --json` prints what the loop persists
+(schedule, last result, self-check, peers), and `uv unblock` asks MN to re-verify a blocked node and
+re-admit it, then syncs so the peers converge immediately.
+
+`termit-uv` runs as two systemd units: `termit-uv-agent` (the daily cycle, self-check and sync) and
+`termit-uv-renew` (the certificate timer). The agent is hardened with `NoNewPrivileges`,
+`ProtectSystem=strict`, `ReadWritePaths` limited to its config and state directories, a private
+`/tmp`, and `ProtectHome` — except when the configured MN CA file lives under `/root`, `/home` or
+`/run/user`, where `ProtectHome` would hide the very file the unit must read. The generator records
+that trade-off in the unit itself instead of leaving an unreadable CA to fail at the first sync. Xray
+runs under its own generated unit as the unprivileged `termit` user, with an empty capability set,
+`ProtectSystem=strict`, `SystemCallFilter=@system-service` and `MemoryDenyWriteExecute`. It reads one
+config file and owns nothing else.
 
 ### 13.3 MN install
 
