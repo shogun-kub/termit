@@ -84,27 +84,21 @@ xray no longer terminates TLS. Recorded in `DESCRIPTION.md` §5.1/§5.2/§13.1.
 Left for M1: re-check whether XHTTP `mode: auto` works through nginx's HTTP/1.1 upstream
 (`packet-up` is the known-good fallback).
 
-### M0.3 Spike: ACME in Go with HTTP-01
+### M0.3 Spike: ACME in Go with HTTP-01 — **done**, see `docs/SPIKES.md` S6
 
-- Compare `go-acme/lego/v4` (direct certificate issuance, explicit challenge handling) against
-  `golang.org/x/crypto/acme/autocert` (built-in manager, TLS-ALPN oriented). Choose one and justify.
-- Prove issuance and renewal against **Pebble** on the lab machine, writing `fullchain.pem` /
-  `privkey.pem` with `0600`, and prove that a forced renewal reloads Xray without dropping the decoy.
-- Prove that `:80` can serve both the ACME challenge and the redirect from one listener.
+- Chose `golang.org/x/crypto/acme` over `lego` and `autocert` (first-party, small, and we own the
+  challenge handler and the PEM files anyway).
+- Pebble runs on the MN container with `httpPort: 80`; a cross-compiled test binary on the node issued
+  a real certificate in 2.0 s, chain of 2, correct SAN, key `0600`, and reused it on a second call.
+- Pitfall recorded: use `CreateCertFromOrder`, not the deprecated `CreateOrderCert`.
 
-**Done when**: `uv` (or the spike binary) obtains and renews a certificate from Pebble, and the
-renewal path is a documented sequence rather than a hope.
+### M0.4 Spike: the probe worker — **done**, see `docs/SPIKES.md` S7
 
-### M0.4 Spike: the probe worker
-
-- Run `xray-core` on the MN machine with N loopback SOCKS inbounds → N VLESS outbounds, generated
-  from a list of per-node credentials, validate with `xray -test`, and fetch a `204` URL through each.
-- Measure: startup time, memory per node, behaviour when a node is down (error class), behaviour when
-  the worker itself dies.
-- Decide how MN ships and pins `xray-core` (download URL, checksum, version), and where it lives.
-
-**Done when**: a Go program can report `{ok, latency, error_class}` per node against a real XHTTP
-node, and the failure modes are distinguishable (`failed` vs `unknown`).
+- One xray-core worker, one SOCKS inbound per node, `xray run -test` gate before start.
+- Healthy: 72–131 ms end-to-end. Two nodes in one worker: 135 ms total.
+- Node down and wrong pin both surface as `tunnel_closed` (5–6 ms); TLS validity needs the separate
+  decoy/certificate checker, which is what M2.3 builds.
+- Worker failures are errors from `Probe`, never node results — the `unknown` invariant holds.
 
 ### M0.5 Lab harness bootstrap
 

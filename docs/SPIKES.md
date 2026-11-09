@@ -114,3 +114,58 @@ Consequences recorded in `DESCRIPTION.md`:
 Remaining unknown for M1: whether `mode: auto` behaves under nginx's HTTP/1.1 upstream proxy (the
 reference used `auto` in that position, but it is unverified here); `packet-up` is the fallback that
 is known to work.
+
+---
+
+## S6 (M0.3) — Which ACME client, and does HTTP-01 issuance work?
+
+**Chosen: `golang.org/x/crypto/acme`**, not `go-acme/lego` and not `x/crypto/acme/autocert`.
+
+Reasons: it is first-party and small; we must own the HTTP-01 handler anyway (nginx proxies the
+challenge prefix to the agent, or the agent serves it directly); and autocert wants to own the
+`tls.Config`, while here the certificate is just PEM files that nginx reads. lego would add a large
+dependency tree (DNS providers, jose, ...) for a flow we implement in ~150 lines.
+
+Measured on `termit-uv1`, Pebble running on `termit-mn`:
+
+* Pebble is configured with `httpPort: 80`, so it validates by fetching
+  `http://termit-uv1.lan/.well-known/acme-challenge/<token>` from the MN container.
+* The agent's handler served the token, Pebble issued through the intermediate, and the test wrote
+  `fullchain.pem` (0644, 2 certificates) and `privkey.pem` (0600) in **2.0 s**.
+* Leaf: `SAN=DNS:termit-uv1.lan`, issuer `CN=Pebble Intermediate CA …`, `notAfter` +90 days.
+* A second `Ensure` reused the certificate without contacting the CA.
+
+Pitfall worth remembering: the older `CreateOrderCert(ctx, finalizeURL, …)` passes an empty order URL
+and fails with `Post "": unsupported protocol scheme ""` as soon as the CA answers with `processing`.
+`CreateCertFromOrder(ctx, order, …)` passes both URLs and is the API to use.
+
+Pebble's own listener certificate is self-signed, so the client needs `SkipTLSVerify` for the ACME
+endpoint in the lab. That flag is `acme.skip_tls_verify` in the product config and must be reported by
+`uv doctor` while enabled.
+
+## S7 (M0.4) — Can one worker probe N nodes, and are failures distinguishable?
+
+**Yes.** One `xray-core` process with one SOCKS inbound per target, routed to that target's
+VLESS+XHTTP outbound, is enough; the config is validated with `xray run -test` before the process
+starts.
+
+Measured on `termit-mn` against `termit-uv1` (nginx → XHTTP → freedom → `http://example.com/`):
+
+| Case | Result |
+|---|---|
+| healthy node | `ok=true`, 72–131 ms end-to-end, worker start ≈60 ms shared by all targets |
+| two targets in one worker | 135 ms total: first `ok`, second (closed port) failed in 1 ms |
+| node's xray stopped | `class=tunnel_closed`, `err=EOF`, 6 ms, `worker_unknown=false` |
+| wrong certificate pin | `class=tunnel_closed`, `err=EOF`, 5 ms, `worker_unknown=false` |
+| missing/broken xray binary | `Worker` construction fails; `Probe` returns an error, never a node failure |
+
+Two consequences for M2:
+
+1. **A failed tunnel and a failed pin look identical at the SOCKS layer.** TLS validity is therefore a
+   separate check (`decoy + certificate`), not something the tunnel probe can report. The result model
+   keeps `class` for the tunnel and the checker reports its own verdict.
+2. The probe itself is a plain SOCKS5 CONNECT followed by a minimal `GET`; the client is ~120 lines of
+   standard library, so the prober has no dependency beyond the xray binary.
+
+Config pitfall: xray expects `routing` to be an object (`{"rules": [...]}`); a bare array is rejected
+at config load with exit status 23.

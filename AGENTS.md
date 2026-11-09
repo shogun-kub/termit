@@ -172,6 +172,19 @@ CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w"
 On Windows use PowerShell equivalents or WSL; do not introduce `make`-only workflows. A `Makefile`
 may exist for convenience but every target must be documented as a plain `go` command above.
 
+**Never run `go mod tidy` at the repository root.** It walks every package in the module tree,
+including `references/Blitz/...`, and will happily add the MongoDB driver and a dozen transitive
+dependencies to `go.mod`. Tidy in a copy that contains only our own code:
+
+```powershell
+$tmp = ".spike-out/tidy"
+Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Force $tmp | Out-Null
+Copy-Item go.mod $tmp; Copy-Item cmd,internal $tmp -Recurse
+Push-Location $tmp; go mod tidy; Pop-Location
+Copy-Item "$tmp/go.mod","$tmp/go.sum" . -Force
+```
+
 ### 4.3 Acceptance lab
 
 ```bash
@@ -284,6 +297,10 @@ module with a compatible licence (Apache-2.0, MIT, BSD; **not** GPL/AGPL, which 
 into AGPL code without care). Record the choice and the alternative you rejected. Run
 `govulncheck ./...` after adding. Vendoring is not used; the module graph must stay small enough for
 `go mod graph` to be reviewable.
+
+Decided already (`SPIKES.md` S6): ACME uses `golang.org/x/crypto/acme`, not `lego` and not `autocert`.
+Do not replace it without a strong reason — the challenge handler and the PEM file layout are ours
+either way.
 
 ## 9. Git workflow
 
