@@ -70,10 +70,18 @@ type Config struct {
 	Domain        string `yaml:"domain"`
 	Email         string `yaml:"email,omitempty"`
 	ACME          ACME   `yaml:"acme"`
+	MN            MN     `yaml:"mn"`
 	Xray          Xray   `yaml:"xray"`
 	Decoy         Decoy  `yaml:"decoy"`
 	Warp          Warp   `yaml:"warp"`
 	Paths         Paths  `yaml:"paths"`
+}
+
+// MN is the management server this node belongs to. Empty means the node stands alone.
+type MN struct {
+	URL string `yaml:"url"`
+	// CAFile lets a lab or a private installation trust its own CA without touching the host store.
+	CAFile string `yaml:"ca_file,omitempty"`
 }
 
 // ACME describes the certificate authority and the renewal window.

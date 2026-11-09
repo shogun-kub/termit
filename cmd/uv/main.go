@@ -92,6 +92,8 @@ func (a *application) run(args []string) int {
 		return a.runRenewSite(rest)
 	case "renew-cert":
 		return a.runRenewCert(rest)
+	case "sync":
+		return a.runSync(rest)
 	case "uri":
 		return a.runURI(rest)
 	case "version":
@@ -100,7 +102,7 @@ func (a *application) run(args []string) int {
 	case "help", "-h", "--help":
 		a.usage(a.stdout)
 		return exitOK
-	case "sync", "unblock", "migrate", "warp":
+	case "unblock", "migrate", "warp":
 		return a.notImplemented(command)
 	default:
 		fmt.Fprintf(a.stderr, "uv: unknown command %q\n\n", command)

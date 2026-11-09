@@ -47,6 +47,26 @@ type Path struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// Credentials are what the management server issued at enrollment. They live in the state file, which
+// is 0600, and never in the configuration, which is world readable.
+type Credentials struct {
+	AgentKey        string `json:"agent_key"`
+	SubToken        string `json:"sub_token,omitempty"`
+	ProbeUUID       string `json:"probe_uuid,omitempty"`
+	SubscriptionURL string `json:"subscription_url,omitempty"`
+}
+
+// Peer is one node this node may dial. UUID is the pair credential, valid on this pair only.
+type Peer struct {
+	ID       string `json:"id"`
+	Domain   string `json:"domain"`
+	Label    string `json:"label,omitempty"`
+	UUID     string `json:"uuid"`
+	Path     string `json:"path"`
+	State    string `json:"state"`
+	Degraded bool   `json:"degraded,omitempty"`
+}
+
 // Identity is the node's own credential material. It is generated once at install and never
 // regenerated: clients and the management server already know these values.
 type Identity struct {
@@ -124,7 +144,11 @@ type State struct {
 	Xray          Xray         `json:"xray"`
 	LocalUsers    []LocalUser  `json:"local_users,omitempty"`
 	Certificate   *Certificate `json:"certificate,omitempty"`
-	Manifest      []Path       `json:"manifest,omitempty"`
+	// Credentials are nil until the node enrolls with a management server.
+	Credentials *Credentials `json:"credentials,omitempty"`
+	// Peers is the set the server last handed out; it is what the core was configured with.
+	Peers    []Peer `json:"peers,omitempty"`
+	Manifest []Path `json:"manifest,omitempty"`
 
 	dirty bool
 }
