@@ -302,9 +302,10 @@ func (s *Service) listUVs(ctx context.Context) (any, *Error) {
 }
 
 type uvShowResult struct {
-	Node   NodeView      `json:"node"`
-	Events []store.Event `json:"events"`
-	Check  *store.Check  `json:"check,omitempty"`
+	Node      NodeView      `json:"node"`
+	Events    []store.Event `json:"events"`
+	Check     *store.Check  `json:"check,omitempty"`
+	SelfCheck *store.Check  `json:"self_check,omitempty"`
 }
 
 func (s *Service) showUV(ctx context.Context, raw json.RawMessage) (any, *Error) {
@@ -323,6 +324,9 @@ func (s *Service) showUV(ctx context.Context, raw json.RawMessage) (any, *Error)
 	result := uvShowResult{Node: view(node), Events: events}
 	if check, err := s.Store.LatestCheck(ctx, node.ID, "probe"); err == nil {
 		result.Check = &check
+	}
+	if self, err := s.Store.LatestCheck(ctx, node.ID, "self"); err == nil {
+		result.SelfCheck = &self
 	}
 	return result, nil
 }

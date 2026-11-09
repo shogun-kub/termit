@@ -250,6 +250,17 @@ func (s *Service) Enroll(ctx context.Context, req proto.EnrollRequest, sourceIP 
 	}, nil
 }
 
+// Verify runs the same checks enrollment does against a node that is already registered: the domain
+// must resolve to the address the request came from, and the tunnel must answer with this profile.
+// It returns the certificate pin on success. It never writes anything; the caller decides what a
+// pass or a failure means for the node's state.
+func (s *Service) Verify(ctx context.Context, profile proto.Profile, sourceIP string) (string, error) {
+	if err := s.checkDNS(ctx, profile.Domain, sourceIP); err != nil {
+		return "", err
+	}
+	return s.checkNode(ctx, profile)
+}
+
 // validateInvite resolves the code without consuming it. An open server still accepts an invite when
 // one is offered: that is how an operator migrates from open to invited without a flag day.
 func (s *Service) validateInvite(ctx context.Context, code string) (store.Invite, error) {

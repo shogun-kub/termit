@@ -53,6 +53,13 @@ func (okCerts) Check(ctx context.Context, domain string) (enroll.Pin, error) {
 
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
+	return newFixtureWithProber(t, okProber{})
+}
+
+// newFixtureWithProber is the same fixture with a prober whose verdict the test controls: the
+// unblock tests need a node that fails its checks and one that cannot be checked at all.
+func newFixtureWithProber(t *testing.T, prober enroll.Prober) *fixture {
+	t.Helper()
 	db, err := store.Open(context.Background(), store.Options{Path: t.TempDir() + "/termit.db"})
 	if err != nil {
 		t.Fatalf("Open: %v", err)
@@ -87,7 +94,7 @@ func newFixture(t *testing.T) *fixture {
 
 	service, err := enroll.New(enroll.Options{
 		Store: db, Mode: config.ModeInvite, Resolvers: []enroll.Resolver{staticResolver{}},
-		Prober: okProber{}, Certs: okCerts{}, Master: masterKey,
+		Prober: prober, Certs: okCerts{}, Master: masterKey,
 	})
 	if err != nil {
 		t.Fatalf("enroll.New: %v", err)

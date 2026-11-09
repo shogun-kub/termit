@@ -438,6 +438,19 @@ func (s *Store) UpdateUV(ctx context.Context, uv UV) error {
 	return expectOne(res, uv.ID)
 }
 
+// SetUVEndpoint records a rebuilt node's new identity: the same node id and credentials, but the
+// self UUID, profile and certificate the new box presents. It is what an unblock with a new URL
+// writes; the pair credentials are keyed by the node id and stay valid.
+func (s *Store) SetUVEndpoint(ctx context.Context, id, selfUUID, profileJSON, certPin string) error {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE uv SET self_uuid = ?, profile_json = ?, cert_sha256 = ? WHERE id = ?`,
+		selfUUID, profileJSON, certPin, id)
+	if err != nil {
+		return fmt.Errorf("store: update the endpoint of %s: %w", id, err)
+	}
+	return expectOne(res, id)
+}
+
 // UVEvents returns the transition log of one node, newest first.
 func (s *Store) UVEvents(ctx context.Context, uvID string, limit int) ([]Event, error) {
 	if limit <= 0 {

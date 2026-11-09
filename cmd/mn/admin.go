@@ -437,6 +437,11 @@ func runUVShow(args []string, stdout, stderr io.Writer) int {
 			OK         bool      `json:"ok"`
 			ErrorClass string    `json:"error_class"`
 		} `json:"check"`
+		SelfCheck *struct {
+			At         time.Time `json:"at"`
+			OK         bool      `json:"ok"`
+			ErrorClass string    `json:"error_class"`
+		} `json:"self_check"`
 	}
 	callCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -464,6 +469,13 @@ func runUVShow(args []string, stdout, stderr io.Writer) int {
 			state = "ok"
 		}
 		fmt.Fprintf(stdout, "last probe: %s %s\n", result.Check.At.UTC().Format(time.RFC3339), state)
+	}
+	if result.SelfCheck != nil {
+		state := "failed (" + result.SelfCheck.ErrorClass + ")"
+		if result.SelfCheck.OK {
+			state = "ok"
+		}
+		fmt.Fprintf(stdout, "last self-check: %s %s\n", result.SelfCheck.At.UTC().Format(time.RFC3339), state)
 	}
 	if len(result.Events) > 0 {
 		fmt.Fprintln(stdout, "events:")

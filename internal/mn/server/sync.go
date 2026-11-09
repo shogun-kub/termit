@@ -38,6 +38,20 @@ func (h *Handler) sync(w http.ResponseWriter, r *http.Request) {
 	if err := h.opts.Store.TouchUV(r.Context(), node.ID, sourceIP(r), strings.TrimSpace(req.AgentVersion), now); err != nil {
 		h.opts.Logger.Error("sync: touch node", "uv", node.ID, "err", err)
 	}
+	// The self-report is kept next to the server's own probes. It never moves a node's state — only
+	// the probe does — but it lets an operator tell "the box is broken" from "the path is broken".
+	if req.Check != nil {
+		if err := h.opts.Store.AppendCheck(r.Context(), store.Check{
+			UVID:       node.ID,
+			At:         now,
+			Kind:       "self",
+			OK:         req.Check.OK,
+			LatencyMS:  req.Check.LatencyMS,
+			ErrorClass: req.Check.ErrorClass,
+		}); err != nil {
+			h.opts.Logger.Error("sync: record the self-check", "uv", node.ID, "err", err)
+		}
+	}
 
 	peers, err := h.opts.Store.ListUVs(r.Context(), store.UVFilter{
 		States: []store.State{store.StateActive, store.StateUnavailable},
@@ -110,6 +124,13 @@ func (h *Handler) sync(w http.ResponseWriter, r *http.Request) {
 // authenticateAgent resolves the bearer token to a node. A blocked or removed node gets the same
 // answer as an unknown key: it has no business here.
 func (h *Handler) authenticateAgent(w http.ResponseWriter, r *http.Request) (store.UV, bool) {
+	return h.authenticateAgentWith(w, r, false)
+}
+
+// authenticateAgentWith is the same lookup, optionally admitting a blocked node. Only the unblock
+// endpoint asks for that: a blocked node has to be able to prove it is healthy again, and every
+// other endpoint would let it back into the mesh without an explicit decision.
+func (h *Handler) authenticateAgentWith(w http.ResponseWriter, r *http.Request, allowBlocked bool) (store.UV, bool) {
 	header := r.Header.Get("Authorization")
 	const prefix = "Bearer "
 	if !strings.HasPrefix(header, prefix) {
@@ -137,9 +158,9 @@ func (h *Handler) authenticateAgent(w http.ResponseWriter, r *http.Request) (sto
 			proto.CodeInternal, "Internal Server Error", "the server could not read the node"))
 		return store.UV{}, true
 	}
-	if node.State == store.StateRemoved || node.State == store.StateBlocked {
+	if node.State == store.StateRemoved || (node.State == store.StateBlocked && !allowBlocked) {
 		writeProblem(w, http.StatusForbidden, proto.NewProblem(http.StatusForbidden,
-			"node_inactive", "Forbidden", "this node is not in the mesh"))
+			proto.CodeNodeInactive, "Forbidden", "this node is not in the mesh"))
 		return store.UV{}, true
 	}
 	return node, false

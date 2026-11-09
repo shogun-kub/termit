@@ -79,6 +79,7 @@ func New(opts Options) (*Handler, error) {
 	h.mux.HandleFunc("GET /metrics", h.metrics)
 	h.mux.HandleFunc("POST /api/v1/enroll", h.enroll)
 	h.mux.HandleFunc("POST /api/v1/agent/sync", h.sync)
+	h.mux.HandleFunc("POST /api/v1/agent/unblock", h.unblock)
 	h.mux.HandleFunc("GET /sub/{token}", h.subscription)
 	h.mux.HandleFunc("GET /sub/{token}/json", h.subscription)
 	h.mux.HandleFunc("/", h.notFound)

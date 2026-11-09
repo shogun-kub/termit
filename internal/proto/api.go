@@ -29,7 +29,13 @@ const (
 	CodeRateLimited     = "rate_limited"
 	CodeUnsupported     = "unsupported_profile"
 	CodeUnauthorized    = "unauthorized"
-	CodeInternal        = "internal_error"
+	CodeConflict        = "conflict"
+	// CodeNodeInactive is answered to a blocked or removed node on any endpoint but unblock.
+	CodeNodeInactive = "node_inactive"
+	// CodeRelocateRequired is what an unblock answers when the supplied URL names a different host:
+	// moving a node to a new domain is Scenario C, not Scenario B.
+	CodeRelocateRequired = "relocate_required"
+	CodeInternal         = "internal_error"
 )
 
 // EnrollRequest is what `POST /api/v1/enroll` accepts.
@@ -80,6 +86,20 @@ type EnrollResponse struct {
 	// Notice explains a non-active state without leaking anything: "pending approval" is a fact, the
 	// approval queue position is not.
 	Notice string `json:"notice,omitempty"`
+}
+
+// UnblockRequest is `POST /api/v1/agent/unblock`. Both fields are optional: a node that still has
+// its old identity sends nothing, and a rebuilt one sends the URL it now answers on.
+type UnblockRequest struct {
+	Domain        string `json:"domain,omitempty"`
+	BasicVLESSURL string `json:"basic_vless_url,omitempty"`
+}
+
+// UnblockResponse confirms the state after a successful request, or explains that nothing changed.
+type UnblockResponse struct {
+	APIVersion string `json:"api_version"`
+	Node       Node   `json:"node"`
+	Notice     string `json:"notice,omitempty"`
 }
 
 // Problem is the RFC 9457-style error body.
