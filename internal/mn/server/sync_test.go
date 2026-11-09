@@ -87,7 +87,7 @@ func newFixture(t *testing.T) *fixture {
 
 	service, err := enroll.New(enroll.Options{
 		Store: db, Mode: config.ModeInvite, Resolvers: []enroll.Resolver{staticResolver{}},
-		Prober: okProber{}, Certs: okCerts{},
+		Prober: okProber{}, Certs: okCerts{}, Master: masterKey,
 	})
 	if err != nil {
 		t.Fatalf("enroll.New: %v", err)
@@ -161,6 +161,49 @@ func TestSyncReturnsThePeerSetWithPairCredentials(t *testing.T) {
 	}
 	if body.APIVersion != proto.APIVersion {
 		t.Errorf("api_version = %q", body.APIVersion)
+	}
+}
+
+func TestSyncReturnsAUsableSubscriptionURL(t *testing.T) {
+	t.Parallel()
+	fx := newFixture(t)
+	// A node gets its token at enrollment; the sealed copy is what lets the server print the URL again.
+	token := "sub-token-for-tests"
+	sealed, err := secret.Seal(masterKey, token)
+	if err != nil {
+		t.Fatalf("Seal: %v", err)
+	}
+	if err := fx.store.SetSubTokenHash(context.Background(), fx.nodeID, secret.Digest(token), sealed); err != nil {
+		t.Fatalf("SetSubTokenHash: %v", err)
+	}
+
+	var body proto.SyncResponse
+	response := fx.sync(t, fx.agentKey, `{}`)
+	if response.Code != http.StatusOK {
+		t.Fatalf("sync = %d: %s", response.Code, response.Body.String())
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	want := "https://mn.example.com/sub/" + token
+	if body.SubscriptionURL != want {
+		t.Errorf("subscription_url = %q, want %q", body.SubscriptionURL, want)
+	}
+}
+
+func TestSyncLeavesTheURLOutWithoutASealedToken(t *testing.T) {
+	t.Parallel()
+	fx := newFixture(t)
+	var body proto.SyncResponse
+	response := fx.sync(t, fx.agentKey, `{}`)
+	if response.Code != http.StatusOK {
+		t.Fatalf("sync = %d", response.Code)
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.SubscriptionURL != "" {
+		t.Errorf("subscription_url = %q for a node whose token was never stored sealed", body.SubscriptionURL)
 	}
 }
 

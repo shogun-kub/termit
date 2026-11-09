@@ -145,8 +145,16 @@ func (h *Handler) authenticateAgent(w http.ResponseWriter, r *http.Request) (sto
 	return node, false
 }
 
-// subscriptionURLFor is empty on purpose for now: MN keeps only the token's digest, so it cannot print
-// the URL again. A node keeps the URL it received at enrollment. Encrypting the token with the master
-// key is the change that would let MN answer this, and it is recorded as a follow-up rather than
-// faked with a truncated URL.
-func (h *Handler) subscriptionURLFor(node store.UV) string { return "" }
+// subscriptionURLFor rebuilds the URL from the sealed copy of the token: the digest answers lookups,
+// and only the master key turns the sealed copy back into something a client can use.
+func (h *Handler) subscriptionURLFor(node store.UV) string {
+	if node.SubTokenSealed == "" || h.opts.Domain == "" {
+		return ""
+	}
+	token, err := secret.Open(h.opts.MasterKey, node.SubTokenSealed)
+	if err != nil {
+		h.opts.Logger.Error("sync: cannot open the sealed subscription token", "uv", node.ID, "err", err)
+		return ""
+	}
+	return "https://" + h.opts.Domain + "/sub/" + token
+}

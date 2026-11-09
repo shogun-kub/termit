@@ -49,6 +49,9 @@ type UV struct {
 
 	AgentKeyHash string
 	SubTokenHash string
+	// SubTokenSealed is the token again, encrypted under the master key: the digest finds a node by the
+	// token, and this is what lets MN put the token back into a URL at sync.
+	SubTokenSealed string
 
 	FailedCycles    int
 	CredentialEpoch int
@@ -150,7 +153,7 @@ func scanNullTime(value sql.NullString) (*time.Time, error) {
 
 const uvColumns = `id, label, domain, self_uuid, probe_uuid, profile_json, state, state_reason,
 	created_at, approved_at, last_seen_at, last_request_ip, agent_version,
-	agent_key_hash, sub_token_hash, failed_cycles, credential_epoch, invite_id, notes`
+	agent_key_hash, sub_token_hash, sub_token_sealed, failed_cycles, credential_epoch, invite_id, notes`
 
 func scanUV(row interface{ Scan(...any) error }) (UV, error) {
 	var (
@@ -160,7 +163,7 @@ func scanUV(row interface{ Scan(...any) error }) (UV, error) {
 	)
 	err := row.Scan(&uv.ID, &uv.Label, &uv.Domain, &uv.SelfUUID, &uv.ProbeUUID, &uv.ProfileJSON,
 		&uv.State, &uv.StateReason, &createdAt, &approvedAt, &lastSeenAt, &uv.LastRequestIP,
-		&uv.AgentVersion, &uv.AgentKeyHash, &uv.SubTokenHash, &uv.FailedCycles,
+		&uv.AgentVersion, &uv.AgentKeyHash, &uv.SubTokenHash, &uv.SubTokenSealed, &uv.FailedCycles,
 		&uv.CredentialEpoch, &uv.InviteID, &uv.Notes)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -189,10 +192,10 @@ func (s *Store) CreateUV(ctx context.Context, uv UV) error {
 		return fmt.Errorf("store: %q is not a state", uv.State)
 	}
 	_, err := s.db.ExecContext(ctx, `INSERT INTO uv (`+uvColumns+`)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		uv.ID, uv.Label, uv.Domain, uv.SelfUUID, uv.ProbeUUID, uv.ProfileJSON, string(uv.State),
 		uv.StateReason, formatTime(uv.CreatedAt), nullableTime(uv.ApprovedAt), nullableTime(uv.LastSeenAt),
-		uv.LastRequestIP, uv.AgentVersion, uv.AgentKeyHash, uv.SubTokenHash, uv.FailedCycles,
+		uv.LastRequestIP, uv.AgentVersion, uv.AgentKeyHash, uv.SubTokenHash, uv.SubTokenSealed, uv.FailedCycles,
 		uv.CredentialEpoch, uv.InviteID, uv.Notes)
 	return wrapDuplicate(err, "store: create node "+uv.ID)
 }
@@ -233,10 +236,10 @@ func (s *Store) CreateUVRedeemingInvite(ctx context.Context, uv UV, invite Invit
 		}
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO uv (`+uvColumns+`)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		uv.ID, uv.Label, uv.Domain, uv.SelfUUID, uv.ProbeUUID, uv.ProfileJSON, string(uv.State),
 		uv.StateReason, formatTime(uv.CreatedAt), nullableTime(uv.ApprovedAt), nullableTime(uv.LastSeenAt),
-		uv.LastRequestIP, uv.AgentVersion, uv.AgentKeyHash, uv.SubTokenHash, uv.FailedCycles,
+		uv.LastRequestIP, uv.AgentVersion, uv.AgentKeyHash, uv.SubTokenHash, uv.SubTokenSealed, uv.FailedCycles,
 		uv.CredentialEpoch, uv.InviteID, uv.Notes); err != nil {
 		return wrapDuplicate(err, "store: create node "+uv.ID)
 	}
@@ -356,13 +359,13 @@ func (s *Store) SetUVState(ctx context.Context, id string, to State, reason, act
 	return Event{UVID: id, At: now, FromState: from, ToState: to, Reason: reason, Actor: actor}, nil
 }
 
-// SetSubTokenHash replaces a node's subscription token digest. The old token stops working at once,
-// which is the point of rotating it.
-func (s *Store) SetSubTokenHash(ctx context.Context, id, hash string) error {
+// SetSubTokenHash replaces a node's subscription token digest and its sealed copy together. The old
+// token stops working at once, which is the point of rotating it.
+func (s *Store) SetSubTokenHash(ctx context.Context, id, hash, sealed string) error {
 	if hash == "" {
 		return errors.New("store: refusing an empty subscription token digest")
 	}
-	res, err := s.db.ExecContext(ctx, `UPDATE uv SET sub_token_hash = ? WHERE id = ?`, hash, id)
+	res, err := s.db.ExecContext(ctx, `UPDATE uv SET sub_token_hash = ?, sub_token_sealed = ? WHERE id = ?`, hash, sealed, id)
 	if err != nil {
 		return fmt.Errorf("store: set subscription token for %s: %w", id, err)
 	}
@@ -406,9 +409,9 @@ func (s *Store) TouchUV(ctx context.Context, id, ip, agentVersion string, now ti
 // changed by admin actions and credential issuance, never by an agent request.
 func (s *Store) UpdateUV(ctx context.Context, uv UV) error {
 	res, err := s.db.ExecContext(ctx,
-		`UPDATE uv SET label = ?, profile_json = ?, probe_uuid = ?, agent_key_hash = ?, sub_token_hash = ?,
+		`UPDATE uv SET label = ?, profile_json = ?, probe_uuid = ?, agent_key_hash = ?, sub_token_hash = ?, sub_token_sealed = ?,
 		 failed_cycles = ?, credential_epoch = ?, notes = ? WHERE id = ?`,
-		uv.Label, uv.ProfileJSON, uv.ProbeUUID, uv.AgentKeyHash, uv.SubTokenHash,
+		uv.Label, uv.ProfileJSON, uv.ProbeUUID, uv.AgentKeyHash, uv.SubTokenHash, uv.SubTokenSealed,
 		uv.FailedCycles, uv.CredentialEpoch, uv.Notes, uv.ID)
 	if err != nil {
 		return wrapDuplicate(err, "store: update node "+uv.ID)

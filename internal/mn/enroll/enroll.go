@@ -69,7 +69,9 @@ type Options struct {
 	Resolvers []Resolver
 	Prober    Prober
 	Certs     CertChecker
-	Now       func() time.Time
+	// Master seals the subscription token so MN can put it back into a URL. Required.
+	Master []byte
+	Now    func() time.Time
 	// NewID returns a node id; tests set it.
 	NewID func() string
 }
@@ -92,6 +94,9 @@ func New(opts Options) (*Service, error) {
 	}
 	if opts.Certs == nil {
 		return nil, errors.New("enroll: a certificate checker is required")
+	}
+	if len(opts.Master) < 32 {
+		return nil, errors.New("enroll: the master key is required to seal the subscription token")
 	}
 	if opts.Now == nil {
 		opts.Now = time.Now
@@ -205,6 +210,9 @@ func (s *Service) Enroll(ctx context.Context, req proto.EnrollRequest, sourceIP 
 	}
 	uv.AgentKeyHash = secret.Digest(agentKey)
 	uv.SubTokenHash = secret.Digest(subToken)
+	if uv.SubTokenSealed, err = secret.Seal(s.opts.Master, subToken); err != nil {
+		return Result{}, err
+	}
 
 	if err := s.opts.Store.CreateUVRedeemingInvite(ctx, uv, invite, now); err != nil {
 		if errors.Is(err, store.ErrDuplicate) {

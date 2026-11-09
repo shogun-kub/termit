@@ -23,6 +23,9 @@ const (
 
 var testNow = time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC)
 
+// testMaster is the key the subscription token is sealed with; enrollment refuses to run without one.
+var testMaster = []byte("0123456789abcdef0123456789abcdef")
+
 func testURL(t *testing.T, domain string) string {
 	t.Helper()
 	raw, err := proto.BuildVLESSUrl(proto.Profile{Domain: domain, UUID: testUUID, Path: "/secret/"})
@@ -79,7 +82,7 @@ func newService(t *testing.T, mode string, resolver enroll.Resolver, prober enro
 	t.Cleanup(func() { _ = db.Close() })
 	resolvers := []enroll.Resolver{resolver}
 	service, err := enroll.New(enroll.Options{
-		Store: db, Mode: mode, Resolvers: resolvers, Prober: prober, Certs: fakeCerts{},
+		Store: db, Mode: mode, Resolvers: resolvers, Prober: prober, Certs: fakeCerts{}, Master: testMaster,
 		Now:   func() time.Time { return testNow },
 		NewID: func() string { return "uv_test" },
 	})
@@ -324,7 +327,7 @@ func TestEnrollRefusesABadCertificate(t *testing.T) {
 			service, err := enroll.New(enroll.Options{
 				Store: db, Mode: config.ModeInvite,
 				Resolvers: []enroll.Resolver{staticResolver{ips: []string{testIP}}},
-				Prober:    &fakeProber{}, Certs: fakeCerts{err: tc.err},
+				Prober:    &fakeProber{}, Certs: fakeCerts{err: tc.err}, Master: testMaster,
 				Now: func() time.Time { return testNow }, NewID: func() string { return "uv_test" },
 			})
 			if err != nil {

@@ -82,6 +82,9 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 		logger.Warn("admin socket unavailable", "path", cfg.AdminSocket, "err", err)
 	} else {
 		adminService, err := admin.New(db)
+		if err == nil {
+			adminService.Master = mustMasterKey(cfg, logger)
+		}
 		if err != nil {
 			fmt.Fprintf(stderr, "mn serve: %v\n", err)
 			return exitFailure
@@ -148,6 +151,7 @@ func buildHandler(cfg *config.Config, db *store.Store, logger *slog.Logger) (htt
 		Resolvers: resolvers,
 		Prober:    prober,
 		Certs:     newCertChecker(cfg),
+		Master:    mustMasterKey(cfg, logger),
 	})
 	if err != nil {
 		return nil, err
@@ -168,4 +172,15 @@ func buildHandler(cfg *config.Config, db *store.Store, logger *slog.Logger) (htt
 		SyncInterval:  cfg.Policy.SyncInterval,
 		MinSyncDelay:  2 * time.Hour,
 	})
+}
+
+// mustMasterKey reads the master key once at startup. Without it neither enrollment nor sync can work,
+// so a failure here is a refusal to start rather than a degraded mode.
+func mustMasterKey(cfg *config.Config, logger *slog.Logger) []byte {
+	key, err := store.ReadMasterKey(cfg.MasterKeyFile)
+	if err != nil {
+		logger.Error("cannot read the master key", "path", cfg.MasterKeyFile, "err", err)
+		return nil
+	}
+	return key
 }

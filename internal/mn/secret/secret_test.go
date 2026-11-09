@@ -82,3 +82,59 @@ func TestFingerprint(t *testing.T) {
 		t.Errorf("Fingerprint of a short value = %q, want a placeholder", got)
 	}
 }
+
+func TestSealAndOpen(t *testing.T) {
+	t.Parallel()
+	master := []byte("0123456789abcdef0123456789abcdef")
+	sealed, err := secret.Seal(master, "subscription-token")
+	if err != nil {
+		t.Fatalf("Seal: %v", err)
+	}
+	if !strings.HasPrefix(sealed, "aead:") {
+		t.Errorf("sealed value %q does not say what it is", sealed)
+	}
+	if strings.Contains(sealed, "subscription-token") {
+		t.Error("the sealed value contains the plaintext")
+	}
+	opened, err := secret.Open(master, sealed)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if opened != "subscription-token" {
+		t.Errorf("Open = %q", opened)
+	}
+
+	// A different master, a tampered value and a truncated one must all refuse.
+	if _, err := secret.Open([]byte("ffffffffffffffffffffffffffffffff"), sealed); err == nil {
+		t.Error("another master key opened the value")
+	}
+	tampered := sealed[:len(sealed)-2] + "AA"
+	if _, err := secret.Open(master, tampered); err == nil {
+		t.Error("a tampered value opened")
+	}
+	if _, err := secret.Open(master, "aead:short"); err == nil {
+		t.Error("a truncated value opened")
+	}
+	if _, err := secret.Open(master, "plain"); err == nil {
+		t.Error("an unsealed value opened")
+	}
+	if _, err := secret.Seal([]byte("short"), "x"); err == nil {
+		t.Error("Seal accepted a short master key")
+	}
+}
+
+func TestSealIsNotDeterministic(t *testing.T) {
+	t.Parallel()
+	master := []byte("0123456789abcdef0123456789abcdef")
+	first, err := secret.Seal(master, "same value")
+	if err != nil {
+		t.Fatalf("Seal: %v", err)
+	}
+	second, err := secret.Seal(master, "same value")
+	if err != nil {
+		t.Fatalf("Seal: %v", err)
+	}
+	if first == second {
+		t.Error("two seals of the same value are identical; the nonce is not fresh")
+	}
+}

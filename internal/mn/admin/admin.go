@@ -67,6 +67,8 @@ type Service struct {
 	NewID func() string
 	// NewCode returns an invite code; tests set it.
 	NewCode func() (string, error)
+	// Master seals the subscription token so the CLI can print a usable URL after a rotation.
+	Master []byte
 }
 
 // New validates the wiring.
@@ -373,7 +375,11 @@ func (s *Service) rotateSubToken(ctx context.Context, raw json.RawMessage) (any,
 	if err != nil {
 		return nil, &Error{Code: CodeInternal, Detail: err.Error()}
 	}
-	if err := s.Store.SetSubTokenHash(ctx, node.ID, secret.Digest(token)); err != nil {
+	sealed, err := secret.Seal(s.Master, token)
+	if err != nil {
+		return nil, &Error{Code: CodeInternal, Detail: err.Error()}
+	}
+	if err := s.Store.SetSubTokenHash(ctx, node.ID, secret.Digest(token), sealed); err != nil {
 		return nil, &Error{Code: CodeInternal, Detail: err.Error()}
 	}
 	now := s.Now().UTC()
