@@ -394,10 +394,29 @@ Two decisions worth recording:
 - **Enrollment probes with the self credential**, because the probe credential does not exist yet at
   that point: MN issues it in the same response and the node starts accepting it at its first sync.
 
+Also done since: the admin CLI (`mn invite|uv`) over a `0600` unix socket; the certificate check with a
+14-day minimum validity; and the certificate pin the probe uses instead of a CA.
+
+Lab evidence (termit-mn + termit-uv1, Pebble as the CA):
+
+| Step | Result |
+|---|---|
+| `mn invite create --uses 2` | code issued, stored as a digest |
+| `mn invite list` | `inv_T5bh68a-FS  0/2  usable` |
+| `POST /api/v1/enroll` from uv1 | `201`, node `uv_tsFkPtgUuYn6`, state `active` |
+| credentials in the response | `agent_key`, `sub_token`, `probe_uuid` — all present |
+| `mn uv list` | node with its domain, state and source address `192.168.89.38` |
+| `mn invite list` afterwards | `1/2` — the invite was consumed exactly once |
+
+Two dead ends found on the way, both recorded in `SPIKES.md` S15: xray ignores `SSL_CERT_FILE` and the
+host trust bundle for its XHTTP TLS, so trusting a lab CA through the system store does not work; and
+the prober was sending a cleartext GET into port 443, which the target answered with `400` — a probe
+bug that looked exactly like a broken node.
+
 Still to do in this milestone:
 
-- Admin CLI over the unix socket: `mn invite create|list|revoke`, `mn uv list|show|approve|reject`.
-- Lab acceptance: enroll two UVs and confirm the probe path against real Xray.
+- The second node (termit-uv2 has no install yet).
+- `SPIKES.md` S15 write-up of the two probe defects.
 
 ### M2.3 Prober
 

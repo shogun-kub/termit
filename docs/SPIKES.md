@@ -367,3 +367,28 @@ Two related details from the same milestone:
 - The invite is consumed in the same transaction that inserts the node. A refusal (bad URL, DNS
   mismatch, failed probe) must not burn an invite, and a node must not exist without the invite that
   admitted it.
+## S15 (M2.2) — two defects that both looked like a broken node
+
+Enrolling the first real node took four attempts, and every failure had the same shape: the probe
+said the node did not work. Neither defect was the node's.
+
+**Xray does not read `SSL_CERT_FILE`, and did not read the host bundle either.** With a lab CA
+(Pebble) the worker reported `x509: certificate signed by unknown authority` no matter what: the root
+was appended to `/etc/ssl/certs/ca-certificates.crt` (150 certificates on disk), `SSL_CERT_FILE` was
+exported into the worker's environment, and `update-ca-certificates --fresh` claimed to install it.
+Python, against the same host and the same file, verified the chain fine. The lesson is not "find the
+right env var": it is that a prober should not depend on the host's trust store at all. The answer is
+the pin the design already asked for — MN reads the leaf on enrollment, checks hostname, chain and
+expiry, and passes `pinnedPeerCertSha256` to the worker. That is stronger than CA trust (a valid
+certificate from the wrong authority no longer passes), and it makes the prober independent of the
+machine it runs on.
+
+**The probe spoke cleartext HTTP into port 443.** `httpStatusThroughTunnel` wrote `GET / HTTP/1.1` to
+whatever port the probe URL named, including 443, where the target's web server answered `400 Bad
+Request`. The node had carried the request perfectly; the answer was garbage. The tunnel now wraps the
+connection in TLS when the port is 443. Worth remembering: "got HTTP 400" from a probe is evidence
+about the *probe* until proven otherwise.
+
+A third, smaller finding: `openssl verify -CAfile root.pem fullchain.pem` failing does not mean the
+root is wrong. It does not use the second certificate in the file as an intermediate; `-untrusted`
+does. One more way to misread a certificate problem as a trust problem.
