@@ -517,6 +517,17 @@ enough); and `openssl verify` without `-untrusted` misreports a valid chain.
 Acceptance item deliberately left to M3: "pulling a node's plug makes its probe fail" is the
 scheduler's job (§7.2), not this milestone's.
 
+### M2 follow-ups, done straight after
+
+| Piece | Result |
+|---|---|
+| Sealed agent key (schema v3) | `mn uv agentkey` reads the key back without rotating it; the row holds a digest and an `aead:` blob |
+| `uv sync --check` | exit 0 in sync, 4 on drift, 1 when the server is unreachable; writes nothing |
+| Retention | checks 90 days, audit 1 year, pruned at startup and daily in `mn serve` |
+
+Lab: reissue then agentkey returned the same key; `sync --check` said `in sync` (0), then `drift: 1 to
+add` (4) after a peer credential was removed from the core config, then `0` again after `uv sync`.
+
 ---
 
 ## M3 — Full lifecycle (8–12 d)
