@@ -32,6 +32,8 @@ func run(args []string, stdout, stderr *os.File) int {
 		return runServe(args[1:], stdout, stderr)
 	case "invite":
 		return runInvite(args[1:], stdout, stderr)
+	case "policy":
+		return runPolicy(args[1:], stdout, stderr)
 	case "uv":
 		return runUV(args[1:], stdout, stderr)
 	case "sub":
@@ -46,7 +48,7 @@ func run(args []string, stdout, stderr *os.File) int {
 	case "help", "-h", "--help":
 		usage(stdout)
 		return exitOK
-	case "check", "policy", "status":
+	case "check", "status":
 		fmt.Fprintf(stderr, "mn %s: not in this build yet\n", args[0])
 		return exitFailure
 	default:

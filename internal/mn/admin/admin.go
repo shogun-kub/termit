@@ -118,6 +118,10 @@ func (s *Service) Handle(ctx context.Context, req Request) (any, *Error) {
 		return s.forgetUV(ctx, req.Args)
 	case "check.now":
 		return s.checkNow(ctx, req.Args)
+	case "policy.show":
+		return s.showPolicy(ctx)
+	case "policy.set":
+		return s.setPolicy(ctx, req.Args)
 	case "sub.rotate":
 		return s.rotateSubToken(ctx, req.Args)
 	default:

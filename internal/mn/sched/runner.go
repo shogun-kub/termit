@@ -70,6 +70,9 @@ type Runner struct {
 	Logger   *slog.Logger
 	// Sleep waits between attempts. Tests replace it; production leaves it nil.
 	Sleep func(ctx context.Context, d time.Duration) bool
+	// PolicyFn, when set, supplies the policy for each pass. It is how an operator changes the
+	// interval without restarting the server.
+	PolicyFn func(ctx context.Context) Policy
 }
 
 // CheckOne runs one cycle for one node: up to Policy.Retries.Attempts probes, the aggregate turned into
@@ -299,6 +302,11 @@ func (r *Runner) applyDefaults() {
 
 // Pass checks every node that is due, once. It is what Run loops over, and what a test drives directly.
 func (r *Runner) Pass(ctx context.Context) ([]Cycle, error) {
+	if r.PolicyFn != nil {
+		if updated := r.PolicyFn(ctx); updated.Interval > 0 {
+			r.Policy = updated
+		}
+	}
 	r.applyDefaults()
 	if r.Store == nil {
 		return nil, errors.New("sched: a store is required")

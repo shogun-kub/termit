@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/shogun-kub/termit/internal/mn/config"
 	"github.com/shogun-kub/termit/internal/mn/dns"
 	"github.com/shogun-kub/termit/internal/mn/enroll"
+	"github.com/shogun-kub/termit/internal/mn/sched"
 	"github.com/shogun-kub/termit/internal/mn/server"
 	"github.com/shogun-kub/termit/internal/mn/store"
 )
@@ -66,6 +68,7 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 		Retries:       cfg.Policy.ProbeRetries,
 		Logger:        logger,
 	}, db, schedProber(cfg, logger), newCertChecker(cfg))
+	scheduler.PolicyFn = policyFromSettings(cfg, db)
 
 	handler, err := buildHandler(cfg, db, logger)
 	if err != nil {
@@ -240,5 +243,30 @@ func retention(ctx context.Context, db *store.Store, logger *slog.Logger) {
 		case <-ctx.Done():
 			return
 		}
+	}
+}
+
+// policyFromSettings lets `mn policy set` take effect on the next pass without a restart. An empty
+// setting means "use the configuration", which is what an unconfigured install gets anyway.
+func policyFromSettings(cfg *config.Config, db *store.Store) func(ctx context.Context) sched.Policy {
+	return func(ctx context.Context) sched.Policy {
+		policy := sched.DefaultPolicy()
+		if cfg.Policy.CheckInterval > 0 {
+			policy.Interval = cfg.Policy.CheckInterval
+		}
+		if cfg.Policy.ProbeRetries > 0 {
+			policy.Retries = sched.RetryPolicy{Attempts: cfg.Policy.ProbeRetries, Gap: 10}
+		}
+		if value, err := db.GetSetting(ctx, "policy.check_interval"); err == nil && value != "" {
+			if interval, err := time.ParseDuration(value); err == nil && interval > 0 {
+				policy.Interval = interval
+			}
+		}
+		if value, err := db.GetSetting(ctx, "policy.probe_retries"); err == nil && value != "" {
+			if retries, err := strconv.Atoi(value); err == nil && retries > 0 {
+				policy.Retries = sched.RetryPolicy{Attempts: retries, Gap: 10}
+			}
+		}
+		return policy
 	}
 }
