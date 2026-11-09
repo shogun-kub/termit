@@ -349,13 +349,29 @@ node\'s own device. Without it a standalone node had no way to hand its owner a 
 Purpose: a management server that accepts nodes, verifies them, and serves subscriptions. Still no
 daily loop: sync exists but the UV drives it manually (`uv sync`).
 
-### M2.1 Store and bootstrap
+### M2.1 Store and bootstrap — **in progress**
 
-- SQLite schema and migrations (modernc.org/sqlite), the tables from `DESCRIPTION.md` §14.
-- `mn init`: config, DB, master key (printed once, `0600` file, env override supported), admin token,
-  initial invite code, ACME bootstrap.
-- `mn serve`: TLS server, `/healthz`, `/metrics` on loopback, graceful shutdown.
-- `mn backup` / `mn restore` with integrity checks and a schema-version guard.
+Done:
+
+| Piece | Where | Notes |
+|---|---|---|
+| Atomic writes | `internal/atomicfile` | moved out of the UV state package; both binaries write config a running service reads |
+| Shared ACME | `internal/acme` | was `internal/uv/acme`; both sides issue certificates |
+| Database | `internal/mn/store` | pure-Go SQLite, schema version in `PRAGMA user_version`, migration in one transaction, a newer schema refused, `VACUUM INTO` for backups, the seven tables from `DESCRIPTION.md` §14 |
+| Credentials | `internal/mn/secret` | Argon2id with a per-value salt, readable invite codes, constant-time comparison |
+| Configuration | `internal/mn/config` | strict YAML, one schema version, defaults, validation that collects every problem |
+| `mn init` | `cmd/mn/init.go` | config, master key (`0600`, `TERMIT_MN_MASTER` override, never replaced), database, first admin token, first invite; re-running keeps what exists |
+| `mn serve` | `cmd/mn/serve.go` | `/healthz`, loopback-only `/metrics`, graceful shutdown, TLS when a certificate exists |
+
+Measured on `termit-mn`: `config.yaml` `0644`, `master.key` `0600`, `termit.db` `0600`, schema 1; a
+second `mn init` reported the existing key instead of replacing it; `/healthz` answered with the build
+identity and the schema version; SIGTERM shut the server down inside the grace period.
+
+Still to do in this milestone:
+
+- ACME issuance for the server's own certificate (the challenge listener on `:80`), so `mn serve` is
+  TLS by default rather than by luck.
+- `mn backup` / `mn restore` on top of `store.Backup`, with a schema-version guard on restore.
 
 ### M2.2 Enrollment
 

@@ -314,3 +314,28 @@ Two smaller observations:
   poll or wait a second before concluding anything.
 - The stock Debian vhost answers `200` again after uninstall, which is the behaviour an operator
   expects: Termit removes what it created and puts back what it moved.
+## S13 (M2.1) — SQLite through modernc, and three things it refuses
+
+The choice is `modernc.org/sqlite`: pure Go, so `CGO_ENABLED=0` and cross-compilation still work. The
+module graph grows (a handful of indirect dependencies) but nothing needs a C toolchain on the target.
+
+What building the store taught us:
+
+1. **`check` is a reserved word** in SQLite, and the table in `DESCRIPTION.md` §14 is called `check`.
+   It has to be quoted (`"check"`) in every statement; renaming it would put the schema out of step
+   with the document.
+2. **A comment can break naive statement splitting.** The schema is split on `;`, and the header
+   comment contained one — so half a sentence was executed as SQL and the migration failed with
+   "near …: syntax error". Comment lines are stripped before splitting now. The same trap waits for
+   anyone who adds a `;` inside a string literal.
+3. **`VACUUM INTO` is the only correct way to copy a live database.** It writes a consistent snapshot
+   without stopping the server, and it refuses to overwrite an existing file, so the backup path is
+   removed first.
+
+Two smaller notes: the driver reports constraint violations through its own error type, so
+"that domain is taken" is decided by the SQLite error code rather than by matching an error string; and
+a database from a newer build is refused outright — an older binary writing a newer schema is how a
+registry gets corrupted.
+
+File modes are part of the contract here: the database is `0600` (it holds hashes and node metadata,
+not public data) and the master key is `0600` with a writer that refuses to replace an existing one.
