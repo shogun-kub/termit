@@ -54,6 +54,41 @@ type Identity struct {
 	XHTTPPath string `json:"xhttp_path,omitempty"`
 }
 
+// LocalUser is a device the owner added by hand: a phone, a laptop, a router. It is independent of
+// the mesh — no other node ever learns this UUID — and it is not the node's own device.
+type LocalUser struct {
+	ID        string    `json:"id"`
+	Label     string    `json:"label"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// AddLocalUser records a new device. The UUID must already be valid; the caller generates it.
+func (s *State) AddLocalUser(id, label string, now time.Time) error {
+	if id == "" {
+		return errors.New("state: a local user needs a UUID")
+	}
+	for _, existing := range s.LocalUsers {
+		if existing.ID == id || (label != "" && existing.Label == label) {
+			return fmt.Errorf("state: local user %q already exists", label)
+		}
+	}
+	s.LocalUsers = append(s.LocalUsers, LocalUser{ID: id, Label: label, CreatedAt: now})
+	s.Touch()
+	return nil
+}
+
+// RemoveLocalUser drops a device by UUID or by label.
+func (s *State) RemoveLocalUser(ref string) error {
+	for i, existing := range s.LocalUsers {
+		if existing.ID == ref || existing.Label == ref {
+			s.LocalUsers = append(s.LocalUsers[:i], s.LocalUsers[i+1:]...)
+			s.Touch()
+			return nil
+		}
+	}
+	return fmt.Errorf("state: no local user %q", ref)
+}
+
 // Decoy is the masking site's persisted randomness.
 type Decoy struct {
 	Template string `json:"template,omitempty"`
@@ -85,6 +120,7 @@ type State struct {
 	Identity      Identity     `json:"identity"`
 	Decoy         Decoy        `json:"decoy"`
 	Xray          Xray         `json:"xray"`
+	LocalUsers    []LocalUser  `json:"local_users,omitempty"`
 	Certificate   *Certificate `json:"certificate,omitempty"`
 	Manifest      []Path       `json:"manifest,omitempty"`
 

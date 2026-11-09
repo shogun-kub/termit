@@ -124,7 +124,12 @@ type Paths struct {
 	BinDir       string `yaml:"bin_dir"`
 	XrayConfig   string `yaml:"xray_config"`
 	NginxSite    string `yaml:"nginx_site"`
+	SitesEnabled string `yaml:"sites_enabled"`
+	UnitDir      string `yaml:"unit_dir"`
+	NginxDropIn  string `yaml:"nginx_drop_in"`
 	DecoySnippet string `yaml:"decoy_snippet"`
+	AccessLog    string `yaml:"access_log"`
+	ErrorLog     string `yaml:"error_log"`
 }
 
 // Default returns a configuration with every default applied and no domain. It is what `uv doctor`
@@ -303,8 +308,23 @@ func (p *Paths) applyDefaults() {
 	if p.NginxSite == "" {
 		p.NginxSite = "/etc/nginx/sites-available/termit.conf"
 	}
+	if p.SitesEnabled == "" {
+		p.SitesEnabled = "/etc/nginx/sites-enabled/termit.conf"
+	}
+	if p.UnitDir == "" {
+		p.UnitDir = "/etc/systemd/system"
+	}
+	if p.NginxDropIn == "" {
+		p.NginxDropIn = path.Join(p.UnitDir, "nginx.service.d", "termit.conf")
+	}
 	if p.DecoySnippet == "" {
 		p.DecoySnippet = path.Join(p.StateDir, "nginx", "decoy.conf")
+	}
+	if p.AccessLog == "" {
+		p.AccessLog = "/var/log/nginx/termit.access.log"
+	}
+	if p.ErrorLog == "" {
+		p.ErrorLog = "/var/log/nginx/termit.error.log"
 	}
 }
 
@@ -328,7 +348,12 @@ func (p Paths) validate() []error {
 		"paths.bin_dir":       p.BinDir,
 		"paths.xray_config":   p.XrayConfig,
 		"paths.nginx_site":    p.NginxSite,
+		"paths.sites_enabled": p.SitesEnabled,
+		"paths.unit_dir":      p.UnitDir,
+		"paths.nginx_drop_in": p.NginxDropIn,
 		"paths.decoy_snippet": p.DecoySnippet,
+		"paths.access_log":    p.AccessLog,
+		"paths.error_log":     p.ErrorLog,
 	}
 	for name, value := range required {
 		if !filepath.IsAbs(value) && !strings.HasPrefix(value, "/") {

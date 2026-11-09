@@ -129,6 +129,10 @@ func New(opts Options) (*Installer, error) {
 			&xrayStep{env},
 			&identityStep{env},
 			&decoyStep{env},
+			&xrayConfigStep{env},
+			&webStep{env},
+			&unitsStep{env},
+			&startStep{env},
 		},
 	}, nil
 }

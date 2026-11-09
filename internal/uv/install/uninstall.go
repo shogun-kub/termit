@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -116,7 +117,11 @@ func Uninstall(ctx context.Context, opts UninstallOptions) (*UninstallReport, er
 		report.removeFile(entry.Path, opts.DryRun)
 	}
 
-	// 3. The nginx vhost goes with its own reload, so :443 and :80 are released.
+	// 3. Debian's own vhost goes back before the vhost directory is touched. It was moved aside so
+	// that a request to the bare address answers the decoy instead of the welcome page.
+	report.restoreStockSite(cfg, opts.DryRun)
+
+	// 4. The nginx vhost goes with its own reload, so :443 and :80 are released.
 	nginxTouched := st.HasPath(cfg.Paths.NginxSite)
 	if nginxTouched {
 		report.removeFile(cfg.Paths.NginxSite, opts.DryRun)
@@ -129,7 +134,7 @@ func Uninstall(ctx context.Context, opts UninstallOptions) (*UninstallReport, er
 		}
 	}
 
-	// 4. Purge the two trees Termit owns, and only those.
+	// 5. Purge the two trees Termit owns, and only those.
 	if opts.Purge {
 		for _, dir := range []string{cfg.Paths.StateDir, cfg.Paths.ConfigDir} {
 			if !safeToRemove(dir) {
@@ -164,6 +169,29 @@ func Uninstall(ctx context.Context, opts UninstallOptions) (*UninstallReport, er
 	}
 
 	return report, nil
+}
+
+// restoreStockSite puts the distribution's default vhost back under sites-enabled, but only if the
+// web step moved it and nothing has taken its place.
+func (r *UninstallReport) restoreStockSite(cfg *config.Config, dryRun bool) {
+	parked := filepath.Join(filepath.Dir(cfg.Paths.NginxSite), stockSite+disabledBy)
+	if _, err := os.Lstat(parked); err != nil {
+		return
+	}
+	enabled := filepath.Join(filepath.Dir(cfg.Paths.SitesEnabled), stockSite)
+	if _, err := os.Lstat(enabled); err == nil {
+		r.Kept = append(r.Kept, "the stock nginx vhost is still in place at "+enabled)
+		return
+	}
+	if dryRun {
+		r.Removed = append(r.Removed, parked+" (would be restored to "+enabled+")")
+		return
+	}
+	if err := os.Rename(parked, enabled); err != nil {
+		r.Warnings = append(r.Warnings, fmt.Sprintf("restore the stock nginx vhost: %v", err))
+		return
+	}
+	r.Removed = append(r.Removed, parked+" (restored to "+enabled+")")
 }
 
 func (r *UninstallReport) removeFile(target string, dryRun bool) {

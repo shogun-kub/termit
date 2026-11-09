@@ -46,7 +46,7 @@ func (verboseFlag) Set(string) error {
 
 // pendingWork is what the installer does not do yet. It shrinks as M1.3–M1.5 land, and a successful
 // init says so instead of pretending the node is complete.
-var pendingWork = []string{"certificate", "proxy and nginx configuration", "systemd units"}
+var pendingWork = []string{"certificate"}
 
 func main() {
 	logLevel.Set(slog.LevelWarn)
@@ -86,6 +86,8 @@ func (a *application) run(args []string) int {
 		return a.runStatus(rest)
 	case "uninstall":
 		return a.runUninstall(rest)
+	case "device":
+		return a.runDevice(rest)
 	case "renew-site":
 		return a.runRenewSite(rest)
 	case "version":
@@ -118,6 +120,7 @@ Commands:
   init         install and configure this node (idempotent)
   doctor       run pre-flight and health diagnostics
   status       show node state, identity and last install
+  device       list, add or remove the owner's own devices
   renew-site   regenerate the decoy site and its nginx fragment
   uninstall    remove Termit from this node
   version      print build and protocol version

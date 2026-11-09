@@ -110,6 +110,13 @@ the last install run. Secrets are shown as sha256 prefixes only.`)
 	fmt.Fprintf(a.stdout, "identity:     %s\n", orMissing(out.Identity))
 	fmt.Fprintf(a.stdout, "proxy path:   %s\n", orMissing(out.ProxyPath))
 	fmt.Fprintf(a.stdout, "decoy:        %s\n", describeDecoy(node.Decoy))
+	if len(node.LocalUsers) > 0 {
+		labels := make([]string, 0, len(node.LocalUsers))
+		for _, user := range node.LocalUsers {
+			labels = append(labels, user.Label)
+		}
+		fmt.Fprintf(a.stdout, "local users:  %d (%s)\n", len(node.LocalUsers), strings.Join(labels, ", "))
+	}
 	if node.Xray.Version != "" {
 		fmt.Fprintf(a.stdout, "core:         xray %s at %s\n", node.Xray.Version, node.Xray.Path)
 	} else {

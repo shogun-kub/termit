@@ -142,17 +142,25 @@ type dirsStep struct{ e *stepEnv }
 
 func (*dirsStep) Name() string { return "dirs" }
 
-func (s *dirsStep) Check(context.Context) (CheckResult, error) {
+func (s *dirsStep) Check(ctx context.Context) (CheckResult, error) {
 	var missing []string
 	for _, d := range s.e.dirs() {
 		info, err := os.Stat(d.path)
 		switch {
 		case errors.Is(err, os.ErrNotExist):
 			missing = append(missing, d.path)
+			continue
 		case err != nil:
 			return CheckResult{}, fmt.Errorf("stat %s: %w", d.path, err)
 		case !info.IsDir():
 			return CheckResult{}, fmt.Errorf("%s exists but is not a directory", d.path)
+		}
+		// Ownership is part of the effect: a directory that exists but does not belong to the
+		// service user's group keeps the proxy core from reading its configuration.
+		if d.path == s.e.cfg.Paths.ConfigDir {
+			if group, ok := s.groupOwner(ctx, d.path); ok && group != serviceUser {
+				missing = append(missing, d.path+" belongs to group "+group)
+			}
 		}
 	}
 	if len(missing) > 0 {
@@ -161,7 +169,7 @@ func (s *dirsStep) Check(context.Context) (CheckResult, error) {
 	return CheckResult{Satisfied: true, Detail: "all directories exist"}, nil
 }
 
-func (s *dirsStep) Run(context.Context) error {
+func (s *dirsStep) Run(ctx context.Context) error {
 	for _, d := range s.e.dirs() {
 		if err := os.MkdirAll(d.path, d.mode); err != nil {
 			return fmt.Errorf("create %s: %w", d.path, err)
@@ -170,7 +178,39 @@ func (s *dirsStep) Run(context.Context) error {
 		if err := os.Chmod(d.path, d.mode); err != nil {
 			return fmt.Errorf("chmod %s: %w", d.path, err)
 		}
+		if d.path == s.e.cfg.Paths.ConfigDir {
+			if err := s.allowServiceUser(ctx, d.path); err != nil {
+				return err
+			}
+		}
 		s.e.st.AddPath(d.path, state.KindDir, "dirs", s.e.now())
+	}
+	return nil
+}
+
+// groupOwner reports the group of a path using stat(1), so the check needs no platform code. The
+// second result is false when the tool cannot answer, which must not turn into a false failure.
+func (s *dirsStep) groupOwner(ctx context.Context, path string) (string, bool) {
+	res, err := s.e.exec.Run(ctx, Cmd{Name: "stat", Args: []string{"-c", "%G", path}})
+	if err != nil {
+		return "", false
+	}
+	group := strings.TrimSpace(res.Stdout)
+	return group, group != ""
+}
+
+// allowServiceUser lets the proxy core read its own configuration. It runs as an unprivileged user,
+// so the directory belongs to that user's group and stays 0750: the config is readable by the core
+// and by root, by nobody else. Its parent has to be traversable, and that parent is ours.
+func (s *dirsStep) allowServiceUser(ctx context.Context, dir string) error {
+	parent := filepath.Dir(dir)
+	if filepath.Base(parent) == "termit" {
+		if err := os.Chmod(parent, 0o755); err != nil {
+			return fmt.Errorf("chmod %s: %w", parent, err)
+		}
+	}
+	if _, err := s.e.exec.Run(ctx, Cmd{Name: "chown", Args: []string{"root:" + serviceUser, dir}}); err != nil {
+		return fmt.Errorf("give %s to root:%s: %w", dir, serviceUser, err)
 	}
 	return nil
 }
@@ -319,7 +359,7 @@ func (s *identityStep) Check(context.Context) (CheckResult, error) {
 
 func (s *identityStep) Run(context.Context) error {
 	if s.e.st.Identity.SelfUUID == "" {
-		uuid, err := newUUID()
+		uuid, err := NewUUID()
 		if err != nil {
 			return err
 		}

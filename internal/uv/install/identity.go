@@ -7,7 +7,8 @@ import (
 )
 
 // newUUID returns a random version 4 UUID, the identifier form Xray expects for a VLESS client.
-func newUUID() (string, error) {
+// NewUUID returns a random RFC 4122 version 4 UUID.
+func NewUUID() (string, error) {
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {
 		return "", fmt.Errorf("generate uuid: %w", err)
