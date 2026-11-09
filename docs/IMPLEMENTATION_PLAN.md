@@ -552,7 +552,10 @@ Done so far:
 | `mn uv block` / `unblock` / `rm` through the same table, audited | done |
 | `mn uv forget` — frees a removed node's domain | done |
 | Retention (checks 90 d, audit 1 y, at start and daily) | done |
-| Queue, per-node serialisation, in-cycle retries, aggregator, `mn check now`, `mn policy set` | not yet |
+| Queue, cycle runner with in-cycle retries, aggregator, jitter, `mn uv check now` | done |
+| Certificate pin stored at enrollment (schema v5) — without it every scheduled check fails | done |
+| `mn uv show` prints the last probe | done |
+| `mn policy set`, per-node serialisation across processes | not yet |
 
 The table is the contract M3.2 and the scenario milestones build on: `active → unavailable` on the
 first failed cycle, `unavailable → blocked` on the second, `blocked → active` only through an explicit
@@ -561,6 +564,15 @@ unblock, and `unknown` never moves anything.
 Lab: block, block again ("nothing changed", one event row), unblock, rm, approve-after-rm refused with
 `conflict`; a sync attempt after removal answered `node_inactive`; `uv forget` freed the domain and uv2
 re-enrolled as a new node.
+
+Scheduler on the lab: both nodes `check_ok` and active, an automatic pass ran on its own, recorded both
+checks and scheduled the next ones a day out with a per-node spread. Getting there cost two defects: a
+failing cycle takes thirty minutes when retries are on (so an operator watching the table sees
+"unchanged" for half an hour — hence `check now`, one attempt, 0.2 s), and the scheduled probe verified
+the node certificate against xray's embedded roots instead of the pin enrollment used, which failed
+every check with `x509: certificate signed by unknown authority` — filed under `tunnel_closed`, because
+that was the classifier's fallback for everything it did not recognise. Unknown errors now have their
+own class and count as unknown, so our own misconfiguration can never block a node.
 
 ### M3.2 Agent loop (UV)
 
