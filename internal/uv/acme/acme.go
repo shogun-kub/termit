@@ -27,6 +27,8 @@ import (
 	"time"
 
 	"golang.org/x/crypto/acme"
+
+	"github.com/shogun-kub/termit/internal/uv/state"
 )
 
 const (
@@ -281,10 +283,10 @@ func (m *Manager) writeCertificate(chain [][]byte, key crypto.Signer) (Result, e
 	certPath := filepath.Join(m.cfg.CertDir, certName)
 	keyPath := filepath.Join(m.cfg.CertDir, keyName)
 	// Write the key first: a reader that finds a new certificate must also find its key.
-	if err := writeFileAtomic(keyPath, keyPEM, 0o600); err != nil {
+	if err := state.WriteFileAtomic(keyPath, keyPEM, 0o600); err != nil {
 		return Result{}, err
 	}
-	if err := writeFileAtomic(certPath, certPEM, 0o644); err != nil {
+	if err := state.WriteFileAtomic(certPath, certPEM, 0o644); err != nil {
 		return Result{}, err
 	}
 	return Result{CertPath: certPath, KeyPath: keyPath, NotAfter: leaf.NotAfter}, nil
@@ -369,41 +371,10 @@ func loadOrCreateAccountKey(path string) (crypto.Signer, error) {
 		return nil, fmt.Errorf("acme: marshal account key: %w", err)
 	}
 	block := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: der})
-	if err := writeFileAtomic(path, block, 0o600); err != nil {
+	if err := state.WriteFileAtomic(path, block, 0o600); err != nil {
 		return nil, err
 	}
 	return key, nil
-}
-
-// writeFileAtomic replaces path with data, flushing to disk before the rename.
-func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
-	dir := filepath.Dir(path)
-	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp*")
-	if err != nil {
-		return fmt.Errorf("acme: create temp file: %w", err)
-	}
-	tmpName := tmp.Name()
-	defer func() { _ = os.Remove(tmpName) }()
-
-	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("acme: write %s: %w", path, err)
-	}
-	if err := tmp.Chmod(perm); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("acme: chmod %s: %w", path, err)
-	}
-	if err := tmp.Sync(); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("acme: sync %s: %w", path, err)
-	}
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("acme: close %s: %w", path, err)
-	}
-	if err := os.Rename(tmpName, path); err != nil {
-		return fmt.Errorf("acme: rename %s: %w", path, err)
-	}
-	return nil
 }
 
 // challenges maps an ACME token to the key authorization served for it.

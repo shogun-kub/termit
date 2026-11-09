@@ -1,0 +1,251 @@
+package install
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"os"
+	"path"
+	"strings"
+	"time"
+
+	"github.com/shogun-kub/termit/internal/uv/config"
+	"github.com/shogun-kub/termit/internal/uv/state"
+)
+
+// unitNames are the services Termit supervises. They are listed here as well as in the manifest so
+// uninstall stops them even when an older install never recorded them.
+var unitNames = []string{"termit-xray.service", "termit-uv.service"}
+
+// UninstallOptions configure an uninstall.
+type UninstallOptions struct {
+	Config *config.Config
+	Exec   Executor
+	Logger *slog.Logger
+	Now    func() time.Time
+	// Purge also removes the configuration, state, certificates and the service user. Without it
+	// those survive, so a reinstall keeps the same identity.
+	Purge bool
+	// DryRun reports what would be removed without changing anything.
+	DryRun bool
+}
+
+// UninstallReport lists what was removed and what was deliberately kept.
+type UninstallReport struct {
+	Removed  []string
+	Kept     []string
+	Warnings []string
+}
+
+// Uninstall removes what Termit created and nothing else: the units, the installed core, the
+// generated nginx vhost, and with Purge the configuration, state, certificates and service user.
+//
+// It never removes packages. nginx may serve other sites on this host, and a proxy that deletes the
+// host's web server on the way out is not one anybody should install.
+func Uninstall(ctx context.Context, opts UninstallOptions) (*UninstallReport, error) {
+	if opts.Config == nil {
+		return nil, errors.New("uninstall: a configuration is required")
+	}
+	if opts.Exec == nil {
+		opts.Exec = OSExecutor{}
+	}
+	if opts.Logger == nil {
+		opts.Logger = slog.Default()
+	}
+	if opts.Now == nil {
+		opts.Now = time.Now
+	}
+	cfg := opts.Config
+	report := &UninstallReport{}
+
+	st, err := state.LoadInstalled(cfg.Paths.StatePath())
+	if errors.Is(err, state.ErrNotInstalled) {
+		report.Warnings = append(report.Warnings, "no state file: Termit does not appear to be installed")
+		return report, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	// 1. Stop the services before their binaries disappear.
+	if !opts.DryRun {
+		args := append([]string{"disable", "--now"}, unitNames...)
+		if _, err := opts.Exec.Run(ctx, Cmd{Name: "systemctl", Args: args}); err != nil && !notFound(err) {
+			// Units that were never installed make systemctl exit non-zero; that is not a problem.
+			opts.Logger.Debug("systemctl disable", "error", err)
+		}
+	}
+
+	// 2. Walk the manifest backwards: files first, then the directories that held them.
+	for i := len(st.Manifest) - 1; i >= 0; i-- {
+		entry := st.Manifest[i]
+		managed := isUnder(entry.Path, cfg.Paths.ConfigDir) || isUnder(entry.Path, cfg.Paths.StateDir)
+
+		if entry.Kind == state.KindUser {
+			if !opts.Purge {
+				report.Kept = append(report.Kept, "user "+entry.Path)
+				continue
+			}
+			if opts.DryRun {
+				report.Removed = append(report.Removed, "user "+entry.Path)
+				continue
+			}
+			if _, err := opts.Exec.Run(ctx, Cmd{Name: "userdel", Args: []string{entry.Path}}); err != nil && exitCode(err) != 6 {
+				report.Warnings = append(report.Warnings, fmt.Sprintf("remove user %s: %v", entry.Path, err))
+			} else {
+				report.Removed = append(report.Removed, "user "+entry.Path)
+			}
+			continue
+		}
+
+		if !opts.Purge && managed {
+			report.Kept = append(report.Kept, entry.Path)
+			continue
+		}
+		if entry.Path == cfg.Paths.NginxSite {
+			continue // removed below, together with the nginx reload
+		}
+		if entry.Kind == state.KindDir {
+			if managed {
+				continue // the purge below removes the whole tree
+			}
+			report.removeDir(entry.Path, opts.DryRun)
+			continue
+		}
+		report.removeFile(entry.Path, opts.DryRun)
+	}
+
+	// 3. The nginx vhost goes with its own reload, so :443 and :80 are released.
+	nginxTouched := st.HasPath(cfg.Paths.NginxSite)
+	if nginxTouched {
+		report.removeFile(cfg.Paths.NginxSite, opts.DryRun)
+		if !opts.DryRun {
+			if _, err := opts.Exec.Run(ctx, Cmd{Name: "nginx", Args: []string{"-t"}}); err != nil {
+				report.Warnings = append(report.Warnings, "nginx -t failed after removing the vhost: "+err.Error())
+			} else if _, err := opts.Exec.Run(ctx, Cmd{Name: "systemctl", Args: []string{"reload", "nginx"}}); err != nil {
+				report.Warnings = append(report.Warnings, "reload nginx: "+err.Error())
+			}
+		}
+	}
+
+	// 4. Purge the two trees Termit owns, and only those.
+	if opts.Purge {
+		for _, dir := range []string{cfg.Paths.StateDir, cfg.Paths.ConfigDir} {
+			if !safeToRemove(dir) {
+				report.Warnings = append(report.Warnings, "refusing to purge "+dir+": not a Termit-owned path")
+				continue
+			}
+			if opts.DryRun {
+				report.Removed = append(report.Removed, dir+" (tree)")
+				continue
+			}
+			if err := os.RemoveAll(dir); err != nil {
+				return report, fmt.Errorf("uninstall: remove %s: %w", dir, err)
+			}
+			report.Removed = append(report.Removed, dir+" (tree)")
+		}
+		// The parent (/etc/termit, /var/lib/termit, /usr/lib/termit) is ours too when it is empty.
+		for _, parent := range parentsToRemove(cfg.Paths.StateDir, cfg.Paths.ConfigDir, cfg.Paths.BinDir) {
+			if opts.DryRun {
+				report.Removed = append(report.Removed, parent)
+				continue
+			}
+			if err := os.Remove(parent); err != nil {
+				if !errors.Is(err, os.ErrNotExist) {
+					report.Warnings = append(report.Warnings, fmt.Sprintf("kept %s: %v", parent, err))
+				}
+				continue
+			}
+			report.Removed = append(report.Removed, parent)
+		}
+	} else {
+		report.Kept = append(report.Kept, cfg.Paths.ConfigDir, cfg.Paths.StateDir)
+	}
+
+	return report, nil
+}
+
+func (r *UninstallReport) removeFile(target string, dryRun bool) {
+	if dryRun {
+		r.Removed = append(r.Removed, target)
+		return
+	}
+	if err := os.Remove(target); err != nil && !errors.Is(err, os.ErrNotExist) {
+		r.Warnings = append(r.Warnings, fmt.Sprintf("remove %s: %v", target, err))
+		return
+	}
+	r.Removed = append(r.Removed, target)
+}
+
+// removeDir removes a directory only when it is empty: a directory that still holds something the
+// manifest does not know about is left alone and reported.
+func (r *UninstallReport) removeDir(target string, dryRun bool) {
+	if dryRun {
+		r.Removed = append(r.Removed, target)
+		return
+	}
+	err := os.Remove(target)
+	switch {
+	case err == nil:
+		r.Removed = append(r.Removed, target)
+	case errors.Is(err, os.ErrNotExist):
+		r.Removed = append(r.Removed, target)
+	default:
+		r.Warnings = append(r.Warnings, fmt.Sprintf("kept %s: %v", target, err))
+	}
+}
+
+// parentsToRemove returns the distinct parents of the two trees, in a stable order.
+func parentsToRemove(dirs ...string) []string {
+	seen := make(map[string]bool, len(dirs))
+	var out []string
+	for _, dir := range dirs {
+		parent := path.Dir(path.Clean(dir))
+		if seen[parent] || !safeParentToRemove(parent) {
+			continue
+		}
+		seen[parent] = true
+		out = append(out, parent)
+	}
+	return out
+}
+
+// safeParentToRemove allows removing a directory only when it is the Termit-owned parent itself.
+func safeParentToRemove(parent string) bool {
+	clean := path.Clean(parent)
+	if path.Base(clean) != "termit" {
+		return false
+	}
+	switch path.Dir(clean) {
+	case "/etc", "/var", "/var/lib", "/usr", "/usr/lib", "/opt", "/srv":
+		return true
+	}
+	return false
+}
+
+// isUnder reports whether target is root or inside it.
+func isUnder(target, root string) bool {
+	cleanTarget := path.Clean(target)
+	cleanRoot := path.Clean(root)
+	return cleanTarget == cleanRoot || strings.HasPrefix(cleanTarget, cleanRoot+"/")
+}
+
+// safeToRemove refuses the paths a corrupted manifest could otherwise turn into a catastrophe.
+func safeToRemove(target string) bool {
+	clean := path.Clean(target)
+	if clean == "/" {
+		return false
+	}
+	switch clean {
+	case "/etc", "/var", "/usr", "/home", "/root", "/tmp", "/opt", "/srv":
+		return false
+	}
+	// A volume root such as `C:\` has no depth to speak of.
+	if strings.HasSuffix(clean, `:\`) || strings.HasSuffix(clean, ":/") {
+		return false
+	}
+	// At least "…/termit/uv": never a top-level or single-child directory.
+	depth := strings.Count(clean, "/") + strings.Count(clean, `\`)
+	return depth >= 3
+}

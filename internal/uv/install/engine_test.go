@@ -1,0 +1,297 @@
+package install
+
+import (
+	"context"
+	"io"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/shogun-kub/termit/internal/uv/config"
+	"github.com/shogun-kub/termit/internal/uv/state"
+)
+
+var engineNow = time.Date(2026, 11, 9, 15, 0, 0, 0, time.UTC)
+
+// sandbox is a fake host: it tracks the user and the packages the steps created.
+type sandbox struct {
+	exec     *fakeExecutor
+	user     bool
+	packages bool
+	aptFails bool
+}
+
+func newSandbox() *sandbox {
+	s := &sandbox{}
+	s.exec = &fakeExecutor{handler: func(cmd Cmd) (Result, error) {
+		switch cmd.Name {
+		case "id":
+			if s.user {
+				return okResult("999\n")
+			}
+			return failedResult(cmd, 1, "")
+		case "useradd":
+			s.user = true
+			return okResult("")
+		case "dpkg-query":
+			if s.packages {
+				return okResult("install ok installed\n")
+			}
+			return failedResult(cmd, 1, "")
+		case "apt-get":
+			if s.aptFails {
+				return failedResult(cmd, 100, "E: Unable to fetch some archives")
+			}
+			s.packages = true
+			return okResult("")
+		case "timedatectl":
+			return okResult("yes")
+		case "ss":
+			return okResult("")
+		case "systemctl", "nginx":
+			return okResult("")
+		case "userdel":
+			s.user = false
+			return okResult("")
+		}
+		if len(cmd.Args) == 1 && cmd.Args[0] == "version" {
+			return okResult("Xray 26.11.9 (Xray, Penetrates Everything.) abcdef (go1.27.3 linux/amd64)\n")
+		}
+		return failedResult(cmd, 127, "unexpected command "+cmd.String())
+	}}
+	return s
+}
+
+// testConfig is a configuration whose paths all live under one temporary tree.
+func testConfig(t *testing.T) *config.Config {
+	t.Helper()
+	dir := t.TempDir()
+	cfg := config.Default()
+	cfg.Domain = "vpn.example.com"
+	cfg.Paths.ConfigDir = filepath.Join(dir, "etc")
+	cfg.Paths.StateDir = filepath.Join(dir, "var")
+	cfg.Paths.CertDir = filepath.Join(cfg.Paths.StateDir, "certs")
+	cfg.Paths.ACMEWebroot = filepath.Join(cfg.Paths.StateDir, "acme")
+	cfg.Paths.SiteDir = filepath.Join(cfg.Paths.StateDir, "site")
+	cfg.Paths.BinDir = filepath.Join(dir, "sbin")
+	cfg.Paths.XrayConfig = filepath.Join(cfg.Paths.ConfigDir, "xray.json")
+	cfg.Paths.NginxSite = filepath.Join(dir, "nginx", "termit.conf")
+
+	// A local release directory, so the test never touches the network.
+	archive := buildZip(t, []zipEntry{{name: "xray", body: "#!/bin/sh\nexit 0\n", mode: 0o755}})
+	releaseDir := filepath.Join(dir, "release", "v"+cfg.Xray.Version)
+	if err := os.MkdirAll(releaseDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(releaseDir, "Xray-linux-64.zip"), archive, 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	cfg.Xray.DownloadBase = filepath.Join(dir, "release")
+	cfg.Xray.SHA256 = map[string]string{"amd64": digestOf(archive)}
+	return cfg
+}
+
+func newTestInstaller(t *testing.T, cfg *config.Config, sb *sandbox) *Installer {
+	t.Helper()
+	installer, err := New(Options{
+		Config:  cfg,
+		Exec:    sb.exec,
+		Logger:  slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
+		Now:     func() time.Time { return engineNow },
+		Version: "test",
+		Arch:    "amd64",
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	return installer
+}
+
+func TestEngineInstallsAndReusesState(t *testing.T) {
+	t.Parallel()
+	cfg := testConfig(t)
+	sb := newSandbox()
+	ctx := context.Background()
+
+	first := newTestInstaller(t, cfg, sb)
+	report, err := first.Run(ctx, RunOptions{Command: "init", Skip: []string{"preflight"}})
+	if err != nil {
+		t.Fatalf("Run: %v\n%+v", err, report)
+	}
+	if counts := report.Counts(); counts[state.StepOK] != 5 {
+		t.Fatalf("first run counts = %v, want 5 ok steps: %+v", counts, report.Steps)
+	}
+
+	node := first.State()
+	if !node.Installed() {
+		t.Error("state has no identity after install")
+	}
+	if node.Xray.Version != cfg.Xray.Version || node.Xray.SHA256 == "" {
+		t.Errorf("core not recorded: %+v", node.Xray)
+	}
+	if _, err := os.Stat(cfg.Paths.XrayBinary()); err != nil {
+		t.Errorf("core binary missing: %v", err)
+	}
+	if !node.HasPath(serviceUser) {
+		t.Error("manifest does not record the service user")
+	}
+	if !node.HasPath(cfg.Paths.XrayBinary()) {
+		t.Error("manifest does not record the installed core")
+	}
+	identity := node.Identity.SelfUUID
+	if identity == "" || node.Decoy.Seed == "" {
+		t.Fatalf("identity incomplete: %+v", node)
+	}
+
+	statePath := cfg.Paths.StatePath()
+	before, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+
+	second := newTestInstaller(t, cfg, sb)
+	secondReport, err := second.Run(ctx, RunOptions{Command: "init", Skip: []string{"preflight"}})
+	if err != nil {
+		t.Fatalf("second Run: %v", err)
+	}
+	if counts := secondReport.Counts(); counts[state.StepPresent] != 5 {
+		t.Fatalf("second run counts = %v, want 5 present steps: %+v", counts, secondReport.Steps)
+	}
+	if second.State().Identity.SelfUUID != identity {
+		t.Error("a re-run regenerated the identity")
+	}
+	after, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if string(before) != string(after) {
+		t.Error("a no-op re-run rewrote the state file")
+	}
+}
+
+func TestEngineResumesAfterFailure(t *testing.T) {
+	t.Parallel()
+	cfg := testConfig(t)
+	sb := newSandbox()
+	sb.aptFails = true
+	ctx := context.Background()
+
+	failing := newTestInstaller(t, cfg, sb)
+	report, err := failing.Run(ctx, RunOptions{Command: "init", Skip: []string{"preflight"}})
+	if err == nil {
+		t.Fatal("Run succeeded even though apt failed")
+	}
+	if !strings.Contains(err.Error(), "packages") {
+		t.Errorf("error %q does not name the failing step", err)
+	}
+	failed := report.Counts()[state.StepFailed]
+	if failed != 1 {
+		t.Errorf("failed steps = %d, want 1: %+v", failed, report.Steps)
+	}
+	if failing.State().Installed() {
+		t.Error("a failed install should not have generated an identity")
+	}
+	if !sb.user {
+		t.Error("steps before the failure should have run")
+	}
+
+	sb.aptFails = false
+	resumed := newTestInstaller(t, cfg, sb)
+	resumeReport, err := resumed.Run(ctx, RunOptions{Command: "init", Skip: []string{"preflight"}})
+	if err != nil {
+		t.Fatalf("resume Run: %v", err)
+	}
+	counts := resumeReport.Counts()
+	if counts[state.StepPresent] != 2 || counts[state.StepOK] != 3 {
+		t.Errorf("resume counts = %v, want 2 present and 3 ok: %+v", counts, resumeReport.Steps)
+	}
+	if !resumed.State().Installed() {
+		t.Error("resumed install has no identity")
+	}
+}
+
+func TestEngineDryRunTouchesNothing(t *testing.T) {
+	t.Parallel()
+	cfg := testConfig(t)
+	sb := newSandbox()
+
+	installer := newTestInstaller(t, cfg, sb)
+	report, err := installer.Run(context.Background(), RunOptions{DryRun: true, Skip: []string{"preflight"}})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if counts := report.Counts(); counts[state.StepPlanned] != 5 {
+		t.Errorf("dry run counts = %v, want 5 planned: %+v", counts, report.Steps)
+	}
+	if _, err := os.Stat(cfg.Paths.StateDir); !os.IsNotExist(err) {
+		t.Errorf("dry run created %s", cfg.Paths.StateDir)
+	}
+	if _, err := os.Stat(cfg.Paths.JournalPath()); !os.IsNotExist(err) {
+		t.Errorf("dry run wrote a journal at %s", cfg.Paths.JournalPath())
+	}
+	if sb.user {
+		t.Error("dry run created a user")
+	}
+}
+
+func TestEngineRejectsUnknownStep(t *testing.T) {
+	t.Parallel()
+	cfg := testConfig(t)
+	installer := newTestInstaller(t, cfg, newSandbox())
+	if _, err := installer.Run(context.Background(), RunOptions{Only: []string{"nope"}}); err == nil {
+		t.Fatal("an unknown --only step was accepted")
+	}
+	if _, err := installer.Run(context.Background(), RunOptions{Skip: []string{"nope"}}); err == nil {
+		t.Fatal("an unknown --skip step was accepted")
+	}
+}
+
+func TestNewRejectsDomainChange(t *testing.T) {
+	t.Parallel()
+	cfg := testConfig(t)
+	sb := newSandbox()
+	installer := newTestInstaller(t, cfg, sb)
+	if _, err := installer.Run(context.Background(), RunOptions{Skip: []string{"preflight"}}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	other := *cfg
+	other.Domain = "other.example.com"
+	_, err := New(Options{
+		Config: &other,
+		Exec:   sb.exec,
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Now:    func() time.Time { return engineNow },
+		Arch:   "amd64",
+	})
+	if err == nil || !strings.Contains(err.Error(), "uv migrate") {
+		t.Fatalf("New error = %v, want a migrate hint", err)
+	}
+}
+
+func TestEngineJournalRecordsRun(t *testing.T) {
+	t.Parallel()
+	cfg := testConfig(t)
+	installer := newTestInstaller(t, cfg, newSandbox())
+	if _, err := installer.Run(context.Background(), RunOptions{Command: "init", Skip: []string{"preflight"}}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	journal, err := state.LoadJournal(cfg.Paths.JournalPath())
+	if err != nil {
+		t.Fatalf("LoadJournal: %v", err)
+	}
+	last := journal.Last()
+	if last == nil || last.Result != state.RunOK {
+		t.Fatalf("journal last run = %+v", last)
+	}
+	if last.Command != "init" || last.Version != "test" {
+		t.Errorf("journal run identity = %+v", last)
+	}
+	if len(last.Steps) != 5 {
+		t.Errorf("journal recorded %d steps, want 5: %+v", len(last.Steps), last.Steps)
+	}
+}
