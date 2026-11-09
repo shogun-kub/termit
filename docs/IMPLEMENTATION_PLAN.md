@@ -440,7 +440,22 @@ Done:
 | Storage | `enroll` | the record holds the parsed profile (domain, credential, path); a node enrolled before this change must re-enroll |
 | Tests | `internal/mn/sub` | ordering, stability under reordering, degraded marking, empty set, JSON shape, ETag changes |
 
-Lab: the list for `termit-uv1.lan` decoded to
+Acceptance on the lab — two nodes, one subscription, traffic through each URI:
+
+| Step | Result |
+|---|---|
+| `uv init` on termit-uv2 | 12 steps ok, certificate issued by Pebble, identity `ac7af400` |
+| enroll uv2 | `201`, node `uv_R055z4RzZHki`, state `active` |
+| `mn uv list` | two nodes, both `active` |
+| `GET /sub/{token}` | two `vless://` lines, one per node |
+| request through the uv1 URI | `HTTP 200` from `example.com` |
+| request through the uv2 URI | `HTTP 200` from `example.com` |
+
+The acceptance client reads nothing but the decoded subscription: it parses the URI, reads the node's
+leaf for the pin, and speaks the profile the URI describes. The first attempt showed uv1 timing out and
+the immediate retry passing twice — that was the script's own 1.5 s startup window, not the node.
+
+The single-node evidence, for the record: the list for `termit-uv1.lan` decoded to
 
 ```
 vless://39dadfb7-…@termit-uv1.lan:443?encryption=none&mode=packet-up&path=%2Fcc522787…%2F&security=tls&sni=termit-uv1.lan&type=xhttp#termit-uv1.lan
