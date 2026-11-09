@@ -369,6 +369,18 @@ func (s *Store) SetSubTokenHash(ctx context.Context, id, hash string) error {
 	return expectOne(res, id)
 }
 
+// SetAgentKeyHash replaces a node's agent key digest. The old key stops working at once.
+func (s *Store) SetAgentKeyHash(ctx context.Context, id, hash string) error {
+	if hash == "" {
+		return errors.New("store: refusing an empty agent key digest")
+	}
+	res, err := s.db.ExecContext(ctx, `UPDATE uv SET agent_key_hash = ? WHERE id = ?`, hash, id)
+	if err != nil {
+		return fmt.Errorf("store: set agent key for %s: %w", id, err)
+	}
+	return expectOne(res, id)
+}
+
 // ApproveUV stamps the approval of a node that an operator let into the mesh.
 func (s *Store) ApproveUV(ctx context.Context, id string, now time.Time) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE uv SET approved_at = COALESCE(approved_at, ?) WHERE id = ?`,

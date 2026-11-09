@@ -166,6 +166,37 @@ func runInviteRevoke(args []string, stdout, stderr io.Writer) int {
 	return exitOK
 }
 
+// runUVReissue hands a node a new agent key, for an owner who lost the old one.
+func runUVReissue(args []string, stdout, stderr io.Writer) int {
+	flags, configPath, socket, token := uvFlags("uv reissue", stderr)
+	if err := flags.Parse(flagsFirst(args, map[string]bool{})); err != nil {
+		return exitUsage
+	}
+	if flags.NArg() != 1 {
+		fmt.Fprintln(stderr, "mn uv reissue: one node id or domain is required")
+		return exitUsage
+	}
+	client, err := adminClient(*configPath, *socket, *token)
+	if err != nil {
+		fmt.Fprintf(stderr, "mn uv reissue: %v\n", err)
+		return exitFailure
+	}
+	var result struct {
+		ID       string `json:"id"`
+		AgentKey string `json:"agent_key"`
+	}
+	callCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := client.Call(callCtx, "uv.reissue", map[string]string{"id": flags.Arg(0)}, &result); err != nil {
+		fmt.Fprintf(stderr, "mn uv reissue: %v\n", err)
+		return exitFailure
+	}
+	fmt.Fprintf(stdout, "node:      %s\n", result.ID)
+	fmt.Fprintf(stdout, "agent key: %s\n", result.AgentKey)
+	fmt.Fprintln(stdout, "the key is shown once; the previous one stopped working")
+	return exitOK
+}
+
 // runSub dispatches `mn sub …`.
 func runSub(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 || args[0] != "rotate" {
@@ -222,6 +253,8 @@ func runUV(args []string, stdout, stderr io.Writer) int {
 		return runUVShow(args[1:], stdout, stderr)
 	case "approve", "reject":
 		return runUVDecide(args[0], args[1:], stdout, stderr)
+	case "reissue":
+		return runUVReissue(args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "mn uv: unknown subcommand %q\n", args[0])
 		return exitUsage
