@@ -290,3 +290,23 @@ func TestLastLines(t *testing.T) {
 		t.Fatalf("firstLine = %q", first)
 	}
 }
+
+// TestAnUnmodelledErrorIsNotAVerdict: the class a check reports decides whether a node can be blocked.
+// An error the prober does not recognise says nothing about the node, so it must not read as one.
+func TestAnUnmodelledErrorIsNotAVerdict(t *testing.T) {
+	t.Parallel()
+	class, err := ClassifyForTest(errors.New("x509: certificate signed by unknown authority"))
+	if class != ClassProbeError {
+		t.Errorf("class = %q, want %q", class, ClassProbeError)
+	}
+	if err == nil {
+		t.Error("the text of the error was dropped")
+	}
+	if !(Result{Class: class}).Unknown() {
+		t.Error("an unmodelled error must count as unknown, not as evidence against the node")
+	}
+	// A reset is still the node's tunnel closing, and still counts as a failure.
+	if class, _ := ClassifyForTest(errors.New("read tcp: connection reset by peer")); class != ClassClosed {
+		t.Errorf("a reset was classified %q", class)
+	}
+}

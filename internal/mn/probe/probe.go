@@ -37,6 +37,10 @@ const (
 	ClassHTTP     Class = "http_error"
 	// ClassWorker means the prober itself could not do its job. It is *unknown*, not a node failure.
 	ClassWorker Class = "worker_unavailable"
+	// ClassProbeError is a failure the prober itself does not understand. It is kept apart from
+	// ClassClosed on purpose: "the node closed the tunnel" and "we could not make the check work" are
+	// different statements, and the second one is never evidence against the node.
+	ClassProbeError Class = "probe_error"
 )
 
 // Target is one node to check.
@@ -63,7 +67,7 @@ type Result struct {
 }
 
 // Unknown reports whether the prober failed rather than the node.
-func (r Result) Unknown() bool { return r.Class == ClassWorker }
+func (r Result) Unknown() bool { return r.Class == ClassWorker || r.Class == ClassProbeError }
 
 // Config configures a Worker.
 type Config struct {
@@ -664,6 +668,10 @@ func httpStatusThroughTunnel(conn net.Conn, host string) (int, error) {
 	return status, nil
 }
 
+// ClassifyForTest exposes the classifier to the tests. It is the same function the worker uses; the
+// name says who may call it, not what it does.
+func ClassifyForTest(err error) (Class, error) { return classify(err) }
+
 func classify(err error) (Class, error) {
 	if err == nil {
 		return ClassNone, nil
@@ -685,7 +693,9 @@ func classify(err error) (Class, error) {
 	case strings.Contains(msg, "connection reset"), strings.Contains(msg, "broken pipe"):
 		return ClassClosed, err
 	}
-	return ClassClosed, err
+	// Anything else keeps its class and its text: a check that failed for a reason we did not model
+	// must not read like a verdict on the node.
+	return ClassProbeError, err
 }
 
 func firstLine(b []byte) string {
