@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shogun-kub/termit/internal/uv/acme"
+	"github.com/shogun-kub/termit/internal/acme"
 	"github.com/shogun-kub/termit/internal/uv/config"
 )
 

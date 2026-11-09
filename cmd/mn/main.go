@@ -8,27 +8,41 @@ import (
 	"github.com/shogun-kub/termit/internal/version"
 )
 
+// Exit codes, shared with termit-uv so a script can treat both binaries the same.
+const (
+	exitOK      = 0
+	exitFailure = 1
+	exitUsage   = 2
+)
+
 func main() {
-	os.Exit(run(os.Args[1:]))
+	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
-func run(args []string) int {
+func run(args []string, stdout, stderr *os.File) int {
 	if len(args) == 0 {
-		usage(os.Stderr)
-		return 2
+		usage(stderr)
+		return exitUsage
 	}
 
 	switch args[0] {
+	case "init":
+		return runInit(args[1:], stdout, stderr)
+	case "serve":
+		return runServe(args[1:], stdout, stderr)
 	case "version":
-		fmt.Println(version.String("termit-mn"))
-		return 0
+		fmt.Fprintln(stdout, version.String("termit-mn"))
+		return exitOK
 	case "help", "-h", "--help":
-		usage(os.Stdout)
-		return 0
+		usage(stdout)
+		return exitOK
+	case "invite", "uv", "check", "policy", "sub", "backup", "restore", "status":
+		fmt.Fprintf(stderr, "mn %s: not in this build yet\n", args[0])
+		return exitFailure
 	default:
-		fmt.Fprintf(os.Stderr, "mn: unknown command %q\n\n", args[0])
-		usage(os.Stderr)
-		return 2
+		fmt.Fprintf(stderr, "mn: unknown command %q\n\n", args[0])
+		usage(stderr)
+		return exitUsage
 	}
 }
 

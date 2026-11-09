@@ -28,7 +28,7 @@ import (
 
 	"golang.org/x/crypto/acme"
 
-	"github.com/shogun-kub/termit/internal/uv/state"
+	"github.com/shogun-kub/termit/internal/atomicfile"
 )
 
 const (
@@ -214,7 +214,7 @@ func (m *Manager) publishChallenge(token, keyAuth string) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("acme: create the challenge directory: %w", err)
 	}
-	if err := state.WriteFileAtomic(m.challengePath(token), []byte(keyAuth), 0o644); err != nil {
+	if err := atomicfile.Write(m.challengePath(token), []byte(keyAuth), 0o644); err != nil {
 		return fmt.Errorf("acme: publish the challenge: %w", err)
 	}
 	return nil
@@ -335,10 +335,10 @@ func (m *Manager) writeCertificate(chain [][]byte, key crypto.Signer) (Result, e
 	certPath := filepath.Join(m.cfg.CertDir, certName)
 	keyPath := filepath.Join(m.cfg.CertDir, keyName)
 	// Write the key first: a reader that finds a new certificate must also find its key.
-	if err := state.WriteFileAtomic(keyPath, keyPEM, 0o600); err != nil {
+	if err := atomicfile.Write(keyPath, keyPEM, 0o600); err != nil {
 		return Result{}, err
 	}
-	if err := state.WriteFileAtomic(certPath, certPEM, 0o644); err != nil {
+	if err := atomicfile.Write(certPath, certPEM, 0o644); err != nil {
 		return Result{}, err
 	}
 	return Result{CertPath: certPath, KeyPath: keyPath, NotAfter: leaf.NotAfter}, nil
@@ -423,7 +423,7 @@ func loadOrCreateAccountKey(path string) (crypto.Signer, error) {
 		return nil, fmt.Errorf("acme: marshal account key: %w", err)
 	}
 	block := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: der})
-	if err := state.WriteFileAtomic(path, block, 0o600); err != nil {
+	if err := atomicfile.Write(path, block, 0o600); err != nil {
 		return nil, err
 	}
 	return key, nil

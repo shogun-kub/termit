@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/shogun-kub/termit/internal/uv/acme"
+	"github.com/shogun-kub/termit/internal/acme"
 	"github.com/shogun-kub/termit/internal/uv/config"
 	"github.com/shogun-kub/termit/internal/uv/decoy"
 	"github.com/shogun-kub/termit/internal/uv/service"

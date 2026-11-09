@@ -23,7 +23,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/shogun-kub/termit/internal/uv/acme"
+	"github.com/shogun-kub/termit/internal/acme"
 	"github.com/shogun-kub/termit/internal/uv/state"
 )
 
