@@ -126,6 +126,7 @@ type Paths struct {
 	NginxSite    string `yaml:"nginx_site"`
 	SitesEnabled string `yaml:"sites_enabled"`
 	UnitDir      string `yaml:"unit_dir"`
+	ConfigFile   string `yaml:"config_file"`
 	NginxDropIn  string `yaml:"nginx_drop_in"`
 	DecoySnippet string `yaml:"decoy_snippet"`
 	AccessLog    string `yaml:"access_log"`
@@ -314,6 +315,9 @@ func (p *Paths) applyDefaults() {
 	if p.UnitDir == "" {
 		p.UnitDir = "/etc/systemd/system"
 	}
+	if p.ConfigFile == "" {
+		p.ConfigFile = path.Join(p.ConfigDir, "config.yaml")
+	}
 	if p.NginxDropIn == "" {
 		p.NginxDropIn = path.Join(p.UnitDir, "nginx.service.d", "termit.conf")
 	}
@@ -350,6 +354,7 @@ func (p Paths) validate() []error {
 		"paths.nginx_site":    p.NginxSite,
 		"paths.sites_enabled": p.SitesEnabled,
 		"paths.unit_dir":      p.UnitDir,
+		"paths.config_file":   p.ConfigFile,
 		"paths.nginx_drop_in": p.NginxDropIn,
 		"paths.decoy_snippet": p.DecoySnippet,
 		"paths.access_log":    p.AccessLog,

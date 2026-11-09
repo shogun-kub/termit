@@ -22,7 +22,7 @@ func TestUninstallWithoutPurgeKeepsIdentity(t *testing.T) {
 	ctx := context.Background()
 
 	installer := newTestInstaller(t, cfg, sb)
-	if _, err := installer.Run(ctx, RunOptions{Skip: []string{"preflight"}}); err != nil {
+	if _, err := installer.Run(ctx, RunOptions{Skip: []string{"preflight", "certificate"}}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 
@@ -56,7 +56,7 @@ func TestUninstallPurgeRemovesEverything(t *testing.T) {
 	ctx := context.Background()
 
 	installer := newTestInstaller(t, cfg, sb)
-	if _, err := installer.Run(ctx, RunOptions{Skip: []string{"preflight"}}); err != nil {
+	if _, err := installer.Run(ctx, RunOptions{Skip: []string{"preflight", "certificate"}}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 
@@ -87,7 +87,7 @@ func TestUninstallDryRunChangesNothing(t *testing.T) {
 	ctx := context.Background()
 
 	installer := newTestInstaller(t, cfg, sb)
-	if _, err := installer.Run(ctx, RunOptions{Skip: []string{"preflight"}}); err != nil {
+	if _, err := installer.Run(ctx, RunOptions{Skip: []string{"preflight", "certificate"}}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 

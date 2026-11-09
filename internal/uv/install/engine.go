@@ -43,6 +43,11 @@ type Options struct {
 	Version string
 	// Arch is the architecture of the target host; the host's own by default.
 	Arch string
+	// ConfigPath is the configuration file this run was started with. The renewal unit needs it: a
+	// second process cannot guess which --config the installer used. Empty means the default path.
+	ConfigPath string
+	// Executable overrides the binary path written into the units; empty means os.Executable().
+	Executable string
 }
 
 // Installer runs the install steps in order and records them in the journal.
@@ -105,14 +110,19 @@ func New(opts Options) (*Installer, error) {
 	}
 
 	env := &stepEnv{
-		cfg:       cfg,
-		st:        st,
-		statePath: cfg.Paths.StatePath(),
-		exec:      opts.Exec,
-		http:      opts.HTTP,
-		log:       opts.Logger,
-		now:       opts.Now,
-		arch:      opts.Arch,
+		cfg:        cfg,
+		st:         st,
+		statePath:  cfg.Paths.StatePath(),
+		exec:       opts.Exec,
+		http:       opts.HTTP,
+		log:        opts.Logger,
+		now:        opts.Now,
+		arch:       opts.Arch,
+		configPath: opts.ConfigPath,
+		executable: opts.Executable,
+	}
+	if env.configPath == "" {
+		env.configPath = cfg.Paths.ConfigFile
 	}
 	return &Installer{
 		cfg:         cfg,
@@ -132,6 +142,7 @@ func New(opts Options) (*Installer, error) {
 			&xrayConfigStep{env},
 			&webStep{env},
 			&unitsStep{env},
+			&certificateStep{env},
 			&startStep{env},
 		},
 	}, nil
@@ -273,7 +284,9 @@ func (i *Installer) Run(ctx context.Context, opts RunOptions) (*Report, error) {
 
 		runErr := checkErr
 		if runErr == nil {
+			i.env.forced = forced[step.Name()]
 			runErr = step.Run(ctx)
+			i.env.forced = false
 		}
 		if runErr == nil {
 			runErr = i.env.saveState()

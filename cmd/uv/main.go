@@ -44,9 +44,9 @@ func (verboseFlag) Set(string) error {
 	return nil
 }
 
-// pendingWork is what the installer does not do yet. It shrinks as M1.3–M1.5 land, and a successful
+// pendingWork is what the installer does not do yet. It shrinks as milestones land, and a successful
 // init says so instead of pretending the node is complete.
-var pendingWork = []string{"certificate"}
+var pendingWork []string
 
 func main() {
 	logLevel.Set(slog.LevelWarn)
@@ -90,13 +90,15 @@ func (a *application) run(args []string) int {
 		return a.runDevice(rest)
 	case "renew-site":
 		return a.runRenewSite(rest)
+	case "renew-cert":
+		return a.runRenewCert(rest)
 	case "version":
 		fmt.Fprintln(a.stdout, version.String("termit-uv"))
 		return exitOK
 	case "help", "-h", "--help":
 		a.usage(a.stdout)
 		return exitOK
-	case "sync", "unblock", "migrate", "renew-cert", "warp":
+	case "sync", "unblock", "migrate", "warp":
 		return a.notImplemented(command)
 	default:
 		fmt.Fprintf(a.stderr, "uv: unknown command %q\n\n", command)
@@ -121,13 +123,14 @@ Commands:
   doctor       run pre-flight and health diagnostics
   status       show node state, identity and last install
   device       list, add or remove the owner's own devices
+  renew-cert   renew the TLS certificate (--force to replace it)
   renew-site   regenerate the decoy site and its nginx fragment
   uninstall    remove Termit from this node
   version      print build and protocol version
   help         show this help
 
 Planned, not in this build:
-  sync, unblock, migrate, renew-cert, warp
+  sync, unblock, migrate, warp
 
 Exit status: 0 success, 1 failure, 2 usage error, 3 command not implemented.
 
@@ -191,14 +194,15 @@ func (a *application) loadConfig(path string) (*config.Config, error) {
 }
 
 // installOptions wires an Installer for this host.
-func (a *application) installOptions(cfg *config.Config) install.Options {
+func (a *application) installOptions(cfg *config.Config, configPath string) install.Options {
 	return install.Options{
-		Config:  cfg,
-		Exec:    a.exec,
-		HTTP:    a.http,
-		Logger:  slog.Default(),
-		Now:     a.now,
-		Version: version.Version,
+		Config:     cfg,
+		Exec:       a.exec,
+		HTTP:       a.http,
+		Logger:     slog.Default(),
+		Now:        a.now,
+		Version:    version.Version,
+		ConfigPath: configPath,
 	}
 }
 

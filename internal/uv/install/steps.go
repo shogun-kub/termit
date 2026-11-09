@@ -42,6 +42,26 @@ type stepEnv struct {
 	log       *slog.Logger
 	now       func() time.Time
 	arch      string
+	// configPath is the file this run was started with; executable is the binary the units run.
+	configPath string
+	executable string
+	// forced is true while a step that the run explicitly forced is executing. A step whose Run is
+	// not idempotent (renewing a certificate) needs to know the difference between "converge" and
+	// "do it again".
+	forced bool
+}
+
+// binaryPath is the Termit binary the generated units run. It defaults to the running executable, so
+// a node renews its certificate with the same build that installed it.
+func (e *stepEnv) binaryPath() (string, error) {
+	if e.executable != "" {
+		return e.executable, nil
+	}
+	path, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("find the running binary: %w", err)
+	}
+	return path, nil
 }
 
 // saveState persists the state if a step changed it.

@@ -85,7 +85,7 @@ the last install run. Secrets are shown as sha256 prefixes only.`)
 		XraySHA256:  node.Xray.SHA256,
 	}
 	if node.Certificate != nil {
-		out.Certificate = "expires " + node.Certificate.NotAfter.Format(time.RFC3339)
+		out.Certificate = describeCertificate(node.Certificate.NotAfter, a.now())
 	}
 	if last := journal.Last(); last != nil {
 		out.LastRun = last.Result
@@ -137,6 +137,18 @@ the last install run. Secrets are shown as sha256 prefixes only.`)
 	}
 	fmt.Fprintf(a.stdout, "state:        %s\n", cfg.Paths.StatePath())
 	return exitOK
+}
+
+// describeCertificate says when the certificate expires and how long that is, so an operator does not
+// have to subtract dates to notice a renewal that stopped working.
+func describeCertificate(notAfter, now time.Time) string {
+	left := notAfter.Sub(now)
+	days := int(left.Hours() / 24)
+	state := "expires " + notAfter.UTC().Format(time.RFC3339)
+	if days >= 0 {
+		return fmt.Sprintf("%s (in %d days)", state, days)
+	}
+	return fmt.Sprintf("%s (expired %d days ago)", state, -days)
 }
 
 func describeDecoy(decoy state.Decoy) string {

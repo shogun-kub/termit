@@ -15,6 +15,13 @@ import (
 // XrayUnitName is the unit that runs the proxy core.
 const XrayUnitName = "termit-xray.service"
 
+// RenewUnitName and RenewTimerName run `renew-cert` on a schedule. The timer, not the agent, owns the
+// clock: a daily oneshot is easier to inspect than a sleep loop, and it survives a reboot.
+const (
+	RenewUnitName  = "termit-uv-renew.service"
+	RenewTimerName = "termit-uv-renew.timer"
+)
+
 // NginxDropInName is the drop-in directory entry for the distribution's nginx unit.
 const NginxDropInName = "termit.conf"
 
@@ -75,6 +82,52 @@ AmbientCapabilities=
 [Install]
 WantedBy=multi-user.target
 `, binary, config)
+	return []byte(b.String()), nil
+}
+
+// Renew renders the oneshot unit that renews the certificate once. The binary is the one that wrote
+// this unit, so a node upgrades its renewal path together with itself.
+func Renew(binary, config string) ([]byte, error) {
+	if !filepath.IsAbs(binary) && !strings.HasPrefix(binary, "/") {
+		return nil, fmt.Errorf("service: binary %q must be an absolute path", binary)
+	}
+	var b strings.Builder
+	b.WriteString(unitHeader)
+	fmt.Fprintf(&b, `
+[Unit]
+Description=Termit certificate renewal
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%s renew-cert --config %s
+Nice=10
+NoNewPrivileges=yes
+ProtectHome=yes
+PrivateTmp=yes
+`, binary, config)
+	return []byte(b.String()), nil
+}
+
+// RenewTimer renders the daily timer. The jitter keeps a fleet from waking at the same second, and
+// Persistent makes a missed run happen after a reboot instead of being skipped.
+func RenewTimer() ([]byte, error) {
+	var b strings.Builder
+	b.WriteString(unitHeader)
+	b.WriteString(`
+[Unit]
+Description=Renew the Termit certificate daily
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=1h
+Persistent=true
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target
+`)
 	return []byte(b.String()), nil
 }
 

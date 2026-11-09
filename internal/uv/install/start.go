@@ -26,11 +26,14 @@ func (s *startStep) Check(ctx context.Context) (CheckResult, error) {
 	if !s.e.serviceActive(ctx, nginxUnit) {
 		return CheckResult{Detail: nginxUnit + " is not running"}, nil
 	}
-	return CheckResult{Satisfied: true, Detail: service.XrayUnitName + " and " + nginxUnit + " are running"}, nil
+	if !s.e.serviceActive(ctx, service.RenewTimerName) {
+		return CheckResult{Detail: service.RenewTimerName + " is not running"}, nil
+	}
+	return CheckResult{Satisfied: true, Detail: "the core, nginx and the renewal timer are running"}, nil
 }
 
 func (s *startStep) Run(ctx context.Context) error {
-	for _, unit := range []string{service.XrayUnitName, nginxUnit} {
+	for _, unit := range []string{service.XrayUnitName, nginxUnit, service.RenewTimerName} {
 		if _, err := s.e.exec.Run(ctx, Cmd{Name: "systemctl", Args: []string{"enable", "--now", unit}}); err != nil {
 			return fmt.Errorf("enable %s: %w", unit, err)
 		}

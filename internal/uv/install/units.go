@@ -30,9 +30,23 @@ func (s *unitsStep) unitFiles() (map[string][]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	binary, err := s.e.binaryPath()
+	if err != nil {
+		return nil, err
+	}
+	renewUnit, err := service.Renew(binary, s.e.configPath)
+	if err != nil {
+		return nil, err
+	}
+	renewTimer, err := service.RenewTimer()
+	if err != nil {
+		return nil, err
+	}
 	return map[string][]byte{
-		filepath.Join(s.e.cfg.Paths.UnitDir, service.XrayUnitName): xrayUnit,
-		s.e.cfg.Paths.NginxDropIn:                                  dropIn,
+		filepath.Join(s.e.cfg.Paths.UnitDir, service.XrayUnitName):   xrayUnit,
+		s.e.cfg.Paths.NginxDropIn:                                    dropIn,
+		filepath.Join(s.e.cfg.Paths.UnitDir, service.RenewUnitName):  renewUnit,
+		filepath.Join(s.e.cfg.Paths.UnitDir, service.RenewTimerName): renewTimer,
 	}, nil
 }
 

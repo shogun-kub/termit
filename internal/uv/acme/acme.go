@@ -59,6 +59,10 @@ type Config struct {
 	SkipTLSVerify bool
 	// CertDir holds account.key, fullchain.pem and privkey.pem.
 	CertDir string
+	// ChallengeDir is the directory nginx serves at /.well-known/acme-challenge/. When it is set the
+	// challenge is published as a file there instead of through ChallengeHandler: nginx owns :80, and
+	// a second listener on that port is not an option.
+	ChallengeDir string
 	// RenewBefore overrides DefaultRenewBefore.
 	RenewBefore time.Duration
 	// KeyBits selects RSA (2048 or 4096) for the certificate key. Zero means ECDSA P-256.
@@ -131,7 +135,15 @@ func New(cfg Config) (*Manager, error) {
 
 // ChallengeHandler serves HTTP-01 challenges for the ACME server. Mount it on a listener that the
 // node's domain reaches on the port the CA validates (80 in production), directly or via nginx.
+//
+// Production uses Config.ChallengeDir instead: nginx already owns :80, so the token is written into
+// the directory nginx serves. This handler stays for tests and for a host where Termit owns the port.
 func (m *Manager) ChallengeHandler() http.Handler { return m.challenges }
+
+// challengePath is where the token file goes when challenges are published as files.
+func (m *Manager) challengePath(token string) string {
+	return filepath.Join(m.cfg.ChallengeDir, ".well-known", "acme-challenge", token)
+}
 
 // Ensure returns an existing valid certificate, or issues a new one when there is none or it is due
 // for renewal.
@@ -187,6 +199,36 @@ func (m *Manager) Issue(ctx context.Context) (Result, error) {
 	return res, nil
 }
 
+// publishChallenge makes the key authorization reachable for the CA, either as a file in the webroot
+// nginx serves or through the in-memory handler.
+func (m *Manager) publishChallenge(token, keyAuth string) error {
+	if m.cfg.ChallengeDir == "" {
+		m.challenges.put(token, keyAuth)
+		return nil
+	}
+	// The token comes from the CA, but a path built from a foreign string deserves a check.
+	if token == "" || strings.ContainsAny(token, `/\`) || strings.HasPrefix(token, ".") {
+		return fmt.Errorf("acme: refusing to publish the challenge token %q", token)
+	}
+	dir := filepath.Dir(m.challengePath(token))
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("acme: create the challenge directory: %w", err)
+	}
+	if err := state.WriteFileAtomic(m.challengePath(token), []byte(keyAuth), 0o644); err != nil {
+		return fmt.Errorf("acme: publish the challenge: %w", err)
+	}
+	return nil
+}
+
+// retractChallenge removes what publishChallenge created, so the webroot does not keep tokens.
+func (m *Manager) retractChallenge(token string) {
+	if m.cfg.ChallengeDir == "" {
+		m.challenges.drop(token)
+		return
+	}
+	_ = os.Remove(m.challengePath(token))
+}
+
 // NeedsRenewal reports whether a certificate expiring at notAfter should be replaced at now.
 func NeedsRenewal(notAfter, now time.Time, before time.Duration) bool {
 	return !now.Before(notAfter.Add(-before))
@@ -238,10 +280,12 @@ func (m *Manager) satisfyAuthorizations(ctx context.Context, order *acme.Order) 
 		if err != nil {
 			return fmt.Errorf("acme: build challenge response: %w", err)
 		}
-		m.challenges.put(ch.Token, keyAuth)
+		if err := m.publishChallenge(ch.Token, keyAuth); err != nil {
+			return err
+		}
 		_, acceptErr := m.client.Accept(ctx, ch)
 		waitErr := m.waitAuthorization(ctx, authz.URI)
-		m.challenges.drop(ch.Token)
+		m.retractChallenge(ch.Token)
 		if waitErr != nil {
 			if acceptErr != nil {
 				return fmt.Errorf("acme: accept challenge: %w", acceptErr)

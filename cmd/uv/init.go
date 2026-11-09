@@ -110,7 +110,7 @@ credential is ever regenerated.`)
 	}
 	fmt.Fprintf(a.stdout, "config: %s\n\n", *configFlag)
 
-	installer, err := install.New(a.installOptions(cfg))
+	installer, err := install.New(a.installOptions(cfg, *configFlag))
 	if err != nil {
 		fmt.Fprintf(a.stderr, "uv init: %v\n", err)
 		return exitFailure

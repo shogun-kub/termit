@@ -17,6 +17,10 @@ import (
 var engineNow = time.Date(2026, 11, 9, 15, 0, 0, 0, time.UTC)
 
 // sandbox is a fake host: it tracks the user and the packages the steps created.
+// skippedSteps counts the steps the suite never runs: preflight reports every host check and the
+// certificate step talks to a CA, which no unit test may do.
+const skippedSteps = 2
+
 type sandbox struct {
 	exec     *fakeExecutor
 	user     bool
@@ -161,11 +165,11 @@ func TestEngineInstallsAndReusesState(t *testing.T) {
 	ctx := context.Background()
 
 	first := newTestInstaller(t, cfg, sb)
-	report, err := first.Run(ctx, RunOptions{Command: "init", Skip: []string{"preflight"}})
+	report, err := first.Run(ctx, RunOptions{Command: "init", Skip: []string{"preflight", "certificate"}})
 	if err != nil {
 		t.Fatalf("Run: %v\n%+v", err, report)
 	}
-	if counts := report.Counts(); counts[state.StepOK] != len(first.Steps())-1 {
+	if counts := report.Counts(); counts[state.StepOK] != len(first.Steps())-skippedSteps {
 		t.Fatalf("first run counts = %v, want every step after preflight to be ok: %+v", counts, report.Steps)
 	}
 
@@ -217,11 +221,11 @@ func TestEngineInstallsAndReusesState(t *testing.T) {
 	}
 
 	second := newTestInstaller(t, cfg, sb)
-	secondReport, err := second.Run(ctx, RunOptions{Command: "init", Skip: []string{"preflight"}})
+	secondReport, err := second.Run(ctx, RunOptions{Command: "init", Skip: []string{"preflight", "certificate"}})
 	if err != nil {
 		t.Fatalf("second Run: %v", err)
 	}
-	if counts := secondReport.Counts(); counts[state.StepPresent] != len(second.Steps())-1 {
+	if counts := secondReport.Counts(); counts[state.StepPresent] != len(second.Steps())-skippedSteps {
 		t.Fatalf("second run counts = %v, want every step after preflight to be present: %+v", counts, secondReport.Steps)
 	}
 	if second.State().Identity.SelfUUID != identity {
@@ -244,7 +248,7 @@ func TestEngineResumesAfterFailure(t *testing.T) {
 	ctx := context.Background()
 
 	failing := newTestInstaller(t, cfg, sb)
-	report, err := failing.Run(ctx, RunOptions{Command: "init", Skip: []string{"preflight"}})
+	report, err := failing.Run(ctx, RunOptions{Command: "init", Skip: []string{"preflight", "certificate"}})
 	if err == nil {
 		t.Fatal("Run succeeded even though apt failed")
 	}
@@ -264,12 +268,12 @@ func TestEngineResumesAfterFailure(t *testing.T) {
 
 	sb.aptFails = false
 	resumed := newTestInstaller(t, cfg, sb)
-	resumeReport, err := resumed.Run(ctx, RunOptions{Command: "init", Skip: []string{"preflight"}})
+	resumeReport, err := resumed.Run(ctx, RunOptions{Command: "init", Skip: []string{"preflight", "certificate"}})
 	if err != nil {
 		t.Fatalf("resume Run: %v", err)
 	}
 	counts := resumeReport.Counts()
-	if counts[state.StepPresent] != 2 || counts[state.StepOK] != len(resumed.Steps())-3 {
+	if counts[state.StepPresent] != 2 || counts[state.StepOK] != len(resumed.Steps())-skippedSteps-2 {
 		t.Errorf("resume counts = %v, want the two steps before the failure present and the rest ok: %+v", counts, resumeReport.Steps)
 	}
 	if !resumed.State().Installed() {
@@ -283,11 +287,11 @@ func TestEngineDryRunTouchesNothing(t *testing.T) {
 	sb := newSandbox()
 
 	installer := newTestInstaller(t, cfg, sb)
-	report, err := installer.Run(context.Background(), RunOptions{DryRun: true, Skip: []string{"preflight"}})
+	report, err := installer.Run(context.Background(), RunOptions{DryRun: true, Skip: []string{"preflight", "certificate"}})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if counts := report.Counts(); counts[state.StepPlanned] != len(installer.Steps())-1 {
+	if counts := report.Counts(); counts[state.StepPlanned] != len(installer.Steps())-skippedSteps {
 		t.Errorf("dry run counts = %v, want 6 planned: %+v", counts, report.Steps)
 	}
 	if _, err := os.Stat(cfg.Paths.StateDir); !os.IsNotExist(err) {
@@ -318,7 +322,7 @@ func TestNewRejectsDomainChange(t *testing.T) {
 	cfg := testConfig(t)
 	sb := newSandbox()
 	installer := newTestInstaller(t, cfg, sb)
-	if _, err := installer.Run(context.Background(), RunOptions{Skip: []string{"preflight"}}); err != nil {
+	if _, err := installer.Run(context.Background(), RunOptions{Skip: []string{"preflight", "certificate"}}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 
@@ -340,7 +344,7 @@ func TestEngineJournalRecordsRun(t *testing.T) {
 	t.Parallel()
 	cfg := testConfig(t)
 	installer := newTestInstaller(t, cfg, newSandbox())
-	if _, err := installer.Run(context.Background(), RunOptions{Command: "init", Skip: []string{"preflight"}}); err != nil {
+	if _, err := installer.Run(context.Background(), RunOptions{Command: "init", Skip: []string{"preflight", "certificate"}}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 
@@ -355,7 +359,7 @@ func TestEngineJournalRecordsRun(t *testing.T) {
 	if last.Command != "init" || last.Version != "test" {
 		t.Errorf("journal run identity = %+v", last)
 	}
-	if want := len(installer.Steps()) - 1; len(last.Steps) != want {
+	if want := len(installer.Steps()) - skippedSteps; len(last.Steps) != want {
 		t.Errorf("journal recorded %d steps, want %d: %+v", len(last.Steps), want, last.Steps)
 	}
 }

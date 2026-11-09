@@ -63,7 +63,7 @@ persisted values.`)
 	ctx, cancel := a.context()
 	defer cancel()
 
-	installer, err := install.New(a.installOptions(cfg))
+	installer, err := install.New(a.installOptions(cfg, *configFlag))
 	if err != nil {
 		fmt.Fprintf(a.stderr, "uv renew-site: %v\n", err)
 		return exitFailure

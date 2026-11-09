@@ -113,7 +113,7 @@ func (a *application) deviceAdd(args []string) int {
 		fmt.Fprintf(a.stderr, "uv device add: %v\n", err)
 		return exitFailure
 	}
-	if code := a.applyXrayConfig(cfg, "uv device add"); code != exitOK {
+	if code := a.applyXrayConfig(cfg, *configPath, "uv device add"); code != exitOK {
 		return code
 	}
 	uri, err := a.deviceURI(cfg, node, id, *label)
@@ -149,7 +149,7 @@ func (a *application) deviceRemove(args []string) int {
 		fmt.Fprintf(a.stderr, "uv device remove: %v\n", err)
 		return exitFailure
 	}
-	if code := a.applyXrayConfig(cfg, "uv device remove"); code != exitOK {
+	if code := a.applyXrayConfig(cfg, *configPath, "uv device remove"); code != exitOK {
 		return code
 	}
 	fmt.Fprintf(a.stdout, "removed %s\n", flags.Arg(0))
@@ -157,10 +157,10 @@ func (a *application) deviceRemove(args []string) int {
 }
 
 // applyXrayConfig regenerates the proxy configuration after a device change.
-func (a *application) applyXrayConfig(cfg *config.Config, command string) int {
+func (a *application) applyXrayConfig(cfg *config.Config, configPath, command string) int {
 	ctx, cancel := a.context()
 	defer cancel()
-	installer, err := install.New(a.installOptions(cfg))
+	installer, err := install.New(a.installOptions(cfg, configPath))
 	if err != nil {
 		fmt.Fprintf(a.stderr, "%s: %v\n", command, err)
 		return exitFailure

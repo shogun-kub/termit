@@ -73,3 +73,47 @@ func TestNginxDropIn(t *testing.T) {
 		}
 	}
 }
+
+func TestRenewUnit(t *testing.T) {
+	t.Parallel()
+	unit, err := service.Renew("/usr/bin/termit-uv", "/etc/termit/uv/config.yaml")
+	if err != nil {
+		t.Fatalf("Renew: %v", err)
+	}
+	text := string(unit)
+	for _, want := range []string{
+		"Type=oneshot",
+		"ExecStart=/usr/bin/termit-uv renew-cert --config /etc/termit/uv/config.yaml",
+		"NoNewPrivileges=yes",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("renew unit is missing %q", want)
+		}
+	}
+	// A oneshot that restarts itself would fight the timer.
+	if strings.Contains(text, "Restart=") {
+		t.Error("renew unit sets Restart, which the timer already handles")
+	}
+	if _, err := service.Renew("termit-uv", "/etc/termit/uv/config.yaml"); err == nil {
+		t.Error("Renew accepted a relative binary path")
+	}
+}
+
+func TestRenewTimer(t *testing.T) {
+	t.Parallel()
+	timer, err := service.RenewTimer()
+	if err != nil {
+		t.Fatalf("RenewTimer: %v", err)
+	}
+	text := string(timer)
+	for _, want := range []string{
+		"OnCalendar=daily",
+		"RandomizedDelaySec=",
+		"Persistent=true",
+		"WantedBy=timers.target",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("timer is missing %q", want)
+		}
+	}
+}
