@@ -98,6 +98,7 @@ internal/version/       version, build metadata, api_version constants
 internal/uv/agent/      scheduler, sync loop, state machine client side
 internal/uv/install/    install/upgrade/uninstall steps, package management
 internal/uv/xray/       config model, generator, hot API client, `xray -test` gate
+internal/uv/service/    generated systemd units and the nginx drop-in
 internal/uv/decoy/      deterministic site generator + embedded templates
 internal/uv/web/        generated nginx config (TLS, decoy root, proxy of the secret prefix)
 internal/uv/acme/       ACME (HTTP-01), certificate store, renewal
@@ -109,7 +110,9 @@ internal/mn/probe/      health prober (xray-core worker; cert/decoy; DNS)
 internal/mn/sub/        subscription rendering (base64 and sing-box JSON)
 internal/mn/sched/      scheduler, check queue, state machine server side
 internal/mn/admin/      unix-socket admin API + CLI glue
-deploy/systemd/         unit files
+deploy/systemd/         installed copies of the units, for readers; the authoritative generator is
+                        `internal/uv/service` (paths come from the configuration, so nothing is shipped
+                        as a static file)
 deploy/install/         bootstrap shell script and release checks
 test/lab/               SSH-driven acceptance suite (build tag `lab`)
 test/integration/       Docker Compose suite

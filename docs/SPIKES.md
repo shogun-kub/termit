@@ -222,4 +222,38 @@ process. The product archetype ships brand-free: a real vendor's mark in an AGPL
 trademark use, and every deployment sharing one logo is itself a fingerprint.
 
 Recorded for M1.5: the server block still needs `charset utf-8;` (nginx answered `Content-Type:
-text/html` without one) and caching headers for `/assets/`.
+text/html` without one) and caching headers for `/assets/`. Both landed in M1.5.
+
+## S10 (M1.5) — What the first real node taught us
+
+`uv init` on `termit-uv1` runs the whole pipeline: the core, the vhost, the units, both services up,
+and a `vless://` client reaching the internet through nginx. Four things only a live host showed:
+
+1. **`xray -test` picks its parser by file extension.** Staging the generated config as
+   `/etc/termit/uv/xray.json.new` made the core answer `Failed to get format of …xray.json.new`, and
+   `-format=json` does not override it. The staged file is now `xray.json.new.json`; the live file keeps
+   its name and the rename stays atomic.
+2. **The core could not read its own config.** `xray.json` is `0640 root:termit`, but
+   `/etc/termit/uv` was `0750 root:root` and `/etc/termit` was `0750 root:root`, so the unprivileged
+   core could not traverse into it: `open /etc/termit/uv/xray.json: permission denied` and a restart
+   loop (`start request repeated too quickly`). The config directory now belongs to group `termit`
+   (`0750`), its parent is `0755`, and the `dirs` step *verifies* the group — the first fix was a
+   silent no-op because the step reported itself satisfied and never ran.
+3. **nginx 1.25+ needs an explicit `http2 on;`.** Without it the listener offers only `http/1.1` in
+   ALPN, Xray's XHTTP client sends the h2 preface anyway, and nginx answers `400` on
+   `PRI * HTTP/2.0` — the tunnel never starts. With the directive the client speaks h2 to nginx, nginx
+   speaks HTTP/1.1 to Xray, and `https://example.com` through the tunnel answers `200`.
+4. **Disabling a vhost by renaming it inside `sites-enabled` does not disable it.** Debian's include is
+   `sites-enabled/*`, a glob, so `default.termit-disabled` is still loaded — and being
+   `default_server` it kept answering the bare address with Debian's welcome page. The file is parked
+   in `sites-available/` instead, where nothing includes it, and `uv uninstall` moves it back.
+
+Also observed: after `systemctl reload nginx` the old worker keeps serving in-flight requests, so a
+`curl` issued in the same second can still see the previous vhost. That is nginx's graceful reload, not
+a bug in the step.
+
+The Xray API path was exercised by hand against a throwaway config: `xray api adu` with a full inbound
+object (it validates the inbound, so `listen` and `port` have to be present) added a user, and
+`xray api rmu -tag=proxy <email>` removed it. M1.5 restarts the core instead, because a restart costs
+one connection and only happens when the generated config changes; the API path belongs with the daily
+peer sync in M3, where the client set actually changes.

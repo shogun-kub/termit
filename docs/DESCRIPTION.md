@@ -101,6 +101,7 @@ Two binaries, one repository:
 | `:80/tcp` | `nginx` | ACME HTTP-01 webroot and `301` to HTTPS |
 | `:443/tcp` | `nginx` | TLS termination, the decoy site, and the proxy hop for the secret path |
 | `127.0.0.1:8443/tcp` | `xray` | VLESS+XHTTP, plaintext, loopback only |
+| `127.0.0.1:10085/tcp` | `xray` | management API (inbounds, users), loopback only |
 | `127.0.0.1:40000/tcp` | `warp-cli` (optional) | WARP SOCKS5 proxy |
 
 The front is nginx because the routing decision is a **prefix** match. Xray's `fallbacks` compare the
@@ -117,6 +118,16 @@ nginx serves; an owner who wants a real site can point the fallback location at 
 > Design note: this is the same three-layer shape the references use. The difference is that we
 > generate and own one nginx configuration file instead of overwriting the distribution's default
 > vhost.
+
+Two details of that file matter operationally:
+
+- **`http2 on;` is mandatory on the TLS listener** (nginx 1.25+). Without it the listener offers only
+  `http/1.1` in ALPN, Xray's XHTTP client sends the HTTP/2 preface anyway, and nginx answers `400` —
+  the tunnel never starts. With it, a client speaks h2 to nginx and nginx speaks HTTP/1.1 to Xray.
+- **The distribution's default vhost is parked** at `sites-available/default.termit-disabled` and put
+  back by `uv uninstall`. It cannot simply be renamed inside `sites-enabled`: Debian includes that
+  directory with a glob, so the renamed file is still loaded, and as `default_server` it would keep
+  answering the bare address with "Welcome to nginx" — a louder fingerprint than the decoy is quiet.
 
 ### 5.2 Request paths on the UV
 
@@ -187,7 +198,7 @@ own credential.
 | `pair_uuid(A,B)` | derived | derivable | in `state.json` + Xray config | A↔B access |
 | `agent_key` | MN at enrollment | Argon2id hash | `identity.json` (0600) | authenticates agent API calls |
 | `sub_token` | MN at enrollment | hash | not needed by UV | read-only subscription URL |
-| local user UUIDs | UV owner | no | `local_users.json` | family devices |
+| local user UUIDs | UV owner | no | `state.json` (`local_users`) | family devices, managed with `uv device` |
 
 ### 6.2 Pair credential derivation
 
@@ -562,9 +573,26 @@ ACME is configured by directory URL (`acme.directory`, or `--acme-ca`), defaulti
 production. `--acme-skip-tls-verify` exists only so the lab can use a self-signed ACME endpoint, and
 `uv doctor` reports it as a warning while it is on. The same knobs exist on MN.
 
+`uv init` converges one step at a time: `preflight`, `user`, `dirs`, `packages`, `xray-binary`,
+`identity`, `decoy`, `xray-config`, `web`, `units`, `start`. A step whose effect is already present
+does nothing, an interrupted run resumes, and `--only/--skip/--force/--dry-run` make the pipeline
+inspectable. Every generated file is checked before it becomes live: `xray -test` for the core config
+(with the previous file restored on failure) and `nginx -t` for the vhost (same rollback).
+
+The vhost changes shape with the node. Before a certificate exists it serves the decoy and the ACME
+challenge over plain HTTP; once `fullchain.pem` and `privkey.pem` are in the certificate directory it
+becomes the TLS vhost with the redirect, HSTS and the proxy location. Both shapes come from the same
+generator, so the switch happens on the next `uv init` after issuance.
+
+The owner's own devices are local users: `uv device list`, `uv device add --label phone`,
+`uv device remove phone`. They live in the state file, are written into the core config, and are never
+sent to MN — a family phone is not a mesh participant.
+
 `termit-uv` runs as a systemd service (agent + ACME + decoy + scheduler), hardened with
 `NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome`, a private `/tmp`, and only the capabilities
-it needs. Xray keeps its own upstream unit.
+it needs. Xray runs under its own generated unit as the unprivileged `termit` user, with an empty
+capability set, `ProtectSystem=strict`, `SystemCallFilter=@system-service` and
+`MemoryDenyWriteExecute`. It reads one config file and owns nothing else.
 
 ### 13.3 MN install
 

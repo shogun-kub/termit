@@ -226,22 +226,56 @@ The site tree moved to `/var/www/termit/{site,acme}`: nginx runs as `www-data` a
   moment, gated by `xray -test`.
 - `uv renew-cert --force` for drills; it must work without touching the decoy.
 
-### M1.5 Config generation, units, hot API
+### M1.5 Config generation, units, hot API — **done**
 
-- Typed Xray config model, deterministic generation, golden files. Xray listens on `127.0.0.1:8443`
-  with `security: none` and `network: xhttp`; it holds no certificate (see `SPIKES.md` S5).
-- Generated nginx configuration: `:80` ACME webroot + redirect, `:443` TLS with the certificate,
-  static decoy root, `location /<secret>/` proxying to `127.0.0.1:8443` (`proxy_http_version 1.1`,
-  buffering off, long read/send timeouts, `client_max_body_size 0`), and the auth endpoint. Validated
-  with `nginx -t` before reload, with rollback on failure.
-- `xray -test` gate with rollback; hot add/remove of clients through the Xray API; validated restart
-  as fallback.
-- Profile constants centralized in `internal/proto/profile.go`; `BuildVLESSUrl`/`ParseVLESSUrl`
-  round-trip tests. The generated URI must not contain `allowInsecure` (`SPIKES.md` S4).
-- systemd units for `termit-uv` and Xray, hardened (`NoNewPrivileges`, `ProtectSystem=strict`,
-  `PrivateTmp`, `RestrictAddressFamilies`, capability set), plus drop-in hardening for the stock nginx
-  unit.
-- Local user list (family devices), independent of the mesh.
+Built:
+
+| Piece | Where | Notes |
+|---|---|---|
+| Typed Xray config + generator | `internal/uv/xray` | VLESS inbound on `127.0.0.1:8443`, `security: none`, `network: xhttp`, `mode: packet-up`; loopback management API on `10085`; golden file, deterministic bytes |
+| Profile and client URI | `internal/proto/profile.go` | `BuildVLESSUrl`/`ParseVLESSUrl`, round-trip test, refuses `allowInsecure` and any transport that is not `xhttp`+`tls` |
+| nginx vhost | `internal/uv/web` | two shapes from one generator: plain HTTP before a certificate exists, TLS afterwards (`http2 on;`, HSTS, `/assets/` cache, ACME location on `:80`, `location /<secret>/` → Xray) |
+| Units | `internal/uv/service` | `termit-xray.service` runs as `termit`, `ProtectSystem=strict`, empty capability set, `SystemCallFilter=@system-service`, `MemoryDenyWriteExecute`; nginx gets a small drop-in |
+| Install steps | `internal/uv/install` | `xray-config` → `web` → `units` → `start`, each converging and journaled |
+| Owner's devices | `uv device list|add|remove` | local users in the state file, never shared with the mesh |
+
+Measured on `termit-uv1` (1 vCPU / 1 GB, Debian 13):
+
+| Check | Result |
+|---|---|
+| `uv init` on an installed node | 1 ok (`preflight`), 9 present, `not yet installed: certificate` |
+| `systemctl is-active termit-xray nginx` | active, active |
+| Loopback listeners | `127.0.0.1:8443` (XHTTP), `127.0.0.1:10085` (API), `:80` (nginx) — Xray has no public port |
+| `GET /` | `200`, the generated page, `5665 B` |
+| `POST <form path>` | `401` + `Set-Cookie` + `X-Request-Id`, no app server behind it |
+| `GET <form path>` / `GET /nope` | `405` / generated `404` |
+| `GET /.well-known/acme-challenge/<token>` | `200` with the token written into the webroot |
+| TLS vhost with a temporary self-signed pair | `200` over HTTP/2, `:80` → `301` to `https`, POST → `401` |
+| `vless://` client through nginx (`https://example.com`, `https://example.org`) | `200`, `200` — client → nginx over h2, nginx → Xray over HTTP/1.1 |
+| `uv device add --label phone` | config rewritten, core restarted, `xray api inbounduser` shows `local-<id>@termit`; `remove` drops it again |
+
+Three findings, all recorded in `SPIKES.md` S10:
+
+1. `xray -test` picks its parser by file extension, so the staged config must end in `.json`;
+2. the core runs as `termit` and could not read `/etc/termit/uv/xray.json` until the directory's group
+   became `termit` and `/etc/termit` became traversable — and the *check* had to verify the group,
+   otherwise the fix never ran;
+3. nginx 1.25+ needs an explicit `http2 on;`: without it a client offering h2 gets its preface refused
+   with `400`, and XHTTP does offer h2.
+
+Deliberately different from the plan:
+
+- **No hot add/remove through the Xray API in this milestone.** The `adu`/`rmu` path was exercised by
+  hand and works, but a restart costs one connection and only happens when the generated config
+  changes, which is rare until the mesh sync exists. The hot path lands with M3 where the peer set
+  changes daily; doing it now would mean writing client-diff code that only sync can use.
+- **The distribution's default vhost is parked, not deleted.** It is renamed to
+  `sites-available/default.termit-disabled` (anything inside `sites-enabled` is loaded, since Debian's
+  include is a glob) and `uv uninstall` puts it back. Without this a request to the bare address
+  answered Debian's welcome page — a louder fingerprint than the decoy is quiet.
+- **No `termit-uv.service` yet**: the agent loop it would run is M3. Only the core and nginx are
+  supervised so far.
+
 
 ### M1.6 Standalone acceptance
 
