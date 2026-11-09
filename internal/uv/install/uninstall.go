@@ -146,7 +146,7 @@ func Uninstall(ctx context.Context, opts UninstallOptions) (*UninstallReport, er
 			report.Removed = append(report.Removed, dir+" (tree)")
 		}
 		// The parent (/etc/termit, /var/lib/termit, /usr/lib/termit) is ours too when it is empty.
-		for _, parent := range parentsToRemove(cfg.Paths.StateDir, cfg.Paths.ConfigDir, cfg.Paths.BinDir) {
+		for _, parent := range parentsToRemove(cfg.Paths.StateDir, cfg.Paths.ConfigDir, cfg.Paths.BinDir, cfg.Paths.SiteDir, cfg.Paths.ACMEWebroot) {
 			if opts.DryRun {
 				report.Removed = append(report.Removed, parent)
 				continue
@@ -218,7 +218,7 @@ func safeParentToRemove(parent string) bool {
 		return false
 	}
 	switch path.Dir(clean) {
-	case "/etc", "/var", "/var/lib", "/usr", "/usr/lib", "/opt", "/srv":
+	case "/etc", "/var", "/var/lib", "/usr", "/usr/lib", "/var/www", "/opt", "/srv":
 		return true
 	}
 	return false
@@ -238,7 +238,7 @@ func safeToRemove(target string) bool {
 		return false
 	}
 	switch clean {
-	case "/etc", "/var", "/usr", "/home", "/root", "/tmp", "/opt", "/srv":
+	case "/etc", "/var", "/usr", "/home", "/root", "/tmp", "/opt", "/srv", "/var/www":
 		return false
 	}
 	// A volume root such as `C:\` has no depth to speak of.

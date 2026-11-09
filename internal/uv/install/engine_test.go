@@ -79,6 +79,7 @@ func testConfig(t *testing.T) *config.Config {
 	cfg.Paths.BinDir = filepath.Join(dir, "sbin")
 	cfg.Paths.XrayConfig = filepath.Join(cfg.Paths.ConfigDir, "xray.json")
 	cfg.Paths.NginxSite = filepath.Join(dir, "nginx", "termit.conf")
+	cfg.Paths.DecoySnippet = filepath.Join(cfg.Paths.StateDir, "nginx", "decoy.conf")
 
 	// A local release directory, so the test never touches the network.
 	archive := buildZip(t, []zipEntry{{name: "xray", body: "#!/bin/sh\nexit 0\n", mode: 0o755}})
@@ -121,8 +122,8 @@ func TestEngineInstallsAndReusesState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v\n%+v", err, report)
 	}
-	if counts := report.Counts(); counts[state.StepOK] != 5 {
-		t.Fatalf("first run counts = %v, want 5 ok steps: %+v", counts, report.Steps)
+	if counts := report.Counts(); counts[state.StepOK] != 6 {
+		t.Fatalf("first run counts = %v, want 6 ok steps: %+v", counts, report.Steps)
 	}
 
 	node := first.State()
@@ -141,6 +142,26 @@ func TestEngineInstallsAndReusesState(t *testing.T) {
 	if !node.HasPath(cfg.Paths.XrayBinary()) {
 		t.Error("manifest does not record the installed core")
 	}
+	if node.Decoy.Digest == "" {
+		t.Error("state does not record the decoy digest")
+	}
+	index, err := os.ReadFile(filepath.Join(cfg.Paths.SiteDir, "index.html"))
+	if err != nil {
+		t.Fatalf("read the generated site: %v", err)
+	}
+	if !strings.Contains(string(index), "<form") {
+		t.Error("generated page has no sign-in form")
+	}
+	snippet, err := os.ReadFile(cfg.Paths.DecoySnippet)
+	if err != nil {
+		t.Fatalf("read the nginx fragment: %v", err)
+	}
+	if !strings.Contains(string(snippet), "location = /") {
+		t.Errorf("nginx fragment has no location block:\n%s", snippet)
+	}
+	if !node.HasPath(cfg.Paths.DecoySnippet) {
+		t.Error("manifest does not record the nginx fragment")
+	}
 	identity := node.Identity.SelfUUID
 	if identity == "" || node.Decoy.Seed == "" {
 		t.Fatalf("identity incomplete: %+v", node)
@@ -157,8 +178,8 @@ func TestEngineInstallsAndReusesState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second Run: %v", err)
 	}
-	if counts := secondReport.Counts(); counts[state.StepPresent] != 5 {
-		t.Fatalf("second run counts = %v, want 5 present steps: %+v", counts, secondReport.Steps)
+	if counts := secondReport.Counts(); counts[state.StepPresent] != 6 {
+		t.Fatalf("second run counts = %v, want 6 present steps: %+v", counts, secondReport.Steps)
 	}
 	if second.State().Identity.SelfUUID != identity {
 		t.Error("a re-run regenerated the identity")
@@ -205,8 +226,8 @@ func TestEngineResumesAfterFailure(t *testing.T) {
 		t.Fatalf("resume Run: %v", err)
 	}
 	counts := resumeReport.Counts()
-	if counts[state.StepPresent] != 2 || counts[state.StepOK] != 3 {
-		t.Errorf("resume counts = %v, want 2 present and 3 ok: %+v", counts, resumeReport.Steps)
+	if counts[state.StepPresent] != 2 || counts[state.StepOK] != 4 {
+		t.Errorf("resume counts = %v, want 2 present and 4 ok: %+v", counts, resumeReport.Steps)
 	}
 	if !resumed.State().Installed() {
 		t.Error("resumed install has no identity")
@@ -223,8 +244,8 @@ func TestEngineDryRunTouchesNothing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if counts := report.Counts(); counts[state.StepPlanned] != 5 {
-		t.Errorf("dry run counts = %v, want 5 planned: %+v", counts, report.Steps)
+	if counts := report.Counts(); counts[state.StepPlanned] != 6 {
+		t.Errorf("dry run counts = %v, want 6 planned: %+v", counts, report.Steps)
 	}
 	if _, err := os.Stat(cfg.Paths.StateDir); !os.IsNotExist(err) {
 		t.Errorf("dry run created %s", cfg.Paths.StateDir)
@@ -291,7 +312,7 @@ func TestEngineJournalRecordsRun(t *testing.T) {
 	if last.Command != "init" || last.Version != "test" {
 		t.Errorf("journal run identity = %+v", last)
 	}
-	if len(last.Steps) != 5 {
-		t.Errorf("journal recorded %d steps, want 5: %+v", len(last.Steps), last.Steps)
+	if len(last.Steps) != 6 {
+		t.Errorf("journal recorded %d steps, want 6: %+v", len(last.Steps), last.Steps)
 	}
 }

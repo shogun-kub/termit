@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en" data-theme="{{.Theme}}" data-layout="{{.Layout}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="color-scheme" content="{{.Theme}}">
+<title>{{.Title}}</title>
+<link rel="icon" type="image/png" href="/favicon.png">
+<style>{{.CSS}}</style>
+<script src="/assets/boot.js" defer></script>
+</head>
+<body>
+<main class="shell">
+  <section class="card">
+    <header class="head">
+      <div class="mark">{{.Mark}}</div>
+      <p class="badge">{{.Badge}}</p>
+      <h1>{{.Title}}</h1>
+      <p class="sub">{{.Subtitle}}</p>
+    </header>
+    <form class="form" id="{{.FormID}}" method="post" action="{{.Action}}" novalidate>
+      <div class="field">
+        <label for="{{.UserID}}">{{.UserLabel}}</label>
+        <input id="{{.UserID}}" name="{{.UserID}}" type="text" autocomplete="username" autocapitalize="off" spellcheck="false" required>
+      </div>
+      <div class="field">
+        <label for="{{.PassID}}">{{.PassLabel}}</label>
+        <input id="{{.PassID}}" name="{{.PassID}}" type="password" autocomplete="current-password" required>
+        {{- if .Forgot}}
+        <a class="hint" href="/account/recovery">{{.Forgot}}</a>
+        {{- end}}
+      </div>
+      <label class="check">
+        <input id="{{.RememberID}}" name="{{.RememberID}}" type="checkbox" value="1">
+        <span>{{.Remember}}</span>
+      </label>
+      <button class="cta" type="submit">{{.CTA}}</button>
+      {{- if .ShowSSO}}
+      <a class="sso" href="/sso">{{.SSOLabel}}</a>
+      {{- end}}
+    </form>
+    <footer class="foot {{.FooterMode}}">
+      <p class="org">&copy; {{.Year}} {{.Company}}</p>
+      <nav>{{range .Links}}<a href="{{.Href}}">{{.Label}}</a>{{end}}</nav>
+    </footer>
+  </section>
+</main>
+</body>
+</html>

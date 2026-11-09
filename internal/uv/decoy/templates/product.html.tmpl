@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>{{.Title}}</title>
+<link rel="icon" type="image/png" href="/favicon.png">
+<style>{{.CSS}}</style>
+<script src="/assets/boot.js" defer></script>
+</head>
+<body>
+<main class="wrap">
+  <section class="panel">
+    <div class="brand">{{.Mark}}<span>{{.Brand}}</span></div>
+    <h1>{{.Title}}</h1>
+    <p class="sub">{{.Subtitle}}</p>
+    <form class="form" id="{{.FormID}}" method="post" action="{{.Action}}" novalidate>
+      <div class="field">
+        <label for="{{.UserID}}">{{.UserLabel}}</label>
+        <input id="{{.UserID}}" name="{{.UserID}}" type="email" autocomplete="username" spellcheck="false" required>
+      </div>
+      <div class="field">
+        <label for="{{.PassID}}">{{.PassLabel}}</label>
+        <input id="{{.PassID}}" name="{{.PassID}}" type="password" autocomplete="current-password" required>
+        {{- if .Forgot}}
+        <a class="hint" href="/account/recovery">{{.Forgot}}</a>
+        {{- end}}
+      </div>
+      <button class="cta" type="submit">{{.CTA}}</button>
+      <div class="or"><span>or</span></div>
+      <a class="sso" href="/sso">{{.SSOLabel}}</a>
+    </form>
+    <p class="alt">{{range .Links}}<a href="{{.Href}}">{{.Label}}</a>{{end}}</p>
+  </section>
+  <footer class="shellfoot">
+    <span>{{.Company}}</span>
+    <nav>{{range .Legal}}<a href="{{.Href}}">{{.Label}}</a>{{end}}</nav>
+  </footer>
+</main>
+</body>
+</html>

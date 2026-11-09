@@ -58,6 +58,9 @@ type Identity struct {
 type Decoy struct {
 	Template string `json:"template,omitempty"`
 	Seed     string `json:"seed,omitempty"`
+	// Digest covers the generated files, so a re-run can tell whether the site on disk is the site
+	// the current seed produces.
+	Digest string `json:"digest,omitempty"`
 }
 
 // Xray records the installed core, so a re-run can tell whether it must be replaced.

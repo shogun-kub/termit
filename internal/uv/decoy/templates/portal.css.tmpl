@@ -1,0 +1,83 @@
+:root{
+  --bg:{{.Palette.Background}};
+  --panel:{{.Palette.Panel}};
+  --ink:{{.Palette.Ink}};
+  --muted:{{.Palette.Muted}};
+  --accent:{{.Palette.Accent}};
+  --accent-ink:{{.Palette.AccentInk}};
+  --line:{{.Palette.Line}};
+  --w:{{.CardWidth}}px;
+  --r:{{.Radius}}px;
+}
+*{box-sizing:border-box}
+html{height:100%}
+body{
+  margin:0;min-height:100%;padding:40px 16px;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--bg);color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans",sans-serif;
+  font-size:15px;line-height:1.45;
+  -webkit-font-smoothing:antialiased;
+}
+html[data-theme="dark"] body{
+  background:radial-gradient(58% 46% at 50% 0%,rgba(255,255,255,.05),transparent 72%),var(--bg);
+}
+.shell{width:100%;display:flex;justify-content:center}
+.card{
+  width:var(--w);max-width:100%;
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:calc(var(--r) + 2px);
+  padding:32px 32px 22px;
+  box-shadow:0 1px 0 rgba(255,255,255,.04),0 18px 40px -26px rgba(0,0,0,.6);
+}
+.head{text-align:center;margin-bottom:24px}
+.mark{display:flex;justify-content:center;margin-bottom:14px}
+.badge{margin:0 0 10px;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+h1{margin:0 0 8px;font-size:21px;font-weight:600;letter-spacing:-.01em}
+.sub{margin:0;color:var(--muted);font-size:13.5px}
+.form{display:grid;gap:14px}
+.field{display:grid;gap:6px}
+.field label{font-size:12.5px;font-weight:500;color:var(--muted)}
+input[type=text],input[type=password],input[type=email]{
+  width:100%;padding:10px 12px;font:inherit;color:var(--ink);
+  background:transparent;border:1px solid var(--line);border-radius:var(--r);
+  outline:none;transition:border-color .15s,box-shadow .15s;
+}
+input[type=text]:focus,input[type=password]:focus,input[type=email]:focus{
+  border-color:var(--accent);box-shadow:0 0 0 3px rgba(127,127,127,.18);
+}
+.hint{font-size:12px;color:var(--muted);text-decoration:none;justify-self:end}
+.hint:hover{color:var(--ink)}
+.check{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--muted)}
+.check input{accent-color:var(--accent);width:15px;height:15px;margin:0}
+.cta{
+  margin-top:2px;width:100%;padding:11px 14px;font:inherit;font-weight:600;
+  color:var(--accent-ink);background:var(--accent);border:0;border-radius:var(--r);
+  cursor:pointer;transition:filter .15s,transform .05s;
+}
+.cta:hover{filter:brightness(1.08)}
+.cta:active{transform:translateY(1px)}
+.cta:disabled{cursor:default;filter:brightness(.92)}
+.sso{
+  display:block;text-align:center;padding:10px 14px;font-size:13.5px;
+  color:var(--ink);text-decoration:none;border:1px solid var(--line);border-radius:var(--r);
+}
+.sso:hover{border-color:var(--muted)}
+.foot{margin-top:24px;padding-top:16px;border-top:1px solid var(--line);font-size:11.5px;color:var(--muted)}
+.foot p{margin:0}
+.foot nav{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:8px}
+.foot.stacked nav{flex-direction:column;gap:4px}
+.foot a{color:var(--muted);text-decoration:none}
+.foot a:hover{color:var(--ink)}
+html[data-layout="split"] .field{grid-template-columns:132px 1fr;align-items:center;column-gap:12px}
+html[data-layout="split"] .field .hint{grid-column:2;justify-self:start}
+html[data-layout="split"] .field label{font-size:13px}
+.notfound{max-width:440px;margin:12vh auto 0;text-align:center}
+.notfound .code{margin:0;font-size:44px;font-weight:600;color:var(--accent);line-height:1}
+.notfound h1{margin-top:10px}
+.notfound .home{display:inline-block;margin-top:18px;color:var(--muted);text-decoration:none;font-size:13px}
+@media (max-width:420px){
+  body{padding:20px 12px}
+  .card{padding:24px 20px 18px}
+}

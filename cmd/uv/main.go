@@ -46,7 +46,7 @@ func (verboseFlag) Set(string) error {
 
 // pendingWork is what the installer does not do yet. It shrinks as M1.3–M1.5 land, and a successful
 // init says so instead of pretending the node is complete.
-var pendingWork = []string{"decoy site", "certificate", "proxy and nginx configuration", "systemd units"}
+var pendingWork = []string{"certificate", "proxy and nginx configuration", "systemd units"}
 
 func main() {
 	logLevel.Set(slog.LevelWarn)
@@ -86,13 +86,15 @@ func (a *application) run(args []string) int {
 		return a.runStatus(rest)
 	case "uninstall":
 		return a.runUninstall(rest)
+	case "renew-site":
+		return a.runRenewSite(rest)
 	case "version":
 		fmt.Fprintln(a.stdout, version.String("termit-uv"))
 		return exitOK
 	case "help", "-h", "--help":
 		a.usage(a.stdout)
 		return exitOK
-	case "sync", "unblock", "migrate", "renew-site", "renew-cert", "warp":
+	case "sync", "unblock", "migrate", "renew-cert", "warp":
 		return a.notImplemented(command)
 	default:
 		fmt.Fprintf(a.stderr, "uv: unknown command %q\n\n", command)
@@ -116,12 +118,13 @@ Commands:
   init         install and configure this node (idempotent)
   doctor       run pre-flight and health diagnostics
   status       show node state, identity and last install
+  renew-site   regenerate the decoy site and its nginx fragment
   uninstall    remove Termit from this node
   version      print build and protocol version
   help         show this help
 
 Planned, not in this build:
-  sync, unblock, migrate, renew-site, renew-cert, warp
+  sync, unblock, migrate, renew-cert, warp
 
 Exit status: 0 success, 1 failure, 2 usage error, 3 command not implemented.
 

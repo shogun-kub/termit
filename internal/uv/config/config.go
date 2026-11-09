@@ -48,6 +48,11 @@ const (
 	// DefaultDecoyTemplate is the decoy archetype used when the owner does not pick one.
 	DefaultDecoyTemplate = "portal"
 
+	// publicRoot holds what nginx serves: the decoy tree and the ACME challenge directory. It sits
+	// outside /var/lib because nginx runs unprivileged and must be able to traverse into it, while
+	// the state directory stays 0750.
+	publicRoot = "/var/www/termit"
+
 	// DefaultRenewBeforeDays renews a 90-day certificate around day 60.
 	DefaultRenewBeforeDays = 30
 )
@@ -111,14 +116,15 @@ type Warp struct {
 // layout; they are configurable for tests and for an owner who keeps state on another filesystem,
 // not as a way to scatter files around the host.
 type Paths struct {
-	ConfigDir   string `yaml:"config_dir"`
-	StateDir    string `yaml:"state_dir"`
-	CertDir     string `yaml:"cert_dir"`
-	ACMEWebroot string `yaml:"acme_webroot"`
-	SiteDir     string `yaml:"site_dir"`
-	BinDir      string `yaml:"bin_dir"`
-	XrayConfig  string `yaml:"xray_config"`
-	NginxSite   string `yaml:"nginx_site"`
+	ConfigDir    string `yaml:"config_dir"`
+	StateDir     string `yaml:"state_dir"`
+	CertDir      string `yaml:"cert_dir"`
+	ACMEWebroot  string `yaml:"acme_webroot"`
+	SiteDir      string `yaml:"site_dir"`
+	BinDir       string `yaml:"bin_dir"`
+	XrayConfig   string `yaml:"xray_config"`
+	NginxSite    string `yaml:"nginx_site"`
+	DecoySnippet string `yaml:"decoy_snippet"`
 }
 
 // Default returns a configuration with every default applied and no domain. It is what `uv doctor`
@@ -283,10 +289,10 @@ func (p *Paths) applyDefaults() {
 		p.CertDir = path.Join(p.StateDir, "certs")
 	}
 	if p.ACMEWebroot == "" {
-		p.ACMEWebroot = path.Join(p.StateDir, "acme")
+		p.ACMEWebroot = path.Join(publicRoot, "acme")
 	}
 	if p.SiteDir == "" {
-		p.SiteDir = path.Join(p.StateDir, "site")
+		p.SiteDir = path.Join(publicRoot, "site")
 	}
 	if p.BinDir == "" {
 		p.BinDir = "/usr/lib/termit/bin"
@@ -296,6 +302,9 @@ func (p *Paths) applyDefaults() {
 	}
 	if p.NginxSite == "" {
 		p.NginxSite = "/etc/nginx/sites-available/termit.conf"
+	}
+	if p.DecoySnippet == "" {
+		p.DecoySnippet = path.Join(p.StateDir, "nginx", "decoy.conf")
 	}
 }
 
@@ -311,14 +320,15 @@ func (p Paths) XrayBinary() string { return path.Join(p.BinDir, "xray") }
 func (p Paths) validate() []error {
 	var problems []error
 	required := map[string]string{
-		"paths.config_dir":   p.ConfigDir,
-		"paths.state_dir":    p.StateDir,
-		"paths.cert_dir":     p.CertDir,
-		"paths.acme_webroot": p.ACMEWebroot,
-		"paths.site_dir":     p.SiteDir,
-		"paths.bin_dir":      p.BinDir,
-		"paths.xray_config":  p.XrayConfig,
-		"paths.nginx_site":   p.NginxSite,
+		"paths.config_dir":    p.ConfigDir,
+		"paths.state_dir":     p.StateDir,
+		"paths.cert_dir":      p.CertDir,
+		"paths.acme_webroot":  p.ACMEWebroot,
+		"paths.site_dir":      p.SiteDir,
+		"paths.bin_dir":       p.BinDir,
+		"paths.xray_config":   p.XrayConfig,
+		"paths.nginx_site":    p.NginxSite,
+		"paths.decoy_snippet": p.DecoySnippet,
 	}
 	for name, value := range required {
 		if !filepath.IsAbs(value) && !strings.HasPrefix(value, "/") {

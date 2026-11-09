@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Sign in to Rivet</title>
+<link rel="icon" type="image/png" href="/favicon.png">
+<style>:root{
+  --bg:#f8f6f4;
+  --panel:#ffffff;
+  --ink:#1a1614;
+  --muted:#6f645c;
+  --accent:#9a3412;
+  --accent-ink:#ffffff;
+  --line:#e9e1da;
+  --w:400px;
+  --r:9px;
+}
+*{box-sizing:border-box}
+html{height:100%}
+body{
+  margin:0;min-height:100%;padding:40px 16px;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--bg);color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans",sans-serif;
+  font-size:15px;line-height:1.45;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{width:100%;display:flex;flex-direction:column;align-items:center}
+.panel{
+  width:var(--w);max-width:100%;
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:calc(var(--r) + 2px);
+  padding:34px 34px 26px;
+  box-shadow:0 1px 2px rgba(16,24,40,.06),0 14px 34px -22px rgba(16,24,40,.4);
+}
+.brand{display:flex;align-items:center;gap:9px;margin-bottom:22px;font-weight:600;font-size:14.5px;letter-spacing:-.01em}
+h1{margin:0 0 6px;font-size:22px;font-weight:600;letter-spacing:-.015em}
+.sub{margin:0 0 22px;color:var(--muted);font-size:14px}
+.form{display:grid;gap:14px}
+.field{display:grid;gap:6px}
+.field label{font-size:12.5px;font-weight:500;color:var(--muted)}
+input[type=text],input[type=password],input[type=email]{
+  width:100%;padding:10px 12px;font:inherit;color:var(--ink);
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
+  outline:none;transition:border-color .15s,box-shadow .15s;
+}
+input[type=text]:focus,input[type=password]:focus,input[type=email]:focus{
+  border-color:var(--accent);box-shadow:0 0 0 3px rgba(16,24,40,.08);
+}
+.hint{font-size:12px;color:var(--muted);text-decoration:none;justify-self:end}
+.hint:hover{color:var(--ink)}
+.cta{
+  margin-top:4px;width:100%;padding:11px 14px;font:inherit;font-weight:600;
+  color:var(--accent-ink);background:var(--accent);border:0;border-radius:var(--r);
+  cursor:pointer;transition:filter .15s,transform .05s;
+}
+.cta:hover{filter:brightness(1.08)}
+.cta:active{transform:translateY(1px)}
+.cta:disabled{cursor:default;filter:brightness(.92)}
+.or{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:12px;margin:2px 0}
+.or::before,.or::after{content:"";height:1px;flex:1;background:var(--line)}
+.sso{
+  display:block;text-align:center;padding:10px 14px;font-size:14px;
+  color:var(--ink);text-decoration:none;border:1px solid var(--line);border-radius:var(--r);
+}
+.sso:hover{border-color:var(--muted)}
+.alt{margin:18px 0 0;font-size:13px;text-align:center}
+.alt a{color:var(--accent);text-decoration:none;margin:0 6px}
+.alt a:hover{text-decoration:underline}
+.shellfoot{
+  width:var(--w);max-width:100%;margin-top:20px;display:flex;flex-wrap:wrap;
+  justify-content:space-between;gap:8px 16px;font-size:12px;color:var(--muted);
+}
+.shellfoot nav{display:flex;gap:14px}
+.shellfoot a{color:var(--muted);text-decoration:none}
+.shellfoot a:hover{color:var(--ink)}
+.notfound{max-width:440px;margin:12vh auto 0;text-align:center}
+.notfound .code{margin:0;font-size:44px;font-weight:600;color:var(--accent);line-height:1}
+.notfound h1{margin-top:10px}
+.notfound .home{display:inline-block;margin-top:18px;color:var(--muted);text-decoration:none;font-size:13px}
+@media (max-width:420px){
+  body{padding:20px 12px}
+  .panel{padding:26px 20px 20px}
+}
+</style>
+<script src="/assets/boot.js" defer></script>
+</head>
+<body>
+<main class="wrap">
+  <section class="panel">
+    <div class="brand"><svg viewBox="0 0 28 28" width="28" height="28" fill="none" aria-hidden="true"><path d="M4 20 L14 6 L24 20" stroke="#9a3412" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><circle cx="14" cy="20" r="2.4" fill="#9a3412"/></svg><span>Rivet</span></div>
+    <h1>Sign in to Rivet</h1>
+    <p class="sub">Continue to your Rivet workspace.</p>
+    <form class="form" id="auth-form" method="post" action="/access/verify" novalidate>
+      <div class="field">
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" autocomplete="username" spellcheck="false" required>
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+        <a class="hint" href="/account/recovery">Forgot password?</a>
+      </div>
+      <button class="cta" type="submit">Sign in</button>
+      <div class="or"><span>or</span></div>
+      <a class="sso" href="/sso">Continue with SSO</a>
+    </form>
+    <p class="alt"><a href="/signup">Create account</a></p>
+  </section>
+  <footer class="shellfoot">
+    <span>Rivet Workspace</span>
+    <nav><a href="/terms">Terms</a><a href="/help">Help</a><a href="/privacy">Privacy</a></nav>
+  </footer>
+</main>
+</body>
+</html>

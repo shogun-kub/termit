@@ -128,6 +128,7 @@ func New(opts Options) (*Installer, error) {
 			&packagesStep{env},
 			&xrayStep{env},
 			&identityStep{env},
+			&decoyStep{env},
 		},
 	}, nil
 }
@@ -149,6 +150,9 @@ type RunOptions struct {
 	Only []string
 	// Skip excludes the named steps.
 	Skip []string
+	// Force re-runs the named steps even when their Check reports the effect as present. It is what
+	// `uv renew-site` needs: the site is complete and must still be regenerated.
+	Force []string
 	// DryRun reports what would happen without touching the host and without journaling.
 	DryRun bool
 	// KeepGoing continues after a failing step. The report carries every error; later steps that
@@ -202,6 +206,10 @@ func (i *Installer) Run(ctx context.Context, opts RunOptions) (*Report, error) {
 	}
 	started := i.env.now()
 	report := &Report{Started: started}
+	forced := make(map[string]bool, len(opts.Force))
+	for _, name := range opts.Force {
+		forced[name] = true
+	}
 
 	if opts.DryRun {
 		for _, step := range steps {
@@ -212,12 +220,16 @@ func (i *Installer) Run(ctx context.Context, opts RunOptions) (*Report, error) {
 			case checkErr != nil:
 				entry.Status = state.StepFailed
 				entry.Err = checkErr
-			case res.Satisfied:
+			case res.Satisfied && !forced[step.Name()]:
 				entry.Status = state.StepPresent
 				entry.Detail = res.Detail
 			default:
 				entry.Status = state.StepPlanned
-				entry.Detail = res.Detail
+				if res.Satisfied {
+					entry.Detail = "would regenerate: " + res.Detail
+				} else {
+					entry.Detail = res.Detail
+				}
 			}
 			report.Steps = append(report.Steps, entry)
 		}
@@ -240,7 +252,7 @@ func (i *Installer) Run(ctx context.Context, opts RunOptions) (*Report, error) {
 		stepStarted := i.env.now()
 
 		res, checkErr := step.Check(ctx)
-		if checkErr == nil && res.Satisfied {
+		if checkErr == nil && res.Satisfied && !forced[step.Name()] {
 			report.Steps = append(report.Steps, StepReport{
 				Name: step.Name(), Status: state.StepPresent, Detail: res.Detail,
 				Duration: i.env.now().Sub(stepStarted),
@@ -317,6 +329,11 @@ func (i *Installer) selectSteps(opts RunOptions) ([]Step, error) {
 			return nil, fmt.Errorf("unknown step %q in --only (steps: %s)", name, strings.Join(i.names(), ", "))
 		}
 		only[name] = true
+	}
+	for _, name := range opts.Force {
+		if !known[name] {
+			return nil, fmt.Errorf("unknown step %q in --force (steps: %s)", name, strings.Join(i.names(), ", "))
+		}
 	}
 
 	var selected []Step
