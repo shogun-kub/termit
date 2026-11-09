@@ -190,3 +190,36 @@ else without weakening the check.
 
 Decision: keep the digest table in code, allow `xray.sha256.<arch>` for a re-packed or self-built
 core, and treat the archive as the only artifact whose provenance matters.
+
+## S9 (M1.3) — Can nginx serve the decoy and answer its sign-in form itself?
+
+**Yes, and it removes a daemon.** The page is a generated file tree; the form posts to a path that a
+generated nginx `location` answers with `return 401` and its own headers. Checked on `termit-uv1`
+against a throwaway `nginx -c` configuration on `127.0.0.1:8080`, so nothing on `:80` or `:443` was
+touched:
+
+| Request | Answer |
+|---|---|
+| `GET /` | `200 text/html`, 5.6 KB, zero URLs of any kind in the document |
+| `POST` the path from the form's `action` | `401`, `application/json`, `Set-Cookie: …; HttpOnly`, `X-Request-Id` |
+| `GET` the same path | `405` |
+| `GET /does-not-exist` | `404` with the generated `404.html` |
+| `/robots.txt`, `/favicon.png`, `/assets/boot.js` | `200` with `text/plain`, `image/png` 32×32, `application/javascript` |
+
+Two things only a live server showed:
+
+1. **The first attempt answered `403`.** The tree was under `/var/lib/termit/uv/site`, which is `0750`,
+   and nginx's worker is `www-data` — it cannot traverse that directory. The decoy is public content,
+   so it moved to `/var/www/termit/site` (`0755`, files `0644`), and the ACME webroot to
+   `/var/www/termit/acme` for the same reason: M1.4 needs nginx to read challenge files too.
+2. `error_page 404 /404.html` works from the fragment, so a prober that guesses paths sees the site's
+   own 404 instead of nginx's default page.
+
+Decision: no agent-side HTTP server, which the plan's earlier idea had. The artificial delay it would
+have added is not worth a second daemon on a 1 GiB box, and `return 401` is indistinguishable from an
+application to a scanner; `X-Request-Id $request_id` supplies a unique id per answer without a
+process. The product archetype ships brand-free: a real vendor's mark in an AGPL repository is
+trademark use, and every deployment sharing one logo is itself a fingerprint.
+
+Recorded for M1.5: the server block still needs `charset utf-8;` (nginx answered `Content-Type:
+text/html` without one) and caching headers for `/assets/`.

@@ -158,39 +158,66 @@ Measured on `termit-uv1` (Debian 13, 1 vCPU / 1 GiB), 2026-11-09:
 | Run | Result |
 |---|---|
 | fresh `uv init` | 2 m 28 s total, 2 m 21 s of it the 35 MiB core download through a mirror |
-| second `uv init` | 0.4 s, five steps `present`, `state.json` byte-identical |
+| second `uv init` | 0.4 s, every step `present`, `state.json` byte-identical |
 | `uv uninstall --purge` | no files, no user, no units left; nginx and its default site untouched |
 
-The certificate, decoy, generated Xray/nginx configuration, units and self-test belong to M1.3–M1.5;
+The certificate, decoy, generated Xray/nginx configuration, units and self-test belong to M1.4–M1.5;
 until they land `uv init` ends by naming them instead of pretending the node proxies traffic.
 
+### M1.3 Decoy site — **done**
 
-### M1.3 Decoy site
+- `internal/uv/decoy` generates the site deterministically from `(domain, seed, template)`; the seed is
+  generated once at install and kept in the state file, so the site survives reinstalls, reboots and
+  an owner who edits the configuration.
+- Two archetypes: the **branded enterprise portal** (dark or light preset, invented product, badge,
+  infrastructure-register subtitle, non-standard field labels, checkbox, full-width CTA, fictional
+  footer company and legal links) and the **product sign-in screen** (light, brand row, SSO divider,
+  legal footer). Both are original markup and CSS, written here.
+- Randomised per install: product name, badge, subtitle, credential labels, field ids, CTA, footer
+  company, link set, accent palette, card width, corner radius, label placement (stacked or split),
+  footer arrangement, SSO presence, submit path, cookie name, error code and message.
+- The generator also produces `404.html`, `robots.txt` (disallowing a seed-chosen set of internal-
+  looking paths) and a 32×32 PNG favicon drawn from the same seed, so the tree is complete and
+  self-contained.
+- Anti-fingerprint rules, each enforced by a test over many seeds: no `http(s)://`, `@import`,
+  `preconnect`, `dns-prefetch`, `integrity` or `crossorigin` anywhere in the output; no
+  generator-shaped identifiers (`f_<hex>`, `csrf_<hex>`); the submit path varies per deployment and
+  is the one the form actually posts to; layout varies with the seed; the favicon varies with the seed.
+- `internal/uv/web` renders the nginx fragment the page needs, from the same `decoy.Site`: `error_page
+  404`, and a `location` for the submit path that answers `POST` with the site's own `401` JSON, its
+  `Set-Cookie`, `Cache-Control: no-store` and `X-Request-Id $request_id`, and `405` for anything else.
+  A golden test pins both the page and the fragment so they cannot drift apart.
+- `uv renew-site [--template T] [--seed S] [--dry-run]` regenerates the tree and the fragment,
+  `nginx -t`s and reloads nginx **only when Termit already owns the vhost** (it does not until M1.5),
+  and never touches the identity or the certificate.
+- Tests: determinism (same seed ⇒ byte-identical tree), seed and template variation, spec validation,
+  the anti-fingerprint rules above, `robots.txt`, favicon validity, stale-file removal, and golden
+  pages for both archetypes.
 
-- Generator interface (`Generate(spec) (fs.FS, error)`) plus deterministic content generation from
-  `(domain, seed, template)`; the seed is persisted at install so the site never changes under the
-  owner between restarts.
-- Two archetypes (`DESCRIPTION.md` §5.3): a **branded enterprise portal** generator with randomised
-  product name, vocabulary set, dark/light preset, accent color, footer company and link set — this
-  is the family the reference generator uses, re-implemented in Go — and one **product clone**
-  template, an original re-creation with the same impression, not copied assets.
-- Anti-fingerprint requirements, each with a test: no external hosts in the output (fonts, scripts,
-  images, preconnect hints), no generator-shaped ids (`f_<hex>`, `b_<hex>`, `csrf_<hex>`), no shared
-  fixed submit path, layout variation across seeds, and a favicon derived from the same seed.
-- Embedded HTTP server on a unix socket: static files, `robots.txt`, plausible headers and caching,
-  PROXY-protocol client IP, and a submit endpoint whose path comes from the template. It answers
-  `POST` with a random plausible `401` JSON (error code, message, request id), sets a cookie, and
-  adds a short artificial delay.
-- The tree is served by nginx (`root` + `index`), not by the agent: the generator writes files and the
-  generated nginx config points at them. The auth endpoint is a `location` in that same config with a
-  `return 401` body and cookie header, so the page behaves like a portal without an application
-  server behind it.
-- `uv renew-site [--template T] [--seed S]` regenerates the tree, rewrites the affected nginx
-  location, validates with `nginx -t`, and reloads only nginx.
-- Tests: determinism (same seed ⇒ byte-identical tree), no external URL in any output file,
-  hand-written-looking ids, plausible content for every preset, and a render check against the
-  captured samples in `captures/decoy-samples/` (manual/visual, not a pixel diff).
+Two decisions taken while building it, both reported in `SPIKES.md` S9:
 
+- **nginx answers the form; there is no agent-side HTTP server.** The plan above had an idea for a
+  unix-socket server with PROXY protocol and an artificial delay. `AGENTS.md` §5 forbids the agent
+  from listening on the public ports and nginx already terminates TLS, so the endpoint became a
+  `return 401` location — which is also indistinguishable from an application to a scanner. The lost
+  delay is the one cost, and it is not worth a second daemon on a 1 GiB box.
+- **The product archetype is brand-free.** A faithful re-creation of a real vendor's sign-in screen
+  means shipping its trademark in an AGPL repository and giving every deployment the same logo. The
+  shipped template is an original screen with an invented product name, and its links point at local
+  paths rather than the real vendor.
+
+Measured on `termit-uv1` (nginx 1.26.3, the node's own site tree):
+
+| Request | Answer |
+|---|---|
+| `GET /` | `200 text/html`, 5.6 KB, no URL of any kind in the page |
+| `POST /v1/session/open` (the form's action) | `401`, `application/json`, `Set-Cookie: sess=…; HttpOnly`, `X-Request-Id` |
+| `GET` the same path | `405` |
+| `GET /does-not-exist` | `404` with the generated `404.html` |
+| `/robots.txt`, `/favicon.png`, `/assets/boot.js` | `200` `text/plain`, `image/png` 32×32, `application/javascript` |
+
+The site tree moved to `/var/www/termit/{site,acme}`: nginx runs as `www-data` and could not traverse
+`/var/lib/termit` (0750), so the decoy returned `403`. State and certificates stay in `/var/lib/termit/uv`.
 ### M1.4 Certificate lifecycle
 
 - Issue on init, renew on a schedule derived from `NotAfter` (e.g. at 2/3 of lifetime), retry with

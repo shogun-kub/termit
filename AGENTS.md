@@ -238,7 +238,9 @@ Rules for the lab:
 
 - Config format: YAML, parsed strictly (`KnownFields(true)`), versioned (`schema_version`).
 - Paths: config in `/etc/termit/<component>/`, state in `/var/lib/termit/<component>/`, runtime
-  sockets in `/run/termit/<component>/`. Anything else is a bug on Linux.
+  sockets in `/run/termit/<component>/`. Anything else is a bug on Linux, with one exception:
+  generated *public* content (the decoy tree, the ACME webroot) lives under `/var/www/termit/`, because
+  nginx reads it as an unprivileged user and cannot traverse a `0750` state directory.
 - Every file Termit writes has `0600` (secrets) or `0644` (public), and directories `0750`.
   Certificate private keys are always `0600` — the reference implementation's `0744` is a bug we do
   not repeat.

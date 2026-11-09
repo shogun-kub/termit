@@ -144,9 +144,11 @@ Two archetypes, one generator interface:
   and a footer with a fictional company and legal links. Dark and light presets, one accent color,
   centered card, restrained motion. Randomised per install: product name, vocabulary, preset,
   footer company, link set.
-- **Product clone** (optional, one high-fidelity template). A faithful re-creation of a well-known
-  product's sign-in screen, self-contained, with secondary links that point at the real product so
-  the page behaves like a real deployment.
+- **Product sign-in screen** (optional, one high-fidelity template). A faithful re-creation of the
+  *idiom* of a well-known product's sign-in screen — brand row, one card, an SSO divider, a legal
+  footer — with an invented product name and local secondary links. Shipping a real vendor's mark in
+  an AGPL repository would be trademark use and would give every deployment the same logo, so the
+  template is an original screen with the same impression, not the same brand.
 
 Hard rules, because each of these is a fingerprint a scanner can match:
 
@@ -156,10 +158,16 @@ Hard rules, because each of these is a fingerprint a scanner can match:
   across deployments, no identical layout everywhere. Ids and field names look hand-written; the
   submit path and the auth path vary by install.
 - The submit endpoint answers `POST` with a plausible `401` JSON (error code, message, request id)
-  after a short delay, and sets a cookie — an inert page is weaker than one that answers.
+  and sets a cookie — an inert page is weaker than one that answers. nginx answers it from a
+  generated fragment (`return 401` with the body, cookie and a per-request id), so no application
+  server runs behind the page; the page, the endpoint and the fragment come from one data set.
 - A `robots.txt` that disallows a few internal-looking paths, and a favicon generated from the same
   seed.
 - Templates are original re-creations. Brand assets and CSS of a real product are never copied.
+
+The tree is written to `/var/www/termit/site` with mode `0755`, because nginx runs as `www-data` and
+cannot traverse the `0750` state directory; state, certificates and the generated nginx fragment stay
+under `/var/lib/termit/uv` and `/etc/termit/uv`.
 
 Local visual references (screenshots and serialized DOM of pages used for inspiration) live in
 `captures/decoy-samples/`, which is gitignored: provenance stays out of the published repository.
