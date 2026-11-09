@@ -1,0 +1,21 @@
+# Normalise line endings in the repository and in the working tree. Shell scripts and Go sources
+# must never travel with CRLF: they are shipped to Linux hosts.
+* text=auto eol=lf
+
+# Windows-only helpers keep CRLF if they ever appear.
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Never touch binary payloads.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.zip binary
+*.gz binary
+*.tar binary
+*.dat binary
+*.pem binary
+*.key binary

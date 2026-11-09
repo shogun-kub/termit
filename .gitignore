@@ -1,0 +1,40 @@
+# Third-party reference material. Read-only, never part of this project.
+/references/
+
+# Locally captured visual references (screenshots and page sources of decoy inspiration)
+/captures/
+
+# Build output
+/dist/
+/build/
+*.exe
+*.test
+*.out
+coverage.*
+
+# Local development state
+/.dev/
+/.spike-out/
+
+# Secrets and generated runtime files
+*.pem
+*.key
+*.crt
+*.p12
+*.env
+.env
+identity.json
+state.json
+
+# Databases and logs
+*.db
+*.db-wal
+*.db-shm
+*.log
+
+# Editors and OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
