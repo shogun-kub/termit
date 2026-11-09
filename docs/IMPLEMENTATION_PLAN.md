@@ -427,13 +427,33 @@ Still to do in this milestone:
 - Per-node concurrency limits, global worker pool, circuit breaker: if the worker is unhealthy, all
   results become `unknown` and the scheduler is told not to act (invariant 2).
 
-### M2.4 Subscription and credentials
+### M2.4 Subscription and credentials — **in progress**
 
-- `internal/cred`: derivation + vectors + property tests (order independence, epoch sensitivity).
-- `GET /sub/{token}`: base64 list; `GET /sub/{token}/json`: sing-box profile; ETag; cache headers;
-  stable ordering; degraded markers for `unavailable` peers.
-- Token rotation (`mn sub rotate`), revocation, per-token rate limit.
-- Golden tests for both renderers with a fixed peer set.
+Done:
+
+| Piece | Where | Notes |
+|---|---|---|
+| Renderers | `internal/mn/sub` | one ordered peer set, two formats; ordering (label, then id) is part of the contract because the body is what the ETag validates |
+| `GET /sub/{token}` | `internal/mn/server/subscription.go` | base64 list; a degraded peer stays in the list and says so; `304` on a matching `If-None-Match` |
+| `GET /sub/{token}/json` | same | sing-box profile: one vless outbound per peer, a selector, a direct outbound, and rules that keep private ranges off the mesh |
+| Tokens | `mn sub rotate` | new token returned once, old one stops working at once, rotation is audited |
+| Storage | `enroll` | the record holds the parsed profile (domain, credential, path); a node enrolled before this change must re-enroll |
+| Tests | `internal/mn/sub` | ordering, stability under reordering, degraded marking, empty set, JSON shape, ETag changes |
+
+Lab: the list for `termit-uv1.lan` decoded to
+
+```
+vless://39dadfb7-…@termit-uv1.lan:443?encryption=none&mode=packet-up&path=%2Fcc522787…%2F&security=tls&sni=termit-uv1.lan&type=xhttp#termit-uv1.lan
+```
+
+and the JSON format listed `termit-uv1.lan` (vless), `proxy` (selector) and `direct`. A wrong token
+answered `404`; a conditional fetch answered `304`.
+
+Still to do in this milestone:
+
+- `internal/cred`: pair-credential derivation with vectors and property tests. It is not needed for the
+  acceptance above — a subscription carries self credentials — but M2.5 and the mesh need it.
+- Revocation as an explicit operation (today `sub rotate` supersedes a token rather than revoking it).
 
 ### M2.5 Sync v0
 
