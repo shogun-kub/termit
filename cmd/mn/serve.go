@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/shogun-kub/termit/internal/mn/admin"
 	"github.com/shogun-kub/termit/internal/mn/cert"
 	"github.com/shogun-kub/termit/internal/mn/config"
 	"github.com/shogun-kub/termit/internal/mn/dns"
@@ -73,6 +74,24 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 		WriteTimeout:      60 * time.Second,
 		IdleTimeout:       2 * time.Minute,
 		ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelWarn),
+	}
+
+	// The admin socket is best-effort at startup: a server that cannot offer its CLI must still serve
+	// the agents, and the operator sees exactly why the CLI is missing.
+	if listener, err := listenAdmin(cfg.AdminSocket); err != nil {
+		logger.Warn("admin socket unavailable", "path", cfg.AdminSocket, "err", err)
+	} else {
+		adminService, err := admin.New(db)
+		if err != nil {
+			fmt.Fprintf(stderr, "mn serve: %v\n", err)
+			return exitFailure
+		}
+		logger.Info("admin socket ready", "path", cfg.AdminSocket)
+		go func() {
+			if err := admin.Serve(ctx, listener, adminService, logger); err != nil && ctx.Err() == nil {
+				logger.Error("admin socket stopped", "err", err)
+			}
+		}()
 	}
 
 	serveErr := make(chan error, 1)

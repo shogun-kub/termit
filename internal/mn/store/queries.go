@@ -356,6 +356,16 @@ func (s *Store) SetUVState(ctx context.Context, id string, to State, reason, act
 	return Event{UVID: id, At: now, FromState: from, ToState: to, Reason: reason, Actor: actor}, nil
 }
 
+// ApproveUV stamps the approval of a node that an operator let into the mesh.
+func (s *Store) ApproveUV(ctx context.Context, id string, now time.Time) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE uv SET approved_at = COALESCE(approved_at, ?) WHERE id = ?`,
+		formatTime(now), id)
+	if err != nil {
+		return fmt.Errorf("store: approve node %s: %w", id, err)
+	}
+	return nil
+}
+
 // TouchUV records a successful agent request.
 func (s *Store) TouchUV(ctx context.Context, id, ip, agentVersion string, now time.Time) error {
 	_, err := s.db.ExecContext(ctx,

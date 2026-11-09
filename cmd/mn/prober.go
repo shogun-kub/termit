@@ -24,9 +24,13 @@ func newProber(cfg *config.Config, logger *slog.Logger) (enroll.Prober, error) {
 		Binary:   cfg.Prober.XrayBinary,
 		WorkDir:  filepath.Join(cfg.DataDir, "probe"),
 		ProbeURL: cfg.Prober.URL,
+		CAFile:   cfg.Prober.CAFile,
 	})
 	if err != nil {
-		return nil, err
+		// A broken worker must not take the server down: agents keep enrolling, every check reports
+		// unknown, and the operator sees exactly why in the log.
+		logger.Error("prober unavailable; checks will report unknown", "err", err)
+		return unknownProber{}, nil
 	}
 	return workerProber{worker: worker}, nil
 }

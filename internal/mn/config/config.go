@@ -67,6 +67,8 @@ type Prober struct {
 	XrayBinary string `yaml:"xray_binary"`
 	// URL is fetched through each tunnel to prove the tunnel carries traffic.
 	URL string `yaml:"url"`
+	// CAFile is a PEM bundle the prober trusts instead of the system roots.
+	CAFile string `yaml:"ca_file"`
 }
 
 // ACME is the certificate authority this server uses for its own TLS.

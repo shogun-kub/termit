@@ -77,6 +77,9 @@ type Config struct {
 	Timeout time.Duration
 	// BasePort is the first SOCKS port to try. Defaults to 19000.
 	BasePort int
+	// CAFile is a PEM bundle the worker trusts instead of the system roots. A lab CA or a private
+	// PKI needs it; empty means the system bundle.
+	CAFile string
 }
 
 // Worker runs xray-core and probes targets through it.
@@ -156,6 +159,11 @@ func (w *Worker) Probe(ctx context.Context, targets []Target) ([]Result, error) 
 	defer func() { _ = logFile.Close() }()
 
 	cmd := exec.CommandContext(ctx, w.cfg.Binary, "run", "-c", cfgPath)
+	if w.cfg.CAFile != "" {
+		// Go reads SSL_CERT_FILE at startup, so the worker can trust a private CA without that CA
+		// being installed in the host's bundle.
+		cmd.Env = append(os.Environ(), "SSL_CERT_FILE="+w.cfg.CAFile)
+	}
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	if err := cmd.Start(); err != nil {

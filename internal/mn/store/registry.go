@@ -142,6 +142,37 @@ func (s *Store) AdminByTokenHash(ctx context.Context, hash string) (Admin, error
 	return admin, nil
 }
 
+// Admins returns every operator token, so the admin service can compare a presented token against
+// them. The registry holds a handful of tokens, not thousands: a scan is honest here and avoids an
+// index that would leak which prefix matched.
+func (s *Store) Admins(ctx context.Context) ([]Admin, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, name, token_hash, created_at, last_used_at FROM admin ORDER BY created_at`)
+	if err != nil {
+		return nil, fmt.Errorf("store: list admins: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []Admin
+	for rows.Next() {
+		var (
+			admin      Admin
+			createdAt  string
+			lastUsedAt sql.NullString
+		)
+		if err := rows.Scan(&admin.ID, &admin.Name, &admin.TokenHash, &createdAt, &lastUsedAt); err != nil {
+			return nil, fmt.Errorf("store: scan admin: %w", err)
+		}
+		if admin.CreatedAt, err = parseTime(createdAt); err != nil {
+			return nil, fmt.Errorf("store: parse admin created_at: %w", err)
+		}
+		if admin.LastUsedAt, err = scanNullTime(lastUsedAt); err != nil {
+			return nil, fmt.Errorf("store: parse admin last_used_at: %w", err)
+		}
+		out = append(out, admin)
+	}
+	return out, rows.Err()
+}
+
 // AdminCount returns how many operator tokens exist.
 func (s *Store) AdminCount(ctx context.Context) (int, error) {
 	var count int
