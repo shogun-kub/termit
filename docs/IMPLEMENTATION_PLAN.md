@@ -521,6 +521,7 @@ scheduler's job (§7.2), not this milestone's.
 
 | Piece | Result |
 |---|---|
+| `uv enroll` | registers the node, stores the credentials in the state file and takes the first sync; refuses a second enrollment without `--force` |
 | Sealed agent key (schema v3) | `mn uv agentkey` reads the key back without rotating it; the row holds a digest and an `aead:` blob |
 | `uv sync --check` | exit 0 in sync, 4 on drift, 1 when the server is unreachable; writes nothing |
 | Retention | checks 90 days, audit 1 year, pruned at startup and daily in `mn serve` |
