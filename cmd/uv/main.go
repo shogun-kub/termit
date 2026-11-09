@@ -94,6 +94,8 @@ func (a *application) run(args []string) int {
 		return a.runRenewSite(rest)
 	case "renew-cert":
 		return a.runRenewCert(rest)
+	case "enroll":
+		return a.runEnroll(rest)
 	case "sync":
 		return a.runSync(rest)
 	case "uri":
@@ -132,14 +134,16 @@ Commands:
   renew-cert   renew the TLS certificate (--force to replace it)
   uri          print the vless:// URI for this node's own device
   renew-site   regenerate the decoy site and its nginx fragment
+  enroll       register this node with the management server
+  sync         reconcile the core with the server's peer set; --check reports drift
   uninstall    remove Termit from this node
   version      print build and protocol version
   help         show this help
 
 Planned, not in this build:
-  sync, unblock, migrate, warp
+  unblock, migrate, warp
 
-Exit status: 0 success, 1 failure, 2 usage error, 3 command not implemented.
+Exit status: 0 success, 1 failure, 2 usage error, 3 command not implemented,\n             4 sync --check found drift.
 
 Configuration lives in /etc/termit/uv/config.yaml and state in /var/lib/termit/uv/;
 both paths are overridable in the configuration file, and the configuration path with
