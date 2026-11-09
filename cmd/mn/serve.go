@@ -152,12 +152,20 @@ func buildHandler(cfg *config.Config, db *store.Store, logger *slog.Logger) (htt
 	if err != nil {
 		return nil, err
 	}
+	masterKey, err := store.ReadMasterKey(cfg.MasterKeyFile)
+	if err != nil {
+		return nil, err
+	}
 	return server.New(server.Options{
-		Store:      db,
-		Enrollment: service,
-		Domain:     cfg.Domain,
-		Logger:     logger,
-		Attempts:   cfg.Enrollment.Attempts,
-		Window:     time.Duration(cfg.Enrollment.WindowSeconds) * time.Second,
+		Store:         db,
+		Enrollment:    service,
+		Domain:        cfg.Domain,
+		Logger:        logger,
+		Attempts:      cfg.Enrollment.Attempts,
+		Window:        time.Duration(cfg.Enrollment.WindowSeconds) * time.Second,
+		MasterKey:     masterKey,
+		CheckInterval: cfg.Policy.CheckInterval,
+		SyncInterval:  cfg.Policy.SyncInterval,
+		MinSyncDelay:  2 * time.Hour,
 	})
 }

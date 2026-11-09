@@ -1,0 +1,152 @@
+package server
+
+import (
+	"encoding/json"
+	"errors"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/shogun-kub/termit/internal/cred"
+	"github.com/shogun-kub/termit/internal/mn/secret"
+	"github.com/shogun-kub/termit/internal/mn/store"
+	"github.com/shogun-kub/termit/internal/proto"
+)
+
+// sync serves POST /api/v1/agent/sync: the complete desired peer set for one node.
+//
+// The response is a full set rather than a delta on purpose. A node that missed the previous response,
+// or that restarted with an empty memory, must converge from this one answer alone.
+func (h *Handler) sync(w http.ResponseWriter, r *http.Request) {
+	node, refused := h.authenticateAgent(w, r)
+	if refused {
+		return
+	}
+
+	var req proto.SyncRequest
+	if r.ContentLength > 0 {
+		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBody))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&req); err != nil {
+			writeProblem(w, http.StatusBadRequest, proto.NewProblem(http.StatusBadRequest,
+				proto.CodeURLInvalid, "Bad Request", "the sync body is not valid: "+err.Error()))
+			return
+		}
+	}
+
+	now := h.opts.Now().UTC()
+	if err := h.opts.Store.TouchUV(r.Context(), node.ID, sourceIP(r), strings.TrimSpace(req.AgentVersion), now); err != nil {
+		h.opts.Logger.Error("sync: touch node", "uv", node.ID, "err", err)
+	}
+
+	peers, err := h.opts.Store.ListUVs(r.Context(), store.UVFilter{
+		States: []store.State{store.StateActive, store.StateUnavailable},
+	})
+	if err != nil {
+		h.opts.Logger.Error("sync: list peers", "err", err)
+		writeProblem(w, http.StatusInternalServerError, proto.NewProblem(http.StatusInternalServerError,
+			proto.CodeInternal, "Internal Server Error", "the server could not read the registry"))
+		return
+	}
+
+	response := proto.SyncResponse{APIVersion: proto.APIVersion}
+	response.Self.ID = node.ID
+	response.Self.Domain = node.Domain
+	response.Self.State = string(node.State)
+	response.Self.ProbeUUID = node.ProbeUUID
+	response.SubscriptionURL = h.subscriptionURLFor(node)
+	response.Policy = proto.SyncPolicy{
+		CheckIntervalSeconds: int(h.opts.CheckInterval.Seconds()),
+		SyncIntervalSeconds:  int(h.opts.SyncInterval.Seconds()),
+		MinSyncDelaySeconds:  int(h.opts.MinSyncDelay.Seconds()),
+	}
+	// Jitter keeps a group that enrolled together from checking together for the rest of its life.
+	interval := h.opts.CheckInterval
+	if interval <= 0 {
+		interval = 24 * time.Hour
+	}
+	response.NextSyncAfter = now.Add(interval)
+
+	for _, peer := range peers {
+		profile, err := profileOf(peer)
+		if err != nil {
+			h.opts.Logger.Warn("sync: skipping a peer with an unreadable profile", "uv", peer.ID, "err", err)
+			continue
+		}
+		if peer.ID == node.ID {
+			// The node's own entry is its self credential, which it already has; sending it back
+			// would put the owner's credential in a second place for no reason.
+			continue
+		}
+		// The pair credential depends on both epochs, and takes the lower one, so a node that has
+		// rotated and one that has not still derive the same value.
+		epoch := node.CredentialEpoch
+		if peer.CredentialEpoch < epoch {
+			epoch = peer.CredentialEpoch
+		}
+		pair, err := cred.Pair(h.opts.MasterKey, node.ID, peer.ID, epoch)
+		if err != nil {
+			h.opts.Logger.Error("sync: derive a pair credential", "uv", node.ID, "peer", peer.ID, "err", err)
+			writeProblem(w, http.StatusInternalServerError, proto.NewProblem(http.StatusInternalServerError,
+				proto.CodeInternal, "Internal Server Error", "the server could not derive a credential"))
+			return
+		}
+		response.Peers = append(response.Peers, proto.SyncPeer{
+			ID:       peer.ID,
+			Domain:   peer.Domain,
+			Label:    labelOf(peer, profile),
+			UUID:     pair,
+			Path:     profile.Path,
+			Mode:     proto.Mode,
+			State:    string(peer.State),
+			Degraded: peer.State == store.StateUnavailable,
+		})
+	}
+
+	h.opts.Logger.Info("sync served", "uv", node.ID, "peers", len(response.Peers))
+	writeJSON(w, http.StatusOK, response)
+}
+
+// authenticateAgent resolves the bearer token to a node. A blocked or removed node gets the same
+// answer as an unknown key: it has no business here.
+func (h *Handler) authenticateAgent(w http.ResponseWriter, r *http.Request) (store.UV, bool) {
+	header := r.Header.Get("Authorization")
+	const prefix = "Bearer "
+	if !strings.HasPrefix(header, prefix) {
+		writeProblem(w, http.StatusUnauthorized, proto.NewProblem(http.StatusUnauthorized,
+			proto.CodeUnauthorized, "Unauthorized", "a bearer agent key is required"))
+		return store.UV{}, true
+	}
+	token := strings.TrimSpace(strings.TrimPrefix(header, prefix))
+	if token == "" {
+		writeProblem(w, http.StatusUnauthorized, proto.NewProblem(http.StatusUnauthorized,
+			proto.CodeUnauthorized, "Unauthorized", "a bearer agent key is required"))
+		return store.UV{}, true
+	}
+	node, err := h.opts.Store.UVByAgentKeyHash(r.Context(), secret.Digest(token))
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			// One answer for a wrong key and for a node that is gone: the difference is not a client's
+			// business, and saying it would confirm that a guess was close.
+			writeProblem(w, http.StatusUnauthorized, proto.NewProblem(http.StatusUnauthorized,
+				proto.CodeUnauthorized, "Unauthorized", "the agent key is not valid"))
+			return store.UV{}, true
+		}
+		h.opts.Logger.Error("sync: agent lookup", "err", err)
+		writeProblem(w, http.StatusInternalServerError, proto.NewProblem(http.StatusInternalServerError,
+			proto.CodeInternal, "Internal Server Error", "the server could not read the node"))
+		return store.UV{}, true
+	}
+	if node.State == store.StateRemoved || node.State == store.StateBlocked {
+		writeProblem(w, http.StatusForbidden, proto.NewProblem(http.StatusForbidden,
+			"node_inactive", "Forbidden", "this node is not in the mesh"))
+		return store.UV{}, true
+	}
+	return node, false
+}
+
+// subscriptionURLFor is empty on purpose for now: MN keeps only the token's digest, so it cannot print
+// the URL again. A node keeps the URL it received at enrollment. Encrypting the token with the master
+// key is the change that would let MN answer this, and it is recorded as a follow-up rather than
+// faked with a truncated URL.
+func (h *Handler) subscriptionURLFor(node store.UV) string { return "" }

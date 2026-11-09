@@ -37,6 +37,13 @@ type Options struct {
 	Attempts int
 	Window   time.Duration
 	Now      func() time.Time
+	// MasterKey derives pair credentials; it never leaves the process.
+	MasterKey []byte
+	// CheckInterval and SyncInterval are the timing hints a node receives.
+	CheckInterval time.Duration
+	SyncInterval  time.Duration
+	// MinSyncDelay is how long a fresh node waits before its first own cycle.
+	MinSyncDelay time.Duration
 }
 
 // Handler is the router plus its state.
@@ -71,6 +78,7 @@ func New(opts Options) (*Handler, error) {
 	h.mux.HandleFunc("GET /healthz", h.health)
 	h.mux.HandleFunc("GET /metrics", h.metrics)
 	h.mux.HandleFunc("POST /api/v1/enroll", h.enroll)
+	h.mux.HandleFunc("POST /api/v1/agent/sync", h.sync)
 	h.mux.HandleFunc("GET /sub/{token}", h.subscription)
 	h.mux.HandleFunc("GET /sub/{token}/json", h.subscription)
 	h.mux.HandleFunc("/", h.notFound)
