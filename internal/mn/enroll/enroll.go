@@ -8,6 +8,7 @@ package enroll
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -172,11 +173,15 @@ func (s *Service) Enroll(ctx context.Context, req proto.EnrollRequest, sourceIP 
 		notice = "enrolled; an operator has to approve this node before it joins the mesh"
 	}
 
+	profileJSON, err := json.Marshal(profile)
+	if err != nil {
+		return Result{}, err
+	}
 	uv := store.UV{
 		ID:              s.opts.NewID(),
 		Domain:          strings.ToLower(req.Domain),
 		SelfUUID:        profile.UUID,
-		ProfileJSON:     string(proto.ProfileV1),
+		ProfileJSON:     string(profileJSON),
 		State:           state,
 		StateReason:     "enrolled from " + sourceIP,
 		CreatedAt:       now,

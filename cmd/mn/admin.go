@@ -166,6 +166,49 @@ func runInviteRevoke(args []string, stdout, stderr io.Writer) int {
 	return exitOK
 }
 
+// runSub dispatches `mn sub …`.
+func runSub(args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 || args[0] != "rotate" {
+		fmt.Fprintln(stderr, "mn sub: the only subcommand in this build is rotate")
+		return exitUsage
+	}
+	flags, configPath, socket, token := uvFlags("sub rotate", stderr)
+	domain := flags.String("domain", "", "the server's public name, for the URL")
+	if err := flags.Parse(flagsFirst(args[1:], map[string]bool{})); err != nil {
+		return exitUsage
+	}
+	if flags.NArg() != 1 {
+		fmt.Fprintln(stderr, "mn sub rotate: one node id or domain is required")
+		return exitUsage
+	}
+	client, err := adminClient(*configPath, *socket, *token)
+	if err != nil {
+		fmt.Fprintf(stderr, "mn sub rotate: %v\n", err)
+		return exitFailure
+	}
+	var result struct {
+		ID    string `json:"id"`
+		Token string `json:"token"`
+	}
+	callCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := client.Call(callCtx, "sub.rotate", map[string]string{"id": flags.Arg(0)}, &result); err != nil {
+		fmt.Fprintf(stderr, "mn sub rotate: %v\n", err)
+		return exitFailure
+	}
+	host := *domain
+	if host == "" {
+		if cfg, err := config.Load(*configPath); err == nil {
+			host = cfg.Domain
+		}
+	}
+	fmt.Fprintf(stdout, "node:         %s\n", result.ID)
+	fmt.Fprintf(stdout, "subscription: https://%s/sub/%s\n", host, result.Token)
+	fmt.Fprintf(stdout, "sing-box:     https://%s/sub/%s/json\n", host, result.Token)
+	fmt.Fprintln(stdout, "the token is shown once: the server keeps only its digest")
+	return exitOK
+}
+
 // runUV dispatches `mn uv …`.
 func runUV(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {

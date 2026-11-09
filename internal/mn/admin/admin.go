@@ -97,6 +97,8 @@ func (s *Service) Handle(ctx context.Context, req Request) (any, *Error) {
 		return s.setUVState(ctx, req.Args, store.StateActive, "approved by an operator")
 	case "uv.reject":
 		return s.setUVState(ctx, req.Args, store.StateRemoved, "rejected by an operator")
+	case "sub.rotate":
+		return s.rotateSubToken(ctx, req.Args)
 	default:
 		return nil, &Error{Code: CodeBadRequest, Detail: fmt.Sprintf("unknown operation %q", req.Op)}
 	}
@@ -352,6 +354,33 @@ func (s *Service) setUVState(ctx context.Context, raw json.RawMessage, to store.
 		return nil, &Error{Code: CodeInternal, Detail: err.Error()}
 	}
 	return map[string]any{"node": view(updated), "changed": true}, nil
+}
+
+// rotateSubToken issues a new subscription token. The old one stops working immediately; the URL is
+// returned once, because MN only keeps the digest.
+func (s *Service) rotateSubToken(ctx context.Context, raw json.RawMessage) (any, *Error) {
+	var args inviteIDArgs
+	if err := json.Unmarshal(raw, &args); err != nil || args.ID == "" {
+		return nil, &Error{Code: CodeBadRequest, Detail: "a node id or domain is required"}
+	}
+	node, refused := s.resolveUV(ctx, args.ID)
+	if refused != nil {
+		return nil, refused
+	}
+	token, err := secret.Token()
+	if err != nil {
+		return nil, &Error{Code: CodeInternal, Detail: err.Error()}
+	}
+	if err := s.Store.SetSubTokenHash(ctx, node.ID, secret.Digest(token)); err != nil {
+		return nil, &Error{Code: CodeInternal, Detail: err.Error()}
+	}
+	now := s.Now().UTC()
+	if err := s.Store.AppendAudit(ctx, store.AuditRecord{
+		At: now, Actor: "admin", Action: "sub.rotate", Target: node.ID,
+	}); err != nil {
+		return nil, &Error{Code: CodeInternal, Detail: err.Error()}
+	}
+	return map[string]string{"id": node.ID, "token": token}, nil
 }
 
 // Serve accepts requests on listener until ctx is cancelled. Each connection carries one request: the

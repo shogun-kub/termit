@@ -356,6 +356,19 @@ func (s *Store) SetUVState(ctx context.Context, id string, to State, reason, act
 	return Event{UVID: id, At: now, FromState: from, ToState: to, Reason: reason, Actor: actor}, nil
 }
 
+// SetSubTokenHash replaces a node's subscription token digest. The old token stops working at once,
+// which is the point of rotating it.
+func (s *Store) SetSubTokenHash(ctx context.Context, id, hash string) error {
+	if hash == "" {
+		return errors.New("store: refusing an empty subscription token digest")
+	}
+	res, err := s.db.ExecContext(ctx, `UPDATE uv SET sub_token_hash = ? WHERE id = ?`, hash, id)
+	if err != nil {
+		return fmt.Errorf("store: set subscription token for %s: %w", id, err)
+	}
+	return expectOne(res, id)
+}
+
 // ApproveUV stamps the approval of a node that an operator let into the mesh.
 func (s *Store) ApproveUV(ctx context.Context, id string, now time.Time) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE uv SET approved_at = COALESCE(approved_at, ?) WHERE id = ?`,
