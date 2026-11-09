@@ -22,6 +22,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -81,11 +82,71 @@ type Config struct {
 	// CAFile is a PEM bundle the worker trusts instead of the system roots. A lab CA or a private
 	// PKI needs it; empty means the system bundle.
 	CAFile string
+	// BreakerThreshold is how many consecutive worker failures open the breaker. Defaults to 3.
+	BreakerThreshold int
+	// BreakerCooldown is how long the breaker stays open. Defaults to 5 minutes.
+	BreakerCooldown time.Duration
+}
+
+// breaker stops the prober from hammering a core that is not working. While it is open every result is
+// ClassWorker, which callers must read as unknown — a node is never blamed for our own failure.
+type breaker struct {
+	mu        sync.Mutex
+	threshold int
+	cooldown  time.Duration
+	failures  int
+	openUntil time.Time
+	now       func() time.Time
+}
+
+func newBreaker(threshold int, cooldown time.Duration) *breaker {
+	if threshold <= 0 {
+		threshold = 3
+	}
+	if cooldown <= 0 {
+		cooldown = 5 * time.Minute
+	}
+	return &breaker{threshold: threshold, cooldown: cooldown, now: time.Now}
+}
+
+// allow reports whether the worker may run, and for how long it stays out if it may not.
+func (b *breaker) allow() (bool, time.Duration) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	now := b.now()
+	if now.Before(b.openUntil) {
+		return false, b.openUntil.Sub(now)
+	}
+	return true, 0
+}
+
+// record notes one outcome and opens the breaker when the failures pile up.
+func (b *breaker) record(ok bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if ok {
+		b.failures = 0
+		b.openUntil = time.Time{}
+		return
+	}
+	b.failures++
+	if b.failures >= b.threshold {
+		b.openUntil = b.now().Add(b.cooldown)
+		b.failures = 0
+	}
+}
+
+// state reports the current failure count and whether the breaker is open.
+func (b *breaker) state() (int, bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.failures, b.now().Before(b.openUntil)
 }
 
 // Worker runs xray-core and probes targets through it.
 type Worker struct {
-	cfg Config
+	cfg     Config
+	breaker *breaker
 }
 
 // NewWorker validates the configuration and that the xray binary is runnable.
@@ -117,6 +178,7 @@ func NewWorker(cfg Config) (*Worker, error) {
 	if err := os.MkdirAll(cfg.WorkDir, 0o750); err != nil {
 		return nil, fmt.Errorf("probe: create work dir: %w", err)
 	}
+	worker := &Worker{cfg: cfg, breaker: newBreaker(cfg.BreakerThreshold, cfg.BreakerCooldown)}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -124,7 +186,7 @@ func NewWorker(cfg Config) (*Worker, error) {
 	if err != nil {
 		return nil, fmt.Errorf("probe: %s version: %w (%s)", cfg.Binary, err, strings.TrimSpace(string(out)))
 	}
-	return &Worker{cfg: cfg}, nil
+	return worker, nil
 }
 
 // Probe checks every target. A non-nil error means the prober could not run at all; otherwise the
@@ -133,29 +195,47 @@ func (w *Worker) Probe(ctx context.Context, targets []Target) ([]Result, error) 
 	if len(targets) == 0 {
 		return nil, nil
 	}
+	// An open breaker answers before any work is attempted: the caller gets "unknown" for every node
+	// instead of a timeout per node, and the core is left alone until the cooldown passes.
+	if allowed, wait := w.breaker.allow(); !allowed {
+		results := make([]Result, 0, len(targets))
+		for _, target := range targets {
+			results = append(results, Result{
+				ID:    target.ID,
+				Class: ClassWorker,
+				Err:   fmt.Errorf("probe: the prober is unavailable for another %s", wait.Round(time.Second)),
+			})
+		}
+		return results, nil
+	}
+
+	outcome := func(err error) ([]Result, error) {
+		w.breaker.record(err == nil)
+		return nil, err
+	}
 	ports, err := freePorts(len(targets), w.cfg.BasePort)
 	if err != nil {
-		return nil, err
+		return outcome(err)
 	}
 
 	cfg, err := buildConfig(targets, ports)
 	if err != nil {
-		return nil, err
+		return outcome(err)
 	}
 	cfgPath := filepath.Join(w.cfg.WorkDir, "probe.json")
 	if err := writeJSON(cfgPath, cfg); err != nil {
-		return nil, err
+		return outcome(err)
 	}
 
 	if out, err := exec.CommandContext(ctx, w.cfg.Binary, "run", "-test", "-c", cfgPath).CombinedOutput(); err != nil {
-		return nil, fmt.Errorf("probe: generated config rejected by xray: %w (%s)", err, firstLine(out))
+		return outcome(fmt.Errorf("probe: generated config rejected by xray: %w (%s)", err, firstLine(out)))
 	}
 
 	logPath := filepath.Join(w.cfg.WorkDir, "probe.log")
 	// #nosec G304 -- logPath is under Config.WorkDir.
 	logFile, err := os.Create(logPath)
 	if err != nil {
-		return nil, fmt.Errorf("probe: create log: %w", err)
+		return outcome(fmt.Errorf("probe: create log: %w", err))
 	}
 	defer func() { _ = logFile.Close() }()
 
@@ -168,8 +248,9 @@ func (w *Worker) Probe(ctx context.Context, targets []Target) ([]Result, error) 
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("probe: start xray: %w", err)
+		return outcome(fmt.Errorf("probe: start xray: %w", err))
 	}
+	w.breaker.record(true)
 	defer func() {
 		if cmd.Process != nil {
 			_ = cmd.Process.Kill()
