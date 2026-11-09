@@ -134,14 +134,9 @@ type Result struct {
 	Unchanged bool
 }
 
-// Apply makes the core match the desired set and reports what changed.
-func (a Applier) Apply(ctx context.Context, answer proto.SyncResponse, local []state.LocalUser) (Result, error) {
-	if a.Binary == "" || a.ConfigPath == "" {
-		return Result{}, errors.New("agent: the prober binary and config path are required")
-	}
-
-	spec := xray.DefaultSpec()
-	spec.Path = a.Path
+// desired is the client set the core must end up with: the owner, the local devices, the server's probe
+// credential and one pair credential per peer.
+func (a Applier) desired(answer proto.SyncResponse, local []state.LocalUser) map[string]string {
 	desired := map[string]string{a.SelfUUID: a.SelfEmail}
 	for _, user := range local {
 		desired[user.ID] = localEmail(user)
@@ -154,18 +149,55 @@ func (a Applier) Apply(ctx context.Context, answer proto.SyncResponse, local []s
 	for _, peer := range answer.Peers {
 		desired[peer.UUID] = "peer-" + peer.ID + "@termit"
 	}
-	// Sorted, because the generated file must be identical for the same set: that is what makes
-	// "already in sync" a comparison instead of a restart.
+	return desired
+}
+
+// spec turns the desired set into a generator input. The clients are sorted because the generated file
+// must be identical for the same set: that is what makes "already in sync" a comparison instead of a
+// restart.
+func (a Applier) spec(answer proto.SyncResponse, local []state.LocalUser) (xray.Spec, error) {
+	spec := xray.DefaultSpec()
+	spec.Path = a.Path
+	desired := a.desired(answer, local)
 	ids := make([]string, 0, len(desired))
 	for id := range desired {
 		if id == "" {
-			return Result{}, errors.New("agent: a client with an empty credential would make the core accept nobody")
+			return spec, errors.New("agent: a client with an empty credential would make the core accept nobody")
 		}
 		ids = append(ids, id)
 	}
 	sort.Strings(ids)
 	for _, id := range ids {
 		spec.Clients = append(spec.Clients, xray.Client{ID: id, Email: desired[id]})
+	}
+	return spec, nil
+}
+
+// Preview reports what Apply would change, without touching anything: no restart, no write, the same
+// comparison. It is what a monitoring check runs.
+func (a Applier) Preview(answer proto.SyncResponse, local []state.LocalUser) (Result, error) {
+	spec, err := a.spec(answer, local)
+	if err != nil {
+		return Result{}, err
+	}
+	config, err := xray.Generate(spec)
+	if err != nil {
+		return Result{}, err
+	}
+	previous, _ := os.ReadFile(a.ConfigPath) // #nosec G304 -- a path from our own config.
+	return Compare(previous, config, a.desired(answer, local)), nil
+}
+
+// Apply makes the core match the desired set and reports what changed.
+func (a Applier) Apply(ctx context.Context, answer proto.SyncResponse, local []state.LocalUser) (Result, error) {
+	if a.Binary == "" || a.ConfigPath == "" {
+		return Result{}, errors.New("agent: the prober binary and config path are required")
+	}
+
+	desired := a.desired(answer, local)
+	spec, err := a.spec(answer, local)
+	if err != nil {
+		return Result{}, err
 	}
 
 	config, err := xray.Generate(spec)

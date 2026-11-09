@@ -97,6 +97,10 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 		}()
 	}
 
+	// Retention runs in the server because nothing else is running: probe results are telemetry and age
+	// out at 90 days, audit records are evidence and age out at a year.
+	go retention(ctx, db, logger)
+
 	serveErr := make(chan error, 1)
 	if *plainHTTP {
 		fmt.Fprintln(stderr, "mn serve: --http is set; the API is not encrypted")
@@ -183,4 +187,43 @@ func mustMasterKey(cfg *config.Config, logger *slog.Logger) []byte {
 		return nil
 	}
 	return key
+}
+
+// retention prunes on a daily tick. It runs once shortly after start as well, so a server that is
+// restarted often still keeps up.
+func retention(ctx context.Context, db *store.Store, logger *slog.Logger) {
+	const (
+		checkRetention = 90 * 24 * time.Hour
+		auditRetention = 365 * 24 * time.Hour
+	)
+	prune := func() {
+		now := time.Now().UTC()
+		checks, err := db.PruneChecks(ctx, now.Add(-checkRetention))
+		if err != nil && ctx.Err() == nil {
+			logger.Warn("retention: checks", "err", err)
+		}
+		audit, err := db.PruneAudit(ctx, now.Add(-auditRetention))
+		if err != nil && ctx.Err() == nil {
+			logger.Warn("retention: audit", "err", err)
+		}
+		if checks > 0 || audit > 0 {
+			logger.Info("retention pruned", "checks", checks, "audit", audit)
+		}
+	}
+	select {
+	case <-time.After(time.Minute):
+		prune()
+	case <-ctx.Done():
+		return
+	}
+	ticker := time.NewTicker(24 * time.Hour)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			prune()
+		case <-ctx.Done():
+			return
+		}
+	}
 }

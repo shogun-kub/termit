@@ -209,6 +209,9 @@ func (s *Service) Enroll(ctx context.Context, req proto.EnrollRequest, sourceIP 
 		return Result{}, err
 	}
 	uv.AgentKeyHash = secret.Digest(agentKey)
+	if uv.AgentKeySealed, err = secret.Seal(s.opts.Master, agentKey); err != nil {
+		return Result{}, err
+	}
 	uv.SubTokenHash = secret.Digest(subToken)
 	if uv.SubTokenSealed, err = secret.Seal(s.opts.Master, subToken); err != nil {
 		return Result{}, err

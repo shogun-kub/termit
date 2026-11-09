@@ -227,3 +227,34 @@ func TestApplyRollsBackWhenTheCoreRefusesToRestart(t *testing.T) {
 		t.Error("the previous configuration was not restored")
 	}
 }
+
+func TestPreviewReportsDriftWithoutWriting(t *testing.T) {
+	t.Parallel()
+	app, dir := applier(t)
+	app.Runner = &fakeRunner{}
+	app.Unit = "termit-xray.service"
+
+	// Nothing on disk yet: everything is drift, and the preview must not create the file.
+	first, err := app.Preview(answer(), nil)
+	if err != nil {
+		t.Fatalf("Preview: %v", err)
+	}
+	if first.Unchanged {
+		t.Error("Preview claimed the node was in sync with no config at all")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "xray.json")); !os.IsNotExist(err) {
+		t.Error("Preview wrote the config; a check must not change what it measures")
+	}
+
+	// Apply, then preview again: now it is in sync.
+	if _, err := app.Apply(context.Background(), answer(), nil); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	second, err := app.Preview(answer(), nil)
+	if err != nil {
+		t.Fatalf("Preview: %v", err)
+	}
+	if !second.Unchanged {
+		t.Errorf("Preview reported drift right after a successful apply: %+v", second)
+	}
+}

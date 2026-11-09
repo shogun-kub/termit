@@ -25,7 +25,7 @@ import (
 
 // SchemaVersion is the schema this build understands. A database with a higher version is refused
 // rather than migrated down: an older binary writing a newer schema is how registries get corrupted.
-const SchemaVersion = 2
+const SchemaVersion = 3
 
 //go:embed schema.sql
 var schemaFS embed.FS
@@ -120,6 +120,7 @@ func (s *Store) Version(ctx context.Context) (int, error) {
 // database gets the whole schema instead, so this map records what changed rather than duplicating it.
 var migrations = map[int][]string{
 	2: {`ALTER TABLE uv ADD COLUMN sub_token_sealed TEXT NOT NULL DEFAULT ''`},
+	3: {`ALTER TABLE uv ADD COLUMN agent_key_sealed TEXT NOT NULL DEFAULT ''`},
 }
 
 // migrate brings a database to SchemaVersion. Version 0 is a fresh file: the schema is applied as one

@@ -28,6 +28,8 @@ const (
 	exitUsage = 2
 	// exitNotImplemented means the command exists in the interface but not in this build.
 	exitNotImplemented = 3
+	// exitDrift is what `uv sync --check` returns when the node differs from the server's set.
+	exitDrift = 4
 )
 
 // logLevel is shared by every command. The default keeps stdout readable; -v raises it.

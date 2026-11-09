@@ -35,6 +35,7 @@ func (a *application) runSync(args []string) int {
 	flags.SetOutput(stderr)
 	configPath := flags.String("config", configPathDefault(), "path to config.yaml")
 	dryRun := flags.Bool("dry-run", false, "ask and report, but do not touch the core")
+	check := flags.Bool("check", false, "report drift and exit 4 when the node differs from the server; changes nothing")
 	verbose := flags.Bool("v", false, "print the peer set")
 	if err := flags.Parse(args); err != nil {
 		return exitUsage
@@ -76,7 +77,35 @@ func (a *application) runSync(args []string) int {
 		}
 	}
 
-	if *dryRun {
+	if *dryRun || *check {
+		// A check must answer the question without answering it by changing the answer: generate what
+		// the core would get, compare, and leave the file alone.
+		preview := agent.Applier{
+			Binary:     cfg.Paths.XrayBinary(),
+			ConfigPath: cfg.Paths.XrayConfig,
+			Path:       "/" + st.Identity.XHTTPPath + "/",
+			SelfUUID:   st.Identity.SelfUUID,
+			SelfEmail:  "owner",
+		}
+		result, err := preview.Preview(answer, st.LocalUsers)
+		if err != nil {
+			fmt.Fprintf(stderr, "uv sync: %v\n", err)
+			return exitFailure
+		}
+		if result.Unchanged {
+			fmt.Fprintf(stdout, "in sync: %d client(s), %d peer(s)\n", result.Clients, len(answer.Peers))
+			return exitOK
+		}
+		fmt.Fprintf(stdout, "drift: %d to add, %d to remove\n", len(result.Added), len(result.Removed))
+		for _, id := range result.Added {
+			fmt.Fprintf(stdout, "  + %s\n", id)
+		}
+		for _, id := range result.Removed {
+			fmt.Fprintf(stdout, "  - %s\n", id)
+		}
+		if *check {
+			return exitDrift
+		}
 		fmt.Fprintf(stdout, "would apply %d peer(s); nothing was changed\n", len(answer.Peers))
 		return exitOK
 	}

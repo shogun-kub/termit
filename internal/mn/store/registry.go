@@ -334,3 +334,22 @@ func (s *Store) LatestCheck(ctx context.Context, uvID, kind string) (Check, erro
 	}
 	return check, nil
 }
+
+// PruneChecks deletes probe results older than the cutoff and returns how many rows went.
+func (s *Store) PruneChecks(ctx context.Context, before time.Time) (int64, error) {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM "check" WHERE at < ?`, formatTime(before))
+	if err != nil {
+		return 0, fmt.Errorf("store: prune checks: %w", err)
+	}
+	return res.RowsAffected()
+}
+
+// PruneAudit deletes audit records older than the cutoff. The retention window is longer than the
+// checks': an audit trail is evidence, and evidence does not expire at the same speed as telemetry.
+func (s *Store) PruneAudit(ctx context.Context, before time.Time) (int64, error) {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM audit WHERE at < ?`, formatTime(before))
+	if err != nil {
+		return 0, fmt.Errorf("store: prune audit: %w", err)
+	}
+	return res.RowsAffected()
+}

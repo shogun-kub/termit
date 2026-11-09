@@ -101,6 +101,8 @@ func (s *Service) Handle(ctx context.Context, req Request) (any, *Error) {
 		return s.setUVState(ctx, req.Args, store.StateRemoved, "rejected by an operator")
 	case "uv.reissue":
 		return s.reissueAgentKey(ctx, req.Args)
+	case "uv.agentkey":
+		return s.showAgentKey(ctx, req.Args)
 	case "sub.rotate":
 		return s.rotateSubToken(ctx, req.Args)
 	default:
@@ -406,7 +408,11 @@ func (s *Service) reissueAgentKey(ctx context.Context, raw json.RawMessage) (any
 	if err != nil {
 		return nil, &Error{Code: CodeInternal, Detail: err.Error()}
 	}
-	if err := s.Store.SetAgentKeyHash(ctx, node.ID, secret.Digest(token)); err != nil {
+	sealed, err := secret.Seal(s.Master, token)
+	if err != nil {
+		return nil, &Error{Code: CodeInternal, Detail: err.Error()}
+	}
+	if err := s.Store.SetAgentKeyHash(ctx, node.ID, secret.Digest(token), sealed); err != nil {
 		return nil, &Error{Code: CodeInternal, Detail: err.Error()}
 	}
 	now := s.Now().UTC()
@@ -416,6 +422,27 @@ func (s *Service) reissueAgentKey(ctx context.Context, raw json.RawMessage) (any
 		return nil, &Error{Code: CodeInternal, Detail: err.Error()}
 	}
 	return map[string]string{"id": node.ID, "agent_key": token}, nil
+}
+
+// showAgentKey returns the node's current key without rotating it. An owner who lost the key learns it
+// again; a working node keeps working.
+func (s *Service) showAgentKey(ctx context.Context, raw json.RawMessage) (any, *Error) {
+	var args inviteIDArgs
+	if err := json.Unmarshal(raw, &args); err != nil || args.ID == "" {
+		return nil, &Error{Code: CodeBadRequest, Detail: "a node id or domain is required"}
+	}
+	node, refused := s.resolveUV(ctx, args.ID)
+	if refused != nil {
+		return nil, refused
+	}
+	if node.AgentKeySealed == "" {
+		return nil, &Error{Code: CodeNotFound, Detail: "this node has no stored key: rotate it with `mn uv reissue`"}
+	}
+	key, err := secret.Open(s.Master, node.AgentKeySealed)
+	if err != nil {
+		return nil, &Error{Code: CodeInternal, Detail: "the stored key does not open: " + err.Error()}
+	}
+	return map[string]string{"id": node.ID, "agent_key": key}, nil
 }
 
 // Serve accepts requests on listener until ctx is cancelled. Each connection carries one request: the

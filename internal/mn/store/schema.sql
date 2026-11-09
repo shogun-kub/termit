@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS uv (
     last_request_ip TEXT NOT NULL DEFAULT '',
     agent_version   TEXT NOT NULL DEFAULT '',
     agent_key_hash  TEXT NOT NULL DEFAULT '',
+    agent_key_sealed TEXT NOT NULL DEFAULT '',
     sub_token_hash  TEXT NOT NULL DEFAULT '',
     sub_token_sealed TEXT NOT NULL DEFAULT '',
     failed_cycles   INTEGER NOT NULL DEFAULT 0,

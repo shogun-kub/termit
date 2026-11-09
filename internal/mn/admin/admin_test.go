@@ -17,6 +17,9 @@ var testNow = time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC)
 
 const testToken = "admin-token-for-tests"
 
+// testMaster is what the service seals credentials with; it never leaves the process in production.
+var testMaster = []byte("0123456789abcdef0123456789abcdef")
+
 // start runs the service on a loopback TCP listener: the admin transport is a unix socket, but the
 // service, the protocol and the client are what these tests cover, and TCP is the same stream.
 func start(t *testing.T) (admin.Client, *store.Store) {
@@ -38,6 +41,7 @@ func start(t *testing.T) (admin.Client, *store.Store) {
 		t.Fatalf("admin.New: %v", err)
 	}
 	service.Now = func() time.Time { return testNow }
+	service.Master = testMaster
 	service.NewID = func() string { return "inv_test" }
 	service.NewCode = func() (string, error) { return "AAAA-BBBB-CCCC", nil }
 
@@ -213,5 +217,48 @@ func TestClientReportsAMissingSocket(t *testing.T) {
 	client := admin.Client{Network: "tcp", Address: "127.0.0.1:1", Token: testToken, Timeout: time.Second}
 	if err := call(context.Background(), client, "uv.list", nil, nil); err == nil {
 		t.Fatal("Call succeeded without a server")
+	}
+}
+
+func TestAgentKeyCanBeReadBack(t *testing.T) {
+	t.Parallel()
+	client, db := start(t)
+	ctx := context.Background()
+
+	// Issue a key through the socket, then read it back through the socket.
+	var issued struct {
+		AgentKey string `json:"agent_key"`
+	}
+	if err := call(ctx, client, "uv.reissue", map[string]string{"id": "uv_absent"}, &issued); err == nil {
+		t.Fatal("reissue accepted an unknown node")
+	}
+
+	if err := db.CreateUV(ctx, store.UV{ID: "uv_1", Domain: "one.example.com", SelfUUID: "u1", State: store.StateActive, CreatedAt: testNow, CredentialEpoch: 1}); err != nil {
+		t.Fatalf("CreateUV: %v", err)
+	}
+	if err := call(ctx, client, "uv.reissue", map[string]string{"id": "uv_1"}, &issued); err != nil {
+		t.Fatalf("uv.reissue: %v", err)
+	}
+	if issued.AgentKey == "" {
+		t.Fatal("reissue returned no key")
+	}
+
+	var read struct {
+		ID       string `json:"id"`
+		AgentKey string `json:"agent_key"`
+	}
+	if err := call(ctx, client, "uv.agentkey", map[string]string{"id": "one.example.com"}, &read); err != nil {
+		t.Fatalf("uv.agentkey: %v", err)
+	}
+	if read.AgentKey != issued.AgentKey {
+		t.Errorf("uv.agentkey returned %q, want the issued key", read.AgentKey)
+	}
+
+	// A node with no stored key says so instead of returning an empty string.
+	if err := db.CreateUV(ctx, store.UV{ID: "uv_2", Domain: "two.example.com", SelfUUID: "u2", State: store.StatePending, CreatedAt: testNow, CredentialEpoch: 1}); err != nil {
+		t.Fatalf("CreateUV: %v", err)
+	}
+	if err := call(ctx, client, "uv.agentkey", map[string]string{"id": "uv_2"}, &read); err == nil {
+		t.Fatal("uv.agentkey invented a key for a node that has none")
 	}
 }

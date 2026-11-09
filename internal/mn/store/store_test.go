@@ -380,3 +380,56 @@ func TestBackupAndMasterKey(t *testing.T) {
 		t.Error("WriteMasterKey accepted an empty key")
 	}
 }
+
+func TestRetentionPrunesOldRows(t *testing.T) {
+	t.Parallel()
+	s := openTestStore(t)
+	ctx := context.Background()
+	old := testNow.Add(-100 * 24 * time.Hour)
+	fresh := testNow.Add(-1 * time.Hour)
+
+	for _, check := range []store.Check{
+		{UVID: "uv_1", At: old, Kind: "probe", OK: true},
+		{UVID: "uv_1", At: fresh, Kind: "probe", OK: true},
+	} {
+		if err := s.AppendCheck(ctx, check); err != nil {
+			t.Fatalf("AppendCheck: %v", err)
+		}
+	}
+	for _, record := range []store.AuditRecord{
+		{At: testNow.Add(-400 * 24 * time.Hour), Actor: "admin", Action: "uv.enroll", Target: "uv_1"},
+		{At: old, Actor: "admin", Action: "uv.enroll", Target: "uv_1"},
+		{At: fresh, Actor: "admin", Action: "uv.enroll", Target: "uv_1"},
+	} {
+		if err := s.AppendAudit(ctx, record); err != nil {
+			t.Fatalf("AppendAudit: %v", err)
+		}
+	}
+
+	checks, err := s.PruneChecks(ctx, testNow.Add(-90*24*time.Hour))
+	if err != nil {
+		t.Fatalf("PruneChecks: %v", err)
+	}
+	if checks != 1 {
+		t.Errorf("pruned %d checks, want 1", checks)
+	}
+	// The fresh result survived, so a node is not left with no evidence at all.
+	if _, err := s.LatestCheck(ctx, "uv_1", "probe"); err != nil {
+		t.Errorf("the recent check was pruned too: %v", err)
+	}
+
+	audit, err := s.PruneAudit(ctx, testNow.Add(-365*24*time.Hour))
+	if err != nil {
+		t.Fatalf("PruneAudit: %v", err)
+	}
+	if audit != 1 {
+		t.Errorf("pruned %d audit records, want 1", audit)
+	}
+	count, err := s.AuditCount(ctx, "uv_1")
+	if err != nil {
+		t.Fatalf("AuditCount: %v", err)
+	}
+	if count != 2 {
+		t.Errorf("audit count = %d, want the two records inside the year", count)
+	}
+}
