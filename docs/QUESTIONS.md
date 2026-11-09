@@ -1,0 +1,291 @@
+# Open questions
+
+Answers here drive the implementation plan. Each question has a **recommended default**; if you
+answer nothing for a block, the default is used. Blocking questions (needed before the plan can be
+written) are marked **[BLOCKING]**.
+
+Legend: **Q** = question, **Rec** = recommended default, **Why** = what changes in the design.
+
+---
+
+## 0. Resolved (2026-11-09)
+
+| Question | Decision |
+|---|---|
+| Q2.1 Stack | **Go for both** `termit-uv` and `termit-mn`; one module, CGO off. |
+| Q3.1 Credential model | **Per-pair UUIDs derived by MN** from a master key; a leaked config exposes two servers, not the mesh. |
+| Q3.3 Registration trust | **Invite codes + admin approval by default**, configurable (`open` for trusted groups). |
+| Q2.3 MN deployment | **Single binary + SQLite + systemd + built-in ACME**; Compose documented as an alternative, Postgres later behind an interface. |
+| Q2.4 Admin UI | **No web UI in v1**: HTTP API + `mn` CLI over a unix socket. |
+| Subscription format | **Both**: base64 `vless://` list on `/sub/{token}`, sing-box JSON on `/sub/{token}/json`. |
+| Q1.2 Licence | **Public, AGPL-3.0**. |
+| Q9.4 Test strategy | The maintainer provides **three Debian machines over SSH (1 MN, 2 UV) with LAN DNS**. That is the primary acceptance environment; Docker Compose is a developer convenience. See `IMPLEMENTATION_PLAN.md` §7 for what the lab still needs. |
+
+The remaining questions below are still open; the ones that matter before M1 are repeated in
+`IMPLEMENTATION_PLAN.md` §9.
+
+---
+
+## 1. Naming, scope, licence
+
+**Q1.1** Project name. The working folder is `Termit`; the components are already named UV (user VPS
+agent) and MN (management server). Keep `Termit` as the repo name and `uv` / `mn` as the two
+binaries/commands?
+**Rec** Yes: repo `termit`, binaries `termit-uv`, `termit-mn`, short commands `uv` and `mn`.
+**Why** Affects module paths, systemd unit names, config paths (`/etc/termit/...`), and the doc set.
+
+**Q1.2 [BLOCKING]** Is the repository public open source? Which licence?
+**Rec** Public, AGPL-3.0 (network-service copyleft fits a server product); MIT if you want maximal
+reuse.
+**Why** Licence headers, dependency choice, whether MN may be sold as a hosted service.
+
+**Q1.3** Documentation language: English only, or English + Russian?
+**Rec** English only (references are Russian, but the code and docs should be single-language).
+**Why** Doubles doc maintenance if both.
+
+## 2. Implementation stack **[BLOCKING]**
+
+**Q2.1** Language for MN and UV.
+**Rec** Go for both (one static binary per component, no venv/runtime on the VPS, good ACME,
+WireGuard, and TLS libraries, trivial cross-compilation for amd64/arm64).
+**Alternatives** Python/FastAPI for MN + bash/Go for UV (closest to the Blitz reference, fastest to
+prototype, needs a Python runtime and packaging discipline); TypeScript/Node for MN; Rust.
+**Why** Determines almost every later decision: packaging, ACME library, probe client, systemd units,
+test harness, CI.
+
+**Q2.2** How is UV installed on a fresh Debian box?
+**Rec** One-line bootstrap: `curl -fsSL https://…/install.sh | bash -s -- --mn https://mn.example.com --domain vpn.example.com`
+that verifies and installs a released binary + systemd units, then hands off to `uv init`.
+**Why** `curl | bash` is expected in this niche but needs signature/checksum verification to be
+defensible.
+
+**Q2.3** How is MN deployed?
+**Rec** Single binary + SQLite + systemd, behind its own TLS (ACME built in). Docker Compose as a
+documented alternative, Postgres as a later option behind a storage interface.
+**Why** SQLite keeps the MVP deployable on one small VPS; Postgres matters only for many UVs/admins.
+
+**Q2.4** Does MN need a web admin UI in v1?
+**Rec** No. v1 = HTTP API + `mn` admin CLI; a read-only status page and a proper UI later.
+**Why** A UI is a large slice of work and a second auth surface.
+
+## 3. Identity and credentials **[BLOCKING]**
+
+**Q3.1** The concept says each UV registers "its basic VLESS URL" and peers add "other UVs" to their
+user list. Confirm the intended credential model:
+
+- (a) **Single UUID per UV, shared mesh** — every UV learns every other UV's UUID and accepts it.
+  Simple, matches the concept literally, but one leaked config exposes every server.
+- (b) **Per-pair UUIDs (recommended)** — MN derives a distinct UUID for each pair (A,B); it is valid
+  only on A's and B's servers. A leaked config exposes two servers, not all of them. The subscription
+  then contains one URL per peer, each with a different UUID.
+- (c) **MN-issued per-UV UUID, MN-mediated mesh** — peers never learn each other's credentials;
+  MN provisions per-peer users. More moving parts, strongest isolation.
+
+**Rec** (b). **Why** It is the cheapest meaningful hardening and still fits "add/remove these UVs to
+your VLESS config" — the sync response just carries `(peer, uuid)` pairs instead of bare peers.
+
+**Q3.2** Who generates the UUID that goes into the registered "basic VLESS URL"?
+**Rec** UV generates its own **self** UUID at install (that URL is what it registers, and what the
+owner uses to reach his own server). MN derives all **pairwise** UUIDs from a master secret and
+distributes them. MN also issues a dedicated **probe** UUID per UV at registration, which the UV must
+accept as a client, so health checks do not depend on the owner's own credential.
+**Why** Keeps registration a single round trip while giving MN a credential it controls.
+
+**Q3.3 [BLOCKING]** Trust model for new registrations. Open registration means anyone who runs one
+cheap VPS gets access to every other VPS in the mesh ("free riding"), and the mesh is the product.
+**Rec** Invite codes, plus an admin approval step by default; both configurable, and a `--open`
+mode for private/trusted groups.
+**Why** Changes the registration flow, the DB schema, and the admin CLI.
+
+**Q3.4** Agent authentication to MN.
+**Rec** Bearer secret (32 bytes, shown once, stored as Argon2id hash on MN, `0600` on UV) over TLS,
+with per-UV rate limiting. Optional Ed25519 request signing with timestamp+nonce as a later hardening
+step, so a stolen token is useless for replay.
+**Why** Determines whether we need a nonce table and clock-skew policy in v1.
+
+**Q3.5** Subscription token: separate from the agent key?
+**Rec** Yes — a distinct read-only token used only in `https://mn/sub/<token>`. It is pasted into
+phone apps, so it must not grant API access; it is rotatable and revocable per UV.
+**Why** Otherwise every client device holds an API-capable secret.
+
+## 4. Proxy profile and host behaviour **[BLOCKING]**
+
+**Q4.1** Freeze "profile v1" for the VLESS inbound as: **VLESS + XHTTP (stream-one) + TLS 1.3 on
+443**, anti-DPI `path` randomised per install, `Host` = own domain, ALPN `h2,http/1.1`, uTLS
+fingerprint `chrome`, no `flow`, fallback to nginx for everything else (decoy site, ACME, subscription
+page), `xtls-rprx-vision` and REALITY deliberately left out.
+**Rec** Accept. Add a second profile (`reality`) later behind the same interface.
+**Why** This is what the UV script installs, what the MN probe must speak, and what the subscription
+URIs encode. It must be versioned (`profile: v1`) so MN can refuse incompatible UVs.
+
+**Q4.2** Does the VPS serve *only* the decoy site, or may it also host a real web service that must
+keep working on 443?
+**Rec** Decoy only in v1; the nginx fallback chain is designed so a real site could be added later
+without touching Xray.
+**Why** Sharing 443 with an arbitrary app changes the fallback design and the cert story.
+
+**Q4.3** May UV take over ports 80/443 exclusively and require an unproxied (DNS-only) A record?
+**Rec** Yes, both are hard requirements, checked by `uv doctor`. Cloudflare-proxied DNS is rejected
+(VLESS would be terminated by the CDN and the Scenario C DNS check could not work).
+**Why** Drives pre-flight validation and the failure messages users will actually see.
+
+**Q4.4** Extra local users (owner's family devices with their own UUIDs), independent of the mesh?
+**Rec** Yes: a local users list in the UV config, each with its own UUID, served on the same inbound.
+**Why** Small addition now, awkward to retrofit into the credential model later.
+
+**Q4.5** IPv6: support dual-stack UVs in v1, or IPv4-only?
+**Rec** IPv4 for v1, IPv6 fields in the data model and probe code so it can be enabled without a
+migration.
+
+## 5. Traffic policy: blocking rules and WARP **[BLOCKING for defaults]**
+
+**Q5.1** Which default routing/blocking profile should UV install? (Select any.)
+**Rec** Block `geosite:category-ads-all`, `geosite:win-spy`, `geosite:private`, `geoip:private`,
+BitTorrent, and outbound ports 25/135/137–139/445; everything else direct. Optional preset
+"route through WARP" list for geo-restricted sites.
+**Why** "Blocking some traffic by rules" needs a concrete, versioned default set plus an override
+file, otherwise every install drifts.
+
+**Q5.2** Is blocking meant to protect the VPS/host (no SMTP abuse, no LAN access) or to shape what
+users can reach (ads, trackers, torrents), or both?
+**Rec** Both, as two independently togglable rule groups, so a stricter or laxer operator can choose.
+**Why** It decides whether the rules sit in the Xray routing table, host firewall, or both.
+
+**Q5.3** WARP: which modes?
+**Rec** `off` / `all` (every proxied connection exits via WARP) / `selected` (only listed domains),
+switchable at install and later via `uv warp mode …`; implemented as `warp-cli` in **proxy mode**
+(SOCKS5 on loopback), so host traffic, SSH, the decoy site, and inbound 443 are untouched.
+**Why** Proxy mode is the only WARP integration that provably keeps direct traffic intact; full-tunnel
+WARP would hijack the host's routing and break SSH/web.
+
+**Q5.4** WARP transport fallback: if `warp-cli` cannot run (old kernel, no `/dev/net/tun`, arm64
+packaging gaps), should UV fall back to `wgcf` + WireGuard with policy routing, or simply refuse to
+enable WARP and report it to MN?
+**Rec** Refuse and report `warp: unavailable` with the reason; keep a documented manual path. A silent
+WireGuard fallback risks breaking direct traffic, which is the one thing we promised not to do.
+
+## 6. Health checks and lifecycle
+
+**Q6.1** Who probes? (a) MN probes the UV from outside; (b) UV self-checks and reports; (c) both.
+**Rec** (c): MN's own probe is **authoritative** for state transitions, because only it measures real
+reachability; UV also reports a cheap local check as a heartbeat, which lets MN distinguish "server is
+broken" from "MN's vantage point is blocked".
+**Why** A self-report alone is trivially falsified or misleading; remote-only gives no signal when the
+UV is fine but the path from MN is not.
+
+**Q6.2** Probe content. MN must verify (i) VLESS reachability *through the proxy* and (ii) the decoy
+site's HTTPS + certificate.
+**Rec** (i) run Xray-core on MN as a probe client with one SOCKS inbound per UV, fetch a fixed
+`204`-returning URL through the tunnel, expect success within 10 s; (ii) direct TLS handshake to the
+domain with chain+hostname validation and expiry ≥ 14 days, then `GET /` expecting `200` and an HTML
+content type.
+**Why** Defines the checks, the MN runtime dependency (it needs Xray-core), and what "proper
+certificate" means numerically.
+
+**Q6.3** Retry and grace policy defaults. The concept suggests "3 tries, 10 minutes apart,
+adjustable on MN".
+**Rec** Per-check failure → 3 attempts 10 min apart; only then mark `unavailable` (stays in peers'
+configs). Re-check every 6 h in `unavailable`. Mark `blocked` (removed from peers' configs, data
+preserved) after 3 consecutive failed check cycles, i.e. ~24–30 h of failure. All intervals, attempt
+counts, and thresholds configurable on MN per group.
+
+**Q6.4** Scenario C requires the request source IP to equal the domain's A record. Confirm the
+stricter variant: MN additionally requires that the domain resolve to the source IP **and** that the
+A record is not a CDN/anycast range, and rejects IPv6-only mismatches in v1.
+**Rec** Yes. DNS is resolved over the MN's system resolver plus one independent resolver (1.1.1.1);
+both must agree.
+**Why** A single resolver can be poisoned or cached; the check is the only anti-spoof control in
+Scenario C.
+
+**Q6.5** What exactly does a **blocked** UV still receive? Its subscription, or nothing?
+**Rec** It keeps its subscription (read-only, including peers) but is excluded from everyone else's
+configs; `uv status` shows `blocked` and points to `uv unblock`.
+**Why** Scenario B says MN "offers him his subscription again", implying it was never destroyed.
+
+## 7. Sync protocol
+
+**Q7.1** The concept describes add/remove diffs. Prefer full desired state with diffs as a hint?
+**Rec** Full desired state (`peers: [...]`), reconciled idempotently by UV; the response also carries
+`add`/`remove` lists for logging and for the operator's benefit.
+**Why** Diffs drift after a missed sync or a manual edit; full-state reconcile converges every time.
+
+**Q7.2** Applying peer changes to a running Xray: hot via the Xray API, or config rewrite + restart?
+**Rec** Hot add/remove through the Xray HandlerService API, with config-file rewrite + validated
+restart as the fallback; the file always reflects the running state for disaster recovery.
+**Why** A restart drops every active connection once a day per UV; hot updates avoid that.
+
+**Q7.3** Should the daily health check and the daily sync be one request or two?
+**Rec** One agent cycle: local self-check → `POST /sync` with the report → apply peer delta. Keeps
+schedules and failure semantics in one place.
+**Why** Matches "once a day … the same checks as before" and step 7 in the concept.
+
+**Q7.4** Randomised schedule: "once a day, random moment, not less than 2 hours after registration".
+**Rec** UV picks a random minute in a 24 h window stored locally, drifts it ±few minutes each run, and
+MN may override the window via the sync response (for staged rollouts). Jitter prevents a probe
+thundering herd at midnight UTC.
+
+## 8. Masking site generator
+
+**Q8.1** You said you would show the inspiration source for the fake sites. Until then, I will treat it
+as a pluggable module with a fixed interface: `generator(domain, seed, locale) -> static tree`.
+**Answered (2026-11-09)** The generator family from `autoXRAY-multi` (`test/gen_page3.sh`: randomised
+portal archetypes, theme presets, invented terminology) is the primary reference, plus three pages
+the maintainer pointed at. Screenshots and serialized DOM are stored locally under
+`captures/decoy-samples/` (gitignored; the source URLs are deliberately not recorded anywhere in the
+repository). Findings and the fingerprint list are in `captures/decoy-samples/NOTES.md`; the design
+is in `DESCRIPTION.md` §5.3. Two archetypes will be implemented: a branded enterprise portal and one
+high-fidelity product clone.
+**Why** The generator is called by the installer and by `uv renew-site`; the interface must not leak
+into the MN contract.
+
+**Q8.2** Should the decoy site include a working login form/API endpoint that returns plausible errors
+(as the reference does), or stay purely static?
+**Rec** Include one POST endpoint returning plausible JSON errors — a bare static page is a weaker
+disguise than one that answers.
+**Why** Affects the nginx config and the "is this a real site" heuristics of a prober.
+
+## 9. Operations, testing, telemetry
+
+**Q9.1** Traffic accounting / limits / expiry: out of scope for v1?
+**Rec** Out of scope; Xray stats API kept available for later.
+**Why** The concept has no quota; adding it later touches the probe and the DB.
+
+**Q9.2** Notifications to the UV owner on state change (blocked/unblocked/unavailable): email,
+Telegram bot, or just `uv status`?
+**Rec** `uv status` + state fields in the sync response in v1; a webhook field in the DB for later.
+
+**Q9.3** MN observability: Prometheus `/metrics` + structured JSON logs + `mn status` CLI?
+**Rec** Yes.
+**Why** Without it, "why is this UV blocked" is unanswerable in production.
+
+**Q9.4** Test strategy. A real mesh needs several public VPS or a local network.
+**Rec** Three layers: (1) unit tests for credential derivation, probe logic, subscription rendering;
+(2) a Docker Compose integration harness with one MN, two UV containers, a local ACME (Pebble) and a
+fake DNS resolver, exercising register → sync → block → unblock → change-server; (3) a manual
+checklist on a real Debian 13 VPS with a real domain.
+**Why** The interaction between cert issuance, Xray fallbacks, and the probe cannot be validated by
+unit tests alone.
+
+**Q9.5** CI: GitHub Actions with lint (`golangci-lint`), tests, cross-built release archives
+(linux/amd64, linux/arm64) + checksums + installer script? Signing (minisign/cosign)?
+
+**Q9.6** MN backups: nightly SQLite snapshot to a local directory + documented offsite copy?
+**Rec** Yes, plus `mn backup`/`mn restore`.
+
+**Q9.7** Version compatibility: MN declares a minimum UV agent version, and UV refuses to run against
+an MN whose API version is too new?
+**Rec** Both: `api_version` + `min_agent_version`, surfaced in `uv doctor`.
+
+---
+
+## 10. Things I will assume unless told otherwise
+
+1. One operator per MN; multiple admins not needed in v1.
+2. Every UV is a full-fledged Debian 13 box with root access, a public IPv4, ports 80/443 free, and a
+   DNS A record pointing at it; no NAT, no CDN in front.
+3. The decoy site, the subscription page and the ACME challenge are all served by nginx through the
+   Xray fallback on 443; ACME HTTP-01 uses port 80 on the same nginx.
+4. All proxied user traffic egresses direct (or via WARP when enabled); nothing on the host is
+   re-routed.
+5. Peers are discovered only through MN; no gossip, no peer-to-peer control channel.
+6. `uv` and `mn` are the only new long-running services besides Xray, nginx, and optionally WARP.
