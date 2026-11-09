@@ -2,14 +2,11 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"log/slog"
-	"net"
 	"net/http"
 	"os/signal"
 	"syscall"
@@ -17,8 +14,10 @@ import (
 
 	"github.com/shogun-kub/termit/internal/mn/cert"
 	"github.com/shogun-kub/termit/internal/mn/config"
+	"github.com/shogun-kub/termit/internal/mn/dns"
+	"github.com/shogun-kub/termit/internal/mn/enroll"
+	"github.com/shogun-kub/termit/internal/mn/server"
 	"github.com/shogun-kub/termit/internal/mn/store"
-	"github.com/shogun-kub/termit/internal/version"
 )
 
 // shutdownGrace is how long in-flight requests get after a termination signal.
@@ -61,9 +60,14 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 	}
 	defer func() { _ = db.Close() }()
 
+	handler, err := buildHandler(cfg, db, logger)
+	if err != nil {
+		fmt.Fprintf(stderr, "mn serve: %v\n", err)
+		return exitFailure
+	}
 	server := &http.Server{
 		Addr:              cfg.Listen,
-		Handler:           routes(cfg, db, logger),
+		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      60 * time.Second,
@@ -108,62 +112,32 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 	return exitOK
 }
 
-// routes builds the handler. Health and metrics are the whole surface until enrollment lands.
-func routes(cfg *config.Config, db *store.Store, logger *slog.Logger) http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
-		defer cancel()
-		body := map[string]any{
-			"status":         "ok",
-			"api_version":    version.APIVersion,
-			"build":          version.Version,
-			"schema_version": store.SchemaVersion,
-			"domain":         cfg.Domain,
-		}
-		if err := db.Ping(ctx); err != nil {
-			body["status"] = "degraded"
-			body["database"] = err.Error()
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusServiceUnavailable)
-			_ = json.NewEncoder(w).Encode(body)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(body)
-	})
-
-	// Metrics are loopback-only: they describe the server's internals, and a monitoring agent on the
-	// same host is the only intended reader.
-	mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, r *http.Request) {
-		if !isLoopback(r.RemoteAddr) {
-			http.Error(w, "metrics are available on loopback only", http.StatusForbidden)
-			return
-		}
-		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
-		fmt.Fprintf(w, "# HELP termit_mn_up Whether the server answers.\n# TYPE termit_mn_up gauge\ntermit_mn_up 1\n")
-		fmt.Fprintf(w, "# HELP termit_mn_build_info Build identity.\n# TYPE termit_mn_build_info gauge\n")
-		fmt.Fprintf(w, "termit_mn_build_info{version=%q} 1\n", version.Version)
-	})
-
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		logger.Debug("unknown request", "method", r.Method, "path", r.URL.Path)
-		http.NotFound(w, r)
-	})
-	return mux
-}
-
-func isLoopback(remoteAddr string) bool {
-	host, _, err := net.SplitHostPort(remoteAddr)
-	if err != nil {
-		return false
+// buildHandler wires the HTTP surface: the enrollment service needs a store, resolvers and a prober.
+func buildHandler(cfg *config.Config, db *store.Store, logger *slog.Logger) (http.Handler, error) {
+	resolvers := []enroll.Resolver{dns.System{}}
+	if cfg.DNS.Secondary != "" {
+		resolvers = append(resolvers, dns.Server{Addr: cfg.DNS.Secondary})
 	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
-}
-
-// sha256Of is the short identity of the master key: never the key itself.
-func sha256Of(key []byte) []byte {
-	sum := sha256.Sum256(key)
-	return sum[:]
+	prober, err := newProber(cfg, logger)
+	if err != nil {
+		return nil, err
+	}
+	service, err := enroll.New(enroll.Options{
+		Store:     db,
+		Mode:      cfg.Enrollment.Mode,
+		Policy:    cfg.Policy,
+		Resolvers: resolvers,
+		Prober:    prober,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return server.New(server.Options{
+		Store:      db,
+		Enrollment: service,
+		Domain:     cfg.Domain,
+		Logger:     logger,
+		Attempts:   cfg.Enrollment.Attempts,
+		Window:     time.Duration(cfg.Enrollment.WindowSeconds) * time.Second,
+	})
 }

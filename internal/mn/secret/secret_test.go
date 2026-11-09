@@ -7,57 +7,34 @@ import (
 	"github.com/shogun-kub/termit/internal/mn/secret"
 )
 
-func TestHashAndVerify(t *testing.T) {
+func TestDigest(t *testing.T) {
 	t.Parallel()
-	hash, err := secret.Hash("agent-key-value")
-	if err != nil {
-		t.Fatalf("Hash: %v", err)
+	first := secret.Digest("invite-code")
+	if !strings.HasPrefix(first, "sha256:") {
+		t.Errorf("digest %q is not a sha256 digest", first)
 	}
-	if !strings.HasPrefix(hash, "argon2id$") {
-		t.Errorf("hash %q is not argon2id", hash)
+	if first != secret.Digest("invite-code") {
+		t.Error("Digest is not deterministic; a stored credential could never be found again")
 	}
-	if strings.Contains(hash, "agent-key-value") {
-		t.Error("the hash contains the value it hashes")
+	if first == secret.Digest("invite-code-other") {
+		t.Error("two different values share a digest")
 	}
-	if err := secret.Verify(hash, "agent-key-value"); err != nil {
-		t.Errorf("Verify with the right value: %v", err)
+	if strings.Contains(first, "invite-code") {
+		t.Error("the digest contains the value it digests")
 	}
-	if err := secret.Verify(hash, "agent-key-wrong"); err == nil {
-		t.Error("Verify accepted the wrong value")
-	}
-
-	// The same value hashed twice must not produce the same string: the salt is what makes a stolen
-	// database useless for a rainbow table.
-	second, err := secret.Hash("agent-key-value")
-	if err != nil {
-		t.Fatalf("Hash: %v", err)
-	}
-	if hash == second {
-		t.Error("two hashes of the same value are identical")
+	if got := len(first); got != len("sha256:")+64 {
+		t.Errorf("digest has %d characters, want %d", got, len("sha256:")+64)
 	}
 }
 
-func TestHashRefusesEmpty(t *testing.T) {
+func TestDigestIsCaseSensitive(t *testing.T) {
 	t.Parallel()
-	if _, err := secret.Hash(""); err == nil {
-		t.Error("Hash accepted an empty value")
+	// Codes are folded to upper case by the caller; the digest itself must not silently fold, or two
+	// different credentials would collide.
+	if secret.Digest("ABC") == secret.Digest("abc") {
+		t.Error("the digest folds case")
 	}
 }
-
-func TestVerifyRejectsForeignInput(t *testing.T) {
-	t.Parallel()
-	for _, encoded := range []string{
-		"",
-		"plain-text",
-		"argon2id$v=19$m=65536,t=1,p=4$only-four-parts",
-		"bcrypt$whatever",
-	} {
-		if err := secret.Verify(encoded, "value"); err == nil {
-			t.Errorf("Verify accepted %q as a hash", encoded)
-		}
-	}
-}
-
 func TestTokenAndCode(t *testing.T) {
 	t.Parallel()
 	token, err := secret.Token()

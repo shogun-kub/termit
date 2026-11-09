@@ -7,76 +7,27 @@ package secret
 
 import (
 	"crypto/rand"
-	"crypto/subtle"
+	"crypto/sha256"
 	"encoding/base32"
 	"encoding/base64"
-	"errors"
+	"encoding/hex"
 	"fmt"
 	"strings"
-
-	"golang.org/x/crypto/argon2"
 )
 
-const (
-	// Length is the number of random bytes in a generated credential.
-	Length = 32
+// Length is the number of random bytes in a generated credential.
+const Length = 32
 
-	argonTime    = 1
-	argonMemory  = 64 * 1024
-	argonThreads = 4
-	argonKeyLen  = 32
-	saltLen      = 16
-)
-
-// ErrMismatch reports a value that does not match the stored hash.
-var ErrMismatch = errors.New("secret: value does not match")
-
-// Hash returns an encoded Argon2id hash of value, salt included. The format is
-// "argon2id$v=19$m=65536,t=1,p=4$<salt>$<hash>" so a future parameter change can be detected.
-func Hash(value string) (string, error) {
-	if value == "" {
-		return "", errors.New("secret: refusing to hash an empty value")
-	}
-	salt := make([]byte, saltLen)
-	if _, err := rand.Read(salt); err != nil {
-		return "", fmt.Errorf("secret: read salt: %w", err)
-	}
-	sum := argon2.IDKey([]byte(value), salt, argonTime, argonMemory, argonThreads, argonKeyLen)
-	return fmt.Sprintf("argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s",
-		argon2.Version, argonMemory, argonTime, argonThreads,
-		base64.RawStdEncoding.EncodeToString(salt),
-		base64.RawStdEncoding.EncodeToString(sum)), nil
-}
-
-// Verify reports whether value matches encoded.
-func Verify(encoded, value string) error {
-	parts := strings.Split(encoded, "$")
-	if len(parts) != 5 || parts[0] != "argon2id" {
-		return errors.New("secret: the stored hash is not an argon2id hash")
-	}
-	var version int
-	if _, err := fmt.Sscanf(parts[1], "v=%d", &version); err != nil || version != argon2.Version {
-		return fmt.Errorf("secret: unsupported argon2 version %q", parts[1])
-	}
-	var memory uint32
-	var time uint32
-	var threads uint8
-	if _, err := fmt.Sscanf(parts[2], "m=%d,t=%d,p=%d", &memory, &time, &threads); err != nil {
-		return fmt.Errorf("secret: unreadable argon2 parameters %q", parts[2])
-	}
-	salt, err := base64.RawStdEncoding.DecodeString(parts[3])
-	if err != nil {
-		return fmt.Errorf("secret: unreadable salt: %w", err)
-	}
-	want, err := base64.RawStdEncoding.DecodeString(parts[4])
-	if err != nil {
-		return fmt.Errorf("secret: unreadable hash: %w", err)
-	}
-	got := argon2.IDKey([]byte(value), salt, time, memory, threads, uint32(len(want)))
-	if subtle.ConstantTimeCompare(got, want) != 1 {
-		return ErrMismatch
-	}
-	return nil
+// Digest is the deterministic digest stored for every high-entropy credential: agent keys,
+// subscription tokens, invite codes and admin tokens.
+//
+// It is a plain SHA-256 and not a password hash on purpose. These values are 160-256 bits of
+// randomness, so there is nothing to brute-force, and the store has to look a credential up by value —
+// a salted hash cannot be looked up at all. Argon2id is the wrong tool here and would only make the
+// server slower on every request.
+func Digest(value string) string {
+	sum := sha256.Sum256([]byte(value))
+	return "sha256:" + hex.EncodeToString(sum[:])
 }
 
 // Token returns a random URL-safe credential.

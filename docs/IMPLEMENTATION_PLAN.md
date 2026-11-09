@@ -373,13 +373,31 @@ Still to do in this milestone:
   TLS by default rather than by luck.
 - `mn backup` / `mn restore` on top of `store.Backup`, with a schema-version guard on restore.
 
-### M2.2 Enrollment
+### M2.2 Enrollment — **in progress**
 
-- `POST /api/v1/enroll`: invite validation (hash, uses, expiry), URL parsing and validation, domain
-  syntax, duplicate detection, rate limiting, DNS consistency check, decoy + VLESS probe, credential
-  issuance (`agent_key`, `sub_token`, `probe_uuid`), state `active` or `pending`.
-- Admin CLI: `mn invite create|list|revoke`, `mn uv list|show|approve|reject`.
-- Problem responses with stable codes; nothing sensitive echoed back.
+Done:
+
+| Piece | Where | Notes |
+|---|---|---|
+| Wire types | `internal/proto/api.go` | enroll request/response, the problem body, stable codes |
+| Enrollment | `internal/mn/enroll` | invite validated but not consumed → URL parsed → domain resolves to the request address → VLESS probe → invite and node written in **one transaction**; a refusal burns nothing |
+| Resolvers | `internal/mn/dns` | system resolver plus an optional second one; a resolver that cannot answer is not evidence against a node |
+| Prober wiring | `cmd/mn/prober.go` | xray-core worker; with no binary configured every check is `unknown`, which never blocks a node |
+| HTTP | `internal/mn/server` | `/api/v1/enroll`, `/healthz`, loopback `/metrics`, per-address rate limit, RFC 9457 problems |
+| Modes | `enrollment.mode` | `invite` → active; `invite+approval` → pending with a notice; `open` → active without an invite |
+
+Two decisions worth recording:
+
+- **Credentials are stored as SHA-256 digests, not Argon2id hashes** (see `SPIKES.md` S14). Every
+  one of them is looked up by value on each request; a salted password hash cannot be looked up at
+  all. The values are 160–256 bits of randomness, so there is nothing to brute-force.
+- **Enrollment probes with the self credential**, because the probe credential does not exist yet at
+  that point: MN issues it in the same response and the node starts accepting it at its first sync.
+
+Still to do in this milestone:
+
+- Admin CLI over the unix socket: `mn invite create|list|revoke`, `mn uv list|show|approve|reject`.
+- Lab acceptance: enroll two UVs and confirm the probe path against real Xray.
 
 ### M2.3 Prober
 

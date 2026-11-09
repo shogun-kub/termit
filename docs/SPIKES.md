@@ -339,3 +339,31 @@ registry gets corrupted.
 
 File modes are part of the contract here: the database is `0600` (it holds hashes and node metadata,
 not public data) and the master key is `0600` with a writer that refuses to replace an existing one.
+## S14 (M2.2) — credentials are digests, not password hashes
+
+The first version of `internal/mn/secret` stored Argon2id hashes with a per-value salt. That is the
+right thing for a password and the wrong thing here, for a reason that only shows up when the server
+has to *use* the stored value: an agent presents `Authorization: Bearer <agent_key>`, and the server
+must find the node by that key. A salted hash cannot be looked up — the salt is different for every
+row — so every request would have to verify against every node in the registry.
+
+The choice is now SHA-256 with a `sha256:` prefix:
+
+- **Lookup works**: the digest of a presented credential is the index.
+- **Nothing is lost by not salting**: the values are 32 random bytes (`secret.Token`), 160 bits for an
+  invite code. There is no dictionary to defend against, and a salt defends against exactly that.
+- **The prefix is not decoration**: it makes the stored format self-describing, so a future change
+  (say, adding a keyed MAC with the master key) can be detected per row instead of guessed.
+
+Argon2id stays out of the module for now. If a *human-chosen* secret ever lands in this database, it
+needs the slow hash and a different lookup path; the prefix is what will make that migration possible.
+
+Two related details from the same milestone:
+
+- Enrollment must probe with a credential the node already accepts, and at enrollment only the self
+  credential exists. The order in `DESCRIPTION.md` §7.3 reads as if the probe credential came first;
+  it cannot. MN issues `probe_uuid` in the enrollment response and the node starts accepting it at its
+  first sync.
+- The invite is consumed in the same transaction that inserts the node. A refusal (bad URL, DNS
+  mismatch, failed probe) must not burn an invite, and a node must not exist without the invite that
+  admitted it.

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"flag"
@@ -236,10 +237,7 @@ func ensureAdmin(ctx context.Context, db *store.Store, name string, now time.Tim
 	if err != nil {
 		return "", err
 	}
-	hash, err := secret.Hash(token)
-	if err != nil {
-		return "", err
-	}
+	hash := secret.Digest(token)
 	id := "admin_" + secret.Fingerprint(token)
 	if err := db.CreateAdmin(ctx, store.Admin{ID: id, Name: name, TokenHash: hash, CreatedAt: now}); err != nil {
 		if errors.Is(err, store.ErrDuplicate) {
@@ -263,10 +261,7 @@ func ensureInvite(ctx context.Context, db *store.Store, uses int, now time.Time,
 	if err != nil {
 		return "", err
 	}
-	hash, err := secret.Hash(code)
-	if err != nil {
-		return "", err
-	}
+	hash := secret.Digest(code)
 	id := "inv_" + secret.Fingerprint(code)
 	if err := db.CreateInvite(ctx, store.Invite{
 		ID:        id,
@@ -279,4 +274,11 @@ func ensureInvite(ctx context.Context, db *store.Store, uses int, now time.Time,
 		return "", err
 	}
 	return code, nil
+}
+
+// sha256Of is the short identity of the master key: never the key itself, only a way to tell two
+// deployments apart in a log line.
+func sha256Of(key []byte) []byte {
+	sum := sha256.Sum256(key)
+	return sum[:]
 }

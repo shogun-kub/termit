@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -49,6 +50,23 @@ type Config struct {
 	ACME          ACME       `yaml:"acme"`
 	Enrollment    Enrollment `yaml:"enrollment"`
 	Policy        Policy     `yaml:"policy"`
+	DNS           DNS        `yaml:"dns"`
+	Prober        Prober     `yaml:"prober"`
+}
+
+// DNS is the second resolver enrollment asks beside the system one. Empty means the system resolver
+// alone, which is what a machine without outbound DNS wants.
+type DNS struct {
+	Secondary string `yaml:"secondary"`
+}
+
+// Prober configures the xray-core worker the server uses to check nodes.
+type Prober struct {
+	// XrayBinary is the xray-core executable. Empty means no prober: every check is then "unknown",
+	// and an unknown check never blocks a node.
+	XrayBinary string `yaml:"xray_binary"`
+	// URL is fetched through each tunnel to prove the tunnel carries traffic.
+	URL string `yaml:"url"`
 }
 
 // ACME is the certificate authority this server uses for its own TLS.
@@ -65,6 +83,9 @@ type ACME struct {
 // Enrollment decides what happens to a node that registers.
 type Enrollment struct {
 	Mode string `yaml:"mode"`
+	// Attempts and WindowSeconds rate-limit enrollment per source address.
+	Attempts      int `yaml:"attempts"`
+	WindowSeconds int `yaml:"window_seconds"`
 }
 
 // Policy holds the scheduler thresholds an operator may tune without a rebuild.
@@ -178,6 +199,18 @@ func (c *Config) Validate() error {
 	if c.Policy.SyncInterval <= 0 {
 		problems = append(problems, errors.New("policy.sync_interval must be positive"))
 	}
+	if c.Enrollment.Attempts < 1 {
+		problems = append(problems, errors.New("enrollment.attempts must be at least 1"))
+	}
+	if c.Enrollment.WindowSeconds < 1 {
+		problems = append(problems, errors.New("enrollment.window_seconds must be positive"))
+	}
+	if c.Prober.URL != "" {
+		parsed, err := url.Parse(c.Prober.URL)
+		if err != nil || parsed.Host == "" || (parsed.Scheme != "https" && parsed.Scheme != "http") {
+			problems = append(problems, fmt.Errorf("prober.url %q is not an http(s) URL with a host", c.Prober.URL))
+		}
+	}
 	if c.ACME.Directory == "" {
 		problems = append(problems, errors.New("acme.directory is required"))
 	}
@@ -230,6 +263,15 @@ func (c *Config) applyDefaults() {
 	}
 	if c.Enrollment.Mode == "" {
 		c.Enrollment.Mode = ModeInviteApproval
+	}
+	if c.Enrollment.Attempts == 0 {
+		c.Enrollment.Attempts = 10
+	}
+	if c.Enrollment.WindowSeconds == 0 {
+		c.Enrollment.WindowSeconds = 900
+	}
+	if c.Prober.URL == "" {
+		c.Prober.URL = "https://example.com/"
 	}
 	if c.Policy.BlockAfterFailedCycles == 0 {
 		c.Policy.BlockAfterFailedCycles = 2

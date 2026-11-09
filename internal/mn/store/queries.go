@@ -197,6 +197,60 @@ func (s *Store) CreateUV(ctx context.Context, uv UV) error {
 	return wrapDuplicate(err, "store: create node "+uv.ID)
 }
 
+// CreateUVRedeemingInvite inserts a node and consumes one use of its invite in one transaction. A node
+// must never exist without the invite that admitted it, and an invite must never be spent on a node
+// that was not written.
+func (s *Store) CreateUVRedeemingInvite(ctx context.Context, uv UV, invite Invite, now time.Time) error {
+	if uv.ID == "" || uv.Domain == "" {
+		return errors.New("store: a node needs an id and a domain")
+	}
+	if !uv.State.Valid() {
+		return fmt.Errorf("store: %q is not a state", uv.State)
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("store: begin enrollment: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if invite.ID != "" {
+		res, err := tx.ExecContext(ctx,
+			`UPDATE invite SET used_count = used_count + 1
+			 WHERE id = ? AND revoked_at IS NULL
+			   AND (expires_at IS NULL OR expires_at > ?)
+			   AND (max_uses = 0 OR used_count < max_uses)`,
+			invite.ID, formatTime(now))
+		if err != nil {
+			return fmt.Errorf("store: redeem invite: %w", err)
+		}
+		affected, err := res.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("store: rows affected: %w", err)
+		}
+		if affected == 0 {
+			// The invite was used up between the validation and this moment.
+			return fmt.Errorf("store: invite %s: %w", invite.ID, ErrNotFound)
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO uv (`+uvColumns+`)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		uv.ID, uv.Label, uv.Domain, uv.SelfUUID, uv.ProbeUUID, uv.ProfileJSON, string(uv.State),
+		uv.StateReason, formatTime(uv.CreatedAt), nullableTime(uv.ApprovedAt), nullableTime(uv.LastSeenAt),
+		uv.LastRequestIP, uv.AgentVersion, uv.AgentKeyHash, uv.SubTokenHash, uv.FailedCycles,
+		uv.CredentialEpoch, uv.InviteID, uv.Notes); err != nil {
+		return wrapDuplicate(err, "store: create node "+uv.ID)
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO uv_event (uv_id, at, from_state, to_state, reason, actor)
+		VALUES (?, ?, ?, ?, ?, ?)`,
+		uv.ID, formatTime(uv.CreatedAt), "", string(uv.State), "enrolled", "agent"); err != nil {
+		return fmt.Errorf("store: append enrollment event: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("store: commit enrollment: %w", err)
+	}
+	return nil
+}
+
 // UVByID returns one node.
 func (s *Store) UVByID(ctx context.Context, id string) (UV, error) {
 	return scanUV(s.db.QueryRowContext(ctx, `SELECT `+uvColumns+` FROM uv WHERE id = ?`, id))
