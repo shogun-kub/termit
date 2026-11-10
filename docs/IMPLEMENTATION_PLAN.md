@@ -744,11 +744,39 @@ and the canary sends the node's own domain as the HTTP Host, which the core reso
 that cannot resolve its own name fails every sync — the preflight warns about it, and the test fixes it
 with a hosts entry.
 
-### M3.6 Failure-drill suite
+### M3.6 Failure-drill suite — **done**
 
-Scripted, in the lab: MN down for a day (nodes keep working, converge after recovery), prober killed
-(`unknown`, no node blocked), clock skew, expired certificate, DNS flipped to a wrong address, disk
-full on MN, SQLite lock contention. Each drill asserts the invariant it protects.
+Six scripted drills in `test/lab/drill_test.go`, each breaking one thing, asserting the invariant that
+breakage protects, and putting the lab back:
+
+| Drill | What it does | What it proves |
+|---|---|---|
+| MN unavailable | stops the server, restarts it | the nodes keep serving: their units stay active, the certificate is still served, and one sync converges them — without an operator |
+| Prober broken | moves the prober binary away | two checks are `unknown` with the node still active: our broken tool is not evidence against the node |
+| DNS flipped | points the name at a black hole | a genuine negative walks unavailable → blocked, the surviving pair's credential is untouched, and the restored name plus an explicit unblock is the only way back |
+| Certificate replaced | serves an expired leaf signed by the lab CA | the failure is visible from outside (`cert_expired`, unavailable → blocked) while the node's own diagnosis still sees its services and decoy as healthy |
+| SQLite lock | holds `BEGIN EXCLUSIVE` for eight seconds | the server answers instead of hanging or dying, and the registry is intact once the lock is gone |
+| Disk full | fills the filesystem with `fallocate` + `dd` | a write reports the failure, reads keep working, and freeing the space recovers the server with no repair step |
+
+Two defects the drills found, both now fixed:
+
+1. **An expired certificate passed the check.** The tunnel is pinned to a leaf, and this build of xray
+   does not check the pinned leaf's validity window, so a node whose certificate had expired was
+   reported healthy while every client was being rejected. The probe now reads the certificate in its
+   own process first (chain, hostname, validity) and only then opens the tunnel; expiry is a verdict
+   (`cert_expired`), and a chain or hostname failure stays `unknown` because it can also mean the
+   checker trusts the wrong root.
+2. **A certificate renewal looked like a dead node.** The pin is taken at enrollment, so a renewed
+   leaf failed the pin check, the tunnel closed, and the node was blocked after two cycles — for
+   doing the right thing. Now the leaf a node serves is a mismatch the prober reports as
+   `cert_changed` (unknown, never a verdict), and every sync carries the leaf's fingerprint
+   (`X-Territ-Cert-SHA256`), so the pin follows a renewal within one cycle. Choosing a header rather
+   than a body field keeps an older server from rejecting the body.
+
+Lab limits, recorded rather than papered over: the day-long MN outage is the same code path as the
+short one and is not replayed at length; clock skew cannot be exercised in an unprivileged LXC (no
+`CAP_SYS_TIME`), so `TestDrillClockSkew` skips with that reason instead of passing on a check it did
+not perform.
 
 ---
 

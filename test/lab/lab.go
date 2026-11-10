@@ -169,7 +169,9 @@ func (m *Machine) Run(ctx context.Context, command string) (string, error) {
 		return text, fmt.Errorf("lab: %s: the command did not finish in %s: %w", m.Name, timeout, ctx.Err())
 	}
 	if err != nil {
-		return text, fmt.Errorf("lab: %s: %s: %w", m.Name, command, err)
+		// The command itself can carry the admin token (MNAdmin passes it in the environment), so it
+		// is redacted before it reaches a test log.
+		return text, fmt.Errorf("lab: %s: %s: %w", m.Name, m.sanitize(command), err)
 	}
 	return text, nil
 }
