@@ -144,8 +144,9 @@ Still missing: `docker` (needed for the Compose suite), `make` (the `Makefile` i
 `golangci-lint` (CI lints anyway). `puttygen` on this host rejects `-O`, so PPK conversion does not
 work here — see §4.3.
 
-The acceptance lab is three Debian machines reachable over SSH (one MN, two UVs). Their coordinates
-never go into the repository — they come from environment variables (§4.3).
+The acceptance lab is three Debian machines reachable over SSH (one MN, two UVs), optionally a fourth
+(another UV) when the mesh tests need a third node. Their coordinates never go into the repository —
+they come from environment variables (§4.3).
 
 Go version: pinned by the `go` directive in `go.mod`. Use the toolchain the module declares; do not
 add a `toolchain` line that requires a newer release than CI uses.
@@ -195,6 +196,7 @@ Copy-Item "$tmp/go.mod","$tmp/go.sum" . -Force
 export TERMIT_LAB_MN=root@termit-mn.lan
 export TERMIT_LAB_UV1=root@termit-uv1.lan
 export TERMIT_LAB_UV2=root@termit-uv2.lan
+export TERMIT_LAB_UV3=root@termit-uv3.lan          # optional: the mesh test needs it, the rest runs with two
 export TERMIT_LAB_SSH_KEY=<path to the lab private key>   # never committed
 export TERMIT_LAB_HOSTKEYS='termit-mn.lan=SHA256:…,termit-uv1.lan=SHA256:…,termit-uv2.lan=SHA256:…'
 export TERMIT_LAB_MN_ADMIN_TOKEN=<admin token>            # never committed

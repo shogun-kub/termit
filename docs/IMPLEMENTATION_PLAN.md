@@ -728,6 +728,14 @@ The test also proves the negative: before the migrate the record still names the
 node count is unchanged. Cleanup puts the box back on the name it started with (reinstall from the saved
 config, then migrate the record back) and removes the hosts entries the test added.
 
+The same run also covers the mesh with three nodes (`test/lab/mesh_test.go`, skipped when
+`TERMIT_LAB_UV3` is unset). That node is not needed by M3.6's single-node drills, but two nodes cannot
+express the invariants §6.3–§6.5 state: each node must serve exactly its two peers, the three pair
+credentials must be pairwise distinct and symmetric (`uuid(A→P) == uuid(P→A)`), a blocked node leaves
+the surviving pair intact while its own read-only list keeps both peers, and a move of one node leaves
+the pair between the other two untouched. With `TERMIT_LAB_UV3` set, Scenario C adds that last check
+against the node that stayed.
+
 Two lab lessons: a relocate verification cannot use the stored probe credential (a blocked node has no
 probe user until it syncs, so the checks run against the claimed self credential, exactly like unblock);
 and the canary sends the node's own domain as the HTTP Host, which the core resolves itself, so a node
