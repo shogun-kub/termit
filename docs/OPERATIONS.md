@@ -150,6 +150,11 @@ mn status
 server:   mn.example.com
 listen:   :443
 version:  termit-mn 0.1.0 (commit …, built …, api 1, profile v1)
+uptime:   3h12m (started 2026-11-10 11:18)
+database: /var/lib/termit/mn/termit.db (412.0 KiB, schema 5)
+prober:   ready (/usr/lib/termit/bin/xray)
+queue:    0 due, next 2026-11-11 12:34 UTC
+cert:     2027-02-08T12:06:44Z (in 89 days)
 nodes:    3 (3 active)
 check:    every 24h, times below are UTC
 
@@ -157,11 +162,46 @@ DOMAIN           STATE   FAILED  LAST CHECK        NEXT CHECK        LAST SEEN
 node1.example.net  active  0     2026-11-10 13:29  2026-11-11 12:34  2026-11-10 13:31
 ```
 
+The `prober` and `queue` lines are the two that catch a mesh that looks fine and is not: `unavailable`
+means no check can produce a verdict, and a growing `due` count means the scheduler is not keeping up.
+Neither is a node failure, and neither changes a node's state.
+
 ## 4. Install a node
+
+The bootstrap script verifies a release checksum, installs the binary and then lets `uv init` do the
+work. It never guesses a version and never installs an unverified binary — and it is a file you keep,
+not something piped from a branch:
+
+```bash
+mn invite create --note "node1" --uses 1        # on the MN; prints the code once
+
+# on the fresh node, as root
+curl -fsSLO https://github.com/shogun-kub/termit/releases/download/v0.1.0/uv.sh
+sh uv.sh --version v0.1.0 \
+  --domain node1.example.net --email you@example.com \
+  --mn https://mn.example.com --invite ABCD-EFGH-IJKL
+```
+
+`deploy/install/uv.sh` is that script. Flags worth knowing:
+
+| Flag | Effect |
+|---|---|
+| `--version` | the release to install; **required** — the installer never picks one for you |
+| `--base-url` | release directory: an `https://` URL, a `file://` URL or a local path (a mirror, or a USB stick) |
+| `--checksum-file` / `--sha256` | verify against a local `SHA256SUMS` or an explicit digest, for a private build |
+| `--no-warp` / `--warp selected --warp-selected …` | the WARP decision (`all` is the default) |
+| `--no-enroll` | install and converge, skip enrollment |
+| `--dry-run` | verify the download, then run `uv init --dry-run` without installing anything |
+
+Re-running the script with a new `--version` **is** the upgrade: the binary is replaced and `uv init`
+converges the rest, keeping the identity, the Xray path and the certificate. The invite code is passed
+on the command line and is visible in `ps` for the duration of the run; revoke it afterwards if that
+matters (`mn invite revoke`).
+
+Without the script, the two commands it wraps are:
 
 ```bash
 install -m 0755 termit-uv /usr/bin/termit-uv
-
 uv init --domain node1.example.net --email you@example.com
 ```
 
@@ -246,9 +286,22 @@ What to watch:
 systemctl status termit-uv-agent termit-xray nginx termit-uv-renew.timer
 journalctl -u termit-uv-agent -u termit-xray -n 50 --no-pager
 uv status
-mn status
-mn uv show node1.example.net
+mn status                    # server, prober, queue, certificate, nodes
+mn uv show node1.example.net # state history and the last ten checks
+mn check now node1.example.net   # one cycle, on demand
 ```
+
+`mn uv show` ends with a check series, newest first, with both kinds in it:
+
+```
+checks (newest first):
+  2026-11-10 14:30  probe  ok
+  2026-11-10 13:32  probe  ok
+  2026-11-10 11:17  self   ok
+```
+
+A probe that fails while the node's own `self` row passes is a path problem between the server and the
+node; the two rows are why both kinds are kept.
 
 Logs are structured and go to stderr, which means the journal. Identifiers are logged; credentials,
 keys and UUIDs are not.
@@ -466,7 +519,13 @@ mn status
 The database migrates on start. Migrations are forward-only: **take a backup before an upgrade** and
 keep the previous binary next to the new one, since the old binary will not read a newer schema.
 
-On a node:
+On a node, the bootstrap script is the short path — it replaces the binary and converges:
+
+```bash
+sh uv.sh --version v0.1.1 --base-url https://github.com/shogun-kub/termit/releases/download --no-enroll
+```
+
+By hand it is the same two steps:
 
 ```bash
 install -m 0755 termit-uv.new /usr/bin/termit-uv
@@ -580,8 +639,12 @@ registry is not something an automated command should decide to do.
 
 - `GET /healthz` on the MN — liveness plus build identity, `200`/`503`. Put it behind your usual
   external monitor.
-- `GET /metrics` on the MN — Prometheus text, **loopback only**. Scrape it from the same host.
-- `mn status` — nodes, states, last and next check, the effective interval.
+- `GET /metrics` on the MN — Prometheus text, **loopback only**. Scrape it from the same host:
+  enrollments, syncs and check outcomes by result, a check-duration histogram, node counts by state,
+  the scheduler's backlog, whether a probe worker exists, and the server certificate's expiry.
+  `docs/PROTOCOL.md` §3.2 lists every family.
+- `mn status` — the same numbers, plus per-node state and the effective interval.
+- `mn uv show <node>` — one node's recent checks and state history.
 - `uv status --json`, `uv doctor --json` — machine-readable node state, for a local monitoring agent.
 - Journald: both binaries log structured lines to stderr. `journalctl -u termit-mn -u termit-uv-agent
   --since -1h`.
@@ -591,24 +654,26 @@ A useful alert set, in the order that matters:
 | Alert | How |
 |---|---|
 | the server is down | `/healthz` fails twice in a row |
-| a node is blocked | `mn status` shows `blocked`, or `uv list` counts change |
-| certificates under 14 days | `uv doctor` / `mn status` on the node, or `openssl x509 -enddate` |
-| the prober is not running | `mn uv show <node>` shows `unknown` for every probe; check `prober.xray_binary` |
+| no checks are happening | `termit_mn_prober_up == 0` for 5 minutes, or `termit_mn_check_queue_due > 0` and growing |
+| the scheduler is behind | `termit_mn_check_queue_oldest_due_seconds` above a few hours |
+| a node is blocked or unavailable | `termit_mn_nodes{state="blocked"}` above zero, or `mn status` |
+| the server certificate is expiring | `termit_mn_certificate_expiry_timestamp_seconds - time() < 14 days`; restart the server inside the renewal window (§7, §15) |
+| clocks under 14 days on a node | `uv doctor` / `uv status` on the node, or `openssl x509 -enddate` |
+| a burst of refusals | `rate(termit_mn_enrollments_total{result="refused"}[15m])` |
 | disk over 90% | the host's usual check; a full disk stops SQLite writes and ACME |
 
 ## 15. Known limitations
 
 - **The management server renews its certificate only when it starts** (§7). Until the self-renewal
-  lands, plan a restart inside the renewal window, or watch the expiry.
-- **The bootstrap installer does not exist yet.** Installation is the two commands in §3 and §4. The
-  script in `deploy/install/` is on the M4.2 list; it will verify a release checksum and keep the
-  node's identity across an upgrade.
+  lands, plan a restart inside the renewal window, or watch
+  `termit_mn_certificate_expiry_timestamp_seconds`.
 - **WARP acceptance needs a host with `/dev/net/tun`.** The mode, the route, the fail-open behaviour
   and the refusal are tested; installing, registering and connecting the tunnel is on the release
   checklist for a host where it can run.
 - **The Docker Compose harness does not exist.** The lab is the acceptance gate.
-- **Metrics are minimal** — two gauges. Probe outcomes, queue age and sync results are visible through
-  `mn status`, `mn uv show` and the journal, not through Prometheus yet.
+- **`termit-uv` has no self-update.** The node is upgraded by running the bootstrap script or by
+  replacing the binary and re-running `uv init`; nothing pulls a release on a timer, and nothing
+  should — an unattended proxy should not change itself.
 - **Blocking is cooperative.** A node that ignores the server's answer keeps serving; see
   [`THREAT_MODEL.md`](THREAT_MODEL.md) §6.
 
@@ -623,6 +688,8 @@ A useful alert set, in the order that matters:
 | `uv enroll` → `domain_taken` | a record with that domain exists | `mn uv show <domain>`; remove or relocate it first |
 | node stuck `pending` | `invite+approval` mode | `mn uv approve <node>` |
 | node `unavailable` after a passing manual check | the prober cannot reach it | `mn uv show` for the class; check `prober.xray_binary` and the server's own egress |
+| `mn status` says `prober: unavailable — every check reports unknown` | no worker could be built | read the reason on the line; fix `prober.xray_binary`, restart `termit-mn`; nodes stay as they were, nothing is blocked |
+| `mn status` shows a growing `queue: N due` | the scheduler is not completing passes | `journalctl -u termit-mn` for scheduler errors; a stuck probe worker shows up here before any node changes state |
 | node `blocked` right after an upgrade | the certificate was replaced and the server still pinned the old leaf | the next sync reports the new leaf; `uv sync` then `uv unblock` if it stayed blocked |
 | `uv doctor` → `services` failed | a unit is down | `systemctl status <unit>`; `uv init` starts them again |
 | `uv doctor` → `certificate` warn/fail | renewal is late or broken | `uv renew-cert`; the journal of `termit-uv-renew.service` says why |

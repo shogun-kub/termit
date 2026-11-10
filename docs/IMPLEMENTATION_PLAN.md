@@ -814,28 +814,37 @@ Two defects the lab found and the fix:
 - The running agent holds the configuration it read at start, so its next sync would have regenerated
   the old route; the command now restarts `termit-uv-agent` after the change.
 
-### M4.2 Operations surface
+### M4.2 Operations surface — done, one item carried
 
-- **Done: the three operator documents.** `docs/OPERATIONS.md` (install, upgrade, rotate, recover,
-  backup, uninstall, troubleshooting, a shipped `termit-mn.service`), `docs/PROTOCOL.md` (the exact
-  wire contract with examples, checked against a running server) and `docs/THREAT_MODEL.md`
-  (adversaries, assets as implemented, residual risk). Writing them produced four findings, recorded
-  rather than papered over: there was no systemd unit for the management server at all
-  (`deploy/systemd/termit-mn.service` now exists and was started on the lab); `uv uninstall` stopped a
-  unit that no longer exists (`termit-uv.service`) and left the running agent alive, now fixed and
-  proved by a test plus a real uninstall/reinstall on the lab; the server renews its certificate only
-  on startup (documented in `OPERATIONS.md` §15, fix is the next item); and `DESCRIPTION.md` §8/§15
-  describe a sync shape and an Argon2id hash that the code does not implement.
-- Extend the `mn status` dashboard (prober/worker health, queue age, per-node history), Prometheus
-  metrics, structured logs with redaction tests. The basic dashboard (state counts, last and next
-  check, runtime policy override) landed early in M3.1; `/metrics` is still two gauges.
-- Bootstrap installer script (`deploy/install/uv.sh`) with checksum (and optional minisign)
-  verification, plus an upgrade path that preserves state.
+Delivered:
+
+| Piece | Where | Verified by |
+|---|---|---|
+| Operator documents: install/upgrade/backup/recover/uninstall/troubleshooting, the wire contract, the threat model | `docs/OPERATIONS.md`, `docs/PROTOCOL.md`, `docs/THREAT_MODEL.md` | written against the code; endpoint examples checked against a running server on the lab |
+| A systemd unit for the management server (there was none) | `deploy/systemd/termit-mn.service` | started on the lab under systemd; `healthz`, `mn status` and `/metrics` answer |
+| Bootstrap installer with checksum verification and an upgrade path that keeps the node's identity | `deploy/install/uv.sh` | lab: a local release directory installs, a corrupted `SHA256SUMS` is refused before anything is written, a missing one is refused too, a re-run upgrades `termit-uv` and `uv init` converges |
+| Real Prometheus metrics: enrollments, syncs, check outcomes, a check-duration histogram, nodes by state, scheduler backlog, probe-worker health, server certificate expiry; loopback only, no node identifiers in any label | `internal/mn/metrics`, `internal/mn/server` | unit tests for buckets, labels, escaping, the 403 and the counters; scraped from the live lab server |
+| The dashboard's server block: uptime, database size and schema, prober state with its reason, queue backlog and age, certificate expiry | `admin server.state`, `mn status` | unit tests; live lab output |
+| Per-node history in one series: the last ten probes and self-reports together | `admin uv.show` → `mn uv show` | live lab output |
+| A redaction test: enrolment and sync log identifiers, never the agent key, subscription token, probe UUID, invite code or node UUID | `internal/mn/server` | the test fails if any of them appears |
+
+Carried forward: **the management server renews its certificate only at startup**. It is documented as
+a known limitation, `termit_mn_certificate_expiry_timestamp_seconds` makes it alertable, and the fix —
+self-renewal inside `mn serve` with a hot certificate swap — belongs with the release work rather than
+with the documentation that found it.
+
+Also outstanding, and a maintainer decision rather than a defect fix: `DESCRIPTION.md` §8 shows a sync
+body shape the server does not send, §15 says agent keys are hashed with Argon2id and compared in
+constant time (they are SHA-256 digests looked up through an index, deliberately), and §13.4 lists
+`mn sub show`, which does not exist. `docs/PROTOCOL.md` is what the build does; the design document
+should be reconciled with it before the first tag.
 
 ### M4.3 Release
 
 - `v0.1.0` tag; `goreleaser` (or a small script) producing linux/amd64 + linux/arm64 archives,
-  `SHA256SUMS`, and a systemd unit bundle.
+  `SHA256SUMS`, and a systemd unit bundle. The bootstrap installer fetches
+  `<base>/<version>/termit-uv_<version>_linux_<arch>` and `<base>/<version>/SHA256SUMS`, so the release
+  must name its assets exactly that way and publish `uv.sh` beside them.
 - CI: lint, unit, race, govulncheck, cross-build; the lab suite is the acceptance gate. The Docker
   Compose harness is a developer convenience (QUESTIONS Q9.4) and is not built yet, so CI does not
   claim it.

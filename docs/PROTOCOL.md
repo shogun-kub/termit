@@ -88,17 +88,30 @@ Prometheus text format, `text/plain; version=0.0.4`. **Loopback only**: a reques
 loopback address gets `403` and a one-line explanation. This is the surface a local monitoring agent
 reads; it is not exposed to the mesh.
 
-```
-# HELP termit_mn_up Whether the server answers.
-# TYPE termit_mn_up gauge
-termit_mn_up 1
-# HELP termit_mn_build_info Build identity.
-# TYPE termit_mn_build_info gauge
-termit_mn_build_info{version="0.1.0"} 1
-```
+| Family | Type | Meaning |
+|---|---|---|
+| `termit_mn_up` | gauge | always 1 while the server answers |
+| `termit_mn_build_info{version,schema_version}` | gauge | build and database schema identity |
+| `termit_mn_start_time_seconds` | gauge | process start, unix seconds |
+| `termit_mn_nodes{state}` | gauge | nodes per state, every state present |
+| `termit_mn_prober_up` | gauge | 0 means no probe worker: every check is unknown |
+| `termit_mn_check_queue_due` | gauge | nodes the scheduler should have checked by now |
+| `termit_mn_check_queue_oldest_due_seconds` | gauge | how late the oldest due check is |
+| `termit_mn_check_next_due_timestamp_seconds` | gauge | when the next scheduled check is due |
+| `termit_mn_certificate_expiry_timestamp_seconds` | gauge | the server's own certificate |
+| `termit_mn_enrollments_total{result}` | counter | `ok`, `pending`, `refused` |
+| `termit_mn_syncs_total{result}` | counter | `ok`, `refused` |
+| `termit_mn_checks_total{result}` | counter | `ok`, `failed`, `unknown`, `error` |
+| `termit_mn_check_duration_seconds` | histogram | one scheduler cycle, buckets from 0.1 s to 10 s |
 
-The counter set is deliberately small today; see `docs/IMPLEMENTATION_PLAN.md` M4.2 for the planned
-extensions. Nothing here ever carries a node id, domain or token.
+The counters are process-lifetime and reset on restart; the gauges are read from the database at scrape
+time. **No label carries a node id, a domain or a token**: the endpoint is scraped by a monitoring
+agent, and an inventory does not belong in a metrics store. Ask `mn status` or `mn uv show` for the
+per-node view.
+
+A refusal `result` on the enrollment counter counts everything that produced no node — a bad invite, a
+taken domain, a failed DNS or probe check, a rate limit. The detail is in the log and in the problem
+response, not in the metric.
 
 ### 3.3 `POST /api/v1/enroll`
 
@@ -145,7 +158,7 @@ The server then runs, in this order:
    request is made through the tunnel pinned to exactly that leaf. Failure is `502 check_failed`,
    an unavailable prober is `503 check_failed`.
 
-Success is `200` with the three secrets, which are shown **once and never again**:
+Success is `201 Created` with the three secrets, which are shown **once and never again**:
 
 ```json
 {
@@ -441,8 +454,15 @@ by default), created `0600`, one JSON request per connection with a 30 s deadlin
 ```
 
 or `{"error": {"code": "not_found", "detail": "no such node"}}`. Operations are `invite.*`, `uv.*`,
-`check.now`, `policy.*` and `sub.rotate`; `mn help` lists the commands, and every mutation is
-audited.
+`check.now`, `policy.*`, `sub.rotate` and `server.state`; `mn help` lists the commands, and every
+mutation is audited. Two answers are worth knowing:
+
+- `uv.show` carries the node's recent history (`checks`, newest first: the server's probes and the
+  node's own self-reports in one series), which is what tells "the box is broken" from "the path to it
+  is broken".
+- `server.state` is the dashboard's server block: version, uptime, database size and schema, whether a
+  probe worker exists, the scheduler's backlog and the server's certificate expiry. It contains no
+  node identifiers.
 
 This surface is for an operator sitting on the server. It has no authentication beyond the socket's
 file permissions plus the token, it is not exposed on the network, and its method list is not a
