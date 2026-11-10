@@ -119,6 +119,7 @@ func (m *menu) entries() []menuEntry {
 		{"check now", "one node, or the whole mesh", m.planCheck},
 		{"policy", "show and change scheduler thresholds", m.planPolicy},
 		{"subscription", "show or rotate a node's subscription token", m.planSubscription},
+		{"admin token", "rotate the credential every admin command uses", m.planAdminToken},
 		{"backup", "write a consistent snapshot", fixedMn("backup")},
 		{"help", "every command and flag", fixedMn("help")},
 	}
@@ -249,6 +250,26 @@ func (m *menu) planPolicy(ui *termui.UI) ([][]string, error) {
 		return nil, err
 	}
 	return [][]string{{"policy", "set", key, value}}, nil
+}
+
+// planAdminToken rotates the credential the menu itself is running on. It asks first, and says what
+// breaks: every timer and script that still carries the old token stops working at that moment.
+func (m *menu) planAdminToken(ui *termui.UI) ([][]string, error) {
+	out, err := ui.Confirm("Rotate the admin token? Every script and timer using it stops working now", false)
+	if err != nil {
+		return nil, err
+	}
+	if !out {
+		return nil, nil
+	}
+	path, err := ui.Prompt("Write the new token to this file (empty to print it once)", "")
+	if err != nil {
+		return nil, err
+	}
+	if path == "" {
+		return [][]string{{"admin", "rotate"}}, nil
+	}
+	return [][]string{{"admin", "rotate", "--token-out", path}}, nil
 }
 
 func (m *menu) planSubscription(ui *termui.UI) ([][]string, error) {

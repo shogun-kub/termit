@@ -69,6 +69,8 @@ func run(args []string, stdout, stderr *os.File) int {
 		return runServerCheck(args[1:], stdout, stderr)
 	case "status":
 		return runStatus(args[1:], stdout, stderr)
+	case "admin":
+		return runAdmin(args[1:], stdout, stderr)
 	case "menu":
 		return runMenu(stdout, stderr, os.Stdin, termui.PlainColour(stdout))
 	default:
@@ -95,6 +97,7 @@ Admin:
   uv           list, show, approve, block, unblock and remove nodes
   check        run health checks now (one node, or the whole mesh with --all)
   policy       read and change scheduler thresholds
+  admin        rotate the admin token (the credential every admin command uses)
   sub          show and rotate subscription tokens
   status       show server, nodes and the check schedule
 

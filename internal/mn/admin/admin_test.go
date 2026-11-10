@@ -355,3 +355,81 @@ func TestForgetFreesTheDomainOnlyAfterRemoval(t *testing.T) {
 		t.Fatalf("the domain is still taken: %v", err)
 	}
 }
+
+// rotate replaces the credential of the admin that authenticates, which is the only one it may touch:
+// a token entitled to its own access must not be able to re-issue somebody else's.
+func TestRotateReplacesThePresentedToken(t *testing.T) {
+	t.Parallel()
+	client, db := start(t)
+	ctx := context.Background()
+
+	var rotated admin.AdminTokenView
+	if err := call(ctx, client, "admin.rotate", nil, &rotated); err != nil {
+		t.Fatalf("admin.rotate: %v", err)
+	}
+	if rotated.Token == "" || rotated.Token == testToken {
+		t.Fatalf("the rotation returned no new token: %+v", rotated)
+	}
+	if rotated.Name != "operator" {
+		t.Errorf("rotation named %q, want the authenticated admin", rotated.Name)
+	}
+	if want := "admin_" + secret.Fingerprint(rotated.Token); rotated.ID != want {
+		t.Errorf("id = %q, want %q (the id follows the token)", rotated.ID, want)
+	}
+
+	// The old credential is gone, not merely demoted.
+	stale := client
+	if err := call(ctx, stale, "invite.list", nil, nil); err == nil {
+		t.Fatal("the old token still works")
+	}
+	// And the new one is the way in.
+	fresh := admin.Client{Network: client.Network, Address: client.Address, Token: rotated.Token}
+	var invites []admin.InviteView
+	if err := call(ctx, fresh, "invite.list", nil, &invites); err != nil {
+		t.Fatalf("the new token does not work: %v", err)
+	}
+
+	// The store agrees: one row, new digest, and the old digest resolves to nothing.
+	if _, err := db.AdminByTokenHash(ctx, secret.Digest(testToken)); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("the old digest still resolves: %v", err)
+	}
+	if got, err := db.AdminByTokenHash(ctx, secret.Digest(rotated.Token)); err != nil || got.ID != rotated.ID {
+		t.Errorf("the new digest does not resolve to %q: %v", rotated.ID, err)
+	}
+}
+
+// A rotated credential has never been presented, so it must not inherit the old one's "last used".
+func TestRotateClearsLastUsed(t *testing.T) {
+	t.Parallel()
+	client, db := start(t)
+	ctx := context.Background()
+	if err := call(ctx, client, "invite.list", nil, nil); err != nil {
+		t.Fatalf("invite.list: %v", err)
+	}
+	before, err := db.AdminByTokenHash(ctx, secret.Digest(testToken))
+	if err != nil || before.LastUsedAt == nil {
+		t.Fatalf("the test needs a used token first: %+v (%v)", before, err)
+	}
+	var rotated admin.AdminTokenView
+	if err := call(ctx, client, "admin.rotate", nil, &rotated); err != nil {
+		t.Fatalf("admin.rotate: %v", err)
+	}
+	after, err := db.AdminByTokenHash(ctx, secret.Digest(rotated.Token))
+	if err != nil {
+		t.Fatalf("AdminByTokenHash: %v", err)
+	}
+	if after.LastUsedAt != nil {
+		t.Errorf("the new token already has last_used_at = %v", after.LastUsedAt)
+	}
+}
+
+func TestRotateNeedsAuthentication(t *testing.T) {
+	t.Parallel()
+	client, _ := start(t)
+	client.Token = ""
+	err := call(context.Background(), client, "admin.rotate", nil, nil)
+	var refused *admin.Error
+	if !errors.As(err, &refused) || refused.Code != admin.CodeUnauthorized {
+		t.Fatalf("Call = %v, want an unauthorized refusal", err)
+	}
+}

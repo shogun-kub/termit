@@ -225,3 +225,31 @@ func TestServerMenuEndsOnClosedInput(t *testing.T) {
 		t.Errorf("ran %v with no input", *ran)
 	}
 }
+
+func TestAdminTokenMenuConfirmsBeforeRotating(t *testing.T) {
+	t.Parallel()
+	// Declining must produce no command at all: a rotation nobody meant is unrecoverable without the
+	// token that was just thrown away.
+	declined, _, _ := newMenu("")
+	if plan, err := planOf(t, declined, "admin token", "n\n"); err != nil || plan != nil {
+		t.Fatalf("declining planned %v (%v)", plan, err)
+	}
+
+	printed, _, _ := newMenu("")
+	plan, err := planOf(t, printed, "admin token", "y\n\n")
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if got := strings.Join(plan[0], " "); got != "admin rotate" {
+		t.Errorf("runs %q, want admin rotate", got)
+	}
+
+	toFile, _, _ := newMenu("")
+	plan, err = planOf(t, toFile, "admin token", "y\n/etc/termit/mn/admin.token\n")
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if got := strings.Join(plan[0], " "); got != "admin rotate --token-out /etc/termit/mn/admin.token" {
+		t.Errorf("runs %q, want it to write the token to the file", got)
+	}
+}

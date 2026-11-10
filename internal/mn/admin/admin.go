@@ -89,10 +89,13 @@ func New(db *store.Store) (*Service, error) {
 
 // Handle authenticates and dispatches one request.
 func (s *Service) Handle(ctx context.Context, req Request) (any, *Error) {
-	if err := s.authenticate(ctx, req.Token); err != nil {
-		return nil, err
+	admin, authErr := s.authenticate(ctx, req.Token)
+	if authErr != nil {
+		return nil, authErr
 	}
 	switch req.Op {
+	case "admin.rotate":
+		return s.rotateAdminToken(ctx, admin)
 	case "invite.list":
 		return s.listInvites(ctx)
 	case "invite.create":
@@ -136,14 +139,14 @@ func (s *Service) Handle(ctx context.Context, req Request) (any, *Error) {
 
 // authenticate compares the token against every stored digest. The registry holds a handful of admin
 // tokens, so a scan is cheaper than an index and cannot leak which prefix is right.
-func (s *Service) authenticate(ctx context.Context, token string) *Error {
+func (s *Service) authenticate(ctx context.Context, token string) (store.Admin, *Error) {
 	if token == "" {
-		return &Error{Code: CodeUnauthorized, Detail: "an admin token is required"}
+		return store.Admin{}, &Error{Code: CodeUnauthorized, Detail: "an admin token is required"}
 	}
 	digest := secret.Digest(token)
 	admins, err := s.Store.Admins(ctx)
 	if err != nil {
-		return &Error{Code: CodeInternal, Detail: "cannot read the admin list"}
+		return store.Admin{}, &Error{Code: CodeInternal, Detail: "cannot read the admin list"}
 	}
 	for _, admin := range admins {
 		if admin.TokenHash == digest {
@@ -152,10 +155,33 @@ func (s *Service) authenticate(ctx context.Context, token string) *Error {
 				// A failed bookkeeping write must not fail the operation.
 				_ = err
 			}
-			return nil
+			return admin, nil
 		}
 	}
-	return &Error{Code: CodeUnauthorized, Detail: "the admin token is not valid"}
+	return store.Admin{}, &Error{Code: CodeUnauthorized, Detail: "the admin token is not valid"}
+}
+
+// rotateAdminToken replaces the credential of the admin who authenticated. It cannot rotate anybody
+// else's: the call would otherwise be a way to take over another operator's access while holding a
+// token that is only entitled to its own.
+func (s *Service) rotateAdminToken(ctx context.Context, admin store.Admin) (any, *Error) {
+	token, err := secret.Token()
+	if err != nil {
+		return nil, &Error{Code: CodeInternal, Detail: "cannot generate a token"}
+	}
+	hash := secret.Digest(token)
+	if err := s.Store.RotateAdmin(ctx, admin.ID, "admin_"+secret.Fingerprint(token), hash); err != nil {
+		return nil, &Error{Code: CodeInternal, Detail: err.Error()}
+	}
+	return AdminTokenView{ID: "admin_" + secret.Fingerprint(token), Name: admin.Name, Token: token}, nil
+}
+
+// AdminTokenView is a freshly rotated credential. The token appears here and nowhere else: the store
+// keeps only its digest, which is what makes rotation meaningful.
+type AdminTokenView struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Token string `json:"token"`
 }
 
 // InviteView is an invite as the CLI prints it: the code itself is not recoverable, only its use.
