@@ -89,7 +89,7 @@ func (a *application) run(args []string) int {
 	// On a terminal the bare binary is the menu; anywhere else it stays the usage text, so a script
 	// that runs `uv` by mistake gets exit 2 and a short page, not a prompt waiting for input.
 	if len(args) == 0 && a.interactive() {
-		return a.runMenu()
+		return a.runMenu(nil)
 	}
 	if len(args) == 0 {
 		a.usage(a.stderr)
@@ -132,7 +132,8 @@ func (a *application) run(args []string) int {
 	case "warp":
 		return a.runWarp(rest)
 	case "menu":
-		return a.runMenu()
+		// `menu --config <path>` inspects and acts on that node, like every other command.
+		return a.runMenu(rest)
 	default:
 		fmt.Fprintf(a.stderr, "termit-uv: unknown command %q\n\n", command)
 		a.usage(a.stderr)
@@ -162,7 +163,8 @@ Commands:
   warp         show the egress, or change its mode (all, selected, off)
   uninstall    remove Termit from this node
   version      print build and protocol version
-  menu         the interactive menu (what the bare command does on a terminal)
+  menu         the interactive menu (what the bare command does on a terminal); --config given
+               here is the node it inspects and acts on
   help         show this help
 
 Exit status: 0 success, 1 failure, 2 usage error, 4 sync --check found drift.

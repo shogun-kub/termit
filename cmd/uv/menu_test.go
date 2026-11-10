@@ -327,3 +327,40 @@ func entryNamed(t *testing.T, app *application, label string) menuEntry {
 	t.Fatalf("the menu has no %q entry", label)
 	return menuEntry{}
 }
+
+// `menu --config <path>` has to inspect and act on that node: the flag used to be dropped, so the menu
+// showed the default configuration while the operator was looking at another one.
+func TestMenuHonoursTheConfigFlag(t *testing.T) {
+	t.Parallel()
+	app, out := menuApp(t, "\nq\n", true)
+	path := t.TempDir() + "/elsewhere.yaml"
+	if code := app.runMenu([]string{"--config", path}); code != exitOK {
+		t.Fatalf("exit = %d, want 0", code)
+	}
+	if app.configPath != path {
+		t.Errorf("the menu reads %q, want %q", app.configPath, path)
+	}
+	rendered := out.String()
+	if !strings.Contains(rendered, "Termit — node") {
+		t.Errorf("no menu header:\n%s", rendered)
+	}
+
+	// An argument that is not a flag is a mistake, not something to ignore silently.
+	app, _ = menuApp(t, "\n", true)
+	if code := app.runMenu([]string{"nonsense"}); code != exitUsage {
+		t.Errorf("exit = %d, want %d for a stray argument", code, exitUsage)
+	}
+}
+
+// Every command the menu builds inherits the flag: the first word selects the subcommand, so the flags go
+// after it.
+func TestAppendFlags(t *testing.T) {
+	t.Parallel()
+	got := strings.Join(appendFlags([]string{"status"}, []string{"--config", "/etc/termit/uv/config.yaml"}), " ")
+	if got != "status --config /etc/termit/uv/config.yaml" {
+		t.Errorf("appendFlags = %q", got)
+	}
+	if got := appendFlags([]string{"status"}, nil); len(got) != 1 {
+		t.Errorf("appendFlags without a base changed the command: %v", got)
+	}
+}

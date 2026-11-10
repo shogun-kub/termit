@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"io/fs"
@@ -26,7 +27,27 @@ type menuEntry struct {
 }
 
 // runMenu is the interactive front end: the binary with no arguments on a terminal, or `termit-uv menu`.
-func (a *application) runMenu() int {
+//
+// A `--config` given after `menu` reaches every command the menu runs and is the file the header reads:
+// the flag used to be dropped, so the menu inspected and acted on the default configuration while the
+// operator was looking at another node.
+func (a *application) runMenu(args []string) int {
+	flags := flag.NewFlagSet("termit-uv menu", flag.ContinueOnError)
+	flags.SetOutput(a.stderr)
+	configPath := flags.String("config", configPathDefault(), "path to config.yaml")
+	if err := flags.Parse(args); err != nil {
+		return a.flagError(err)
+	}
+	if flags.NArg() > 0 {
+		fmt.Fprintf(a.stderr, "termit-uv menu: unexpected argument %q\n", flags.Arg(0))
+		return exitUsage
+	}
+	a.configPath = *configPath
+	base := []string(nil)
+	if setFlags(flags) {
+		base = []string{"--config", *configPath}
+	}
+
 	ui := termui.New(a.stdin(), a.stdout, a.menuStyle())
 	entries := a.menuEntries()
 
@@ -66,7 +87,7 @@ func (a *application) runMenu() int {
 		case plan == nil:
 			ui.Say("cancelled")
 		default:
-			if code := a.runPlan(ui, plan); code != exitOK {
+			if code := a.runPlan(ui, plan, base); code != exitOK {
 				// A failed command has explained itself; keep the summary on screen long enough to read.
 				_ = ui.Pause()
 				continue
@@ -78,9 +99,12 @@ func (a *application) runMenu() int {
 	}
 }
 
-// runPlan runs the commands an entry produced, one at a time, and stops at the first failure.
-func (a *application) runPlan(ui *termui.UI, plan [][]string) int {
+// runPlan runs the commands an entry produced, one at a time, and stops at the first failure. The flags
+// the menu itself was given are appended to each: every node command takes `--config`, and `help`
+// ignores what follows it.
+func (a *application) runPlan(ui *termui.UI, plan [][]string, base []string) int {
 	for _, argv := range plan {
+		argv = appendFlags(argv, base)
 		ui.Blank()
 		ui.Say("$ termit-uv " + strings.Join(argv, " "))
 		ui.Blank()
@@ -200,6 +224,24 @@ func (a *application) menuEntries() []menuEntry {
 // fixed is an entry that runs one command line with no questions.
 func fixed(argv ...string) func(*termui.UI) ([][]string, error) {
 	return func(*termui.UI) ([][]string, error) { return [][]string{argv}, nil }
+}
+
+// setFlags reports whether the operator set any flag, as opposed to the defaults being in place.
+func setFlags(flags *flag.FlagSet) bool {
+	set := false
+	flags.Visit(func(*flag.Flag) { set = true })
+	return set
+}
+
+// appendFlags appends the menu's own flags to a command, after its words: the first word selects the
+// subcommand, and every node command reorders its flags anyway.
+func appendFlags(argv, base []string) []string {
+	if len(base) == 0 || len(argv) == 0 {
+		return argv
+	}
+	out := make([]string, 0, len(argv)+len(base))
+	out = append(out, argv...)
+	return append(out, base...)
 }
 
 // planInstall converges an installed node, or installs one, asking only for what the flags would

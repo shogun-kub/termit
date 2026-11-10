@@ -1,6 +1,8 @@
 package main
 
 import (
+	"io"
+	"os"
 	"strings"
 	"testing"
 
@@ -251,5 +253,122 @@ func TestAdminTokenMenuConfirmsBeforeRotating(t *testing.T) {
 	}
 	if got := strings.Join(plan[0], " "); got != "admin rotate --token-out /etc/termit/mn/admin.token" {
 		t.Errorf("runs %q, want it to write the token to the file", got)
+	}
+}
+
+// The menu runs the command line a script would run, so the credential the operator gave the menu has to
+// travel with every one of them: `termit-mn menu --token-file …` used to warn that no token was
+// configured while holding one, and every admin action then refused to run.
+func TestMenuFlagsReachTheCommands(t *testing.T) {
+	t.Parallel()
+	flags, _, _, token, tokenFile := inviteFlags("termit-mn menu", io.Discard)
+	if err := flags.Parse([]string{"--token-file", "/etc/termit/mn/admin.token", "--socket", "/run/x.sock"}); err != nil {
+		t.Fatalf("%v", err)
+	}
+	// Visit walks the flags in name order, so the base is compared as a set of pairs.
+	base := setFlagArgs(flags)
+	got := map[string]string{}
+	for i := 0; i+1 < len(base); i += 2 {
+		got[base[i]] = base[i+1]
+	}
+	want := map[string]string{"--token-file": "/etc/termit/mn/admin.token", "--socket": "/run/x.sock"}
+	if len(got) != len(want) || got["--token-file"] != want["--token-file"] || got["--socket"] != want["--socket"] {
+		t.Fatalf("base = %v, want %v (flags: %v, %v)", base, want, *token, *tokenFile)
+	}
+
+	joined := strings.Join(withFlags([]string{"uv", "list"}, base), " ")
+	if !strings.HasPrefix(joined, "uv list ") {
+		t.Errorf("withFlags = %q, want the command words first", joined)
+	}
+	for _, fragment := range []string{"--token-file /etc/termit/mn/admin.token", "--socket /run/x.sock"} {
+		if !strings.Contains(joined, fragment) {
+			t.Errorf("withFlags = %q, want it to contain %q", joined, fragment)
+		}
+	}
+	// A command that takes no admin flags gets nothing, and an unset flag stays unset so each command
+	// keeps its own environment lookup.
+	if got := withFlags([]string{"backup"}, nil); len(got) != 1 {
+		t.Errorf("withFlags without a base changed the command: %v", got)
+	}
+}
+
+// The header has to say what the session actually runs on, including the two ways it can be wrong.
+func TestAdminTokenSource(t *testing.T) {
+	dir := t.TempDir()
+	file := dir + "/token"
+	if err := os.WriteFile(file, []byte("from-the-file\n"), 0o600); err != nil {
+		t.Fatalf("%v", err)
+	}
+
+	cases := []struct {
+		name        string
+		token       string
+		file        string
+		envToken    string
+		envFile     string
+		wantSource  string
+		wantProblem string
+	}{
+		{name: "flag wins", token: "typed", envToken: "exported", wantSource: "--token"},
+		{name: "file flag", file: file, wantSource: "--token-file " + file},
+		{name: "environment", envToken: "exported", wantSource: adminTokenEnv},
+		{name: "environment file", envFile: file, wantSource: adminTokenFileEnv + "=" + file},
+		{name: "nothing", wantSource: ""},
+		{name: "both flags", token: "typed", file: file, wantProblem: "not both"},
+		{name: "unreadable file", file: dir + "/missing", wantProblem: "does not exist"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(adminTokenEnv, tc.envToken)
+			t.Setenv(adminTokenFileEnv, tc.envFile)
+			value, source, err := resolveAdminTokenSource(tc.token, tc.file)
+			if tc.wantProblem != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantProblem) {
+					t.Fatalf("error = %v, want one containing %q", err, tc.wantProblem)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("%v", err)
+			}
+			if source != tc.wantSource {
+				t.Errorf("source = %q, want %q", source, tc.wantSource)
+			}
+			if tc.wantSource != "" && value == "" {
+				t.Errorf("source %q came with an empty token", source)
+			}
+			if tc.wantSource == "" && value != "" {
+				t.Errorf("a token appeared from nowhere: %q", value)
+			}
+		})
+	}
+}
+
+// A menu that cannot authenticate refuses at startup with a usage error: the operator asked for two
+// credentials at once, or named a file that is not there, and clicking an action to find that out is
+// worse than being told.
+func TestMenuRefusesAnUnusableCredential(t *testing.T) {
+	t.Parallel()
+	devNull, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	t.Cleanup(func() { _ = devNull.Close() })
+	quiet, err := os.CreateTemp(t.TempDir(), "stderr")
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	t.Cleanup(func() { _ = quiet.Close() })
+
+	cases := map[string][]string{
+		"both flags":     {"--token", "typed", "--token-file", "/etc/termit/mn/admin.token"},
+		"missing file":   {"--token-file", t.TempDir() + "/absent"},
+		"stray argument": {"nonsense"},
+	}
+	for name, args := range cases {
+		code := runMenu(devNull, quiet, strings.NewReader(""), termui.Style{}, args)
+		if code != exitUsage {
+			t.Errorf("%s: exit = %d, want %d", name, code, exitUsage)
+		}
 	}
 }

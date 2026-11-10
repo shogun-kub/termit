@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -17,21 +18,72 @@ type menuEntry struct {
 	label string
 	hint  string
 	plan  func(ui *termui.UI) ([][]string, error)
+	// local marks an entry whose command takes no admin flags: the menu's own flags are not passed to it,
+	// because a flag set that never declared them refuses them.
+	local bool
 }
 
 // menu is the interactive front end for the server and its admin CLI.
 type menu struct {
 	ui  *termui.UI
 	run func([]string) int
+	// base is the argv every admin command inherits: the flags the operator gave the menu itself.
+	base []string
+	// credential names where the admin token comes from, or "" when nothing is configured.
+	credential string
 }
 
 // runMenu is `mn` with no arguments on a terminal, and `termit-mn menu` always.
-func runMenu(stdout, stderr *os.File, in io.Reader, style termui.Style) int {
+//
+// Flags after `menu` reach every command the menu runs, the way a script would pass them. They used to be
+// dropped: `termit-mn menu --token-file /etc/termit/mn/admin.token` warned that no token was configured
+// while holding one, and every admin action then refused to run.
+func runMenu(stdout, stderr *os.File, in io.Reader, style termui.Style, args []string) int {
+	flags, _, _, token, tokenFile := inviteFlags("termit-mn menu", stderr)
+	if err := flags.Parse(flagsFirst(args, map[string]bool{})); err != nil {
+		return flagExit(err)
+	}
+	if flags.NArg() > 0 {
+		fmt.Fprintf(stderr, "termit-mn menu: unexpected argument %q\n", flags.Arg(0))
+		return exitUsage
+	}
+	// Resolved once: a contradictory pair of flags or an unreadable file is a usage error, not something
+	// to discover one menu click later, and the header gets the name of the credential in use.
+	_, source, err := resolveAdminTokenSource(*token, *tokenFile)
+	if err != nil {
+		fmt.Fprintf(stderr, "termit-mn menu: %v\n", err)
+		return exitUsage
+	}
 	m := &menu{
-		ui:  termui.New(in, stdout, style),
-		run: func(args []string) int { return run(args, stdout, stderr) },
+		ui:         termui.New(in, stdout, style),
+		run:        func(argv []string) int { return run(argv, stdout, stderr) },
+		base:       setFlagArgs(flags),
+		credential: source,
 	}
 	return m.loop()
+}
+
+// setFlagArgs renders the flags the operator actually gave as argv, so the commands the menu runs inherit
+// them. Only set flags are included: an unset one has to keep each command's own environment lookup
+// rather than freeze a default into the menu.
+func setFlagArgs(flags *flag.FlagSet) []string {
+	var out []string
+	flags.Visit(func(f *flag.Flag) {
+		out = append(out, "--"+f.Name, f.Value.String())
+	})
+	return out
+}
+
+// withFlags appends the inherited flags to a command. They go after the plan's own words — `uv list`,
+// `check now <domain>` — because the first word selects the subcommand; every admin command reorders its
+// flags anyway (`flagsFirst`), so the tail is the one place that is always right.
+func withFlags(argv, base []string) []string {
+	if len(base) == 0 || len(argv) == 0 {
+		return argv
+	}
+	out := make([]string, 0, len(argv)+len(base))
+	out = append(out, argv...)
+	return append(out, base...)
 }
 
 func (m *menu) loop() int {
@@ -60,14 +112,15 @@ func (m *menu) loop() int {
 			continue
 		}
 
-		plan, err := entries[index].plan(m.ui)
+		entry := entries[index]
+		plan, err := entry.plan(m.ui)
 		switch {
 		case err != nil:
 			m.ui.Error(err.Error())
 		case plan == nil:
 			m.ui.Say("cancelled")
 		default:
-			if code := m.runPlan(plan); code != exitOK {
+			if code := m.runPlan(plan, !entry.local); code != exitOK {
 				_ = m.ui.Pause()
 				continue
 			}
@@ -78,8 +131,11 @@ func (m *menu) loop() int {
 	}
 }
 
-func (m *menu) runPlan(plan [][]string) int {
+func (m *menu) runPlan(plan [][]string, inherit bool) int {
 	for _, argv := range plan {
+		if inherit {
+			argv = withFlags(argv, m.base)
+		}
 		m.ui.Blank()
 		m.ui.Say("$ termit-mn " + strings.Join(argv, " "))
 		m.ui.Blank()
@@ -97,14 +153,12 @@ func (m *menu) header() {
 	m.ui.Title("Termit — server")
 	m.ui.Hint(version.String("termit-mn"))
 	m.ui.Blank()
-	switch {
-	case os.Getenv(adminTokenEnv) != "":
-		m.ui.State("ok", "admin token present in "+adminTokenEnv)
-	case os.Getenv(adminTokenFileEnv) != "":
-		m.ui.State("ok", "admin token file named in "+adminTokenFileEnv)
-	default:
+	switch m.credential {
+	case "":
 		m.ui.State("warn", "no admin token: admin actions will refuse to run")
-		m.ui.Hint("export " + adminTokenEnv + "=<token>, or " + adminTokenFileEnv + "=<path>, before the menu")
+		m.ui.Hint("pass --token-file <path> to the menu, or export " + adminTokenEnv + " / " + adminTokenFileEnv)
+	default:
+		m.ui.State("ok", "admin token from "+m.credential)
 	}
 	m.ui.Blank()
 }
@@ -113,15 +167,16 @@ func (m *menu) header() {
 // starting a long-running server from a menu would hide its log.
 func (m *menu) entries() []menuEntry {
 	return []menuEntry{
-		{"status", "server, nodes and the check schedule", fixedMn("status")},
-		{"nodes", "list, inspect, approve, block, remove", m.planNodes},
-		{"invites", "create, list, revoke codes", m.planInvites},
-		{"check now", "one node, or the whole mesh", m.planCheck},
-		{"policy", "show and change scheduler thresholds", m.planPolicy},
-		{"subscription", "show or rotate a node's subscription token", m.planSubscription},
-		{"admin token", "rotate the credential every admin command uses", m.planAdminToken},
-		{"backup", "write a consistent snapshot", fixedMn("backup")},
-		{"help", "every command and flag", fixedMn("help")},
+		{label: "status", hint: "server, nodes and the check schedule", plan: fixedMn("status")},
+		{label: "nodes", hint: "list, inspect, approve, block, remove", plan: m.planNodes},
+		{label: "invites", hint: "create, list, revoke codes", plan: m.planInvites},
+		{label: "check now", hint: "one node, or the whole mesh", plan: m.planCheck},
+		{label: "policy", hint: "show and change scheduler thresholds", plan: m.planPolicy},
+		{label: "subscription", hint: "show or rotate a node's subscription token", plan: m.planSubscription},
+		{label: "admin token", hint: "rotate the credential every admin command uses", plan: m.planAdminToken},
+		// These two take no admin flags: `backup` writes a local snapshot, `help` prints the usage.
+		{label: "backup", hint: "write a consistent snapshot", plan: fixedMn("backup"), local: true},
+		{label: "help", hint: "every command and flag", plan: fixedMn("help"), local: true},
 	}
 }
 

@@ -81,8 +81,18 @@ trusts. Closed stdin (a pipe that ran out) ends the session cleanly with status 
 | help | every command and flag | `termit-mn help` |
 
 The server menu is a front end for the admin CLI, so it needs what the admin CLI needs: a running
-server and the admin token. The header says whether the token is in the environment; if it is not, the
-admin actions refuse to run and the CLI says so in its own words.
+server and the admin token. Give the token to the menu itself and every command it runs inherits it:
+
+```bash
+termit-mn menu --token-file /etc/termit/mn/admin.token
+```
+
+The header names the credential the session runs on (`admin token from --token-file …`, from
+`TERMIT_MN_ADMIN_TOKEN`, or from `TERMIT_MN_ADMIN_TOKEN_FILE`), says plainly when there is none, and the
+admin actions then refuse to run in the CLI's own words. `--config` and `--socket` work the same way.
+
+The node menu takes `--config` for the same reason: `termit-uv menu --config /path/to/config.yaml`
+inspects and acts on that node, not on the default one.
 
 Starting the server is deliberately absent. `termit-mn serve` belongs to the systemd unit, where its log is
 collected; a menu that starts a long-running foreground server would hide that log behind a menu

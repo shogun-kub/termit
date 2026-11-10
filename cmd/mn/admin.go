@@ -41,23 +41,45 @@ func adminClient(configPath, socket, token, tokenFile string) (admin.Client, err
 // over the file that holds it: the thing the operator typed is what they meant, so an exported variable
 // left over in a shell cannot quietly override a flag that named a different credential.
 func resolveAdminToken(token, tokenFile string) (string, error) {
+	value, _, err := resolveAdminTokenSource(token, tokenFile)
+	if err != nil {
+		return "", err
+	}
+	if value == "" {
+		return "", fmt.Errorf("an admin token is required: pass --token, pass --token-file, set %s, or set %s",
+			adminTokenEnv, adminTokenFileEnv)
+	}
+	return value, nil
+}
+
+// resolveAdminTokenSource is resolveAdminToken plus where the credential came from, for a caller that
+// has to tell the operator what it is running on. An empty source with no error means nothing is
+// configured — the menu says that as a warning, while a command has to refuse.
+func resolveAdminTokenSource(token, tokenFile string) (string, string, error) {
 	if token != "" && tokenFile != "" {
-		return "", fmt.Errorf("pass --token or --token-file, not both")
+		return "", "", fmt.Errorf("pass --token or --token-file, not both")
 	}
 	if token != "" {
-		return token, nil
+		return token, "--token", nil
 	}
 	if tokenFile != "" {
-		return readTokenFile(tokenFile)
+		value, err := readTokenFile(tokenFile)
+		if err != nil {
+			return "", "", err
+		}
+		return value, "--token-file " + tokenFile, nil
 	}
 	if value := os.Getenv(adminTokenEnv); value != "" {
-		return value, nil
+		return value, adminTokenEnv, nil
 	}
 	if path := os.Getenv(adminTokenFileEnv); path != "" {
-		return readTokenFile(path)
+		value, err := readTokenFile(path)
+		if err != nil {
+			return "", "", err
+		}
+		return value, adminTokenFileEnv + "=" + path, nil
 	}
-	return "", fmt.Errorf("an admin token is required: pass --token, pass --token-file, set %s, or set %s",
-		adminTokenEnv, adminTokenFileEnv)
+	return "", "", nil
 }
 
 // runInvite dispatches `termit-mn invite …`.

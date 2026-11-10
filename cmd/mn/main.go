@@ -35,7 +35,7 @@ func run(args []string, stdout, stderr *os.File) int {
 	// On a terminal the bare binary is the menu; anywhere else it stays the usage text, so a script
 	// that runs `mn` by mistake gets exit 2 and a short page, not a prompt waiting for input.
 	if len(args) == 0 && termui.Interactive(os.Stdin, os.Stdout) {
-		return runMenu(stdout, stderr, os.Stdin, termui.PlainColour(stdout))
+		return runMenu(stdout, stderr, os.Stdin, termui.PlainColour(stdout), nil)
 	}
 	if len(args) == 0 {
 		usage(stderr)
@@ -72,7 +72,9 @@ func run(args []string, stdout, stderr *os.File) int {
 	case "admin":
 		return runAdmin(args[1:], stdout, stderr)
 	case "menu":
-		return runMenu(stdout, stderr, os.Stdin, termui.PlainColour(stdout))
+		// Flags after `menu` are the admin credential and the socket every admin action needs; they are
+		// parsed there and handed to each command the menu runs.
+		return runMenu(stdout, stderr, os.Stdin, termui.PlainColour(stdout), args[1:])
 	default:
 		fmt.Fprintf(stderr, "termit-mn: unknown command %q\n\n", args[0])
 		usage(stderr)
@@ -102,7 +104,8 @@ Admin:
   status       show server, nodes and the check schedule
 
   version      print build and protocol version
-  menu         the interactive menu (what the bare command does on a terminal)
+  menu         the interactive menu (what the bare command does on a terminal); admin flags
+               given here reach every command it runs, e.g. --token-file <path>
   help         show this help
 
 Admin commands talk to the running server over a unix socket; they never open the
