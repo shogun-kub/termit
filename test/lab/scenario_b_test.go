@@ -24,6 +24,7 @@ func TestScenarioB(t *testing.T) {
 	uv2Domain := statusDomain(t, ctx, uv2)
 	ids := nodeIDs(t, ctx, l)
 	uv1ID, uv2ID := ids[uv1Domain], ids[uv2Domain]
+	nodeCount := len(ids)
 	if uv1ID == "" || uv2ID == "" {
 		t.Fatalf("the server does not list both nodes (domains %s, %s; listed %v)", uv1Domain, uv2Domain, ids)
 	}
@@ -96,7 +97,7 @@ func TestScenarioB(t *testing.T) {
 		if got := stateOf(t, ctx, l, uv2ID); got != "blocked" {
 			t.Fatalf("the server is %s after the rebuild; it must not have been touched", got)
 		}
-		if got := len(nodeIDs(t, ctx, l)); got != 2 {
+		if got := len(nodeIDs(t, ctx, l)); got != nodeCount {
 			t.Fatalf("the server lists %d nodes; the rebuild must not enroll a new one", got)
 		}
 	})

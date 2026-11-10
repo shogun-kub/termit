@@ -34,6 +34,17 @@ func TestScenarioC(t *testing.T) {
 	if uv1ID == "" || uv2ID == "" {
 		t.Fatalf("the server does not list both nodes (domains %s, %s; listed %v)", uv1Domain, oldDomain, ids)
 	}
+	// The number of nodes the mesh started with: the move must not add or drop one, whatever the
+	// lab has (two UVs, or three when the optional third node is configured).
+	nodeCount := len(ids)
+	var uv3ID, uv3Domain string
+	if l.UV3 != nil {
+		uv3Domain = statusDomain(t, ctx, l.UV3)
+		uv3ID = ids[uv3Domain]
+		if uv3ID == "" {
+			t.Fatalf("the server does not list uv3 (%s); listed %v", uv3Domain, ids)
+		}
+	}
 
 	// The key is a secret: it goes to a 0600 file and is never logged. The config copy lets a rebuilt
 	// box reach the same server without passing credentials on a command line.
@@ -53,14 +64,28 @@ func TestScenarioC(t *testing.T) {
 	})
 
 	var oldIdentity, oldPath, newIdentity, newPath, oldPeerUUID string
+	var oldPeerUV3, oldPeerUV2UV3 string
 
 	t.Run("the pair credential and the old endpoint are recorded", func(t *testing.T) {
-		for _, m := range []*lab.Machine{uv1, uv2} {
+		sync := []*lab.Machine{uv1, uv2}
+		if l.UV3 != nil {
+			sync = append(sync, l.UV3)
+		}
+		for _, m := range sync {
 			m.MustRun(t, ctx, "termit-uv sync")
 		}
 		oldPeerUUID = subscriptionPeerUUID(t, ctx, uv1, oldDomain)
 		if oldPeerUUID == "" {
 			t.Fatal("uv1's subscription does not carry uv2's pair credential to compare against")
+		}
+		if l.UV3 != nil {
+			// The pair uv2 shares with the third node must survive uv2's rebuild, and uv1's pair with
+			// that node must not be disturbed by uv2's move.
+			oldPeerUV3 = subscriptionPeerUUID(t, ctx, uv1, uv3Domain)
+			oldPeerUV2UV3 = subscriptionPeerUUID(t, ctx, l.UV3, oldDomain)
+			if oldPeerUV3 == "" || oldPeerUV2UV3 == "" {
+				t.Fatal("the third node's pair credentials are not in the subscriptions to compare against")
+			}
 		}
 		oldIdentity = statusString(t, ctx, uv2, "identity_fingerprint")
 		oldPath = identityField(t, ctx, uv2, "xhttp_path")
@@ -139,7 +164,7 @@ func TestScenarioC(t *testing.T) {
 		if got := stateOf(t, ctx, l, uv2ID); got != "blocked" {
 			t.Fatalf("the server is %s after the rebuild; it must not have been touched", got)
 		}
-		if got := len(nodeIDs(t, ctx, l)); got != 2 {
+		if got := len(nodeIDs(t, ctx, l)); got != nodeCount {
 			t.Fatalf("the server lists %d nodes; the move must not create a new one", got)
 		}
 	})
@@ -182,14 +207,35 @@ func TestScenarioC(t *testing.T) {
 		if !contains(xrayEmails(t, ctx, uv2), "probe@termit") {
 			t.Error("the first sync after the move did not restore the server's probe credential")
 		}
+		if l.UV3 == nil {
+			return
+		}
+		// With a third node the promise is visible: the node that moved changed its endpoint, the
+		// pairs involving the node that stayed did not, and both directions agree on the credential.
+		l.UV3.MustRun(t, ctx, "termit-uv sync")
+		if got := subscriptionPeerUUID(t, ctx, uv1, uv3Domain); got != oldPeerUV3 {
+			t.Error("uv1's pair with the third node changed while uv2 moved")
+		}
+		if got := subscriptionPeerUUID(t, ctx, l.UV3, uv1Domain); got != oldPeerUV3 {
+			t.Error("the third node's pair with uv1 changed while uv2 moved")
+		}
+		if got := subscriptionPeerUUID(t, ctx, l.UV3, newDomain); got != oldPeerUV2UV3 {
+			t.Error("the third node's pair with uv2 changed while uv2 moved")
+		}
+		if got := subscriptionPeerUUID(t, ctx, l.UV3, oldDomain); got != "" {
+			t.Error("the third node's subscription still carries the old endpoint")
+		}
+		assertPeerAccepted(t, ctx, uv1, uv3ID, true)
+		assertPeerAccepted(t, ctx, l.UV3, uv1ID, true)
+		assertPeerAccepted(t, ctx, l.UV3, uv2ID, true)
 	})
 
 	t.Run("the old endpoint is gone from the mesh", func(t *testing.T) {
 		if _, ok := nodeIDs(t, ctx, l)[oldDomain]; ok {
 			t.Error("the server still lists the old domain")
 		}
-		if got := len(nodeIDs(t, ctx, l)); got != 2 {
-			t.Errorf("the server lists %d nodes, want the same two", got)
+		if got := len(nodeIDs(t, ctx, l)); got != nodeCount {
+			t.Errorf("the server lists %d nodes, want the same %d", got, nodeCount)
 		}
 	})
 }
@@ -299,7 +345,7 @@ func restoreScenarioC(t *testing.T, l *lab.Lab, uv2ID, keyFile, configCopy, oldD
 	if out, err := l.MNAdmin(ctx, "uv", "unblock", uv2ID); err != nil {
 		t.Logf("cleanup: admin unblock: %v\n%s", err, lab.Tail(out, 5))
 	}
-	for _, m := range []*lab.Machine{uv2, l.UV1} {
+	for _, m := range append([]*lab.Machine{uv2, l.UV1}, optionalUV3(l)...) {
 		if out, err := m.Run(ctx, "termit-uv sync"); err != nil {
 			t.Logf("%s: sync %v\n%s", m.Name, err, lab.Tail(out, 5))
 		}
@@ -322,6 +368,14 @@ func restoreScenarioC(t *testing.T, l *lab.Lab, uv2ID, keyFile, configCopy, oldD
 func configDomain(ctx context.Context, m *lab.Machine) string {
 	out, _ := m.Run(ctx, "sed -n 's/^domain: *//p' /etc/termit/uv/config.yaml")
 	return strings.TrimSpace(out)
+}
+
+// optionalUV3 is the third machine when the lab has one, so callers can append it unconditionally.
+func optionalUV3(l *lab.Lab) []*lab.Machine {
+	if l.UV3 == nil {
+		return nil
+	}
+	return []*lab.Machine{l.UV3}
 }
 
 // installFromSaved installs from the key and configuration the test saved before it touched anything.

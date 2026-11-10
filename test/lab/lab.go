@@ -20,6 +20,7 @@ const (
 	EnvMN         = "TERMIT_LAB_MN"
 	EnvUV1        = "TERMIT_LAB_UV1"
 	EnvUV2        = "TERMIT_LAB_UV2"
+	EnvUV3        = "TERMIT_LAB_UV3"
 	EnvSSHKey     = "TERMIT_LAB_SSH_KEY"
 	EnvHostKeys   = "TERMIT_LAB_HOSTKEYS"
 	EnvAdminToken = "TERMIT_LAB_MN_ADMIN_TOKEN"
@@ -40,11 +41,15 @@ type Target struct {
 }
 
 // Lab is the wired set of machines plus the secrets and settings that belong to the whole run.
+// Lab is one running lab. UV3 is optional: the mesh tests need a third node, and every other test
+// works with the two the suite has always required.
 type Lab struct {
 	MN, UV1, UV2 *Machine
-	AdminToken   string
-	DNSuffix     string
-	ACME         string
+	// UV3 is nil when TERMIT_LAB_UV3 is unset; tests that need it skip instead of failing.
+	UV3        *Machine
+	AdminToken string
+	DNSuffix   string
+	ACME       string
 }
 
 // Machine is one lab host. Its methods are the only way the suite touches the lab.
@@ -80,6 +85,8 @@ func FromEnv(t *testing.T) *Lab {
 	key := read(EnvSSHKey)
 	hostKeys := read(EnvHostKeys)
 	token := read(EnvAdminToken)
+	// The third node is optional, so its absence is not "incomplete": the suite runs with two.
+	uv3 := strings.TrimSpace(os.Getenv(EnvUV3))
 	if len(missing) > 0 {
 		t.Skipf("lab environment is incomplete (%s); see AGENTS.md §4.3", strings.Join(missing, ", "))
 	}
@@ -119,10 +126,21 @@ func FromEnv(t *testing.T) *Lab {
 		MN:         newMachine("mn", mn, EnvMN),
 		UV1:        newMachine("uv1", uv1, EnvUV1),
 		UV2:        newMachine("uv2", uv2, EnvUV2),
+		UV3:        optionalMachine(t, newMachine, uv3),
 		AdminToken: token,
 		DNSuffix:   os.Getenv("TERMIT_LAB_DNS_SUFFIX"),
 		ACME:       os.Getenv("TERMIT_LAB_ACME"),
 	}
+}
+
+// optionalMachine builds a machine only when its target is configured. The third node is an
+// enhancement, not a requirement: a lab with two UVs still runs the whole original suite.
+func optionalMachine(t *testing.T, build func(name, spec, envName string) *Machine, spec string) *Machine {
+	t.Helper()
+	if spec == "" {
+		return nil
+	}
+	return build("uv3", spec, EnvUV3)
 }
 
 // Run executes one command and returns its combined output. A non-zero remote exit is an error: the
