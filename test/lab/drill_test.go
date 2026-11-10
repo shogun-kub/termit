@@ -466,6 +466,9 @@ time.sleep(float(sys.argv[2]))
 c.rollback()
 os.remove("/tmp/termit-drill-lock")
 `
+	// The drill directory is created here rather than borrowed from another test: a drill must be
+	// re-runnable on its own, and the previous drill's cleanup removes the directory.
+	l.MN.MustRun(t, ctx, "mkdir -p "+drillDir)
 	if err := l.MN.WriteFile(ctx, []byte(holder), drillDir+"/lock.py", "0600"); err != nil {
 		t.Fatalf("upload the lock holder: %v", err)
 	}
