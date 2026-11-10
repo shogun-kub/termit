@@ -68,7 +68,7 @@ From `docs/DESCRIPTION.md` §11, restated because they are the easiest thing to 
 3. **Config is validated before it is applied.** Every generated Xray config is written atomically,
    checked with `xray -test`, and only then activated. Hot update (Xray API) first, validated restart
    second, rollback on any failure.
-4. **Idempotency.** Re-running `uv init`, a sync, or an install step converges to the same state and
+4. **Idempotency.** Re-running `termit-uv init`, a sync, or an install step converges to the same state and
    never regenerates issued credentials, XHTTP paths or certificates.
 5. **No secrets in logs, metrics, error text, config examples or tests.** That includes agent keys,
    subscription tokens, VLESS UUIDs, private keys and ACME account keys. Log identifiers and
@@ -240,7 +240,7 @@ Rules for the lab:
 
 - Tests must be re-runnable: they clean up nodes they created and tolerate a previous failed run.
 - Never leave a machine in a state that needs manual repair; on failure, dump the relevant logs and
-  a `uv doctor` report into the test output.
+  a `termit-uv doctor` report into the test output.
 - Never put lab addresses, keys, domains or ACME URLs in the repository. They are environment input.
 - The lab may run destructive actions (uninstall, reboot) **only** when the test is explicitly tagged
   for it; default runs stay reversible.
@@ -292,7 +292,7 @@ Rules for the lab:
   fonts, no analytics, no remote images). A decoy that phones home is a fingerprint.
 - Output is deterministic from `(domain, seed, template)`; the seed is stored at install so the site
   survives restarts unchanged.
-- The generated tree is regenerable: `uv renew-site` rewrites it and never leaves stale files.
+- The generated tree is regenerable: `termit-uv renew-site` rewrites it and never leaves stale files.
 - **nginx serves the tree**; the agent must never listen on `:80`/`:443`. The page, the nginx location
   that serves it and the nginx snippet for the fake auth endpoint are generated from the same template
   data, and a golden test must cover both so they cannot drift apart.
@@ -368,7 +368,7 @@ Ask before proceeding when a change would:
 - alter the credential derivation, the API contract, or the state machine;
 - add a third-party runtime dependency, a cgo requirement, or a new long-running service;
 - require host firewall/routing changes, or anything that could affect non-proxied traffic;
-- change what `uv uninstall` deletes;
+- change what `termit-uv uninstall` deletes;
 - contradict `docs/DESCRIPTION.md` — the document wins until we agree to change it.
 
 ## 12. Anti-patterns (each is a defect from the reference implementations)

@@ -14,8 +14,8 @@ Conventions used below:
 
 - Run everything as `root` (or with `sudo`); nothing in this document works as an unprivileged user.
 - `mn.example.com` is the management server, `node1.example.net` a node. Replace them with your names.
-- `mn` and `uv` mean `termit-mn` and `termit-uv`. Both accept `-v` for info-level logging.
-- Exit codes are the same in both binaries: `0` success, `1` failure, `2` usage error. `uv sync
+- The binaries are `termit-mn` and `termit-uv`; both accept `-v` for info-level logging.
+- Exit codes are the same in both binaries: `0` success, `1` failure, `2` usage error. `termit-uv sync
   --check` adds `4` for "the node differs from the server".
 
 ---
@@ -72,7 +72,7 @@ Per host, before you start:
   domain resolves to the address the enrollment request came from, and both use HTTP-01, so `:80`
   must be reachable from the internet for the first issuance. Point the A/AAAA record at the box
   before installing, not after.
-- **Ports 80 and 443 free.** On a node, nginx takes them; if something already serves them, `uv init`
+- **Ports 80 and 443 free.** On a node, nginx takes them; if something already serves them, `termit-uv init`
   stops at preflight and says which listener is in the way. On the MN they must be free too.
 - **A synchronised clock.** ACME proof and the TLS handshake both fail on a drifting clock; preflight
   warns when `timedatectl` says the clock is not synchronised.
@@ -92,12 +92,12 @@ mesh still works, the server just cannot vouch for it.
 ```bash
 install -m 0755 termit-mn /usr/bin/termit-mn
 
-mn init --domain mn.example.com \
+termit-mn init --domain mn.example.com \
         --email you@example.com \
         --mode invite          # invite | invite+approval (default) | open
 ```
 
-`mn init` creates the configuration, the database, the master key, the first admin token and the first
+`termit-mn init` creates the configuration, the database, the master key, the first admin token and the first
 invite code, and prints them **once**:
 
 ```
@@ -117,7 +117,7 @@ first invite code (shown once, 1 use(s)):
 back up /etc/termit/mn/master.key together with the database: without it no pair credential can be derived.
 ```
 
-Store both values now. The admin token is needed for every `mn` command; put it in the environment
+Store both values now. The admin token is needed for every `termit-mn` command; put it in the environment
 rather than in a shell history:
 
 ```bash
@@ -147,10 +147,10 @@ Verify:
 
 ```bash
 curl -sS https://mn.example.com/healthz | jq .
-mn status
+termit-mn status
 ```
 
-`mn status` is the one screen to open first:
+`termit-mn status` is the one screen to open first:
 
 ```
 server:   mn.example.com
@@ -174,12 +174,12 @@ Neither is a node failure, and neither changes a node's state.
 
 ## 4. Install a node
 
-The bootstrap script verifies a release checksum, installs the binary and then lets `uv init` do the
+The bootstrap script verifies a release checksum, installs the binary and then lets `termit-uv init` do the
 work. It never guesses a version and never installs an unverified binary — and it is a file you keep,
 not something piped from a branch:
 
 ```bash
-mn invite create --note "node1" --uses 1        # on the MN; prints the code once
+termit-mn invite create --note "node1" --uses 1        # on the MN; prints the code once
 
 # on the fresh node, as root
 curl -fsSLO https://github.com/shogun-kub/termit/releases/download/v0.1.0/uv.sh
@@ -197,21 +197,21 @@ sh uv.sh --version v0.1.0 \
 | `--checksum-file` / `--sha256` | verify against a local `SHA256SUMS` or an explicit digest, for a private build |
 | `--no-warp` / `--warp selected --warp-selected …` | the WARP decision (`all` is the default) |
 | `--no-enroll` | install and converge, skip enrollment |
-| `--dry-run` | verify the download, then run `uv init --dry-run` without installing anything |
+| `--dry-run` | verify the download, then run `termit-uv init --dry-run` without installing anything |
 
-Re-running the script with a new `--version` **is** the upgrade: the binary is replaced and `uv init`
+Re-running the script with a new `--version` **is** the upgrade: the binary is replaced and `termit-uv init`
 converges the rest, keeping the identity, the Xray path and the certificate. The invite code is passed
 on the command line and is visible in `ps` for the duration of the run; revoke it afterwards if that
-matters (`mn invite revoke`).
+matters (`termit-mn invite revoke`).
 
 Without the script, the two commands it wraps are:
 
 ```bash
 install -m 0755 termit-uv /usr/bin/termit-uv
-uv init --domain node1.example.net --email you@example.com
+termit-uv init --domain node1.example.net --email you@example.com
 ```
 
-`uv init` runs one pipeline of steps, in this order, and every step is idempotent:
+`termit-uv init` runs one pipeline of steps, in this order, and every step is idempotent:
 
 | Step | What it does |
 |---|---|
@@ -247,24 +247,24 @@ Preflight is the place to read when something is wrong; it prints one line per c
 Then enroll:
 
 ```bash
-mn invite create --note "node1" --uses 1     # on the MN, prints the code
-uv enroll --invite ABCD-EFGH-IJKL           # on the node
+termit-mn invite create --note "node1" --uses 1     # on the MN, prints the code
+termit-uv enroll --invite ABCD-EFGH-IJKL           # on the node
 ```
 
-`uv enroll` registers the node, stores the agent key and the subscription token in the state file
+`termit-uv enroll` registers the node, stores the agent key and the subscription token in the state file
 (`0600`, never printed again) and runs the first sync. In `invite+approval` mode the answer is
 `state: pending`, and the node joins the mesh only after:
 
 ```bash
-mn uv approve node1.example.net
+termit-mn uv approve node1.example.net
 ```
 
 Check both ends:
 
 ```bash
-uv status            # identity, certificate, peers, warp line, last install steps
-uv doctor            # host checks plus state, services, certificate, decoy, core config, warp
-mn uv show node1.example.net   # state, last probe, last self-check, state history
+termit-uv status            # identity, certificate, peers, warp line, last install steps
+termit-uv doctor            # host checks plus state, services, certificate, decoy, core config, warp
+termit-mn uv show node1.example.net   # state, last probe, last self-check, state history
 ```
 
 ## 5. The daily cycle, and how to watch it
@@ -281,9 +281,9 @@ A failed cycle does not retry every minute: the agent keeps the schedule it has,
 probe decides the node's state. To run one cycle by hand:
 
 ```bash
-uv agent --once
-uv sync --check      # report drift, change nothing, exit 4 when the node differs
-uv sync              # reconcile now
+termit-uv agent --once
+termit-uv sync --check      # report drift, change nothing, exit 4 when the node differs
+termit-uv sync              # reconcile now
 ```
 
 What to watch:
@@ -291,13 +291,13 @@ What to watch:
 ```bash
 systemctl status termit-uv-agent termit-xray nginx termit-uv-renew.timer
 journalctl -u termit-uv-agent -u termit-xray -n 50 --no-pager
-uv status
-mn status                    # server, prober, queue, certificate, nodes
-mn uv show node1.example.net # state history and the last ten checks
-mn check now node1.example.net   # one cycle, on demand
+termit-uv status
+termit-mn status                    # server, prober, queue, certificate, nodes
+termit-mn uv show node1.example.net # state history and the last ten checks
+termit-mn check now node1.example.net   # one cycle, on demand
 ```
 
-`mn uv show` ends with a check series, newest first, with both kinds in it:
+`termit-mn uv show` ends with a check series, newest first, with both kinds in it:
 
 ```
 checks (newest first):
@@ -320,15 +320,15 @@ that can be found and blocked. Proxied traffic leaves through Cloudflare's netwo
 own traffic (SSH, the decoy, ACME, the agent) never does.
 
 ```bash
-uv warp status             # mode, what warp-cli says, what a real fetch through it reports
-uv warp status --json
-uv warp mode off           # opt out: traffic exits from the node's address
-uv warp mode all           # the default
-uv warp mode selected --selected example.com,api.example.org
+termit-uv warp status             # mode, what warp-cli says, what a real fetch through it reports
+termit-uv warp status --json
+termit-uv warp mode off           # opt out: traffic exits from the node's address
+termit-uv warp mode all           # the default
+termit-uv warp mode selected --selected example.com,api.example.org
 ```
 
-`uv warp mode` rewrites the route, re-runs `xray -test`, restarts the core if it is running and
-restarts the agent, because a running agent holds the configuration it read at start. `uv status`
+`termit-uv warp mode` rewrites the route, re-runs `xray -test`, restarts the core if it is running and
+restarts the agent, because a running agent holds the configuration it read at start. `termit-uv status`
 shows the result:
 
 ```
@@ -338,9 +338,9 @@ warp:         all, on (via 104.28.1.1 (AMS))
 Values you may see for the state: `on` (traffic exits through WARP), `direct` (WARP is down and
 fail-open sent traffic out from the node's address), `blocked` (`warp.fail_open: false`: traffic is
 being refused rather than exposed), `off`, `not-installed` (the host can run WARP but the package is
-not there yet — `uv init` installs it), `unavailable` (the host cannot run WARP at all, with the
+not there yet — `termit-uv init` installs it), `unavailable` (the host cannot run WARP at all, with the
 reason) and `unknown` (the self-check could not tell). A missing `warp-cli` is a state, not an error:
-`uv warp status` reports it and exits 0, which is what makes it usable on a node that was installed
+`termit-uv warp status` reports it and exits 0, which is what makes it usable on a node that was installed
 with `--no-warp`.
 
 Fail-open is a routing decision inside the core, not a configuration rewrite: an `observatory` probes
@@ -349,9 +349,9 @@ direct while WARP does not answer. Recovery is equally automatic. With `fail_ope
 names the WARP outbound directly, so the node fails closed instead — the right choice for an owner who
 would rather lose connectivity than expose the address.
 
-If the host cannot run WARP (no `/dev/net/tun`, unsupported architecture), `uv init` and `uv warp mode`
+If the host cannot run WARP (no `/dev/net/tun`, unsupported architecture), `termit-uv init` and `termit-uv warp mode`
 say so with the exact reason and the node keeps working with direct egress. Nothing is silently
-degraded, and `uv uninstall` disconnects the tunnel it left behind.
+degraded, and `termit-uv uninstall` disconnects the tunnel it left behind.
 
 ## 7. Certificates
 
@@ -362,24 +362,24 @@ in flight (`acme.challenge_listen`).
 On a node:
 
 - `termit-uv-renew.timer` runs daily with up to an hour of jitter, `Persistent=true`, and calls
-  `uv renew-cert`. It renews when the certificate is inside `acme.renew_before_days` (default 30) of
+  `termit-uv renew-cert`. It renews when the certificate is inside `acme.renew_before_days` (default 30) of
   expiry, reloads nginx and leaves the core alone (it speaks plaintext behind nginx).
-- `uv renew-cert` runs the same check on demand; `--force` replaces a healthy certificate, which is
+- `termit-uv renew-cert` runs the same check on demand; `--force` replaces a healthy certificate, which is
   what a drill or a recovered CA wants.
 - Nothing is written until the CA returns a chain: a failed renewal keeps the old certificate
-  serving, and `uv status` reports the last run as failed with the failing step. `uv doctor` fails
+  serving, and `termit-uv status` reports the last run as failed with the failing step. `termit-uv doctor` fails
   below 0 days and warns below 14.
 - The agent reports the new leaf on its next sync; the server follows the pin, so a renewal does not
   break the probes.
 
-On the MN, `mn serve` issues a certificate at startup if it is inside `acme.renew_before_days`, then
+On the MN, `termit-mn serve` issues a certificate at startup if it is inside `acme.renew_before_days`, then
 re-checks every six hours. A renewal replaces the files and the running server serves the new pair on
 the next handshake — no restart, no window where the old one is already gone:
 
 - Nothing is written until the CA returns a chain, so a failed attempt leaves the current certificate
   serving. The failure is logged (`certificate renewal failed; the current certificate stays in
   service`) and retried six hours later.
-- `mn status` and `termit_mn_certificate_expiry_timestamp_seconds` read the certificate from disk, so a
+- `termit-mn status` and `termit_mn_certificate_expiry_timestamp_seconds` read the certificate from disk, so a
   renewal is visible immediately rather than after the next restart.
 - The renewal needs `:80` for the HTTP-01 challenge. If something else on the host holds it, the
   attempt fails and is logged; the certificate keeps serving until that is fixed.
@@ -387,10 +387,10 @@ the next handshake — no restart, no window where the old one is already gone:
 To move a deployment off production Let's Encrypt (a lab, a private CA with an ACME endpoint):
 
 ```bash
-uv init --acme-ca https://acme.lab.example/dir --acme-skip-tls-verify   # lab only
+termit-uv init --acme-ca https://acme.lab.example/dir --acme-skip-tls-verify   # lab only
 ```
 
-`--acme-skip-tls-verify` is reported by `uv doctor` for as long as it is on. Run `uv doctor` after
+`--acme-skip-tls-verify` is reported by `termit-uv doctor` for as long as it is on. Run `termit-uv doctor` after
 changing anything about the CA.
 
 ## 8. Clients, devices and subscriptions
@@ -399,23 +399,23 @@ The owner's own devices are **local users** on the node: they are written into t
 never sent to the MN.
 
 ```bash
-uv device list
-uv device add --label phone        # prints the new device's vless:// URI
-uv device remove phone
-uv uri                             # this node's own URI, for the default device
+termit-uv device list
+termit-uv device add --label phone        # prints the new device's vless:// URI
+termit-uv device remove phone
+termit-uv uri                             # this node's own URI, for the default device
 ```
 
 The subscription is the mesh view: one URL per node, containing that node's own profile plus every
 healthy peer, with a **pair credential** for each peer — valid on that pair and nowhere else.
 
 ```bash
-uv status                    # shows this node's subscription URL
-mn sub rotate node1.example.net --domain mn.example.com   # new token, old one stops working
+termit-uv status                    # shows this node's subscription URL
+termit-mn sub rotate node1.example.net --domain mn.example.com   # new token, old one stops working
 ```
 
-- `https://<mn>/sub/<token>` — base64 of one `vless://` URI per line. This is what a client's
+- `https://<MN>/sub/<token>` — base64 of one `vless://` URI per line. This is what a client's
   "subscription URL" field wants.
-- `https://<mn>/sub/<token>/json` — the same peers as a sing-box profile with a selector, a `direct`
+- `https://<MN>/sub/<token>/json` — the same peers as a sing-box profile with a selector, a `direct`
   outbound and private ranges kept direct.
 
 Both are stable for a given peer set and carry an `ETag`, so a client that caches costs one `304`.
@@ -428,41 +428,41 @@ Every one of these is audited on the server.
 
 | Goal | Command | Notes |
 |---|---|---|
-| list nodes | `mn uv list` | state, failed cycles, last seen, agent version |
-| inspect one node | `mn uv show <id\|domain>` | state history, last probe, last self-check |
-| admit a pending node | `mn uv approve <node>` | `invite+approval` mode |
-| reject a pending node | `mn uv reject <node>` | becomes `removed`; credentials stop working |
-| block a node | `mn uv block <node> --reason "…"` | operator override, audited |
-| unblock a node | `mn uv unblock <node>` | operator override; the node keeps its credentials |
-| remove a node | `mn uv rm <node>` | `removed`; it disappears from peers' sets |
-| delete the record | `mn uv forget <node>` | only after removal; erases the credentials |
-| read a node's agent key | `mn uv agentkey <node>` | for an owner who lost it; does not break the node |
-| replace a node's agent key | `mn uv reissue <node>` | the old key stops working immediately; the new one is shown once |
-| check now | `mn check now <node>` or `mn check now --all` | one cycle, on demand |
-| tune the schedule | `mn policy set check_interval 12h` | runtime override; `policy show` lists the keys |
-| **node blocked itself** | `uv unblock` (on the node) | Scenario B: the server re-verifies DNS and the tunnel before re-admitting |
-| **node moved host** | `uv migrate --relocate --domain new.example.net` | Scenario C |
-| **node rebuilt, state lost** | `uv init --relocate --agent-key-file <file>` then `uv migrate --relocate` | reuses the record; mints a new identity |
+| list nodes | `termit-mn uv list` | state, failed cycles, last seen, agent version |
+| inspect one node | `termit-mn uv show <id\|domain>` | state history, last probe, last self-check |
+| admit a pending node | `termit-mn uv approve <node>` | `invite+approval` mode |
+| reject a pending node | `termit-mn uv reject <node>` | becomes `removed`; credentials stop working |
+| block a node | `termit-mn uv block <node> --reason "…"` | operator override, audited |
+| unblock a node | `termit-mn uv unblock <node>` | operator override; the node keeps its credentials |
+| remove a node | `termit-mn uv rm <node>` | `removed`; it disappears from peers' sets |
+| delete the record | `termit-mn uv forget <node>` | only after removal; erases the credentials |
+| read a node's agent key | `termit-mn uv agentkey <node>` | for an owner who lost it; does not break the node |
+| replace a node's agent key | `termit-mn uv reissue <node>` | the old key stops working immediately; the new one is shown once |
+| check now | `termit-mn check now <node>` or `termit-mn check now --all` | one cycle, on demand |
+| tune the schedule | `termit-mn policy set check_interval 12h` | runtime override; `policy show` lists the keys |
+| **node blocked itself** | `termit-uv unblock` (on the node) | Scenario B: the server re-verifies DNS and the tunnel before re-admitting |
+| **node moved host** | `termit-uv migrate --relocate --domain new.example.net` | Scenario C |
+| **node rebuilt, state lost** | `termit-uv init --relocate --agent-key-file <file>` then `termit-uv migrate --relocate` | reuses the record; mints a new identity |
 
 Two overrides are worth understanding before you use them:
 
 - **`block` and `unblock` are the operator's word against the prober's.** An operator block is not
   undone by a passing check: the node stays blocked until `unblock` (or the node asks with
-  `uv unblock`, which re-runs the checks). This is deliberate — otherwise a flapping check would
+  `termit-uv unblock`, which re-runs the checks). This is deliberate — otherwise a flapping check would
   flap the mesh.
 - **`reissue` rotates the agent key, not the pair credentials.** The node must be given the new key:
-  a running node cannot pick it up by itself, so the usual path is `uv init --relocate
-  --agent-key-file` on a box whose state is being rebuilt, or `uv enroll --force` (which consumes an
+  a running node cannot pick it up by itself, so the usual path is `termit-uv init --relocate
+  --agent-key-file` on a box whose state is being rebuilt, or `termit-uv enroll --force` (which consumes an
   invite and creates a new record). Reissuing is for a key that may have leaked.
 
 ### 9.1 What the states mean
 
 | State | Meaning | What fixes it |
 |---|---|---|
-| `pending` | enrolled, waiting for an operator | `mn uv approve` |
+| `pending` | enrolled, waiting for an operator | `termit-mn uv approve` |
 | `active` | checks pass, in every subscription | — |
 | `unavailable` | one failed cycle; still in subscriptions, labelled degraded | a passing check |
-| `blocked` | two failed cycles in a row, or an operator decision | `uv unblock` from the node, or `mn uv unblock` |
+| `blocked` | two failed cycles in a row, or an operator decision | `termit-uv unblock` from the node, or `termit-mn uv unblock` |
 | `removed` | out of the mesh for good | a new enrollment |
 
 `unknown` is not a state: it is the absence of a verdict. A prober that cannot run, a DNS resolver that
@@ -472,12 +472,12 @@ cannot answer and a node whose certificate could not be read all leave the state
 
 ### 10.1 The management server
 
-`mn backup` writes an archive containing the database, the configuration, the server's certificate
+`termit-mn backup` writes an archive containing the database, the configuration, the server's certificate
 **and the master key**:
 
 ```bash
-mn backup                                    # → /var/lib/termit/mn/backups/termit-<ts>.tar.gz
-mn backup --out /root/mn-backup.tar.gz
+termit-mn backup                                    # → /var/lib/termit/mn/backups/termit-<ts>.tar.gz
+termit-mn backup --out /root/mn-backup.tar.gz
 ```
 
 The archive holds the master key, which means it can re-derive **every pair credential in the mesh**.
@@ -489,15 +489,15 @@ Restore, on a fresh machine or after a disaster:
 
 ```bash
 install -m 0755 termit-mn /usr/bin/termit-mn
-mn restore --from /root/mn-backup.tar.gz        # --force to replace an existing database
+termit-mn restore --from /root/mn-backup.tar.gz        # --force to replace an existing database
 install -m 0644 deploy/systemd/termit-mn.service /etc/systemd/system/
 systemctl daemon-reload && systemctl enable --now termit-mn
-mn status
+termit-mn status
 ```
 
-`mn restore` validates the archive before writing anything. The restored server keeps every node's
+`termit-mn restore` validates the archive before writing anything. The restored server keeps every node's
 credentials, so nodes keep syncing without re-enrolling. If the address of the server itself changes,
-the nodes' `mn.url` changes too (`uv init` writes it, or edit `mn.url` and restart the agent).
+the nodes' `mn.url` changes too (`termit-uv init` writes it, or edit `mn.url` and restart the agent).
 
 Back up on a schedule you can defend: daily is normal, and the database is small.
 
@@ -514,7 +514,7 @@ tar -C / -czf /root/node1-state.tar.gz \
 Restoring that archive onto the same machine brings the node back byte for byte, including its
 certificate, which is why it is worth keeping: a restore does not wait for an ACME order. Do not copy
 it to another machine and keep using it — two boxes with one identity fight over the record; use
-`uv init --relocate` for that case.
+`termit-uv init --relocate` for that case.
 
 ## 11. Upgrading
 
@@ -528,7 +528,7 @@ systemctl stop termit-mn
 install -m 0755 termit-mn.new /usr/bin/termit-mn
 systemctl start termit-mn
 journalctl -u termit-mn -n 20 --no-pager
-mn status
+termit-mn status
 ```
 
 The database migrates on start. Migrations are forward-only: **take a backup before an upgrade** and
@@ -544,11 +544,11 @@ By hand it is the same two steps:
 
 ```bash
 install -m 0755 termit-uv.new /usr/bin/termit-uv
-uv init                       # converges every step; no credential is regenerated
-uv doctor
+termit-uv init                       # converges every step; no credential is regenerated
+termit-uv doctor
 ```
 
-`uv init` is also the upgrade path for everything the node generates: the units, the vhost, the core
+`termit-uv init` is also the upgrade path for everything the node generates: the units, the vhost, the core
 config, the pinned Xray release when `xray.version` moved. It never rewrites the identity, the
 certificate, the decoy seed or the credentials. Then restart the agent if it is running, so it picks
 up a configuration it read at start:
@@ -558,7 +558,7 @@ systemctl restart termit-uv-agent
 ```
 
 A deliberate restart in the middle of a burst of restarts can hit systemd's start limit; both buses
-now run `systemctl reset-failed` first (`uv init`, `uv warp mode`, the agent's own restart), so this
+now run `systemctl reset-failed` first (`termit-uv init`, `termit-uv warp mode`, the agent's own restart), so this
 is handled for you. If you restart by hand and see `start-limit-hit`, run `systemctl reset-failed
 termit-xray termit-uv-agent` and start again.
 
@@ -568,17 +568,17 @@ termit-xray termit-uv-agent` and start again.
 
 ```bash
 # on the node
-uv unblock                    # re-verifies DNS and the tunnel from the node's own address, then syncs
+termit-uv unblock                    # re-verifies DNS and the tunnel from the node's own address, then syncs
 ```
 
-If it fails, `uv unblock` prints the server's reason: `dns_mismatch` means the record does not point
+If it fails, `termit-uv unblock` prints the server's reason: `dns_mismatch` means the record does not point
 at the box; `check_failed` means the tunnel did not answer through the decoy. Fix that, run it again.
 
 ### A node was rebuilt on the same host
 
 ```bash
-uv init --domain node1.example.net --relocate --agent-key-file /root/agent-key
-uv migrate --relocate
+termit-uv init --domain node1.example.net --relocate --agent-key-file /root/agent-key
+termit-uv migrate --relocate
 ```
 
 The second command is what tells the server about the new self UUID and certificate. Without it the
@@ -587,8 +587,8 @@ server keeps probing the old identity and the node stays `blocked` or `unavailab
 ### A node moved to a new host
 
 ```bash
-uv init --domain node5.example.net --relocate --agent-key-file /root/agent-key
-uv migrate --relocate --domain node5.example.net
+termit-uv init --domain node5.example.net --relocate --agent-key-file /root/agent-key
+termit-uv migrate --relocate --domain node5.example.net
 ```
 
 The old record is reused, so peers keep the same pair credential and only the domain and path change
@@ -605,7 +605,7 @@ recoverable from a node.
 
 There is no recovery command by design: the token is stored as a hash. Take a backup, then remove the
 `admin` row with `sqlite3 /var/lib/termit/mn/termit.db 'delete from admin;'`, restart the server and
-run `mn init` (it mints one token when none exists and keeps everything else). Treat this as an
+run `termit-mn init` (it mints one token when none exists and keeps everything else). Treat this as an
 incident: whoever has the token has the registry.
 
 ### The clock drifted
@@ -616,21 +616,21 @@ renew-cert --force` if an order was half-finished.
 ### The node reports drift
 
 ```bash
-uv sync --check        # exit 4 and a diff
-uv sync                # converge now
+termit-uv sync --check        # exit 4 and a diff
+termit-uv sync                # converge now
 ```
 
 Drift means the core's client set differs from the server's — what a manual edit or a missed sync
-looks like. The next cycle would fix it anyway; `uv sync` does it now.
+looks like. The next cycle would fix it anyway; `termit-uv sync` does it now.
 
 ## 13. Uninstalling
 
 On a node:
 
 ```bash
-uv uninstall --dry-run     # what would be removed
-uv uninstall               # units, vhost, core, generated files; keeps config and state
-uv uninstall --purge       # also config, state, certificates and the service user
+termit-uv uninstall --dry-run     # what would be removed
+termit-uv uninstall               # units, vhost, core, generated files; keeps config and state
+termit-uv uninstall --purge       # also config, state, certificates and the service user
 ```
 
 What it does: disconnects the WARP tunnel, stops and disables the units, removes every path the
@@ -658,9 +658,9 @@ registry is not something an automated command should decide to do.
   enrollments, syncs and check outcomes by result, a check-duration histogram, node counts by state,
   the scheduler's backlog, whether a probe worker exists, and the server certificate's expiry.
   `docs/PROTOCOL.md` §3.2 lists every family.
-- `mn status` — the same numbers, plus per-node state and the effective interval.
-- `mn uv show <node>` — one node's recent checks and state history.
-- `uv status --json`, `uv doctor --json` — machine-readable node state, for a local monitoring agent.
+- `termit-mn status` — the same numbers, plus per-node state and the effective interval.
+- `termit-mn uv show <node>` — one node's recent checks and state history.
+- `termit-uv status --json`, `termit-uv doctor --json` — machine-readable node state, for a local monitoring agent.
 - Journald: both binaries log structured lines to stderr. `journalctl -u termit-mn -u termit-uv-agent
   --since -1h`.
 
@@ -671,9 +671,9 @@ A useful alert set, in the order that matters:
 | the server is down | `/healthz` fails twice in a row |
 | no checks are happening | `termit_mn_prober_up == 0` for 5 minutes, or `termit_mn_check_queue_due > 0` and growing |
 | the scheduler is behind | `termit_mn_check_queue_oldest_due_seconds` above a few hours |
-| a node is blocked or unavailable | `termit_mn_nodes{state="blocked"}` above zero, or `mn status` |
+| a node is blocked or unavailable | `termit_mn_nodes{state="blocked"}` above zero, or `termit-mn status` |
 | the server certificate is expiring | `termit_mn_certificate_expiry_timestamp_seconds - time() < 14 days`; restart the server inside the renewal window (§7, §15) |
-| clocks under 14 days on a node | `uv doctor` / `uv status` on the node, or `openssl x509 -enddate` |
+| clocks under 14 days on a node | `termit-uv doctor` / `termit-uv status` on the node, or `openssl x509 -enddate` |
 | a burst of refusals | `rate(termit_mn_enrollments_total{result="refused"}[15m])` |
 | disk over 90% | the host's usual check; a full disk stops SQLite writes and ACME |
 
@@ -684,7 +684,7 @@ A useful alert set, in the order that matters:
   checklist for a host where it can run.
 - **The Docker Compose harness does not exist.** The lab is the acceptance gate.
 - **`termit-uv` has no self-update.** The node is upgraded by running the bootstrap script or by
-  replacing the binary and re-running `uv init`; nothing pulls a release on a timer, and nothing
+  replacing the binary and re-running `termit-uv init`; nothing pulls a release on a timer, and nothing
   should — an unattended proxy should not change itself.
 - **Blocking is cooperative.** A node that ignores the server's answer keeps serving; see
   [`THREAT_MODEL.md`](THREAT_MODEL.md) §6.
@@ -693,29 +693,29 @@ A useful alert set, in the order that matters:
 
 | Symptom | Likely cause | What to do |
 |---|---|---|
-| `uv init` stops at `preflight` with `ports` failed | something already listens on 80/443 | `ss -H -ltnp`, stop it, re-run `uv init` |
+| `termit-uv init` stops at `preflight` with `ports` failed | something already listens on 80/443 | `ss -H -ltnp`, stop it, re-run `termit-uv init` |
 | `dns` warn at preflight | the record does not resolve here yet | point the A/AAAA record at the box; the install does not need it, enrollment does |
-| `uv enroll` → `dns_mismatch` | the domain resolves elsewhere, or the request came through a proxy | fix DNS; the check compares against the TCP peer |
-| `uv enroll` → `rate_limited` | ten failed attempts in fifteen minutes from one address | wait, then retry; the window is per address |
-| `uv enroll` → `domain_taken` | a record with that domain exists | `mn uv show <domain>`; remove or relocate it first |
-| node stuck `pending` | `invite+approval` mode | `mn uv approve <node>` |
-| node `unavailable` after a passing manual check | the prober cannot reach it | `mn uv show` for the class; check `prober.xray_binary` and the server's own egress |
-| `mn status` says `prober: unavailable — every check reports unknown` | no worker could be built | read the reason on the line; fix `prober.xray_binary`, restart `termit-mn`; nodes stay as they were, nothing is blocked |
-| `mn status` shows a growing `queue: N due` | the scheduler is not completing passes | `journalctl -u termit-mn` for scheduler errors; a stuck probe worker shows up here before any node changes state |
-| node `blocked` right after an upgrade | the certificate was replaced and the server still pinned the old leaf | the next sync reports the new leaf; `uv sync` then `uv unblock` if it stayed blocked |
-| `uv doctor` → `services` failed | a unit is down | `systemctl status <unit>`; `uv init` starts them again |
-| `uv doctor` → `certificate` warn/fail | renewal is late or broken | `uv renew-cert`; the journal of `termit-uv-renew.service` says why |
-| `uv status` shows `warp: … direct` | WARP is down and fail-open is doing its job | `uv warp status`, then `journalctl -u warp-cli`; traffic still works |
-| `uv warp status` shows `not-installed` | the node was installed with `--no-warp`, or the package was removed | `uv init` (or `uv warp mode all`) installs and registers it; `uv warp status` exits 0 in this state |
-| `uv warp mode` → `start-limit-hit` | too many restarts in five minutes | `systemctl reset-failed termit-xray termit-uv-agent` |
-| `uv sync --check` exits 4 | the core's client set differs from the server's | `uv sync` |
+| `termit-uv enroll` → `dns_mismatch` | the domain resolves elsewhere, or the request came through a proxy | fix DNS; the check compares against the TCP peer |
+| `termit-uv enroll` → `rate_limited` | ten failed attempts in fifteen minutes from one address | wait, then retry; the window is per address |
+| `termit-uv enroll` → `domain_taken` | a record with that domain exists | `termit-mn uv show <domain>`; remove or relocate it first |
+| node stuck `pending` | `invite+approval` mode | `termit-mn uv approve <node>` |
+| node `unavailable` after a passing manual check | the prober cannot reach it | `termit-mn uv show` for the class; check `prober.xray_binary` and the server's own egress |
+| `termit-mn status` says `prober: unavailable — every check reports unknown` | no worker could be built | read the reason on the line; fix `prober.xray_binary`, restart `termit-mn`; nodes stay as they were, nothing is blocked |
+| `termit-mn status` shows a growing `queue: N due` | the scheduler is not completing passes | `journalctl -u termit-mn` for scheduler errors; a stuck probe worker shows up here before any node changes state |
+| node `blocked` right after an upgrade | the certificate was replaced and the server still pinned the old leaf | the next sync reports the new leaf; `termit-uv sync` then `termit-uv unblock` if it stayed blocked |
+| `termit-uv doctor` → `services` failed | a unit is down | `systemctl status <unit>`; `termit-uv init` starts them again |
+| `termit-uv doctor` → `certificate` warn/fail | renewal is late or broken | `termit-uv renew-cert`; the journal of `termit-uv-renew.service` says why |
+| `termit-uv status` shows `warp: … direct` | WARP is down and fail-open is doing its job | `termit-uv warp status`, then `journalctl -u warp-cli`; traffic still works |
+| `termit-uv warp status` shows `not-installed` | the node was installed with `--no-warp`, or the package was removed | `termit-uv init` (or `termit-uv warp mode all`) installs and registers it; `termit-uv warp status` exits 0 in this state |
+| `termit-uv warp mode` → `start-limit-hit` | too many restarts in five minutes | `systemctl reset-failed termit-xray termit-uv-agent` |
+| `termit-uv sync --check` exits 4 | the core's client set differs from the server's | `termit-uv sync` |
 | `mn` commands: `cannot reach the server at …` | `termit-mn` is not running, or the socket moved | `systemctl status termit-mn`; check `admin_socket` in the config |
-| `mn serve` refuses to start: `cert: listen on :80` | something holds `:80` (nginx on the same host) | free the port, or set `acme.challenge_listen` to a free one and forward it |
-| `mn serve` refuses: `cannot read the master key` | the key file is missing or unreadable | restore it from a backup; without it the registry is useless |
+| `termit-mn serve` refuses to start: `cert: listen on :80` | something holds `:80` (nginx on the same host) | free the port, or set `acme.challenge_listen` to a free one and forward it |
+| `termit-mn serve` refuses: `cannot read the master key` | the key file is missing or unreadable | restore it from a backup; without it the registry is useless |
 | SQLite `database is locked` | the database is on a slow or network filesystem, or a second process opened it | keep it on local disk; admin commands go through the server, never direct |
-| subscription `404` | the token was rotated or mistyped | `uv status` shows the current URL; `mn sub rotate` issues a new one |
+| subscription `404` | the token was rotated or mistyped | `termit-uv status` shows the current URL; `termit-mn sub rotate` issues a new one |
 
-When nothing obvious is wrong, the order is: `uv doctor` on the node, `mn uv show` on the server,
+When nothing obvious is wrong, the order is: `termit-uv doctor` on the node, `termit-mn uv show` on the server,
 then the journals of both. A failing check that says `unknown` is a failure of the observer, not of
 the node — say so in the report rather than "fixing" the node.
 

@@ -9,7 +9,7 @@
 порты 80 и 443. Одного сервера хватает на группу до нескольких десятков узлов; кластера нет и не
 нужно — если сервер упадёт, установленные соединения продолжат работать.
 
-Если проще выбрать из списка, чем вспоминать флаги, запустите `mn` без аргументов на сервере — это
+Если проще выбрать из списка, чем вспоминать флаги, запустите `termit-mn` без аргументов на сервере — это
 [интерактивное меню](menu.md).
 
 ## Установка
@@ -17,7 +17,7 @@
 ```bash
 install -m 0755 termit-mn /usr/bin/termit-mn
 
-mn init --domain mn.example.com --email you@example.com --mode invite
+termit-mn init --domain mn.example.com --email you@example.com --mode invite
 ```
 
 `--mode` решает, как узел вступает:
@@ -25,10 +25,10 @@ mn init --domain mn.example.com --email you@example.com --mode invite
 | Режим | Что происходит при вступлении узла |
 |---|---|
 | `invite` | кода приглашения достаточно |
-| `invite+approval` (по умолчанию) | узел ждёт как `pending`, пока вы не выполните `mn uv approve` |
+| `invite+approval` (по умолчанию) | узел ждёт как `pending`, пока вы не выполните `termit-mn uv approve` |
 | `open` | приглашение не нужно — разумно только в приватной сети |
 
-`mn init` создаёт конфигурацию, базу, мастер-ключ и первый админ-токен и печатает секреты **один
+`termit-mn init` создаёт конфигурацию, базу, мастер-ключ и первый админ-токен и печатает секреты **один
 раз**:
 
 ```
@@ -79,10 +79,10 @@ level=INFO msg="admin socket ready" path=/run/termit/mn/admin.sock
 
 ```bash
 curl -sS https://mn.example.com/healthz        # {"status":"ok", …}
-mn status
+termit-mn status
 ```
 
-`mn status` — экран, который открывают первым, каждый раз:
+`termit-mn status` — экран, который открывают первым, каждый раз:
 
 ```
 server:   mn.example.com
@@ -110,10 +110,10 @@ node1.example.com  active  0       2026-11-10 13:29   2026-11-11 12:34   2026-11
 ## Приглашение узлов
 
 ```bash
-mn invite create --note "узел Ани" --uses 1
-mn invite create --uses 5 --expires-hours 48      # партия с дедлайном
-mn invite list
-mn invite revoke ABCD-EFGH-IJKL
+termit-mn invite create --note "узел Ани" --uses 1
+termit-mn invite create --uses 5 --expires-hours 48      # партия с дедлайном
+termit-mn invite list
+termit-mn invite revoke ABCD-EFGH-IJKL
 ```
 
 Код приглашения — секрет с ограниченным числом использований; передавайте его по каналу, которому
@@ -123,33 +123,33 @@ mn invite revoke ABCD-EFGH-IJKL
 
 | Задача | Команда |
 |---|---|
-| список узлов | `mn uv list` |
-| посмотреть один узел | `mn uv show node1.example.com` — состояние, история, последняя проверка и самопроверка |
-| одобрить ожидающий узел | `mn uv approve node1.example.com` |
-| отклонить ожидающий узел | `mn uv reject node1.example.com` |
-| заблокировать узел самому | `mn uv block node1.example.com --reason "жалоба"` |
-| снять свою блокировку | `mn uv unblock node1.example.com` |
-| убрать узел из сети | `mn uv rm node1.example.com` |
-| стереть запись | `mn uv forget node1.example.com` (только после удаления) |
-| прочитать ключ агента | `mn uv agentkey node1.example.com` |
-| заменить ключ агента | `mn uv reissue node1.example.com` |
-| проверить сейчас | `mn check now node1.example.com` или `mn check now --all` |
-| поправить расписание | `mn policy show`, `mn policy set check_interval 12h` |
-| обновить токен подписки | `mn sub rotate node1.example.com --domain mn.example.com` |
+| список узлов | `termit-mn uv list` |
+| посмотреть один узел | `termit-mn uv show node1.example.com` — состояние, история, последняя проверка и самопроверка |
+| одобрить ожидающий узел | `termit-mn uv approve node1.example.com` |
+| отклонить ожидающий узел | `termit-mn uv reject node1.example.com` |
+| заблокировать узел самому | `termit-mn uv block node1.example.com --reason "жалоба"` |
+| снять свою блокировку | `termit-mn uv unblock node1.example.com` |
+| убрать узел из сети | `termit-mn uv rm node1.example.com` |
+| стереть запись | `termit-mn uv forget node1.example.com` (только после удаления) |
+| прочитать ключ агента | `termit-mn uv agentkey node1.example.com` |
+| заменить ключ агента | `termit-mn uv reissue node1.example.com` |
+| проверить сейчас | `termit-mn check now node1.example.com` или `termit-mn check now --all` |
+| поправить расписание | `termit-mn policy show`, `termit-mn policy set check_interval 12h` |
+| обновить токен подписки | `termit-mn sub rotate node1.example.com --domain mn.example.com` |
 
 Что означают состояния:
 
 | Состояние | Значение | Чем снимается |
 |---|---|---|
-| `pending` | вступил, но ещё не одобрен (`invite+approval`) | `mn uv approve` |
+| `pending` | вступил, но ещё не одобрен (`invite+approval`) | `termit-mn uv approve` |
 | `active` | проверен и работает | — |
 | `unavailable` | проверка прошла и честно провалилась (сертификат, приманка, туннель) | успешными проверками |
-| `blocked` | узел заблокирован оператором | `mn uv unblock` или запрос самого узла `uv unblock` |
+| `blocked` | узел заблокирован оператором | `termit-mn uv unblock` или запрос самого узла `termit-uv unblock` |
 | `removed` | вне сети; учётные данные перестают работать | повторным вступлением (новая запись) |
 
 Состояние меняется только по вердикту. Проверка, которая не смогла выполниться — prober не смог отработать, DNS
 на сервере сломан, таймаут — это `unknown`, и она ничего не меняет. Поэтому узел может выглядеть
-«зависшим» в `mn uv show` и при этом быть в порядке.
+«зависшим» в `termit-mn uv show` и при этом быть в порядке.
 
 `block` и `unblock` — ваше слово против слова проверки: успешная проверка не снимает вашу блокировку,
 и именно это не даёт «мигающей» проверке мигать всей сетью.
@@ -164,21 +164,21 @@ mn invite revoke ABCD-EFGH-IJKL
 | `https://mn.example.com/sub/<token>/json` | те же пиры как профиль sing-box, с селектором и `direct` для приватных диапазонов |
 
 Оба стабильны при неизменном составе пиров и несут `ETag`, поэтому кэширующий клиент стоит одного
-`304`. Свой URL узел показывает в `uv status`. Обновление токена мгновенно отменяет старый URL и не
+`304`. Свой URL узел показывает в `termit-uv status`. Обновление токена мгновенно отменяет старый URL и не
 затрагивает локальные устройства узла — они с машины никуда не уходят.
 
 ## Резервные копии и восстановление
 
 ```bash
-mn backup                                        # <data_dir>/backups/termit-<timestamp>.tar.gz
-mn backup --out /root/mn-backup.tar.gz
+termit-mn backup                                        # <data_dir>/backups/termit-<timestamp>.tar.gz
+termit-mn backup --out /root/mn-backup.tar.gz
 ```
 
 В архиве база и мастер-ключ. Держите его зашифрованным и храните копию вне сервера: у кого оба, у того
 все парные учётные данные сети.
 
 ```bash
-mn restore --from /root/mn-backup.tar.gz --force  # сервер сначала остановить
+termit-mn restore --from /root/mn-backup.tar.gz --force  # сервер сначала остановить
 ```
 
 Восстановление — офлайн-операция: остановить `termit-mn`, восстановить, запустить. Восстановленная база
@@ -199,7 +199,7 @@ termit_mn_certificate_expiry_timestamp_seconds 1801439850
 
 На что ставить алерты: пропал `up`, `certificate_expiry_timestamp_seconds` меньше недели,
 растёт `check_queue_due`, `prober_up 0`, растёт `checks_total{result="failed"}`. Детали по узлам
-остаются в `mn uv show` и логах — у endpoint'а намеренно нет инвентаря.
+остаются в `termit-mn uv show` и логах — у endpoint'а намеренно нет инвентаря.
 
 Логи идут в journal, структурированные, с идентификаторами узлов и без учётных данных:
 
@@ -211,16 +211,16 @@ journalctl -u termit-mn -f
 
 | Команда | Что делает |
 |---|---|
-| `mn init` | создать конфигурацию, базу, мастер-ключ, админ-токен и первое приглашение |
-| `mn serve` | запустить сервер (`--http` только для разработки, никогда на публичном адресе) |
-| `mn invite create\|list\|revoke` | управление кодами приглашений |
-| `mn uv list\|show\|approve\|reject\|block\|unblock\|rm\|forget\|reissue\|agentkey` | управление узлами |
-| `mn check now <узел>\|--all` | выполнить проверки немедленно |
-| `mn policy show\|set` | посмотреть или изменить пороги планировщика |
-| `mn sub rotate <узел>` | выпустить новый токен подписки |
-| `mn status` | сервер, узлы, расписание |
-| `mn backup`, `mn restore` | снимок и восстановление |
-| `mn version` | версия сборки и протокола |
+| `termit-mn init` | создать конфигурацию, базу, мастер-ключ, админ-токен и первое приглашение |
+| `termit-mn serve` | запустить сервер (`--http` только для разработки, никогда на публичном адресе) |
+| `termit-mn invite create\|list\|revoke` | управление кодами приглашений |
+| `termit-mn uv list\|show\|approve\|reject\|block\|unblock\|rm\|forget\|reissue\|agentkey` | управление узлами |
+| `termit-mn check now <узел>\|--all` | выполнить проверки немедленно |
+| `termit-mn policy show\|set` | посмотреть или изменить пороги планировщика |
+| `termit-mn sub rotate <узел>` | выпустить новый токен подписки |
+| `termit-mn status` | сервер, узлы, расписание |
+| `termit-mn backup`, `termit-mn restore` | снимок и восстановление |
+| `termit-mn version` | версия сборки и протокола |
 
 Админ-команды общаются с работающим сервером через unix-сокет (`/run/termit/mn/admin.sock`) и
 аутентифицируются `TERMIT_MN_ADMIN_TOKEN`. Они никогда не открывают базу в обход сервера.
@@ -231,8 +231,8 @@ journalctl -u termit-mn -f
 - **Храните мастер-ключ вместе с базой, и оба — зашифрованными.** Без ключа ничего не восстановить.
 - **Запускайте один сервер.** Два экземпляра на одной базе её испортят, и второй всё равно не сможет
   выпустить сертификат на то же имя.
-- **Держите строку `prober` в `mn status` зелёной.** Мёртвый prober — не сломанная сеть, но слепая.
-- **Берегите админ-токен как мастер-ключ.** Он создаётся один раз в `mn init` и хранится хешем; в этой
+- **Держите строку `prober` в `termit-mn status` зелёной.** Мёртвый prober — не сломанная сеть, но слепая.
+- **Берегите админ-токен как мастер-ключ.** Он создаётся один раз в `termit-mn init` и хранится хешем; в этой
   сборке нет отдельной команды, чтобы его обновить, поэтому утёкший токен означает скомпрометированный реестр. Держите его
   в `/etc/termit/mn/admin.env` (права `0600`), а не в истории шелла, и не включайте в копии, которыми
   делитесь.

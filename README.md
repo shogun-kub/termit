@@ -63,9 +63,9 @@ The management server first — a node needs a server to join, not the other way
 ```bash
 # on the server (Debian 13, ports 80/443 free, DNS pointing at it)
 install -m 0755 termit-mn /usr/bin/termit-mn
-mn init --domain mn.example.com --email you@example.com --mode invite
+termit-mn init --domain mn.example.com --email you@example.com --mode invite
 install -m 0644 termit-mn.service /etc/systemd/system/ && systemctl enable --now termit-mn
-mn invite create --note "node-a"            # prints the code once
+termit-mn invite create --note "node-a"            # prints the code once
 
 # on the node (Debian 13, ports 80/443 free, DNS pointing at it)
 curl -fsSLO https://github.com/shogun-kub/termit/releases/download/v0.1.0/uv.sh
@@ -73,7 +73,7 @@ sh uv.sh --version v0.1.0 --domain node-a.example.com --email you@example.com \
   --mn https://mn.example.com --invite ABCD-EFGH-IJKL
 ```
 
-Then `uv status` prints the subscription URL to paste into a client, and `mn status` shows the mesh.
+Then `termit-uv status` prints the subscription URL to paste into a client, and `termit-mn status` shows the mesh.
 The installer verifies the release against its `SHA256SUMS` and refuses anything it cannot verify.
 
 ## What it is, and what it is not
@@ -148,7 +148,7 @@ tool's tests and `govulncheck`.
 - **WARP against a real tunnel**: the lab has no `/dev/net/tun`, so the suite proves the refusal, the
   generated route, fail-open and the switch back; installing, registering and connecting needs a KVM VM
   or a privileged container.
-- **Admin-token rotation**: the token is created once by `mn init` and stored hashed; there is no
+- **Admin-token rotation**: the token is created once by `termit-mn init` and stored hashed; there is no
   rotate command yet, so a leaked token means rebuilding the registry.
 - **A Docker Compose harness** for development without lab hardware.
 

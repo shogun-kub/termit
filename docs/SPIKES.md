@@ -141,7 +141,7 @@ and fails with `Post "": unsupported protocol scheme ""` as soon as the CA answe
 
 Pebble's own listener certificate is self-signed, so the client needs `SkipTLSVerify` for the ACME
 endpoint in the lab. That flag is `acme.skip_tls_verify` in the product config and must be reported by
-`uv doctor` while enabled.
+`termit-uv doctor` while enabled.
 
 ## S7 (M0.4) — Can one worker probe N nodes, and are failures distinguishable?
 
@@ -184,7 +184,7 @@ else without weakening the check.
 - The archive is flat — `xray` (0755), `geoip.dat`, `geosite.dat`, `README.md`, `LICENSE` — so the
   installer extracts only `xray` and never unpacks into a directory tree.
 - `download_base` accepts an HTTP(S) URL, a `file://` URL, or an absolute directory. On the node, a
-  local directory cut the whole `uv init` from 2 m 28 s to 0.7 s with the digest still verified.
+  local directory cut the whole `termit-uv init` from 2 m 28 s to 0.7 s with the digest still verified.
 - A mismatching archive is refused *before* extraction, and a cached archive whose digest no longer
   matches is deleted and downloaded again rather than trusted.
 
@@ -226,7 +226,7 @@ text/html` without one) and caching headers for `/assets/`. Both landed in M1.5.
 
 ## S10 (M1.5) — What the first real node taught us
 
-`uv init` on `termit-uv1` runs the whole pipeline: the core, the vhost, the units, both services up,
+`termit-uv init` on `termit-uv1` runs the whole pipeline: the core, the vhost, the units, both services up,
 and a `vless://` client reaching the internet through nginx. Four things only a live host showed:
 
 1. **`xray -test` picks its parser by file extension.** Staging the generated config as
@@ -246,7 +246,7 @@ and a `vless://` client reaching the internet through nginx. Four things only a 
 4. **Disabling a vhost by renaming it inside `sites-enabled` does not disable it.** Debian's include is
    `sites-enabled/*`, a glob, so `default.termit-disabled` is still loaded — and being
    `default_server` it kept answering the bare address with Debian's welcome page. The file is parked
-   in `sites-available/` instead, where nothing includes it, and `uv uninstall` moves it back.
+   in `sites-available/` instead, where nothing includes it, and `termit-uv uninstall` moves it back.
 
 Also observed: after `systemctl reload nginx` the old worker keeps serving in-flight requests, so a
 `curl` issued in the same second can still see the previous vhost. That is nginx's graceful reload, not
@@ -269,7 +269,7 @@ What the lab showed:
 
 - Pebble issues a 90-day certificate; `fullchain.pem` is `0644`, `privkey.pem` and `account.key` are
   `0600`.
-- The vhost flips to TLS **in the same `uv init`**: the certificate step notices that the web step's
+- The vhost flips to TLS **in the same `termit-uv init`**: the certificate step notices that the web step's
   output no longer matches and runs it again, rather than leaving the node serving plain HTTP until
   the next run.
 - Tokens do not accumulate: after a successful order the webroot holds no files.
@@ -283,7 +283,7 @@ Two things worth remembering:
    not the same instruction as "your effect is missing", and a step whose `Run` is not idempotent
    must be able to tell the two apart.
 2. **A renewal failure must not cost the node its certificate.** Drilled by pointing the ACME
-   directory at a dead port: the run fails, `uv status` says `last run: failed` /
+   directory at a dead port: the run fails, `termit-uv status` says `last run: failed` /
    `certificate failed`, and the old certificate keeps serving (`200`). Nothing is written until the
    CA returns the chain, and `writeCertificate` writes the key before the certificate so a reader never
    sees one without the other.

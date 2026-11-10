@@ -9,7 +9,7 @@ one page, and it explains what a node and the server are.
 You need: a Debian 13 box, root access, a DNS name pointing at it, ports 80 and 443 free, and an
 invite code from whoever runs the management server ([running the server](using-mn.md)).
 
-If you would rather pick from a list than remember flags, run `uv` with no arguments on the node: that
+If you would rather pick from a list than remember flags, run `termit-uv` with no arguments on the node: that
 is [the interactive menu](menu.md), and every entry prints the command it runs.
 
 ## Before you touch the box
@@ -36,7 +36,7 @@ sh uv.sh --version v0.1.0 \
 ```
 
 The script verifies the release checksum against `SHA256SUMS`, installs `termit-uv`, runs
-`uv init` (which does the actual work) and then `uv enroll` with your invite.
+`termit-uv init` (which does the actual work) and then `termit-uv enroll` with your invite.
 
 Useful variations:
 
@@ -46,8 +46,8 @@ Useful variations:
 | see what would happen, change nothing | `--dry-run` |
 | a mirror or a local directory instead of GitHub | `--base-url https://mirror.example.com/termit` |
 | verify against a digest you have | `--sha256 <hex>` (or `--checksum-file SHA256SUMS`) |
-| your own build, not a release | install the binary yourself and run `uv init` |
-| opt out of WARP | `--no-warp`, later `uv warp mode off` |
+| your own build, not a release | install the binary yourself and run `termit-uv init` |
+| opt out of WARP | `--no-warp`, later `termit-uv warp mode off` |
 
 The script never guesses a version, and refuses to install bytes it cannot verify. If it stops, the
 message names the file and the expected digest.
@@ -58,10 +58,10 @@ Two commands, and the same result:
 
 ```bash
 install -m 0755 termit-uv /usr/bin/termit-uv
-uv init --domain node1.example.com --email you@example.com
+termit-uv init --domain node1.example.com --email you@example.com
 ```
 
-## What `uv init` does
+## What `termit-uv init` does
 
 Thirteen steps, each idempotent: a step whose effect is already there does nothing, so re-running is
 the way to repair a partial install.
@@ -88,16 +88,16 @@ that failed; `--only <step>` re-runs just that one.
 ## Join the mesh
 
 ```bash
-uv enroll --invite ABCD-EFGH-IJKL                  # --mn URL if the config does not have it
-uv status                                          # enrolled? peers? certificate?
+termit-uv enroll --invite ABCD-EFGH-IJKL                  # --mn URL if the config does not have it
+termit-uv status                                          # enrolled? peers? certificate?
 ```
 
-`uv enroll` stores an agent key and a subscription token in the state file (`0600`, shown once) and
+`termit-uv enroll` stores an agent key and a subscription token in the state file (`0600`, shown once) and
 runs the first sync. If the server is in `invite+approval` mode the node stays `pending` until the
 operator approves it — that is normal, not an error:
 
 ```bash
-mn uv approve node1.example.com        # on the management server
+termit-mn uv approve node1.example.com        # on the management server
 ```
 
 ## Connect a phone or laptop
@@ -108,11 +108,11 @@ There are two different things, and it matters which one you use:
 |---|---|---|
 | What it contains | this node **plus every healthy peer** | only this node |
 | Where it lives | on the management server | only on this node |
-| How you get it | `uv status` prints the URL | `uv device add --label phone` prints a `vless://` URI |
+| How you get it | `termit-uv status` prints the URL | `termit-uv device add --label phone` prints a `vless://` URI |
 | Use it for | your own client, when you want the whole mesh | a device that should use one node, or a client that does not support subscriptions |
 
 ```bash
-uv status
+termit-uv status
 # subscribe:  https://mn.example.com/sub/AbCdEf...
 ```
 
@@ -122,21 +122,21 @@ to get a complete profile with a selector, a `direct` outbound and private range
 
 The client fetches the list again on its own schedule; when a peer comes or goes, one refresh is all
 it takes. The URL is a secret: it carries your credentials. If it leaks, rotate it on the server
-(`mn sub rotate node1.example.com --domain mn.example.com`) and the old one stops working.
+(`termit-mn sub rotate node1.example.com --domain mn.example.com`) and the old one stops working.
 
 ## Day to day
 
 ```bash
-uv status               # identity, certificate, peers, last sync, WARP state
-uv doctor               # host and node health, with a hint per failing check
-uv doctor --json        # the same, machine-readable
-uv sync                 # reconcile the core with the server's peer set now
-uv sync --check         # exit 4 if the node drifted from the server's set, change nothing
-uv agent --once         # one full cycle in the foreground, for a drill
-uv unblock              # ask the server to re-verify this node and lift a block
+termit-uv status               # identity, certificate, peers, last sync, WARP state
+termit-uv doctor               # host and node health, with a hint per failing check
+termit-uv doctor --json        # the same, machine-readable
+termit-uv sync                 # reconcile the core with the server's peer set now
+termit-uv sync --check         # exit 4 if the node drifted from the server's set, change nothing
+termit-uv agent --once         # one full cycle in the foreground, for a drill
+termit-uv unblock              # ask the server to re-verify this node and lift a block
 ```
 
-`uv status` in full, so you know what you are looking at:
+`termit-uv status` in full, so you know what you are looking at:
 
 ```
 domain:       node1.example.com
@@ -156,28 +156,28 @@ self-check:   ok 2026-11-10T11:17:04Z
 
 The agent wakes once a day at the server-given time plus a small per-node jitter, checks itself
 (the node's own view of the internet), syncs, and goes back to sleep. You do not need a timer of your
-own; the systemd units are installed by `uv init`.
+own; the systemd units are installed by `termit-uv init`.
 
 ## Command reference
 
 | Command | What it does | Main flags |
 |---|---|---|
-| `uv init` | install or converge this node | `--domain`, `--email`, `--no-warp`, `--warp MODE`, `--warp-selected LIST`, `--dry-run`, `--only`, `--skip`, `--acme-ca`, `--xray-version`, `--xray-download-base`, `--relocate`, `--agent-key-file` |
-| `uv doctor` | diagnose the host and the node, change nothing | `--json` |
-| `uv status` | identity, certificate, peers, sync, WARP | `--json` |
-| `uv enroll` | register with the server | `--invite`, `--mn`, `--force`, `--no-sync` |
-| `uv sync` | reconcile peers now | `--check`, `--dry-run`, `-v` (print the peer set) |
-| `uv agent` | run the daily loop in the foreground | `--once` |
-| `uv device` | local devices on this node | `list`, `add --label NAME [--uuid ...]`, `remove NAME` |
-| `uv uri` | print a `vless://` URI for this node | `--label` |
-| `uv warp` / `uv warp status` | report egress | `--json` |
-| `uv warp mode` | change egress | `off`, `all`, `selected --selected a.example,b.example` |
-| `uv unblock` | ask the server to re-verify and unblock | `--domain`, `--vless-url`, `--no-sync` |
-| `uv migrate` | move this node to its new domain | `--relocate`, `--domain`, `--no-sync` |
-| `uv renew-cert` | renew the certificate now | `--force` (reissue even if not due) |
-| `uv renew-site` | regenerate the decoy site | `--template product\|portal`, `--seed`, `--dry-run` |
-| `uv uninstall` | remove what Termit created | `--purge` (also config, state, certificates, user), `--dry-run` |
-| `uv version` | build and protocol version | |
+| `termit-uv init` | install or converge this node | `--domain`, `--email`, `--no-warp`, `--warp MODE`, `--warp-selected LIST`, `--dry-run`, `--only`, `--skip`, `--acme-ca`, `--xray-version`, `--xray-download-base`, `--relocate`, `--agent-key-file` |
+| `termit-uv doctor` | diagnose the host and the node, change nothing | `--json` |
+| `termit-uv status` | identity, certificate, peers, sync, WARP | `--json` |
+| `termit-uv enroll` | register with the server | `--invite`, `--mn`, `--force`, `--no-sync` |
+| `termit-uv sync` | reconcile peers now | `--check`, `--dry-run`, `-v` (print the peer set) |
+| `termit-uv agent` | run the daily loop in the foreground | `--once` |
+| `termit-uv device` | local devices on this node | `list`, `add --label NAME [--uuid ...]`, `remove NAME` |
+| `termit-uv uri` | print a `vless://` URI for this node | `--label` |
+| `termit-uv warp` / `termit-uv warp status` | report egress | `--json` |
+| `termit-uv warp mode` | change egress | `off`, `all`, `selected --selected a.example,b.example` |
+| `termit-uv unblock` | ask the server to re-verify and unblock | `--domain`, `--vless-url`, `--no-sync` |
+| `termit-uv migrate` | move this node to its new domain | `--relocate`, `--domain`, `--no-sync` |
+| `termit-uv renew-cert` | renew the certificate now | `--force` (reissue even if not due) |
+| `termit-uv renew-site` | regenerate the decoy site | `--template product\|portal`, `--seed`, `--dry-run` |
+| `termit-uv uninstall` | remove what Termit created | `--purge` (also config, state, certificates, user), `--dry-run` |
+| `termit-uv version` | build and protocol version | |
 
 Every command accepts `--config <path>` and `-v`/`--verbose`.
 
@@ -186,40 +186,40 @@ Every command accepts `--config <path>` and `-v`/`--verbose`.
 **Move the node to a new domain.** Add the new DNS record, then on the node:
 
 ```bash
-uv init --domain node2.example.com --relocate --agent-key-file /root/agent.key
-uv migrate --relocate --domain node2.example.com
+termit-uv init --domain node2.example.com --relocate --agent-key-file /root/agent.key
+termit-uv migrate --relocate --domain node2.example.com
 ```
 
-`uv init --relocate` keeps the agent key (it is the node's identity to the server), mints a fresh
-identity for the new name and does not enrol; `uv migrate --relocate` asks the server to verify the
+`termit-uv init --relocate` keeps the agent key (it is the node's identity to the server), mints a fresh
+identity for the new name and does not enrol; `termit-uv migrate --relocate` asks the server to verify the
 new address and swap the record. Peers pick the change up on their next sync.
 
-**Rebuild a box that died.** On the server, `mn uv agentkey node1.example.com` prints the agent key
+**Rebuild a box that died.** On the server, `termit-mn uv agentkey node1.example.com` prints the agent key
 (the node is not disturbed). On the new box:
 
 ```bash
-uv init --domain node1.example.com --agent-key-file /root/agent.key --relocate
-uv migrate --relocate
+termit-uv init --domain node1.example.com --agent-key-file /root/agent.key --relocate
+termit-uv migrate --relocate
 ```
 
 **Replace the decoy site.**
 
 ```bash
-uv renew-site --template product        # product or portal
+termit-uv renew-site --template product        # product or portal
 ```
 
 **Change egress.**
 
 ```bash
-uv warp mode off                        # direct from your own address
-uv warp mode all                        # back to WARP (default)
-uv warp mode selected --selected example.com,api.example.org
+termit-uv warp mode off                        # direct from your own address
+termit-uv warp mode all                        # back to WARP (default)
+termit-uv warp mode selected --selected example.com,api.example.org
 ```
 
-**Uninstall.** `uv uninstall` removes the units, the core and the nginx vhost, and stops services;
+**Uninstall.** `termit-uv uninstall` removes the units, the core and the nginx vhost, and stops services;
 `--purge` also removes the configuration, state, certificates and the `termit` user. Packages it
 installed are left alone, and no other nginx site is touched. The server keeps the record until
-`mn uv rm` — tell the operator, or peers will list a node that no longer exists until checks fail.
+`termit-mn uv rm` — tell the operator, or peers will list a node that no longer exists until checks fail.
 
 ## Where things live
 

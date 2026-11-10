@@ -63,9 +63,9 @@ WARP, а собственный трафик машины — никогда. О
 ```bash
 # на сервере (Debian 13, порты 80/443 свободны, DNS указывает на него)
 install -m 0755 termit-mn /usr/bin/termit-mn
-mn init --domain mn.example.com --email you@example.com --mode invite
+termit-mn init --domain mn.example.com --email you@example.com --mode invite
 install -m 0644 termit-mn.service /etc/systemd/system/ && systemctl enable --now termit-mn
-mn invite create --note "node-a"            # печатает код один раз
+termit-mn invite create --note "node-a"            # печатает код один раз
 
 # на узле (Debian 13, порты 80/443 свободны, DNS указывает на него)
 curl -fsSLO https://github.com/shogun-kub/termit/releases/download/v0.1.0/uv.sh
@@ -73,7 +73,7 @@ sh uv.sh --version v0.1.0 --domain node-a.example.com --email you@example.com \
   --mn https://mn.example.com --invite ABCD-EFGH-IJKL
 ```
 
-Дальше `uv status` печатает URL подписки для клиента, а `mn status` показывает состояние сети.
+Дальше `termit-uv status` печатает URL подписки для клиента, а `termit-mn status` показывает состояние сети.
 Установщик сверяет релиз с его `SHA256SUMS` и отказывается ставить то, что проверить не может.
 
 ## Что это и чем это не является
@@ -149,7 +149,7 @@ go test -tags=lab ./test/lab -v -timeout 30m
   сгенерированный маршрут, fail-open (трафик идёт напрямую, когда туннель упал) и возврат к
   прямому выходу; установка, регистрация и подключение требуют KVM-виртуалки или привилегированного
   контейнера.
-- **Обновления админ-токена**: токен создаётся один раз в `mn init` и хранится хешем; отдельной
+- **Обновления админ-токена**: токен создаётся один раз в `termit-mn init` и хранится хешем; отдельной
   команды для этого ещё нет, поэтому утёкший токен означает пересборку реестра.
 - **Docker Compose для разработки** без лабораторного железа.
 

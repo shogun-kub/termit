@@ -6,7 +6,7 @@
 телефона и команды, которые вы реально будете набирать. Если ещё не читали [как устроен
 Termit](overview.md) — начните с той страницы, она объясняет, что такое узел и сервер.
 
-Если проще выбрать из списка, чем вспоминать флаги, запустите `uv` без аргументов на узле — это
+Если проще выбрать из списка, чем вспоминать флаги, запустите `termit-uv` без аргументов на узле — это
 [интерактивное меню](menu.md), и каждый пункт печатает команду, которую запускает.
 
 Нужно: Debian 13, root, DNS-имя, указывающее на машину, свободные порты 80 и 443 и код приглашения от
@@ -35,8 +35,8 @@ sh uv.sh --version v0.1.0 \
   --mn https://mn.example.com --invite ABCD-EFGH-IJKL
 ```
 
-Скрипт сверяет контрольную сумму релиза по `SHA256SUMS`, ставит `termit-uv`, запускает `uv init`
-(он и делает всю работу) и затем `uv enroll` с вашим приглашением.
+Скрипт сверяет контрольную сумму релиза по `SHA256SUMS`, ставит `termit-uv`, запускает `termit-uv init`
+(он и делает всю работу) и затем `termit-uv enroll` с вашим приглашением.
 
 Полезные варианты:
 
@@ -46,8 +46,8 @@ sh uv.sh --version v0.1.0 \
 | посмотреть, что будет, ничего не меняя | `--dry-run` |
 | зеркало или локальный каталог вместо GitHub | `--base-url https://mirror.example.com/termit` |
 | сверить с известным вам дайджестом | `--sha256 <hex>` (или `--checksum-file SHA256SUMS`) |
-| своя сборка, не релиз | поставить бинарь самому и запустить `uv init` |
-| отказаться от WARP | `--no-warp`, позже `uv warp mode off` |
+| своя сборка, не релиз | поставить бинарь самому и запустить `termit-uv init` |
+| отказаться от WARP | `--no-warp`, позже `termit-uv warp mode off` |
 
 Версию скрипт не угадывает и непроверенные байты не ставит. Если он остановился — в сообщении есть
 файл и ожидаемый дайджест.
@@ -58,10 +58,10 @@ sh uv.sh --version v0.1.0 \
 
 ```bash
 install -m 0755 termit-uv /usr/bin/termit-uv
-uv init --domain node1.example.com --email you@example.com
+termit-uv init --domain node1.example.com --email you@example.com
 ```
 
-## Что делает `uv init`
+## Что делает `termit-uv init`
 
 Тринадцать шагов, каждый идемпотентен: если результат шага уже есть, шаг ничего не делает — поэтому
 повторный запуск это способ починить частичную установку.
@@ -88,16 +88,16 @@ uv init --domain node1.example.com --email you@example.com
 ## Вступление в сеть
 
 ```bash
-uv enroll --invite ABCD-EFGH-IJKL                  # --mn URL, если его нет в конфигурации
-uv status                                          # вступили? пиры? сертификат?
+termit-uv enroll --invite ABCD-EFGH-IJKL                  # --mn URL, если его нет в конфигурации
+termit-uv status                                          # вступили? пиры? сертификат?
 ```
 
-`uv enroll` сохраняет ключ агента и токен подписки в файл состояния (`0600`, показываются один раз) и
+`termit-uv enroll` сохраняет ключ агента и токен подписки в файл состояния (`0600`, показываются один раз) и
 выполняет первую синхронизацию. Если сервер в режиме `invite+approval`, узел останется в `pending`,
 пока оператор его не одобрит — это нормально, а не ошибка:
 
 ```bash
-mn uv approve node1.example.com        # на сервере управления
+termit-mn uv approve node1.example.com        # на сервере управления
 ```
 
 ## Подключение телефона или ноутбука
@@ -108,11 +108,11 @@ mn uv approve node1.example.com        # на сервере управлени�
 |---|---|---|
 | Что внутри | этот узел **и все живые пиры** | только этот узел |
 | Где живёт | на сервере управления | только на этом узле |
-| Как получить | `uv status` печатает URL | `uv device add --label phone` печатает `vless://` |
+| Как получить | `termit-uv status` печатает URL | `termit-uv device add --label phone` печатает `vless://` |
 | Для чего | свой клиент, когда нужна вся сеть | устройство, которому нужен один узел, или клиент без поддержки подписок |
 
 ```bash
-uv status
+termit-uv status
 # subscribe:  https://mn.example.com/sub/AbCdEf...
 ```
 
@@ -122,21 +122,21 @@ uv status
 
 Клиент сам перечитывает список; когда пир появляется или уходит, достаточно одного обновления. URL —
 это секрет: в нём ваши учётные данные. Если он утёк, обновите токен на сервере
-(`mn sub rotate node1.example.com --domain mn.example.com`), и старый перестанет работать.
+(`termit-mn sub rotate node1.example.com --domain mn.example.com`), и старый перестанет работать.
 
 ## Ежедневная работа
 
 ```bash
-uv status               # идентичность, сертификат, пиры, последняя синхронизация, WARP
-uv doctor               # здоровье машины и узла, с подсказкой на каждую неудачную проверку
-uv doctor --json        # то же машинно-читаемо
-uv sync                 # привести ядро в соответствие со списком пиров сейчас
-uv sync --check         # код 4, если узел разошёлся с сервером; ничего не меняет
-uv agent --once         # один полный цикл на переднем плане, для проверки
-uv unblock              # попросить сервер перепроверить узел и снять блокировку
+termit-uv status               # идентичность, сертификат, пиры, последняя синхронизация, WARP
+termit-uv doctor               # здоровье машины и узла, с подсказкой на каждую неудачную проверку
+termit-uv doctor --json        # то же машинно-читаемо
+termit-uv sync                 # привести ядро в соответствие со списком пиров сейчас
+termit-uv sync --check         # код 4, если узел разошёлся с сервером; ничего не меняет
+termit-uv agent --once         # один полный цикл на переднем плане, для проверки
+termit-uv unblock              # попросить сервер перепроверить узел и снять блокировку
 ```
 
-`uv status` целиком, чтобы понимать, на что смотрите:
+`termit-uv status` целиком, чтобы понимать, на что смотрите:
 
 ```
 domain:       node1.example.com
@@ -156,28 +156,28 @@ self-check:   ok 2026-11-10T11:17:04Z
 
 Агент просыпается раз в сутки в выданное сервером время плюс небольшой сдвиг, проверяет себя (свой
 взгляд узла на интернет), синхронизируется и засыпает. Свой таймер заводить не нужно: systemd-юниты
-ставит `uv init`.
+ставит `termit-uv init`.
 
 ## Справочник команд
 
 | Команда | Что делает | Основные флаги |
 |---|---|---|
-| `uv init` | установить или довести узел до нужного состояния | `--domain`, `--email`, `--no-warp`, `--warp MODE`, `--warp-selected LIST`, `--dry-run`, `--only`, `--skip`, `--acme-ca`, `--xray-version`, `--xray-download-base`, `--relocate`, `--agent-key-file` |
-| `uv doctor` | диагностика машины и узла, ничего не меняет | `--json` |
-| `uv status` | идентичность, сертификат, пиры, синхронизация, WARP | `--json` |
-| `uv enroll` | зарегистрировать узел на сервере | `--invite`, `--mn`, `--force`, `--no-sync` |
-| `uv sync` | синхронизировать пиров сейчас | `--check`, `--dry-run`, `-v` (печатать список пиров) |
-| `uv agent` | цикл агента на переднем плане | `--once` |
-| `uv device` | локальные устройства на этом узле | `list`, `add --label NAME [--uuid ...]`, `remove NAME` |
-| `uv uri` | напечатать `vless://` для этого узла | `--label` |
-| `uv warp` / `uv warp status` | показать выход | `--json` |
-| `uv warp mode` | сменить выход | `off`, `all`, `selected --selected a.example,b.example` |
-| `uv unblock` | попросить сервер перепроверить и разблокировать | `--domain`, `--vless-url`, `--no-sync` |
-| `uv migrate` | перевести узел на новый домен | `--relocate`, `--domain`, `--no-sync` |
-| `uv renew-cert` | продлить сертификат сейчас | `--force` (перевыпустить, даже если не пора) |
-| `uv renew-site` | перегенерировать сайт-приманку | `--template product\|portal`, `--seed`, `--dry-run` |
-| `uv uninstall` | убрать то, что создал Termit | `--purge` (ещё конфигурация, состояние, сертификаты, пользователь), `--dry-run` |
-| `uv version` | версия сборки и протокола | |
+| `termit-uv init` | установить или довести узел до нужного состояния | `--domain`, `--email`, `--no-warp`, `--warp MODE`, `--warp-selected LIST`, `--dry-run`, `--only`, `--skip`, `--acme-ca`, `--xray-version`, `--xray-download-base`, `--relocate`, `--agent-key-file` |
+| `termit-uv doctor` | диагностика машины и узла, ничего не меняет | `--json` |
+| `termit-uv status` | идентичность, сертификат, пиры, синхронизация, WARP | `--json` |
+| `termit-uv enroll` | зарегистрировать узел на сервере | `--invite`, `--mn`, `--force`, `--no-sync` |
+| `termit-uv sync` | синхронизировать пиров сейчас | `--check`, `--dry-run`, `-v` (печатать список пиров) |
+| `termit-uv agent` | цикл агента на переднем плане | `--once` |
+| `termit-uv device` | локальные устройства на этом узле | `list`, `add --label NAME [--uuid ...]`, `remove NAME` |
+| `termit-uv uri` | напечатать `vless://` для этого узла | `--label` |
+| `termit-uv warp` / `termit-uv warp status` | показать выход | `--json` |
+| `termit-uv warp mode` | сменить выход | `off`, `all`, `selected --selected a.example,b.example` |
+| `termit-uv unblock` | попросить сервер перепроверить и разблокировать | `--domain`, `--vless-url`, `--no-sync` |
+| `termit-uv migrate` | перевести узел на новый домен | `--relocate`, `--domain`, `--no-sync` |
+| `termit-uv renew-cert` | продлить сертификат сейчас | `--force` (перевыпустить, даже если не пора) |
+| `termit-uv renew-site` | перегенерировать сайт-приманку | `--template product\|portal`, `--seed`, `--dry-run` |
+| `termit-uv uninstall` | убрать то, что создал Termit | `--purge` (ещё конфигурация, состояние, сертификаты, пользователь), `--dry-run` |
+| `termit-uv version` | версия сборки и протокола | |
 
 Любая команда принимает `--config <path>` и `-v`/`--verbose`.
 
@@ -186,40 +186,40 @@ self-check:   ok 2026-11-10T11:17:04Z
 **Перевести узел на новый домен.** Добавьте новую DNS-запись, затем на узле:
 
 ```bash
-uv init --domain node2.example.com --relocate --agent-key-file /root/agent.key
-uv migrate --relocate --domain node2.example.com
+termit-uv init --domain node2.example.com --relocate --agent-key-file /root/agent.key
+termit-uv migrate --relocate --domain node2.example.com
 ```
 
-`uv init --relocate` сохраняет ключ агента (это идентичность узла для сервера), создаёт новую
-идентичность для нового имени и не вступает в сеть; `uv migrate --relocate` просит сервер проверить
+`termit-uv init --relocate` сохраняет ключ агента (это идентичность узла для сервера), создаёт новую
+идентичность для нового имени и не вступает в сеть; `termit-uv migrate --relocate` просит сервер проверить
 новый адрес и заменить запись. Пиры увидят изменение при следующей синхронизации.
 
-**Пересобрать умершую машину.** На сервере `mn uv agentkey node1.example.com` печатает ключ агента
+**Пересобрать умершую машину.** На сервере `termit-mn uv agentkey node1.example.com` печатает ключ агента
 (узел при этом не страдает). На новой машине:
 
 ```bash
-uv init --domain node1.example.com --agent-key-file /root/agent.key --relocate
-uv migrate --relocate
+termit-uv init --domain node1.example.com --agent-key-file /root/agent.key --relocate
+termit-uv migrate --relocate
 ```
 
 **Заменить сайт-приманку.**
 
 ```bash
-uv renew-site --template product        # product или portal
+termit-uv renew-site --template product        # product или portal
 ```
 
 **Сменить выход.**
 
 ```bash
-uv warp mode off                        # напрямую со своего адреса
-uv warp mode all                        # обратно на WARP (по умолчанию)
-uv warp mode selected --selected example.com,api.example.org
+termit-uv warp mode off                        # напрямую со своего адреса
+termit-uv warp mode all                        # обратно на WARP (по умолчанию)
+termit-uv warp mode selected --selected example.com,api.example.org
 ```
 
-**Удалить узел.** `uv uninstall` убирает юниты, ядро и vhost nginx и останавливает сервисы;
+**Удалить узел.** `termit-uv uninstall` убирает юниты, ядро и vhost nginx и останавливает сервисы;
 `--purge` дополнительно удаляет конфигурацию, состояние, сертификаты и пользователя `termit`.
 Пакеты, которые он ставил, остаются, другие сайты nginx не затрагиваются. На сервере запись
-останется, пока оператор не сделает `mn uv rm` — скажите ему, иначе пиры будут видеть несуществующий
+останется, пока оператор не сделает `termit-mn uv rm` — скажите ему, иначе пиры будут видеть несуществующий
 узел, пока проверки не начнут падать.
 
 ## Где что лежит

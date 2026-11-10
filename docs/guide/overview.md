@@ -94,22 +94,22 @@ from the internet; a box behind CGNAT cannot be a node.
 
 ## The order of installation
 
-**Yes — the management server comes first.** A node can be installed on its own (`uv init` needs no
+**Yes — the management server comes first.** A node can be installed on its own (`termit-uv init` needs no
 server), but it cannot *join* anything until the MN exists: the invite code is issued by the server,
 enrolment asks the server to verify the node, and the subscription URL that a phone uses is served by
 the server.
 
 ```
-1. MN          mn init → systemd unit → mn status shows "nodes: 0"
-2. invite      mn invite create --note "node-a"   → ABCD-EFGH-IJKL
-3. node        uv.sh (or uv init) → uv enroll --invite ABCD-EFGH-IJKL
-4. approval    only in invite+approval mode: mn uv approve node-a.example.com
-5. client      uv status → subscription URL → paste it into the phone app
+1. MN          termit-mn init → systemd unit → termit-mn status shows "nodes: 0"
+2. invite      termit-mn invite create --note "node-a"   → ABCD-EFGH-IJKL
+3. node        uv.sh (or termit-uv init) → termit-uv enroll --invite ABCD-EFGH-IJKL
+4. approval    only in invite+approval mode: termit-mn uv approve node-a.example.com
+5. client      termit-uv status → subscription URL → paste it into the phone app
 ```
 
 Step 3 is where DNS matters: enrolment compares the address the request came from with the A/AAAA
 record of the node's domain, so point the record at the box **before** enrolling. The certificate is
-issued during `uv init`, which needs port 80 free and the record already in place.
+issued during `termit-uv init`, which needs port 80 free and the record already in place.
 
 Everything after step 5 is automatic. The node wakes once a day, checks itself, syncs its peer set,
 and the server checks every node on its own schedule. You only touch it when something is wrong.
@@ -122,9 +122,9 @@ and the server checks every node on its own schedule. You only touch it when som
 | **Disguised HTTPS node** | the node serves a generated site on 443; an unauthorised request gets that site, not a proxy error |
 | **WARP egress** (default on) | proxied traffic leaves through Cloudflare's network, so the address is shared rather than yours; can be switched to direct, or restricted to selected domains |
 | **Health checks** | the server probes every node through the tunnel, checks its certificate and decoy, and moves a node out of the mesh only on a genuine failure |
-| **Your own devices** | `uv device add` creates local clients for your phone, laptop, router — they live only on your node and are never shared |
+| **Your own devices** | `termit-uv device add` creates local clients for your phone, laptop, router — they live only on your node and are never shared |
 | **Node migration** | a node can move to a new domain, or be rebuilt on a fresh box, without losing its place in the mesh |
-| **Operator surface** | `mn status` dashboard, a loopback-only `/metrics` endpoint, and per-node history of checks |
+| **Operator surface** | `termit-mn status` dashboard, a loopback-only `/metrics` endpoint, and per-node history of checks |
 | **Backup and restore** | one command on the server; a node's state is a single file |
 
 ## Words used in this guide

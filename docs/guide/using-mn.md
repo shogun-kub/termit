@@ -9,7 +9,7 @@ You need: a Debian 13 box (2 vCPU, 2 GB RAM, 10 GB disk), root, a DNS name point
 80 and 443 free. One server is enough for a group of up to a few dozen nodes; there is no clustering,
 and there does not need to be — if it is down, existing connections keep working.
 
-If you would rather pick from a list than remember flags, run `mn` with no arguments on the server:
+If you would rather pick from a list than remember flags, run `termit-mn` with no arguments on the server:
 that is [the interactive menu](menu.md).
 
 ## Install
@@ -17,7 +17,7 @@ that is [the interactive menu](menu.md).
 ```bash
 install -m 0755 termit-mn /usr/bin/termit-mn
 
-mn init --domain mn.example.com --email you@example.com --mode invite
+termit-mn init --domain mn.example.com --email you@example.com --mode invite
 ```
 
 `--mode` decides how a node joins:
@@ -25,10 +25,10 @@ mn init --domain mn.example.com --email you@example.com --mode invite
 | Mode | What happens when a node enrols |
 |---|---|
 | `invite` | the invite code is enough |
-| `invite+approval` (default) | the node waits as `pending` until you run `mn uv approve` |
+| `invite+approval` (default) | the node waits as `pending` until you run `termit-mn uv approve` |
 | `open` | no invite needed — only sensible on a private network |
 
-`mn init` creates the configuration, the database, the master key and the first admin token, and
+`termit-mn init` creates the configuration, the database, the master key and the first admin token, and
 prints the secrets **once**:
 
 ```
@@ -79,10 +79,10 @@ Verify:
 
 ```bash
 curl -sS https://mn.example.com/healthz        # {"status":"ok", …}
-mn status
+termit-mn status
 ```
 
-`mn status` is the screen to open first, every time:
+`termit-mn status` is the screen to open first, every time:
 
 ```
 server:   mn.example.com
@@ -110,10 +110,10 @@ new file in without a restart. `cert:` above shows what it is actually serving.
 ## Invite nodes
 
 ```bash
-mn invite create --note "node-a for Anna" --uses 1
-mn invite create --uses 5 --expires-hours 48      # a batch with a deadline
-mn invite list
-mn invite revoke ABCD-EFGH-IJKL
+termit-mn invite create --note "node-a for Anna" --uses 1
+termit-mn invite create --uses 5 --expires-hours 48      # a batch with a deadline
+termit-mn invite list
+termit-mn invite revoke ABCD-EFGH-IJKL
 ```
 
 An invite code is a secret with a limited number of uses; pass it over a channel you trust, and
@@ -123,33 +123,33 @@ revoke it if it leaks. Each use consumes one slot.
 
 | Goal | Command |
 |---|---|
-| list nodes | `mn uv list` |
-| inspect one node | `mn uv show node1.example.com` — state, history, last probe and self-check |
-| admit a pending node | `mn uv approve node1.example.com` |
-| reject a pending node | `mn uv reject node1.example.com` |
-| block a node yourself | `mn uv block node1.example.com --reason "abuse report"` |
-| undo your block | `mn uv unblock node1.example.com` |
-| take a node out of the mesh | `mn uv rm node1.example.com` |
-| erase the record | `mn uv forget node1.example.com` (after removal only) |
-| read a node's agent key | `mn uv agentkey node1.example.com` |
-| replace a node's agent key | `mn uv reissue node1.example.com` |
-| check now | `mn check now node1.example.com`, or `mn check now --all` |
-| tune the schedule | `mn policy show`, `mn policy set check_interval 12h` |
-| rotate a subscription token | `mn sub rotate node1.example.com --domain mn.example.com` |
+| list nodes | `termit-mn uv list` |
+| inspect one node | `termit-mn uv show node1.example.com` — state, history, last probe and self-check |
+| admit a pending node | `termit-mn uv approve node1.example.com` |
+| reject a pending node | `termit-mn uv reject node1.example.com` |
+| block a node yourself | `termit-mn uv block node1.example.com --reason "abuse report"` |
+| undo your block | `termit-mn uv unblock node1.example.com` |
+| take a node out of the mesh | `termit-mn uv rm node1.example.com` |
+| erase the record | `termit-mn uv forget node1.example.com` (after removal only) |
+| read a node's agent key | `termit-mn uv agentkey node1.example.com` |
+| replace a node's agent key | `termit-mn uv reissue node1.example.com` |
+| check now | `termit-mn check now node1.example.com`, or `termit-mn check now --all` |
+| tune the schedule | `termit-mn policy show`, `termit-mn policy set check_interval 12h` |
+| rotate a subscription token | `termit-mn sub rotate node1.example.com --domain mn.example.com` |
 
 What the states mean:
 
 | State | Meaning | Leaves it by |
 |---|---|---|
-| `pending` | enrolled, not admitted yet (`invite+approval`) | `mn uv approve` |
+| `pending` | enrolled, not admitted yet (`invite+approval`) | `termit-mn uv approve` |
 | `active` | checked and working | — |
 | `unavailable` | a check ran and genuinely failed (certificate, decoy, tunnel) | passing checks |
-| `blocked` | an operator blocked it | `mn uv unblock`, or the node asking with `uv unblock` |
+| `blocked` | an operator blocked it | `termit-mn uv unblock`, or the node asking with `termit-uv unblock` |
 | `removed` | out of the mesh; credentials stop working | re-enrolment (new record) |
 
 The state machine only moves on a verdict. A check that could not run — prober down, DNS broken on
 the server, timeout — is `unknown` and changes nothing. That is why a node can look stale in
-`mn uv show` and still be fine.
+`termit-mn uv show` and still be fine.
 
 `block` and `unblock` are your word against the prober's: a passing check does not undo your block,
 which is what keeps a flapping check from flapping the mesh.
@@ -164,21 +164,21 @@ Every node has one token. The endpoints are:
 | `https://mn.example.com/sub/<token>/json` | the same peers as a sing-box profile, with a selector and `direct` for private ranges |
 
 Both are stable for a given peer set and carry an `ETag`, so a caching client costs one `304`. A node
-shows its own URL in `uv status`. Rotating the token invalidates the old URL immediately; it does not
+shows its own URL in `termit-uv status`. Rotating the token invalidates the old URL immediately; it does not
 touch the node's own local devices, which never leave the box.
 
 ## Backup and restore
 
 ```bash
-mn backup                                        # <data_dir>/backups/termit-<timestamp>.tar.gz
-mn backup --out /root/mn-backup.tar.gz
+termit-mn backup                                        # <data_dir>/backups/termit-<timestamp>.tar.gz
+termit-mn backup --out /root/mn-backup.tar.gz
 ```
 
 The archive holds the database and the master key. Keep it encrypted, and keep a copy off the server:
 whoever holds both can derive every pair credential in the mesh.
 
 ```bash
-mn restore --from /root/mn-backup.tar.gz --force  # server stopped first
+termit-mn restore --from /root/mn-backup.tar.gz --force  # server stopped first
 ```
 
 Restore is an offline operation: stop `termit-mn`, restore, start it. A restored database is only
@@ -200,7 +200,7 @@ termit_mn_certificate_expiry_timestamp_seconds 1801439850
 
 Alert on: `up` missing, `certificate_expiry_timestamp_seconds` under a week away, `check_queue_due`
 growing, `prober_up 0`, and a rising `checks_total{result="failed"}`. Node-level detail stays in
-`mn uv show` and the logs — the endpoint deliberately has no inventory.
+`termit-mn uv show` and the logs — the endpoint deliberately has no inventory.
 
 Logs go to the journal, structured, with node identifiers and never with credentials:
 
@@ -212,16 +212,16 @@ journalctl -u termit-mn -f
 
 | Command | What it does |
 |---|---|
-| `mn init` | create config, database, master key, admin token and the first invite |
-| `mn serve` | run the server (`--http` for development only, never on a public address) |
-| `mn invite create\|list\|revoke` | manage invite codes |
-| `mn uv list\|show\|approve\|reject\|block\|unblock\|rm\|forget\|reissue\|agentkey` | manage nodes |
-| `mn check now <node>\|--all` | run health checks immediately |
-| `mn policy show\|set` | read or change scheduler thresholds |
-| `mn sub rotate <node>` | issue a new subscription token |
-| `mn status` | server, nodes and schedule |
-| `mn backup`, `mn restore` | snapshot and restore |
-| `mn version` | build and protocol version |
+| `termit-mn init` | create config, database, master key, admin token and the first invite |
+| `termit-mn serve` | run the server (`--http` for development only, never on a public address) |
+| `termit-mn invite create\|list\|revoke` | manage invite codes |
+| `termit-mn uv list\|show\|approve\|reject\|block\|unblock\|rm\|forget\|reissue\|agentkey` | manage nodes |
+| `termit-mn check now <node>\|--all` | run health checks immediately |
+| `termit-mn policy show\|set` | read or change scheduler thresholds |
+| `termit-mn sub rotate <node>` | issue a new subscription token |
+| `termit-mn status` | server, nodes and schedule |
+| `termit-mn backup`, `termit-mn restore` | snapshot and restore |
+| `termit-mn version` | build and protocol version |
 
 Admin commands talk to the running server over a unix socket (`/run/termit/mn/admin.sock`) and
 authenticate with `TERMIT_MN_ADMIN_TOKEN`. They never open the database behind the server's back.
@@ -233,8 +233,8 @@ authenticate with `TERMIT_MN_ADMIN_TOKEN`. They never open the database behind t
   without the key.
 - **Run one server.** Two instances on one database corrupt it, and the second one cannot issue
   certificates for the same name anyway.
-- **Keep `mn status`' prober line green.** A dead prober is not a broken mesh, but it is a blind one.
-- **Protect the admin token like the master key.** It is created once by `mn init` and stored hashed;
+- **Keep `termit-mn status`' prober line green.** A dead prober is not a broken mesh, but it is a blind one.
+- **Protect the admin token like the master key.** It is created once by `termit-mn init` and stored hashed;
   this build has no rotate command, so a leaked token is a compromised registry. Keep it in
   `/etc/termit/mn/admin.env` (mode `0600`) rather than in a shell history, and keep it out of backups
   you share.Next: [Using a node](using-uv.md) · [When something goes wrong](troubleshooting.md)
