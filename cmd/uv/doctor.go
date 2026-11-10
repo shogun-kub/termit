@@ -86,6 +86,7 @@ func (a *application) diagnose(path string) []install.Check {
 		HTTP:   a.http,
 		Arch:   runtime.GOARCH,
 		Now:    a.now,
+		EUID:   a.euid,
 	})
 	checks := append([]install.Check{configCheck}, report.Checks...)
 	// The host half says whether this machine can run a node; the node half says whether it is

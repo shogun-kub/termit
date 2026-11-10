@@ -2,11 +2,14 @@ package warp_test
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -310,6 +313,10 @@ func TestStatusUsesTheTrace(t *testing.T) {
 	}
 }
 
+// This models a caller that resolved the path itself and hands over *os.PathError — one of the two
+// shapes a missing binary can take. The other, and the one production actually produces, is
+// *exec.Error from the launcher; TestLocalStatusOnAHostWithoutWarpCLI covers that with a real
+// process launch. This test alone passed while the command was broken.
 func TestStatusSaysMissingWhenTheBinaryIsGone(t *testing.T) {
 	t.Parallel()
 	client := warp.New(&fakeRunner{answers: map[string]answer{
@@ -393,5 +400,69 @@ func TestEnsureWaitsForTheConnection(t *testing.T) {
 	}
 	if runner.seen("/usr/bin/warp-cli --accept-tos status") != 3 {
 		t.Errorf("status ran %d times, want 3", runner.seen("/usr/bin/warp-cli --accept-tos status"))
+	}
+}
+
+// A host without the package is a normal state, not an error: the installer's executor wraps the
+// launch failure, so `uv warp status` has to recognise a wrapped exec.Error and report "not
+// installed". Missing this is what made the status command fail on a fresh node.
+func TestLocalStatusTreatsAMissingBinaryAsNotInstalled(t *testing.T) {
+	t.Parallel()
+	missing := fmt.Errorf("warp-cli --accept-tos status: %w", &exec.Error{Name: "warp-cli", Err: exec.ErrNotFound})
+	runner := &fakeRunner{answers: map[string]answer{
+		"/usr/bin/warp-cli --accept-tos status": {err: missing},
+	}}
+	client := warp.New(runner)
+	status, err := client.LocalStatus(context.Background())
+	if err != nil {
+		t.Fatalf("LocalStatus returned %v, want no error for a missing binary", err)
+	}
+	if status.State != "missing" {
+		t.Errorf("state = %q, want missing", status.State)
+	}
+	if status.Installed {
+		t.Error("a missing binary was reported as installed")
+	}
+}
+
+// The same failure the other way round: a command that ran and refused must stay an error.
+func TestLocalStatusKeepsARealFailure(t *testing.T) {
+	t.Parallel()
+	broken := fmt.Errorf("warp-cli --accept-tos status: %w", &warp.ExitError{Command: "warp-cli", ExitCode: 1, Output: "daemon is not running"})
+	runner := &fakeRunner{answers: map[string]answer{
+		"/usr/bin/warp-cli --accept-tos status": {err: broken},
+	}}
+	client := warp.New(runner)
+	if _, err := client.LocalStatus(context.Background()); err == nil {
+		t.Fatal("a failed command was accepted as 'not installed'")
+	}
+}
+
+// execRunner runs commands for real, so the error it produces is the one production sees.
+type execRunner struct{}
+
+func (execRunner) Run(ctx context.Context, name string, args ...string) (string, string, error) {
+	cmd := exec.CommandContext(ctx, name, args...)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		return stdout.String(), stderr.String(), fmt.Errorf("%s: %w", name, err)
+	}
+	return stdout.String(), stderr.String(), nil
+}
+
+// The stub above shows the expected shape; this one shows the real one. A binary that does not exist
+// produces *exec.Error from the launcher, wrapped by the caller — the path that used to surface as a
+// failure of `uv warp status` on a node that simply had not installed the package yet.
+func TestLocalStatusOnAHostWithoutWarpCLI(t *testing.T) {
+	t.Parallel()
+	client := warp.New(execRunner{})
+	client.Binary = "termit-warp-cli-that-does-not-exist"
+	status, err := client.LocalStatus(context.Background())
+	if err != nil {
+		t.Fatalf("LocalStatus on a host without warp-cli returned %v, want no error", err)
+	}
+	if status.State != "missing" {
+		t.Errorf("state = %q, want missing", status.State)
 	}
 }

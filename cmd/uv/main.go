@@ -15,6 +15,7 @@ import (
 
 	"github.com/shogun-kub/termit/internal/uv/config"
 	"github.com/shogun-kub/termit/internal/uv/install"
+	"github.com/shogun-kub/termit/internal/uv/warp"
 	"github.com/shogun-kub/termit/internal/version"
 )
 
@@ -71,6 +72,12 @@ type application struct {
 	now    func() time.Time
 	exec   install.Executor
 	http   *http.Client
+	// warpHost is the machine WARP availability is judged on; nil means this one. Tests set it, so
+	// their expectations do not change with whether the machine running them has /dev/net/tun.
+	warpHost *warp.Host
+	// euid answers "is this process root"; nil means os.Geteuid. Tests set it so a suite run as root
+	// and a suite run as a normal user assert the same thing.
+	euid func() int
 }
 
 func (a *application) run(args []string) int {
@@ -222,7 +229,17 @@ func (a *application) installOptions(cfg *config.Config, configPath string) inst
 		Now:        a.now,
 		Version:    version.Version,
 		ConfigPath: configPath,
+		WarpHost:   a.warpHost,
 	}
+}
+
+// warpClient builds the client the CLI's WARP commands share.
+func (a *application) warpClient() warp.Client {
+	client := warp.New(warpRunner{exec: a.exec})
+	if a.warpHost != nil {
+		client.Host = *a.warpHost
+	}
+	return client
 }
 
 // printSteps renders a step table.

@@ -93,7 +93,7 @@ func (a *application) newLoop(cfg *config.Config) *agent.Loop {
 // Cloudflare sees. No configuration is needed for it, which keeps the closure cheap.
 func (a *application) warpProbe() func(ctx context.Context) (warp.Status, error) {
 	return func(ctx context.Context) (warp.Status, error) {
-		return warp.New(warpRunner{exec: a.exec}).Status(ctx)
+		return a.warpClient().Status(ctx)
 	}
 }
 

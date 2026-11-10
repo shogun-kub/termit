@@ -23,8 +23,15 @@ type jsonWarp struct {
 }
 
 func (a *application) runWarp(args []string) int {
-	if len(args) > 0 && args[0] == "mode" {
-		return a.runWarpMode(args[1:])
+	// `uv warp` is the status. `uv warp status` is accepted because the documentation has always
+	// shown it that way — the same shape as `uv warp mode`.
+	if len(args) > 0 {
+		switch args[0] {
+		case "mode":
+			return a.runWarpMode(args[1:])
+		case "status":
+			return a.runWarpStatus(args[1:])
+		}
 	}
 	return a.runWarpStatus(args)
 }
@@ -50,7 +57,7 @@ through the tunnel says Cloudflare sees. WARP is on by default; `+"`uv warp mode
 		return exitFailure
 	}
 	report := jsonWarp{Mode: cfg.Warp.Mode, Socks: warp.SocksAddress, Selected: cfg.Warp.Selected}
-	client := warp.New(warpRunner{exec: a.exec})
+	client := a.warpClient()
 	hostErr := client.Host.Check()
 	switch {
 	case !cfg.Warp.UsesWarp():
@@ -146,7 +153,7 @@ removes the route, and direct traffic is never affected.`)
 	}
 	sort.Strings(cfg.Warp.Selected)
 
-	client := warp.New(warpRunner{exec: a.exec})
+	client := a.warpClient()
 	if mode != config.WarpOff {
 		if err := client.Host.Check(); err != nil {
 			// The intent is still worth recording: the node keeps its route and exits directly, and

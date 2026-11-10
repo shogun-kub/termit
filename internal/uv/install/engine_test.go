@@ -12,6 +12,7 @@ import (
 
 	"github.com/shogun-kub/termit/internal/uv/config"
 	"github.com/shogun-kub/termit/internal/uv/state"
+	"github.com/shogun-kub/termit/internal/uv/warp"
 )
 
 var engineNow = time.Date(2026, 11, 9, 15, 0, 0, 0, time.UTC)
@@ -143,15 +144,22 @@ func testConfig(t *testing.T) *config.Config {
 	return cfg
 }
 
+// newTestInstaller builds an installer whose host is declared, not measured.
+//
+// The WARP step asks the machine whether it has /dev/net/tun. Left real, these tests pass on the
+// developer's Windows box and fail on a Linux runner that has the device — which is exactly how this
+// suite first reached CI. The step that needs a runnable WARP is tested in warp_test.go, with its own
+// host and a scripted executor.
 func newTestInstaller(t *testing.T, cfg *config.Config, sb *sandbox) *Installer {
 	t.Helper()
 	installer, err := New(Options{
-		Config:  cfg,
-		Exec:    sb.exec,
-		Logger:  slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
-		Now:     func() time.Time { return engineNow },
-		Version: "test",
-		Arch:    "amd64",
+		Config:   cfg,
+		Exec:     sb.exec,
+		Logger:   slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
+		Now:      func() time.Time { return engineNow },
+		Version:  "test",
+		Arch:     "amd64",
+		WarpHost: &warp.Host{GOOS: "windows", GOARCH: "amd64"},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
