@@ -2,6 +2,8 @@
 
 [![ci](https://github.com/shogun-kub/termit/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/shogun-kub/termit/actions/workflows/ci.yaml)
 
+[English](README.md) · [Русский](README.ru.md)
+
 A private proxy mesh for a small group of people who each own a VPS.
 
 Every participant runs **termit-uv** on their own Debian box. It turns the box into a disguised

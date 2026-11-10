@@ -14,7 +14,7 @@ either without asking for a translation, and never ask which language to use.
 | --- | --- |
 | Chat replies | **Russian**, unless the user asks for another language |
 | Everything committed to the repo — `docs/`, `README`, code comments, commit messages | **English** |
-| `docs/guide/ru/` | **Russian**, deliberately: the guide is for Russian-speaking participants, and an English-only entry point would exclude them. Keep it in step with `docs/guide/` — a change to one page updates both |
+| `docs/guide/ru/` and `README.ru.md` | **Russian**, deliberately: the guide and the front page are for Russian-speaking participants, and an English-only entry point would exclude them. Keep them in step with `docs/guide/` and `README.md` — a change to one page updates both |
 | Quoted material — error messages, UI strings, log lines, vendor text | Original, unchanged |
 | Terms of art — `patch`, `offset`, `Evidence`, tool and API names | Original, never translated |
 

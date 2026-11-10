@@ -849,8 +849,8 @@ should be reconciled with it before the first tag.
 The reference documents assume an operator. A person who owns one node needs a different entry point, so
 `docs/guide/` holds four pages — how Termit works (with diagrams), using a node, running the server, and
 what to do when something breaks — and `docs/guide/ru/` holds the same four in Russian, side by side and
-cross-linked from every page and from the README. `AGENTS.md` records that this is the one place where
-Russian content belongs.
+cross-linked from every page, and `README.ru.md` is the same front page in Russian. `AGENTS.md` records
+that these are the only Russian content in the repository, and that a change to one side updates both.
 
 Deferred, and stated as such rather than claimed: **the final manual VPS pass** on real Debian 13 with a
 real domain and Let's Encrypt. The lab does everything else (ACME against Pebble, TLS, the mesh, an

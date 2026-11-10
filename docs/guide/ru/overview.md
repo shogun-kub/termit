@@ -143,4 +143,5 @@ A/AAAA-записью домена узла — поэтому запись до
 - Установить первый узел: [Как пользоваться узлом](using-uv.md)
 - Запустить сервер: [Как запустить сервер](using-mn.md)
 - Что-то сломалось: [Если что-то пошло не так](troubleshooting.md)
-- In English: [How Termit works](../overview.md)
+- In English: [How Termit works](../overview.md), and the [English README](../../../README.md)
+- The Russian README, for the whole project at a glance: [README.ru.md](../../../README.ru.md)
