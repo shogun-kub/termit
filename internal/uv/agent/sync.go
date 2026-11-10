@@ -547,6 +547,20 @@ func stripClients(document any) {
 	}
 }
 
+// RememberSubscription stores the subscription URL the server hands out. A node enrolled by an older
+// build, or one whose token was rotated on the server, has no URL in its state; the next sync repairs
+// it, and `uv status` can show it again. It reports whether the stored value changed.
+func RememberSubscription(st *state.State, answer proto.SyncResponse) bool {
+	if st.Credentials == nil || answer.SubscriptionURL == "" {
+		return false
+	}
+	if st.Credentials.SubscriptionURL == answer.SubscriptionURL {
+		return false
+	}
+	st.Credentials.SubscriptionURL = answer.SubscriptionURL
+	return true
+}
+
 // emailsOf names the clients an add request carries. Emails are the core's own identifiers and are
 // safe to show; the UUID beside each is not.
 func emailsOf(clients []xray.Client) []string {

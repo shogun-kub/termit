@@ -261,6 +261,7 @@ func (l *Loop) cycle(ctx context.Context) (CycleReport, error) {
 	report.Result = "ok"
 
 	st.Peers = PeersFrom(answer)
+	RememberSubscription(st, answer)
 	st.Schedule.Failures = 0
 	st.Schedule.LastSyncAt = now
 	st.Schedule.LastResult = "ok"
