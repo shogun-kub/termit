@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/shogun-kub/termit/internal/cred"
 	"github.com/shogun-kub/termit/internal/mn/secret"
 	"github.com/shogun-kub/termit/internal/mn/store"
 	"github.com/shogun-kub/termit/internal/mn/sub"
@@ -39,7 +40,7 @@ func (h *Handler) subscription(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	peers, err := h.peers(r)
+	peers, err := h.peers(r, owner)
 	if err != nil {
 		h.opts.Logger.Error("subscription peers", "err", err)
 		writeProblem(w, http.StatusInternalServerError, proto.NewProblem(http.StatusInternalServerError,
@@ -84,7 +85,12 @@ func (h *Handler) subscription(w http.ResponseWriter, r *http.Request) {
 
 // peers is the peer list: every node a client may dial. A pending or blocked node is absent on
 // purpose — the state machine's decision is what a subscription reflects.
-func (h *Handler) peers(r *http.Request) ([]sub.Peer, error) {
+//
+// The owner's own node carries its self credential; every other node carries the pair credential
+// this owner shares with it (DESCRIPTION §6.4), which is the credential the peer's inbound accepts and
+// the only one this subscription is allowed to expose (§6.5). It is derived from the two ids and the
+// owner's epoch, so rebuilding a peer changes its domain and path in the list but not the credential.
+func (h *Handler) peers(r *http.Request, owner store.UV) ([]sub.Peer, error) {
 	nodes, err := h.opts.Store.ListUVs(r.Context(), store.UVFilter{
 		States: []store.State{store.StateActive, store.StateUnavailable},
 	})
@@ -99,11 +105,23 @@ func (h *Handler) peers(r *http.Request) ([]sub.Peer, error) {
 			h.opts.Logger.Warn("skipping a node with an unreadable profile", "uv", node.ID, "err", err)
 			continue
 		}
+		uuid := profile.UUID
+		if node.ID != owner.ID {
+			epoch := owner.CredentialEpoch
+			if epoch < 1 {
+				epoch = 1
+			}
+			uuid, err = cred.Pair(h.opts.MasterKey, owner.ID, node.ID, epoch)
+			if err != nil {
+				h.opts.Logger.Error("subscription: derive a pair credential", "uv", owner.ID, "peer", node.ID, "err", err)
+				continue
+			}
+		}
 		out = append(out, sub.Peer{
 			ID:       node.ID,
 			Label:    labelOf(node, profile),
 			Domain:   node.Domain,
-			UUID:     profile.UUID,
+			UUID:     uuid,
 			Path:     profile.Path,
 			Degraded: node.State == store.StateUnavailable,
 		})
@@ -112,7 +130,8 @@ func (h *Handler) peers(r *http.Request) ([]sub.Peer, error) {
 }
 
 // profileOf decodes the profile stored at enrollment. The UUID in it is the node's self credential:
-// it is what a peer needs, and it never leaves MN except through a subscription that names its owner.
+// the owner's own devices use it, and it is never handed out for another node (those get the pair
+// credential in peers).
 func profileOf(node store.UV) (proto.Profile, error) {
 	var profile proto.Profile
 	if err := json.Unmarshal([]byte(node.ProfileJSON), &profile); err != nil {
