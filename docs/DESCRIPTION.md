@@ -576,7 +576,9 @@ lives in `/var/lib/termit/uv/state.json`, mode `0600`. Re-running `uv init` or e
 configuration therefore never regenerates a credential, and `uv uninstall` removes exactly what the
 manifest lists. The same file carries the agent's own bookkeeping — `schedule` (last and next sync,
 last result, failure count), `last_self_check`, the peer list and `credentials.enrolled_at` — because
-the loop must survive a reboot without asking MN when it last ran. New fields are additive and
+the loop must survive a reboot without asking MN when it last ran. `credentials.subscription_url` is
+refreshed from every sync answer, not just from enrollment: a node enrolled by an older build, or one
+whose token was rotated on the server, catches up at the next cycle. New fields are additive and
 `schema_version` only moves when an old file must be rewritten.
 
 ACME is configured by directory URL (`acme.directory`, or `--acme-ca`), defaulting to Let's Encrypt

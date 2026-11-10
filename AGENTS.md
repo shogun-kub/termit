@@ -87,9 +87,9 @@ The agent may restart its own services and rewrite Xray config. It must never:
 ## 3. Repository layout
 
 ```
-cmd/uv/                 entry point: subcommand dispatch (init, doctor, status, device, uri,
-                        renew-cert, renew-site, uninstall, version; sync, unblock, migrate and warp
-                        are not in this build yet)
+cmd/uv/                 entry point: subcommand dispatch (init, doctor, status, device, uri, enroll,
+                        sync, agent, unblock, renew-cert, renew-site, uninstall, version; migrate and
+                        warp are not in this build yet)
 cmd/mn/                 entry point: serve, init, invite, uv, check, policy, sub, status, backup,
                         restore, version
 internal/cred/          pair-credential derivation (shared, has test vectors — do not change
@@ -196,15 +196,21 @@ export TERMIT_LAB_MN=root@termit-mn.lan
 export TERMIT_LAB_UV1=root@termit-uv1.lan
 export TERMIT_LAB_UV2=root@termit-uv2.lan
 export TERMIT_LAB_SSH_KEY=<path to the lab private key>   # never committed
+export TERMIT_LAB_HOSTKEYS='termit-mn.lan=SHA256:…,termit-uv1.lan=SHA256:…,termit-uv2.lan=SHA256:…'
+export TERMIT_LAB_MN_ADMIN_TOKEN=<admin token>            # never committed
 export TERMIT_LAB_DNS_SUFFIX=lan
 export TERMIT_LAB_ACME=https://termit-mn.lan:14000/dir    # Pebble
+export TERMIT_LAB_PLINK='C:\Program Files\PuTTY\plink.exe'  # only when not on PATH
+export TERMIT_LAB_PSCP='C:\Program Files\PuTTY\pscp.exe'
 go test -tags=lab ./test/lab -v -timeout 30m
 ```
 
 The concrete coordinates for this machine (addresses, host keys, key path, hardware) live in the
 gitignored `.spike-out/lab.md`; the environment variables above are still what the tests read. On
 Windows the key is a PuTTY `.ppk` that OpenSSH cannot read and `puttygen -O` is broken here, so the
-harness must either parse the PPK itself or call `plink`/`pscp`; that decision belongs to M0.5.
+harness calls `plink`/`pscp` (decided in M0.5) and pins each machine by the fingerprint in
+`TERMIT_LAB_HOSTKEYS`. A missing variable skips the suite instead of failing it: the lab is a manual
+gate, not part of `go test ./cmd/... ./internal/...`.
 
 Lab hardware is the acceptance budget: UV = 1 vCPU / 1 GB RAM / 10 GB disk, MN = 2 vCPU / 2 GB. The
 containers are unprivileged LXC with **no `/dev/net/tun`**, so WARP cannot be exercised there; WARP

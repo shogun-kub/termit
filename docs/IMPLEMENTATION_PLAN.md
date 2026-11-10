@@ -100,16 +100,25 @@ Left for M1: re-check whether XHTTP `mode: auto` works through nginx's HTTP/1.1 
   decoy/certificate checker, which is what M2.3 builds.
 - Worker failures are errors from `Probe`, never node results — the `unknown` invariant holds.
 
-### M0.5 Lab harness bootstrap
+### M0.5 Lab harness bootstrap — **done**
 
-- SSH client wrapper (`golang.org/x/crypto/ssh`) with host-key pinning from an env var, command
-  runner, file upload, and log capture.
-- `test/lab` package with `TestLabSmoke`: connect to all three machines, assert Debian version, free
-  ports, DNS resolution, and NTP offset; print a report.
-- Provisioning helpers: copy a binary, install a systemd unit, tail a journal, wait for a condition.
+- SSH client wrapper with host-key pinning from an env var, command runner, file upload, and log
+  capture. The transport is `plink`/`pscp`, not `golang.org/x/crypto/ssh`: the lab key is a PuTTY
+  `.ppk`, OpenSSH cannot read it, and `puttygen` on the development host cannot convert it. A PPK
+  parser would be more code than the suite is worth, and the guard that matters — pinning the machine
+  — is the same either way.
+- `test/lab` package (build tag `lab`) with `TestLabSmoke`: connect to all three machines, assert
+  Debian 13, arch and memory, both units active on the UVs, the `termit-*` binaries under test, and
+  `mn uv list` through the socket.
+- Provisioning helpers: `Machine.Run`, `Upload`, `WriteFile`, `Unit`, `WaitFor`, and `MNAdmin` (the
+  admin token is passed in the remote environment and redacted from every captured output).
+- `FromEnv` skips, not fails, when the environment is incomplete: the lab is a manual gate and a
+  developer machine must still run the default `go test`.
 
 **Done when**: `go test -tags=lab ./test/lab -run Smoke` passes against the three machines, and a
-failed run prints enough to debug without logging in by hand.
+failed run prints enough to debug without logging in by hand. Both hold: the suite runs from the
+Windows host with `TERMIT_LAB_PLINK`/`TERMIT_LAB_PSCP` pointing at PuTTY, and a failing scenario dumps
+both units' journals and `mn uv list` before restoring the lab.
 
 ---
 
@@ -405,7 +414,7 @@ Lab evidence (termit-mn + termit-uv1, Pebble as the CA):
 | `mn invite list` | `inv_T5bh68a-FS  0/2  usable` |
 | `POST /api/v1/enroll` from uv1 | `201`, node `uv_tsFkPtgUuYn6`, state `active` |
 | credentials in the response | `agent_key`, `sub_token`, `probe_uuid` — all present |
-| `mn uv list` | node with its domain, state and source address `192.168.89.38` |
+| `mn uv list` | node with its domain, state and source address `192.0.2.38` (documentation range) |
 | `mn invite list` afterwards | `1/2` — the invite was consumed exactly once |
 
 Two dead ends found on the way, both recorded in `SPIKES.md` S15: xray ignores `SSL_CERT_FILE` and the
@@ -610,12 +619,38 @@ read it as `email → id`, so every hot verification failed and every change fel
 and the agent unit's `ProtectHome=yes` hides `/root`, so a CA file there was unreadable and the unit
 now drops `ProtectHome` when a configured readable path lives under a home directory.
 
-### M3.3 Scenario A acceptance
+### M3.3 Scenario A acceptance — **done**
 
 Enroll two UVs → wait for one cycle (or `mn check now`) → both nodes present in each other's Xray
 config and subscription → kill node 2 → cycle fails after retries → `unavailable`, still in node 1's
 config → second failed cycle → `blocked`, removed from node 1's config at its next sync → restart
 node 2 → stays blocked until an explicit unblock → `uv unblock` → `active`, peers re-add it.
+
+Done so far:
+
+| Piece | State |
+|---|---|
+| Scenario A as one lab test (`test/lab/scenario_a_test.go`), driven through the M0.5 harness | done |
+| Subscription URL learned from every sync, not only from enrollment | done |
+
+The test asserts the server's view, the core's **live** client set (not the file) and the subscription
+body at each step, and it restores the lab on every exit path. The subscription check is the reason a
+small product gap surfaced: a node enrolled before the field existed never learned its subscription
+URL, because only enrollment stored it. Every sync now stores what the server sends, so `uv status`
+works on an old node too.
+
+Lab, both runs identical: the two nodes listed each other's `peer-…@termit` credential and each
+other's domain in the sing-box subscription; killing uv2's core produced `check_failed → unavailable`
+while uv1 kept the credential; the next cycle produced `blocked`, and uv1's sync dropped the peer
+through the hot API (`canary=true`); a restarted, healthy uv2 stayed `blocked` through two passing
+checks, its sync was refused with `node_inactive` and its config hash was unchanged; `uv unblock`
+passed DNS/decoy/VLESS verification and moved it to `active`; uv1 re-added the peer by hot API. The
+whole scenario takes ~18 s, which is what makes it usable as a regression gate.
+
+One flake is recorded rather than hidden: the first `uv unblock` immediately after a cold start of the
+core can hit a single failed probe (`check_failed: EOF`) even though the previous check passed, because
+a fresh listener answers before its handlers settle. The test now requires the node to pass two checks
+in a row before unblocking; the product path is unchanged and the retry is not automatic.
 
 ### M3.4 Scenario B acceptance
 
