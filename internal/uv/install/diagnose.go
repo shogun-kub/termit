@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/shogun-kub/termit/internal/acme"
+	"github.com/shogun-kub/termit/internal/decoy"
 	"github.com/shogun-kub/termit/internal/uv/config"
-	"github.com/shogun-kub/termit/internal/uv/decoy"
 	"github.com/shogun-kub/termit/internal/uv/service"
 	"github.com/shogun-kub/termit/internal/uv/state"
 	"github.com/shogun-kub/termit/internal/uv/warp"

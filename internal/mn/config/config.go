@@ -23,6 +23,7 @@ import (
 
 	"github.com/shogun-kub/termit/internal/acme"
 	"github.com/shogun-kub/termit/internal/atomicfile"
+	"github.com/shogun-kub/termit/internal/decoy"
 )
 
 // SchemaVersion is the configuration schema this build understands.
@@ -37,6 +38,11 @@ const (
 	// ModeOpen needs no invite. Only for a private group that knows what it is doing.
 	ModeOpen = "open"
 )
+
+// DefaultDecoyTemplate is the masking site a management server serves unless the operator picks another
+// archetype. It is the same generator the nodes use, so the server does not look like a different
+// product from its own nodes.
+const DefaultDecoyTemplate = "portal"
 
 // DefaultAPIPrefix is what a configuration written before the prefix existed, and every test, expects.
 // `termit-mn init` replaces it with a random one unless the operator passes --api-prefix.
@@ -55,10 +61,18 @@ type Config struct {
 	DBPath        string     `yaml:"db_path"`
 	MasterKeyFile string     `yaml:"master_key_file"`
 	ACME          ACME       `yaml:"acme"`
+	Decoy         Decoy      `yaml:"decoy"`
 	Enrollment    Enrollment `yaml:"enrollment"`
 	Policy        Policy     `yaml:"policy"`
 	DNS           DNS        `yaml:"dns"`
 	Prober        Prober     `yaml:"prober"`
+}
+
+// Decoy is the site the server answers a prober with: an ordinary-looking page instead of a bare 404
+// that announces a machine nobody intended to be found.
+type Decoy struct {
+	// Template selects the archetype. Empty means DefaultDecoyTemplate.
+	Template string `yaml:"template"`
 }
 
 // DNS is the second resolver enrollment asks beside the system one. Empty means the system resolver
@@ -223,6 +237,10 @@ func (c *Config) Validate() error {
 	if err := validateAPIPrefix(c.APIPrefix); err != nil {
 		problems = append(problems, err)
 	}
+	if !decoy.KnownTemplate(c.Decoy.Template) {
+		problems = append(problems, fmt.Errorf("decoy.template %q is not one this build can generate (%s)",
+			c.Decoy.Template, strings.Join(decoy.Templates(), ", ")))
+	}
 	if c.ACME.Directory == "" {
 		problems = append(problems, errors.New("acme.directory is required"))
 	}
@@ -254,6 +272,9 @@ func (c *Config) applyDefaults() {
 	}
 	if c.APIPrefix == "" {
 		c.APIPrefix = DefaultAPIPrefix
+	}
+	if c.Decoy.Template == "" {
+		c.Decoy.Template = DefaultDecoyTemplate
 	}
 	if c.DataDir == "" {
 		c.DataDir = "/var/lib/termit/mn"

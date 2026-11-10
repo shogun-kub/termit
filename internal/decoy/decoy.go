@@ -6,9 +6,11 @@
 // a reinstall of the package or a `termit-uv renew-site` that nobody asked for. Nothing is fetched at
 // runtime: every byte of the tree is produced here, and no page references an external host.
 //
-// The site is a file tree; nginx serves it. The agent never listens on :80 or :443 (see AGENTS.md
-// §5), so the sign-in endpoint is not an application either: Site.Auth describes the answer, and
-// package web turns it into an nginx location that returns it.
+// The site is a file tree, and the two binaries serve it differently because they are different kinds
+// of listener. A node writes the tree and nginx serves it — the agent never listens on :80 or :443
+// (see AGENTS.md §5), so Site.Auth describes the sign-in answer and package web turns it into an nginx
+// location. The management server owns its socket, so it generates the same site and serves it from
+// memory (internal/mn/server/decoy.go): same generator, same determinism, no tree on disk.
 package decoy
 
 import (
@@ -23,7 +25,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/shogun-kub/termit/internal/uv/state"
+	"github.com/shogun-kub/termit/internal/atomicfile"
 )
 
 // Template names accepted by Spec.
@@ -154,7 +156,7 @@ func (s *Site) Write(dir string) ([]string, error) {
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 			return nil, fmt.Errorf("decoy: create %s: %w", filepath.Dir(target), err)
 		}
-		if err := state.WriteFileAtomic(target, s.Files[name], 0o644); err != nil {
+		if err := atomicfile.Write(target, s.Files[name], 0o644); err != nil {
 			return nil, err
 		}
 	}

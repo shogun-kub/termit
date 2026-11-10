@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/shogun-kub/termit/internal/uv/decoy"
+	"github.com/shogun-kub/termit/internal/decoy"
 )
 
 var fixedTime = time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC)

@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/shogun-kub/termit/internal/uv/decoy"
+	"github.com/shogun-kub/termit/internal/decoy"
 )
 
 var update = flag.Bool("update", false, "rewrite the golden files")
@@ -40,7 +40,7 @@ func TestGoldenPages(t *testing.T) {
 			}
 			want, err := os.ReadFile(golden) // #nosec G304 -- a fixed test path.
 			if err != nil {
-				t.Fatalf("read golden file: %v (run `go test ./internal/uv/decoy -update`)", err)
+				t.Fatalf("read golden file: %v (run `go test ./internal/decoy -update`)", err)
 			}
 			if !bytes.Equal(want, site.Files["index.html"]) {
 				t.Errorf("%s differs from the generated page; regenerate with -update and review the diff", golden)

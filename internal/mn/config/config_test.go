@@ -195,3 +195,25 @@ func TestAPIPrefixSurvivesARoundTrip(t *testing.T) {
 		t.Errorf("api_prefix = %q after a round trip", again.APIPrefix)
 	}
 }
+
+func TestDecoyTemplate(t *testing.T) {
+	t.Parallel()
+	c := config.Default()
+	c.Domain = "mn.example.net"
+	c.Decoy.Template = "blog"
+	if err := c.Validate(); err == nil {
+		t.Fatal("Validate accepted a template this build cannot generate")
+	}
+	c.Decoy.Template = config.DefaultDecoyTemplate
+	if err := c.Validate(); err != nil {
+		t.Fatalf("Validate(%q) = %v", config.DefaultDecoyTemplate, err)
+	}
+	// A configuration written before the decoy existed gets the default, not an empty archetype.
+	old, err := config.Parse(strings.NewReader("schema_version: 1\ndomain: mn.example.net\n"))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if old.Decoy.Template != config.DefaultDecoyTemplate {
+		t.Errorf("decoy.template = %q, want %q", old.Decoy.Template, config.DefaultDecoyTemplate)
+	}
+}

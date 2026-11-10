@@ -68,6 +68,7 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 	fmt.Fprintf(stdout, "server:   %s\n", cfg.Domain)
 	fmt.Fprintf(stdout, "listen:   %s\n", cfg.Listen)
 	fmt.Fprintf(stdout, "api:      %s\n", cfg.APIPrefix)
+	fmt.Fprintf(stdout, "decoy:    %s\n", cfg.Decoy.Template)
 	fmt.Fprintf(stdout, "version:  %s\n", version.String("termit-mn"))
 	if hasServer {
 		if !server.StartedAt.IsZero() {

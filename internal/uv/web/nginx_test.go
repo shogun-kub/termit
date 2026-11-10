@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/shogun-kub/termit/internal/uv/decoy"
+	"github.com/shogun-kub/termit/internal/decoy"
 	"github.com/shogun-kub/termit/internal/uv/web"
 )
 

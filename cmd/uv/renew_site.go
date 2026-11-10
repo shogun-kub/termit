@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/shogun-kub/termit/internal/uv/decoy"
+	"github.com/shogun-kub/termit/internal/decoy"
 	"github.com/shogun-kub/termit/internal/uv/install"
 	"github.com/shogun-kub/termit/internal/uv/state"
 )

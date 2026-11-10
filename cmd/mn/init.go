@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shogun-kub/termit/internal/decoy"
 	"github.com/shogun-kub/termit/internal/mn/config"
 	"github.com/shogun-kub/termit/internal/mn/secret"
 	"github.com/shogun-kub/termit/internal/mn/store"
@@ -45,6 +46,9 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 		"write the new admin token to this file (0600) instead of printing it")
 	apiPrefix := flags.String("api-prefix", "",
 		"path the node API is served under (default: a random one; /api/v1 for the old shape)")
+	decoyTemplate := flags.String("decoy-template", "",
+		"masking site to serve: "+strings.Join(decoy.Templates(), ", ")+
+			" (default: "+config.DefaultDecoyTemplate+")")
 	if err := flags.Parse(args); err != nil {
 		return flagExit(err)
 	}
@@ -89,6 +93,14 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "termit-mn init: the API prefix is already %q; moving it to %q needs every node "+
 			"re-enrolled, so it is not done from init\n", cfg.APIPrefix, *apiPrefix)
 		return exitFailure
+	}
+	if *decoyTemplate != "" {
+		if !decoy.KnownTemplate(*decoyTemplate) {
+			fmt.Fprintf(stderr, "termit-mn init: --decoy-template %q is not one this build can generate (%s)\n",
+				*decoyTemplate, strings.Join(decoy.Templates(), ", "))
+			return exitUsage
+		}
+		cfg.Decoy.Template = *decoyTemplate
 	}
 	if cfg.Domain == "" {
 		fmt.Fprintln(stderr, "termit-mn init: --domain is required on the first run")
@@ -177,10 +189,18 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "termit-mn init: %v\n", err)
 		return exitFailure
 	}
+	// The masking site is generated from this seed on every start: minting it here means the site a
+	// prober sees today is the site it sees after the next restart.
+	if _, err := decoySeed(ctx, db); err != nil {
+		fmt.Fprintf(stderr, "termit-mn init: %v\n", err)
+		return exitFailure
+	}
 
 	fmt.Fprintf(stdout, "domain:       %s\n", cfg.Domain)
 	fmt.Fprintf(stdout, "listen:       %s\n", cfg.Listen)
 	fmt.Fprintf(stdout, "api prefix:   %s\n", cfg.APIPrefix)
+	fmt.Fprintf(stdout, "masking site: %s (what a prober gets for every path the API does not claim)\n",
+		cfg.Decoy.Template)
 	fmt.Fprintf(stdout, "config:       %s\n", *configPath)
 	fmt.Fprintf(stdout, "database:     %s (schema %d)\n", cfg.DBPath, store.SchemaVersion)
 	fmt.Fprintf(stdout, "master key:   %s%s\n", cfg.MasterKeyFile, map[bool]string{true: " (generated now)", false: " (kept)"}[created])

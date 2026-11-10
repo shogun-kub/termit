@@ -13,7 +13,7 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/shogun-kub/termit/internal/uv/decoy"
+	"github.com/shogun-kub/termit/internal/decoy"
 )
 
 // decoyTemplate is the server-block fragment for the masking site.

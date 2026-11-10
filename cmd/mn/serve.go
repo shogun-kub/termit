@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/shogun-kub/termit/internal/decoy"
 	"github.com/shogun-kub/termit/internal/mn/admin"
 	"github.com/shogun-kub/termit/internal/mn/cert"
 	"github.com/shogun-kub/termit/internal/mn/config"
@@ -83,7 +84,14 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 	scheduler.PolicyFn = policyFromSettings(cfg, db)
 	scheduler.Metrics = registry
 
-	handler, err := buildHandler(cfg, db, logger, registry, proberInfo)
+	mask, err := decoySite(ctx, cfg, db)
+	if err != nil {
+		fmt.Fprintf(stderr, "termit-mn serve: %v\n", err)
+		return exitFailure
+	}
+	logger.Info("masking site ready", "template", mask.Template, "digest", mask.Digest[:12])
+
+	handler, err := buildHandler(cfg, db, logger, registry, proberInfo, mask)
 	if err != nil {
 		fmt.Fprintf(stderr, "termit-mn serve: %v\n", err)
 		return exitFailure
@@ -195,7 +203,7 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 
 // buildHandler wires the HTTP surface: the enrollment service needs a store, resolvers and a prober.
 func buildHandler(cfg *config.Config, db *store.Store, logger *slog.Logger,
-	registry *metrics.Registry, proberInfo proberState) (http.Handler, error) {
+	registry *metrics.Registry, proberInfo proberState, mask *decoy.Site) (http.Handler, error) {
 	resolvers := []enroll.Resolver{dns.System{}}
 	if cfg.DNS.Secondary != "" {
 		resolvers = append(resolvers, dns.Server{Addr: cfg.DNS.Secondary})
@@ -235,6 +243,7 @@ func buildHandler(cfg *config.Config, db *store.Store, logger *slog.Logger,
 		Metrics:       registry,
 		ProberUp:      proberInfo.Up,
 		CertPath:      filepath.Join(cfg.CertDir(), "fullchain.pem"),
+		Decoy:         mask,
 	})
 }
 
