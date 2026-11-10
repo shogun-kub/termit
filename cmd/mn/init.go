@@ -41,8 +41,10 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 	mode := flags.String("mode", "", "enrollment mode: invite, invite+approval or open")
 	inviteUses := flags.Int("invite-uses", 1, "how many nodes the first invite code may register")
 	adminName := flags.String("admin", "operator", "name of the first admin token")
+	adminTokenOut := flags.String("admin-token-out", "",
+		"write the new admin token to this file (0600) instead of printing it")
 	if err := flags.Parse(args); err != nil {
-		return exitUsage
+		return flagExit(err)
 	}
 	if flags.NArg() > 0 {
 		fmt.Fprintf(stderr, "termit-mn init: unexpected argument %q\n", flags.Arg(0))
@@ -161,7 +163,10 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 	fmt.Fprintf(stdout, "master key:   %s%s\n", cfg.MasterKeyFile, map[bool]string{true: " (generated now)", false: " (kept)"}[created])
 	fmt.Fprintf(stdout, "master key id: %s\n", secret.Fingerprint(hex.EncodeToString(sha256Of(masterKey))))
 	if adminToken != "" {
-		fmt.Fprintf(stdout, "\nadmin token (shown once, store it now):\n  %s\n", adminToken)
+		if err := writeAdminToken(stdout, *adminTokenOut, adminToken); err != nil {
+			fmt.Fprintf(stderr, "termit-mn init: %v\n", err)
+			return exitFailure
+		}
 	}
 	if inviteCode != "" {
 		fmt.Fprintf(stdout, "\nfirst invite code (shown once, %d use(s)):\n  %s\n", *inviteUses, inviteCode)
@@ -169,6 +174,23 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 	fmt.Fprintf(stdout, "\nback up %s together with the database: without it no pair credential can be derived.\n",
 		cfg.MasterKeyFile)
 	return exitOK
+}
+
+// writeAdminToken puts the token where the operator asked for it. Printing it is the fallback, not the
+// default, when a file was requested: the token exists in the database now, so a failed write that
+// swallowed it would leave a server nobody can administer.
+func writeAdminToken(stdout io.Writer, path, token string) error {
+	if path == "" {
+		fmt.Fprintf(stdout, "\nadmin token (shown once, store it now):\n  %s\n", token)
+		return nil
+	}
+	if err := writeTokenFile(path, token); err != nil {
+		fmt.Fprintf(stdout, "\nadmin token (the file could not be written, so it is printed instead):\n  %s\n", token)
+		return fmt.Errorf("admin token file: %w", err)
+	}
+	fmt.Fprintf(stdout, "\nadmin token written to %s (mode 0600)\n"+
+		"the file is a credential: keep it out of backups and out of version control\n", path)
+	return nil
 }
 
 // ensureMasterKey returns the master key, generating it on the first run. An existing key is never

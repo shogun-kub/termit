@@ -13,14 +13,19 @@ import (
 	"github.com/shogun-kub/termit/internal/mn/config"
 )
 
-// adminTokenEnv lets an operator avoid putting the token in a shell history.
-const adminTokenEnv = "TERMIT_MN_ADMIN_TOKEN"
+// adminTokenEnv lets an operator avoid putting the token in a shell history; adminTokenFileEnv names a
+// file to read it from, which is what a timer or a cron job needs.
+const (
+	adminTokenEnv     = "TERMIT_MN_ADMIN_TOKEN"
+	adminTokenFileEnv = "TERMIT_MN_ADMIN_TOKEN_FILE"
+)
 
 // adminClient builds a client from the flags and the configuration. The token never has a default: an
 // empty one produces a clear refusal from the server rather than an unauthenticated call.
-func adminClient(configPath, socket, token string) (admin.Client, error) {
-	if token == "" {
-		token = os.Getenv(adminTokenEnv)
+func adminClient(configPath, socket, token, tokenFile string) (admin.Client, error) {
+	resolved, err := resolveAdminToken(token, tokenFile)
+	if err != nil {
+		return admin.Client{}, err
 	}
 	if socket == "" {
 		cfg, err := config.Load(configPath)
@@ -29,10 +34,30 @@ func adminClient(configPath, socket, token string) (admin.Client, error) {
 		}
 		socket = cfg.AdminSocket
 	}
-	if token == "" {
-		return admin.Client{}, fmt.Errorf("an admin token is required: pass --token or set %s", adminTokenEnv)
+	return admin.Client{Network: "unix", Address: socket, Token: resolved}, nil
+}
+
+// resolveAdminToken finds the credential. An explicit flag wins over the environment, and a token wins
+// over the file that holds it: the thing the operator typed is what they meant, so an exported variable
+// left over in a shell cannot quietly override a flag that named a different credential.
+func resolveAdminToken(token, tokenFile string) (string, error) {
+	if token != "" && tokenFile != "" {
+		return "", fmt.Errorf("pass --token or --token-file, not both")
 	}
-	return admin.Client{Network: "unix", Address: socket, Token: token}, nil
+	if token != "" {
+		return token, nil
+	}
+	if tokenFile != "" {
+		return readTokenFile(tokenFile)
+	}
+	if value := os.Getenv(adminTokenEnv); value != "" {
+		return value, nil
+	}
+	if path := os.Getenv(adminTokenFileEnv); path != "" {
+		return readTokenFile(path)
+	}
+	return "", fmt.Errorf("an admin token is required: pass --token, pass --token-file, set %s, or set %s",
+		adminTokenEnv, adminTokenFileEnv)
 }
 
 // runInvite dispatches `termit-mn invite …`.
@@ -54,25 +79,27 @@ func runInvite(args []string, stdout, stderr io.Writer) int {
 	}
 }
 
-func inviteFlags(name string, stderr io.Writer) (*flag.FlagSet, *string, *string, *string) {
+func inviteFlags(name string, stderr io.Writer) (*flag.FlagSet, *string, *string, *string, *string) {
 	flags := flag.NewFlagSet(name, flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	configPath := flags.String("config", defaultConfigPath, "path to config.yaml")
 	socket := flags.String("socket", "", "admin socket path (default: from the configuration)")
-	token := flags.String("token", "", "admin token (default: "+adminTokenEnv+")")
-	return flags, configPath, socket, token
+	token := flags.String("token", "", "admin token (default: "+adminTokenEnv+" or "+adminTokenFileEnv+")")
+	tokenFile := flags.String("token-file", "",
+		"file holding the admin token; used when neither --token nor the environment supplies one")
+	return flags, configPath, socket, token, tokenFile
 }
 
 func runInviteCreate(args []string, stdout, stderr io.Writer) int {
-	flags, configPath, socket, token := inviteFlags("invite create", stderr)
+	flags, configPath, socket, token, tokenFile := inviteFlags("invite create", stderr)
 	uses := flags.Int("uses", 1, "how many nodes this code may register")
 	note := flags.String("note", "", "why this code exists")
 	expires := flags.Int("expires-hours", 0, "hours until the code expires; 0 means never")
 	if err := flags.Parse(args); err != nil {
-		return exitUsage
+		return flagExit(err)
 	}
 
-	client, err := adminClient(*configPath, *socket, *token)
+	client, err := adminClient(*configPath, *socket, *token, *tokenFile)
 	if err != nil {
 		fmt.Fprintf(stderr, "termit-mn invite create: %v\n", err)
 		return exitFailure
@@ -101,11 +128,11 @@ func runInviteCreate(args []string, stdout, stderr io.Writer) int {
 }
 
 func runInviteList(args []string, stdout, stderr io.Writer) int {
-	flags, configPath, socket, token := inviteFlags("invite list", stderr)
+	flags, configPath, socket, token, tokenFile := inviteFlags("invite list", stderr)
 	if err := flags.Parse(args); err != nil {
-		return exitUsage
+		return flagExit(err)
 	}
-	client, err := adminClient(*configPath, *socket, *token)
+	client, err := adminClient(*configPath, *socket, *token, *tokenFile)
 	if err != nil {
 		fmt.Fprintf(stderr, "termit-mn invite list: %v\n", err)
 		return exitFailure
@@ -143,15 +170,15 @@ func runInviteList(args []string, stdout, stderr io.Writer) int {
 }
 
 func runInviteRevoke(args []string, stdout, stderr io.Writer) int {
-	flags, configPath, socket, token := inviteFlags("invite revoke", stderr)
+	flags, configPath, socket, token, tokenFile := inviteFlags("invite revoke", stderr)
 	if err := flags.Parse(args); err != nil {
-		return exitUsage
+		return flagExit(err)
 	}
 	if flags.NArg() != 1 {
 		fmt.Fprintln(stderr, "termit-mn invite revoke: one invite id is required")
 		return exitUsage
 	}
-	client, err := adminClient(*configPath, *socket, *token)
+	client, err := adminClient(*configPath, *socket, *token, *tokenFile)
 	if err != nil {
 		fmt.Fprintf(stderr, "termit-mn invite revoke: %v\n", err)
 		return exitFailure
@@ -168,15 +195,15 @@ func runInviteRevoke(args []string, stdout, stderr io.Writer) int {
 
 // runUVReissue hands a node a new agent key, for an owner who lost the old one.
 func runUVReissue(args []string, stdout, stderr io.Writer) int {
-	flags, configPath, socket, token := uvFlags("termit-uv reissue", stderr)
+	flags, configPath, socket, token, tokenFile := uvFlags("termit-mn uv reissue", stderr)
 	if err := flags.Parse(flagsFirst(args, map[string]bool{})); err != nil {
-		return exitUsage
+		return flagExit(err)
 	}
 	if flags.NArg() != 1 {
 		fmt.Fprintln(stderr, "termit-mn uv reissue: one node id or domain is required")
 		return exitUsage
 	}
-	client, err := adminClient(*configPath, *socket, *token)
+	client, err := adminClient(*configPath, *socket, *token, *tokenFile)
 	if err != nil {
 		fmt.Fprintf(stderr, "termit-mn uv reissue: %v\n", err)
 		return exitFailure
@@ -200,16 +227,16 @@ func runUVReissue(args []string, stdout, stderr io.Writer) int {
 // runUVState is the operator override for one node: block it, let it back in, or remove it. Each one
 // goes through the same state table the automatic checks use.
 func runUVState(verb string, args []string, stdout, stderr io.Writer) int {
-	flags, configPath, socket, token := uvFlags("termit-uv "+verb, stderr)
+	flags, configPath, socket, token, tokenFile := uvFlags("termit-mn uv "+verb, stderr)
 	reason := flags.String("reason", "", "why, recorded with the state change")
 	if err := flags.Parse(flagsFirst(args, map[string]bool{"reason": true})); err != nil {
-		return exitUsage
+		return flagExit(err)
 	}
 	if flags.NArg() != 1 {
 		fmt.Fprintf(stderr, "termit-mn uv %s: one node id or domain is required\n", verb)
 		return exitUsage
 	}
-	client, err := adminClient(*configPath, *socket, *token)
+	client, err := adminClient(*configPath, *socket, *token, *tokenFile)
 	if err != nil {
 		fmt.Fprintf(stderr, "termit-mn uv %s: %v\n", verb, err)
 		return exitFailure
@@ -241,15 +268,15 @@ func runUVState(verb string, args []string, stdout, stderr io.Writer) int {
 
 // runUVForget erases a removed node, which is what frees its domain for a new enrollment.
 func runUVForget(args []string, stdout, stderr io.Writer) int {
-	flags, configPath, socket, token := uvFlags("termit-uv forget", stderr)
+	flags, configPath, socket, token, tokenFile := uvFlags("termit-mn uv forget", stderr)
 	if err := flags.Parse(flagsFirst(args, map[string]bool{})); err != nil {
-		return exitUsage
+		return flagExit(err)
 	}
 	if flags.NArg() != 1 {
 		fmt.Fprintln(stderr, "termit-mn uv forget: one node id or domain is required")
 		return exitUsage
 	}
-	client, err := adminClient(*configPath, *socket, *token)
+	client, err := adminClient(*configPath, *socket, *token, *tokenFile)
 	if err != nil {
 		fmt.Fprintf(stderr, "termit-mn uv forget: %v\n", err)
 		return exitFailure
@@ -270,15 +297,15 @@ func runUVForget(args []string, stdout, stderr io.Writer) int {
 
 // runUVAgentKey prints a node's current key: for an owner who lost it, without breaking the node.
 func runUVAgentKey(args []string, stdout, stderr io.Writer) int {
-	flags, configPath, socket, token := uvFlags("termit-uv agentkey", stderr)
+	flags, configPath, socket, token, tokenFile := uvFlags("termit-mn uv agentkey", stderr)
 	if err := flags.Parse(flagsFirst(args, map[string]bool{})); err != nil {
-		return exitUsage
+		return flagExit(err)
 	}
 	if flags.NArg() != 1 {
 		fmt.Fprintln(stderr, "termit-mn uv agentkey: one node id or domain is required")
 		return exitUsage
 	}
-	client, err := adminClient(*configPath, *socket, *token)
+	client, err := adminClient(*configPath, *socket, *token, *tokenFile)
 	if err != nil {
 		fmt.Fprintf(stderr, "termit-mn uv agentkey: %v\n", err)
 		return exitFailure
@@ -304,16 +331,16 @@ func runSub(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "termit-mn sub: the only subcommand in this build is rotate")
 		return exitUsage
 	}
-	flags, configPath, socket, token := uvFlags("sub rotate", stderr)
+	flags, configPath, socket, token, tokenFile := uvFlags("termit-mn sub rotate", stderr)
 	domain := flags.String("domain", "", "the server's public name, for the URL")
 	if err := flags.Parse(flagsFirst(args[1:], map[string]bool{})); err != nil {
-		return exitUsage
+		return flagExit(err)
 	}
 	if flags.NArg() != 1 {
 		fmt.Fprintln(stderr, "termit-mn sub rotate: one node id or domain is required")
 		return exitUsage
 	}
-	client, err := adminClient(*configPath, *socket, *token)
+	client, err := adminClient(*configPath, *socket, *token, *tokenFile)
 	if err != nil {
 		fmt.Fprintf(stderr, "termit-mn sub rotate: %v\n", err)
 		return exitFailure
@@ -370,16 +397,16 @@ func runUV(args []string, stdout, stderr io.Writer) int {
 	}
 }
 
-func uvFlags(name string, stderr io.Writer) (*flag.FlagSet, *string, *string, *string) {
+func uvFlags(name string, stderr io.Writer) (*flag.FlagSet, *string, *string, *string, *string) {
 	return inviteFlags(name, stderr)
 }
 
 func runUVList(args []string, stdout, stderr io.Writer) int {
-	flags, configPath, socket, token := uvFlags("termit-uv list", stderr)
+	flags, configPath, socket, token, tokenFile := uvFlags("termit-mn uv list", stderr)
 	if err := flags.Parse(args); err != nil {
-		return exitUsage
+		return flagExit(err)
 	}
-	client, err := adminClient(*configPath, *socket, *token)
+	client, err := adminClient(*configPath, *socket, *token, *tokenFile)
 	if err != nil {
 		fmt.Fprintf(stderr, "termit-mn uv list: %v\n", err)
 		return exitFailure
@@ -410,15 +437,15 @@ func runUVList(args []string, stdout, stderr io.Writer) int {
 }
 
 func runUVShow(args []string, stdout, stderr io.Writer) int {
-	flags, configPath, socket, token := uvFlags("termit-uv show", stderr)
+	flags, configPath, socket, token, tokenFile := uvFlags("termit-mn uv show", stderr)
 	if err := flags.Parse(args); err != nil {
-		return exitUsage
+		return flagExit(err)
 	}
 	if flags.NArg() != 1 {
 		fmt.Fprintln(stderr, "termit-mn uv show: one node id or domain is required")
 		return exitUsage
 	}
-	client, err := adminClient(*configPath, *socket, *token)
+	client, err := adminClient(*configPath, *socket, *token, *tokenFile)
 	if err != nil {
 		fmt.Fprintf(stderr, "termit-mn uv show: %v\n", err)
 		return exitFailure
@@ -515,15 +542,15 @@ func runUVShow(args []string, stdout, stderr io.Writer) int {
 }
 
 func runUVDecide(decision string, args []string, stdout, stderr io.Writer) int {
-	flags, configPath, socket, token := uvFlags("termit-uv "+decision, stderr)
+	flags, configPath, socket, token, tokenFile := uvFlags("termit-mn uv "+decision, stderr)
 	if err := flags.Parse(flagsFirst(args, map[string]bool{})); err != nil {
-		return exitUsage
+		return flagExit(err)
 	}
 	if flags.NArg() != 1 {
 		fmt.Fprintf(stderr, "termit-mn uv %s: one node id or domain is required\n", decision)
 		return exitUsage
 	}
-	client, err := adminClient(*configPath, *socket, *token)
+	client, err := adminClient(*configPath, *socket, *token, *tokenFile)
 	if err != nil {
 		fmt.Fprintf(stderr, "termit-mn uv %s: %v\n", decision, err)
 		return exitFailure
@@ -557,15 +584,15 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "termit-mn uv check: the only subcommand in this build is now")
 		return exitUsage
 	}
-	flags, configPath, socket, token := uvFlags("termit-uv check now", stderr)
+	flags, configPath, socket, token, tokenFile := uvFlags("termit-mn uv check now", stderr)
 	if err := flags.Parse(flagsFirst(args[1:], map[string]bool{})); err != nil {
-		return exitUsage
+		return flagExit(err)
 	}
 	if flags.NArg() != 1 {
 		fmt.Fprintln(stderr, "termit-mn uv check now: one node id or domain is required")
 		return exitUsage
 	}
-	client, err := adminClient(*configPath, *socket, *token)
+	client, err := adminClient(*configPath, *socket, *token, *tokenFile)
 	if err != nil {
 		fmt.Fprintf(stderr, "termit-mn uv check now: %v\n", err)
 		return exitFailure

@@ -97,11 +97,14 @@ func (m *menu) header() {
 	m.ui.Title("Termit — server")
 	m.ui.Hint(version.String("termit-mn"))
 	m.ui.Blank()
-	if os.Getenv(adminTokenEnv) == "" {
-		m.ui.State("warn", "no admin token in the environment: admin actions will refuse to run")
-		m.ui.Hint("export " + adminTokenEnv + "=<token printed by termit-mn init> before starting the menu")
-	} else {
-		m.ui.State("ok", "admin token present")
+	switch {
+	case os.Getenv(adminTokenEnv) != "":
+		m.ui.State("ok", "admin token present in "+adminTokenEnv)
+	case os.Getenv(adminTokenFileEnv) != "":
+		m.ui.State("ok", "admin token file named in "+adminTokenFileEnv)
+	default:
+		m.ui.State("warn", "no admin token: admin actions will refuse to run")
+		m.ui.Hint("export " + adminTokenEnv + "=<token>, or " + adminTokenFileEnv + "=<path>, before the menu")
 	}
 	m.ui.Blank()
 }

@@ -16,11 +16,11 @@ func runPolicy(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "termit-mn policy: show or set is required")
 		return exitUsage
 	}
-	flags, configPath, socket, token := uvFlags("policy "+args[0], stderr)
+	flags, configPath, socket, token, tokenFile := uvFlags("termit-mn policy "+args[0], stderr)
 	if err := flags.Parse(flagsFirst(args[1:], map[string]bool{})); err != nil {
-		return exitUsage
+		return flagExit(err)
 	}
-	client, err := adminClient(*configPath, *socket, *token)
+	client, err := adminClient(*configPath, *socket, *token, *tokenFile)
 	if err != nil {
 		fmt.Fprintf(stderr, "termit-mn policy: %v\n", err)
 		return exitFailure

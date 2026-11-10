@@ -22,9 +22,9 @@ var scheduledStates = map[string]bool{
 // runStatus is the one screen an operator opens first: what the server is, how the mesh is doing and
 // when each node is looked at again. It reads only through the admin socket, like every other command.
 func runStatus(args []string, stdout, stderr io.Writer) int {
-	flags, configPath, socket, token := uvFlags("status", stderr)
+	flags, configPath, socket, token, tokenFile := uvFlags("termit-mn status", stderr)
 	if err := flags.Parse(args); err != nil {
-		return exitUsage
+		return flagExit(err)
 	}
 	if flags.NArg() > 0 {
 		fmt.Fprintf(stderr, "termit-mn status: unexpected argument %q\n", flags.Arg(0))
@@ -35,7 +35,7 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "termit-mn status: %v\n", err)
 		return exitFailure
 	}
-	client, err := adminClient(*configPath, *socket, *token)
+	client, err := adminClient(*configPath, *socket, *token, *tokenFile)
 	if err != nil {
 		fmt.Fprintf(stderr, "termit-mn status: %v\n", err)
 		return exitFailure
@@ -218,10 +218,10 @@ func runServerCheck(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "termit-mn check: the only subcommand in this build is now")
 		return exitUsage
 	}
-	flags, configPath, socket, token := uvFlags("check now", stderr)
+	flags, configPath, socket, token, tokenFile := uvFlags("termit-mn check now", stderr)
 	all := flags.Bool("all", false, "check every node the scheduler probes")
 	if err := flags.Parse(flagsFirst(args[1:], map[string]bool{"-all": true, "--all": true})); err != nil {
-		return exitUsage
+		return flagExit(err)
 	}
 	switch {
 	case flags.NArg() > 1:
@@ -236,7 +236,7 @@ func runServerCheck(args []string, stdout, stderr io.Writer) int {
 		return runCheck(args, stdout, stderr)
 	}
 
-	client, err := adminClient(*configPath, *socket, *token)
+	client, err := adminClient(*configPath, *socket, *token, *tokenFile)
 	if err != nil {
 		fmt.Fprintf(stderr, "termit-mn check now: %v\n", err)
 		return exitFailure

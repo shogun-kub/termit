@@ -2,6 +2,8 @@
 package main
 
 import (
+	"errors"
+	"flag"
 	"fmt"
 	"os"
 
@@ -18,6 +20,15 @@ const (
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+}
+
+// flagExit maps a flag parse failure to an exit code. Asking for help is a successful request, not a
+// usage error, so `--help` exits 0 the way it does in termit-uv.
+func flagExit(err error) int {
+	if errors.Is(err, flag.ErrHelp) {
+		return exitOK
+	}
+	return exitUsage
 }
 
 func run(args []string, stdout, stderr *os.File) int {

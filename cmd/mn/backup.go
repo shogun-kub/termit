@@ -22,7 +22,7 @@ func runBackup(args []string, stdout, stderr io.Writer) int {
 	configPath := flags.String("config", defaultConfigPath, "path to config.yaml")
 	out := flags.String("out", "", "archive path (default: <data_dir>/backups/termit-<timestamp>.tar.gz)")
 	if err := flags.Parse(args); err != nil {
-		return exitUsage
+		return flagExit(err)
 	}
 
 	cfg, err := config.Load(*configPath)
@@ -75,7 +75,7 @@ func runRestore(args []string, stdout, stderr io.Writer) int {
 	from := flags.String("from", "", "archive path")
 	force := flags.Bool("force", false, "replace an existing database")
 	if err := flags.Parse(flagsFirst(args, map[string]bool{"-force": true, "--force": true})); err != nil {
-		return exitUsage
+		return flagExit(err)
 	}
 	archive := *from
 	if archive == "" {

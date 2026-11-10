@@ -42,7 +42,7 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 	verbose := flags.Bool("v", false, "log at info level")
 	plainHTTP := flags.Bool("http", false, "serve plain HTTP; development only, never on a public address")
 	if err := flags.Parse(args); err != nil {
-		return exitUsage
+		return flagExit(err)
 	}
 
 	level := slog.LevelWarn
