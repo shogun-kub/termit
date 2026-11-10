@@ -879,3 +879,14 @@ CI gates on every push to `main`, `dev` and `release/**`, and on tags and pull r
 `go vet`, the unit suite with `-race`, the cross-build, the release tool's own tests, and
 `govulncheck`. It never publishes except through the two doors above. The lab suite is the acceptance
 gate and is run by hand (§4.3 in `AGENTS.md`); CI does not claim it.
+
+After the push, drop what the build left behind:
+
+```bash
+go run ./deploy/clean --dry-run     # what would go, and how much it frees
+git push && go run ./deploy/clean   # the habit: the artifacts are spent once they are published
+```
+
+It removes the release directory, stray binaries, the local development state and everything in the
+scratch directory that is not on its keep list — the Go toolchain, the caches and the lab's notes stay,
+so the next build is as fast as this one. `--all` also drops the caches, `--toolchain` the toolchain.

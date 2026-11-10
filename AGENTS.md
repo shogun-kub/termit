@@ -141,6 +141,7 @@ go run ./cmd/uv --help                # and: go run ./cmd/mn init --domain mn.lo
 gofmt -l cmd internal deploy test     # must print nothing
 goimports -l cmd internal deploy      # must print nothing
 go run ./deploy/release --version v0.1.0 --out dist   # the release directory, as CI builds it
+go run ./deploy/clean                 # drop the artifacts and the scratch; --dry-run lists them first
 ```
 
 Windows: PowerShell equivalents or WSL; no `make`-only workflow. A `Makefile` may exist, but every
@@ -299,6 +300,13 @@ already passed CI and the lab.
 Commit hygiene: Conventional Commits (`feat(uv): …`, `fix(mn/probe): …`, `docs: …`), one logical change
 per commit. Never commit `references/`, build output, `.dev/`, lab credentials, `*.pem`, `*.key`, SQLite
 files or logs.
+
+**After pushing, clean up**: `git push && go run ./deploy/clean`, or `make push`. The artifacts of a
+release are spent once they are on the server, and the scratch directory grows by hundreds of megabytes
+per cycle. `deploy/clean` removes the build output, the lab logs and everything in `.spike-out/` that is
+not on its keep list — the Go toolchain, the caches, `lab.md`, the admin token and the two directories
+holding input — and refuses to touch a directory that contains its own `.git`. `--dry-run` shows the list
+and the freed bytes; `--all` also drops the caches, `--toolchain` the toolchain itself.
 
 ## 10. Definition of done
 

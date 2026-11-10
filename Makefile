@@ -6,7 +6,7 @@ GO      ?= go
 PKGS    := ./cmd/... ./internal/...
 VERSION ?= v0.1.0
 
-.PHONY: all build test race vet fmt lint dist lab clean
+.PHONY: all build test race vet fmt lint dist lab clean push
 
 all: build
 
@@ -38,5 +38,13 @@ dist:
 lab:
 	$(GO) test -tags=lab ./test/lab -v -timeout 30m
 
+# Everything a build, a test run or a lab session leaves behind, and nothing that costs a download:
+# `deploy/clean` keeps the Go toolchain, the caches and the lab notes unless asked otherwise.
 clean:
-	rm -rf dist
+	$(GO) run ./deploy/clean
+
+# Push the current branch, then clean: the two steps go together, because after a push the artifacts are
+# spent and the next thing that happens is a fresh build.
+push:
+	git push
+	$(GO) run ./deploy/clean
