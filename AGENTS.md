@@ -88,8 +88,8 @@ The agent may restart its own services and rewrite Xray config. It must never:
 
 ```
 cmd/uv/                 entry point: subcommand dispatch (init, doctor, status, device, uri, enroll,
-                        sync, agent, unblock, renew-cert, renew-site, uninstall, version; migrate and
-                        warp are not in this build yet)
+                        sync, agent, unblock, migrate, renew-cert, renew-site, uninstall, version;
+                        warp is not in this build yet)
 cmd/mn/                 entry point: serve, init, invite, uv, check, policy, sub, status, backup,
                         restore, version
 internal/cred/          pair-credential derivation (shared, has test vectors — do not change

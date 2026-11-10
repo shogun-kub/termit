@@ -354,16 +354,26 @@ Rules (all thresholds configurable on MN, defaults in parentheses):
 The request must come from the **new** server, because the check is "the IP that sent this request is
 the IP the domain resolves to".
 
-1. On the new box: `uv init --mn https://mn.example.com --domain new.example.com --relocate --agent-key <key>`.
-2. UV sets itself up (cert, decoy, Xray, new `self_uuid` unless `--keep-uuid`), then
-   `POST /api/v1/agent/relocate` with `{domain, basic_vless_url, agent_key}`.
-3. MN verifies: agent key → UV identity; DNS for the new domain → request source IP (two resolvers);
-   decoy site + certificate; VLESS end-to-end with the stored probe credential.
-4. On success MN replaces `domain`, `basic_vless_url`, and `self_uuid` in the record; `probe_uuid` and
-   all pair credentials stay valid (they are keyed by `uv_id`), so **peers do not need to change
-   credentials, only the host/path in their subscription**.
+1. On the new box: `uv init --domain new.example.com --relocate --agent-key-file <key>` installs it
+   under the new name with the old agent key (a new `self_uuid` and path; the key file is `0600`).
+2. `uv migrate --relocate` builds the endpoint from the local identity and posts
+   `POST /api/v1/agent/relocate` with `{domain, basic_vless_url}`; the agent key is the bearer.
+3. MN verifies: the agent key names the node; the URL names the requested domain; the domain is not
+   another node's; DNS for the new domain answers with the requesting address (every resolver that
+   answers must agree); decoy site + certificate; VLESS end-to-end with the **claimed** self credential.
+   The claimed identity is used because a blocked node has no probe credential in its config until it
+   syncs — the same reason an unblock verifies the same way.
+4. On success MN replaces `domain`, the self UUID, the profile and the certificate pin together; the
+   node becomes `active` if it was `blocked` or `unavailable` (the move proved the new address works),
+   and keeps its state if it was active. `probe_uuid` and every pair credential are keyed by `uv_id`, so
+   **peers do not change credentials, only the host and path in their subscription** — the subscription
+   serves `pair_uuid(A,P)` for a peer and `self_uuid(A)` for the owner's own node (§6.4).
 5. On failure the old record is untouched and the new box reports the failing check. The old server
    keeps working until the owner shuts it down.
+
+A node whose own name does not resolve cannot run its canary (the core resolves the Host it sends), so
+`uv init` warns about it and the operator has a broken box until DNS exists. That is a real dependency,
+not a lab artifact: the preflight calls it out as a warning, never as a failure.
 
 ### 7.6 Enrollment policy
 
@@ -635,8 +645,9 @@ cannot be performed is a skip, never a failure: an unavailable `systemctl` says 
 The node's clock belongs to `termit-uv-agent`: it wakes at the server-given `next_sync_at` (a day out,
 jittered per node), runs the local self-check, syncs, and retries a failed cycle on a 5 min → 1 h
 backoff. `uv agent --once` runs one cycle by hand, `uv status --json` prints what the loop persists
-(schedule, last result, self-check, peers), and `uv unblock` asks MN to re-verify a blocked node and
-re-admit it, then syncs so the peers converge immediately.
+(schedule, last result, self-check, peers), `uv unblock` asks MN to re-verify a blocked node and
+re-admit it, and `uv migrate --relocate` asks it to move the record to the domain the box now serves;
+both then sync so the peers converge immediately.
 
 `termit-uv` runs as two systemd units: `termit-uv-agent` (the daily cycle, self-check and sync) and
 `termit-uv-renew` (the certificate timer). The agent is hardened with `NoNewPrivileges`,

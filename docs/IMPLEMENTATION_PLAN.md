@@ -695,12 +695,44 @@ clears the unit's failed state before restarting the agent (a re-runnable comman
 own service), and the agent's burst is ten instead of five — a real crash loop still stops after ten
 attempts with `RestartSec=30s`.
 
-### M3.5 Scenario C acceptance
+### M3.5 Scenario C acceptance — **done**
 
-Rebuild UV2 on a different machine/domain, keep the agent key → `uv init --relocate --domain
-uv2b.lab.internal` → MN verifies source IP == new DNS, probes the new node, swaps host/path →
-peers keep the same pair credentials and only change the endpoint in their subscription → old node's
-`self_uuid` no longer accepted anywhere.
+The box moves to a different domain, keeps its agent key, and the server's record follows it. The
+command is split the same way as Scenario B: the install is `uv init --relocate` with the new domain,
+and the network action is `uv migrate --relocate`, which posts the endpoint the box now serves.
+
+Done so far:
+
+| Piece | State |
+|---|---|
+| `POST /api/v1/agent/relocate` — verify the claimed endpoint from the requesting address, then swap domain, self UUID, profile and pin together | done |
+| `uv migrate --relocate` — builds the local URL, refuses a box whose config names another domain | done |
+| `EventRelocate` in the state table: an active node keeps its state, a blocked or unavailable one is re-admitted by a verified move | done |
+| Subscriptions carry the **pair** credential for a peer, not its self credential | fixed |
+| Scenario C as a lab test (`test/lab/scenario_c_test.go`) | done |
+
+The subscription fix was found by this scenario and is the part that makes the promise true. The
+subscription handler served `profile.uuid` for every node, i.e. each peer's **self** credential, while
+DESCRIPTION §6.4 says a peer appears with `pair_uuid(A,P)` and §6.5 says an owner may see only the pairs
+their node is part of. A leaked subscription therefore exposed the owner credential of every peer, and a
+rebuild changed the UUID in every list. It now derives `cred.Pair(master, owner, peer, owner.epoch)` —
+the same value the peer's inbound was given at sync — so a move changes the host and path and leaves the
+credential alone.
+
+Lab, repeatable: uv2 blocked, key and config saved, the new name taught to the server's and the node's
+resolvers (the node's own core resolves the Host its canary sends, and in the lab nothing resolves that
+name yet), `uv uninstall --purge`, install on the new domain with `--relocate`, then
+`uv migrate --relocate` → `active`, record on the new domain, uv1's subscription on the new domain and
+path with the **same** pair UUID, both peers still accepted, `probe@termit` back after the first sync.
+The test also proves the negative: before the migrate the record still names the old domain and the
+node count is unchanged. Cleanup puts the box back on the name it started with (reinstall from the saved
+config, then migrate the record back) and removes the hosts entries the test added.
+
+Two lab lessons: a relocate verification cannot use the stored probe credential (a blocked node has no
+probe user until it syncs, so the checks run against the claimed self credential, exactly like unblock);
+and the canary sends the node's own domain as the HTTP Host, which the core resolves itself, so a node
+that cannot resolve its own name fails every sync — the preflight warns about it, and the test fixes it
+with a hosts entry.
 
 ### M3.6 Failure-drill suite
 
