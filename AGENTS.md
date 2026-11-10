@@ -11,7 +11,7 @@ The user mixes Russian and English freely; read either, never ask which to use.
 |---|---|
 | Chat replies | **Russian**, unless asked otherwise |
 | Everything committed — `docs/`, `README`, comments, commit messages | **English** |
-| `docs/guide/ru/`, `README.ru.md` | **Russian** deliberately: the guide is for Russian-speaking participants. Keep them in step with their English counterparts |
+| `docs/guide/ru/`, `README.ru.md`, `CHANGELOG.ru.md` | **Russian** deliberately: the guide and the front pages are for Russian-speaking participants. Keep them in step with their English counterparts |
 | Quoted material — error messages, log lines, UI strings | Original, unchanged |
 | Terms of art — `patch`, `offset`, tool and API names | Original, never translated |
 

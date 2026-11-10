@@ -53,6 +53,7 @@ The reference documents go deeper, and assume you are comfortable with TLS, ACME
 | [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) | adversaries, mitigations, residual risk, and what is deliberately not defended |
 | [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) | milestones, acceptance criteria, risks |
 | [`docs/QUESTIONS.md`](docs/QUESTIONS.md) | decisions taken and questions still open |
+| [`CHANGELOG.md`](CHANGELOG.md) | what each release changed — [`CHANGELOG.ru.md`](CHANGELOG.ru.md) is the same in Russian |
 | [`AGENTS.md`](AGENTS.md) | rules for anyone — human or agent — changing this repository |
 
 ## Quick start
