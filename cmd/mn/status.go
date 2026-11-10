@@ -58,10 +58,8 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 	}
 	interval, note := cfg.Policy.CheckInterval, ""
 	if err := client.Call(callCtx, "policy.show", nil, &policy); err == nil {
-		if value := policy.Policy["check_interval"]; value != "" {
-			if parsed, parseErr := time.ParseDuration(value); parseErr == nil {
-				interval, note = parsed, " (runtime override)"
-			}
+		if parsed, ok := runtimeInterval(cfg.Policy.CheckInterval, policy.Policy["check_interval"]); ok {
+			interval, note = parsed, " (runtime override)"
 		}
 	}
 
@@ -285,4 +283,23 @@ func runServerCheck(args []string, stdout, stderr io.Writer) int {
 		return exitFailure
 	}
 	return exitOK
+}
+
+// runtimeInterval reports the interval the scheduler actually uses, and whether it is a runtime override.
+//
+// An override is a value that differs from the configuration, not merely a stored one: `init` seeds the
+// settings table with the configured values, so treating "stored" as "overridden" would print the note
+// on every server that never changed anything.
+func runtimeInterval(configured time.Duration, stored string) (time.Duration, bool) {
+	if stored == "" {
+		return configured, false
+	}
+	parsed, err := time.ParseDuration(stored)
+	if err != nil {
+		return configured, false
+	}
+	if parsed == configured {
+		return parsed, false
+	}
+	return parsed, true
 }

@@ -171,7 +171,7 @@ func runInviteList(args []string, stdout, stderr io.Writer) int {
 
 func runInviteRevoke(args []string, stdout, stderr io.Writer) int {
 	flags, configPath, socket, token, tokenFile := inviteFlags("invite revoke", stderr)
-	if err := flags.Parse(args); err != nil {
+	if err := flags.Parse(flagsFirst(args, map[string]bool{})); err != nil {
 		return flagExit(err)
 	}
 	if flags.NArg() != 1 {
@@ -438,7 +438,7 @@ func runUVList(args []string, stdout, stderr io.Writer) int {
 
 func runUVShow(args []string, stdout, stderr io.Writer) int {
 	flags, configPath, socket, token, tokenFile := uvFlags("termit-mn uv show", stderr)
-	if err := flags.Parse(args); err != nil {
+	if err := flags.Parse(flagsFirst(args, map[string]bool{})); err != nil {
 		return flagExit(err)
 	}
 	if flags.NArg() != 1 {
