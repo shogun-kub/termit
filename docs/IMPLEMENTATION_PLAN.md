@@ -844,6 +844,14 @@ should be reconciled with it before the first tag.
 | CI: `govulncheck` against our packages; a tag-triggered release job that builds, verifies the checksums and attaches the artifacts | `.github/workflows/ci.yaml`, `.github/workflows/release.yaml` | `govulncheck v1.9.0` locally: no vulnerabilities reachable from our code; the workflow runs the same commands the release tool documents |
 | `v0.1.0` tag | `git tag` | created locally; pushing it publishes a **pre-release** release, and flipping that flag is the act that says the production pass is done |
 
+### Documentation: a guide for participants — done
+
+The reference documents assume an operator. A person who owns one node needs a different entry point, so
+`docs/guide/` holds four pages — how Termit works (with diagrams), using a node, running the server, and
+what to do when something breaks — and `docs/guide/ru/` holds the same four in Russian, side by side and
+cross-linked from every page and from the README. `AGENTS.md` records that this is the one place where
+Russian content belongs.
+
 Deferred, and stated as such rather than claimed: **the final manual VPS pass** on real Debian 13 with a
 real domain and Let's Encrypt. The lab does everything else (ACME against Pebble, TLS, the mesh, an
 upgrade from a release directory), but a production CA, a real DNS provider and a phone client are not

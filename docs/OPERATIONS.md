@@ -4,6 +4,12 @@ How to install, run, upgrade and repair a Termit mesh. This is the operator's do
 in [`DESCRIPTION.md`](DESCRIPTION.md), the wire contract in [`PROTOCOL.md`](PROTOCOL.md), the
 adversaries in [`THREAT_MODEL.md`](THREAT_MODEL.md).
 
+If you are installing Termit for the first time, start with the guide instead — it is written for the
+person who owns one node: [how Termit works](guide/overview.md), [a node](guide/using-uv.md), [the
+server](guide/using-mn.md), [troubleshooting](guide/troubleshooting.md). The same pages exist in
+Russian under [`guide/ru/`](guide/ru/overview.md). This document goes further, and assumes you know
+what a TLS certificate and an ACME challenge are.
+
 Conventions used below:
 
 - Run everything as `root` (or with `sudo`); nothing in this document works as an unprivileged user.

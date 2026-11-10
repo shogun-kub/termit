@@ -14,6 +14,7 @@ either without asking for a translation, and never ask which language to use.
 | --- | --- |
 | Chat replies | **Russian**, unless the user asks for another language |
 | Everything committed to the repo — `docs/`, `README`, code comments, commit messages | **English** |
+| `docs/guide/ru/` | **Russian**, deliberately: the guide is for Russian-speaking participants, and an English-only entry point would exclude them. Keep it in step with `docs/guide/` — a change to one page updates both |
 | Quoted material — error messages, UI strings, log lines, vendor text | Original, unchanged |
 | Terms of art — `patch`, `offset`, `Evidence`, tool and API names | Original, never translated |
 
@@ -122,6 +123,10 @@ deploy/release/         the release builder (`go run ./deploy/release`): cross-c
 test/lab/               SSH-driven acceptance suite (build tag `lab`)
 test/integration/       planned Docker Compose suite (not built; the lab is the gate)
 docs/                   design and operations docs
+docs/guide/             the user guide (overview, node, server, troubleshooting): what a participant
+                        needs, as opposed to what an operator needs
+docs/guide/ru/          the same pages in Russian — the one Russian content in the repository,
+                        because the audience for the guide is Russian-speaking
 ```
 
 Shared code lives under `internal/` (single module, not a library). Do not create `pkg/` unless a
