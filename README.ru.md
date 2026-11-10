@@ -53,6 +53,7 @@ WARP, а собственный трафик машины — никогда. О
 | [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) | противники, меры защиты, остаточный риск и то, что сознательно не защищается |
 | [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) | этапы, критерии приёмки, риски |
 | [`docs/QUESTIONS.md`](docs/QUESTIONS.md) | принятые решения и открытые вопросы |
+| [`CHANGELOG.ru.md`](CHANGELOG.ru.md) | что изменилось в каждом выпуске — [`CHANGELOG.md`](CHANGELOG.md) то же самое на английском |
 | [`AGENTS.md`](AGENTS.md) | правила для всех — людей и агентов, — кто меняет этот репозиторий |
 
 ## Быстрый старт
