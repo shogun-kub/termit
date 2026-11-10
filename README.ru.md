@@ -40,6 +40,7 @@ WARP, а собственный трафик машины — никогда. О
 | [Как устроен Termit](docs/guide/ru/overview.md) | [How Termit works](docs/guide/overview.md) | идея, схемы, что нужно, порядок установки |
 | [Как пользоваться узлом](docs/guide/ru/using-uv.md) | [Using a node](docs/guide/using-uv.md) | установка, вступление, подключение телефона, все команды |
 | [Как запустить сервер](docs/guide/ru/using-mn.md) | [Running the server](docs/guide/using-mn.md) | установка, приглашения узлов, наблюдение и управление |
+| [Интерактивное меню](docs/guide/ru/menu.md) | [The interactive menu](docs/guide/menu.md) | всё то же самое из нумерованного меню, без флагов |
 | [Если что-то пошло не так](docs/guide/ru/troubleshooting.md) | [When something goes wrong](docs/guide/troubleshooting.md) | вероятные сбои и что с ними делать |
 
 Справочные документы идут глубже и предполагают, что вы свободно обращаетесь с TLS, ACME и systemd:

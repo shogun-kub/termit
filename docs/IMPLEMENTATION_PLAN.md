@@ -844,12 +844,27 @@ should be reconciled with it before the first tag.
 | CI: `govulncheck` against our packages; a tag-triggered release job that builds, verifies the checksums and attaches the artifacts | `.github/workflows/ci.yaml`, `.github/workflows/release.yaml` | `govulncheck v1.9.0` locally: no vulnerabilities reachable from our code; the workflow runs the same commands the release tool documents |
 | `v0.1.0` tag | `git tag` | created locally; pushing it publishes a **pre-release** release, and flipping that flag is the act that says the production pass is done |
 
+### Interactive front end — done
+
+Both binaries carry a menu (`internal/termui`, `cmd/uv/menu.go`, `cmd/mn/menu.go`): a numbered screen
+that asks what the flags would ask and then runs the same command line a script would run, so a menu
+entry and its flags cannot drift apart. On a terminal the bare binary opens it; anywhere else it stays
+usage text and exit 2. It is line-oriented on purpose — no raw terminal mode, no third-party TUI
+library, and it can be driven by a script, which is also how it is tested. Colour appears only on a
+terminal and obeys `NO_COLOR`/`TERM=dumb`; the screen is never cleared without colour, so a captured
+session reads as sections rather than one overwritten page.
+
+Deliberately absent: starting `mn serve` from the menu (the unit owns the log), and any state of its
+own (a dropped SSH session loses nothing). Interactive prompts stay out of the install path — the menu
+builds flags, it does not replace them, which is why `uv.sh`, `uv init` and `mn init` remain scriptable.
+
 ### Documentation: a guide for participants — done
 
 The reference documents assume an operator. A person who owns one node needs a different entry point, so
-`docs/guide/` holds four pages — how Termit works (with diagrams), using a node, running the server, and
-what to do when something breaks — and `docs/guide/ru/` holds the same four in Russian, side by side and
-cross-linked from every page, and `README.ru.md` is the same front page in Russian. `AGENTS.md` records
+`docs/guide/` holds five pages — how Termit works (with diagrams), using a node, running the server, the
+interactive menu, and what to do when something breaks — and `docs/guide/ru/` holds the same five in
+Russian, side by side and cross-linked from every page, and `README.ru.md` is the same front page in
+Russian. `AGENTS.md` records
 that these are the only Russian content in the repository, and that a change to one side updates both.
 
 Deferred, and stated as such rather than claimed: **the final manual VPS pass** on real Debian 13 with a

@@ -9,6 +9,9 @@ You need: a Debian 13 box (2 vCPU, 2 GB RAM, 10 GB disk), root, a DNS name point
 80 and 443 free. One server is enough for a group of up to a few dozen nodes; there is no clustering,
 and there does not need to be — if it is down, existing connections keep working.
 
+If you would rather pick from a list than remember flags, run `mn` with no arguments on the server:
+that is [the interactive menu](menu.md).
+
 ## Install
 
 ```bash

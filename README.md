@@ -40,6 +40,7 @@ is a Russian version beside every page.
 | [How Termit works](docs/guide/overview.md) | [Как устроен Termit](docs/guide/ru/overview.md) | the idea, the diagrams, what you need, the order of installation |
 | [Using a node](docs/guide/using-uv.md) | [Как пользоваться узлом](docs/guide/ru/using-uv.md) | install, enrol, connect a phone, every command |
 | [Running the server](docs/guide/using-mn.md) | [Как запустить сервер](docs/guide/ru/using-mn.md) | install, invite nodes, watch and manage them |
+| [The interactive menu](docs/guide/menu.md) | [Интерактивное меню](docs/guide/ru/menu.md) | doing all of it from a numbered menu instead of flags |
 | [When something goes wrong](docs/guide/troubleshooting.md) | [Если что-то пошло не так](docs/guide/ru/troubleshooting.md) | the failures you are likely to meet, and what to do |
 
 The reference documents go deeper, and assume you are comfortable with TLS, ACME and systemd:

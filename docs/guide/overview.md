@@ -12,6 +12,7 @@ This page explains the idea and the order of installation. Then:
 |---|---|
 | [Using a node (termit-uv)](using-uv.md) | install a node, enrol it, connect a phone, every command |
 | [Running the server (termit-mn)](using-mn.md) | install the management server, invite nodes, watch them |
+| [The interactive menu](menu.md) | the same commands, chosen from a list, with the command line it runs printed for you |
 | [When something goes wrong](troubleshooting.md) | the failures you are most likely to meet, and what to do |
 | [Design](../DESCRIPTION.md) · [Operations](../OPERATIONS.md) · [Protocol](../PROTOCOL.md) | the full reference, for whoever runs the thing for real |
 
@@ -143,5 +144,6 @@ and the server checks every node on its own schedule. You only touch it when som
 
 - Installing your first node: [Using a node](using-uv.md)
 - Running the server: [Running the server](using-mn.md)
+- Would rather pick from a list: [The interactive menu](menu.md)
 - Something is broken: [When something goes wrong](troubleshooting.md)
 - По-русски: [Как устроен Termit](ru/overview.md)

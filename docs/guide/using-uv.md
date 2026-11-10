@@ -9,6 +9,9 @@ one page, and it explains what a node and the server are.
 You need: a Debian 13 box, root access, a DNS name pointing at it, ports 80 and 443 free, and an
 invite code from whoever runs the management server ([running the server](using-mn.md)).
 
+If you would rather pick from a list than remember flags, run `uv` with no arguments on the node: that
+is [the interactive menu](menu.md), and every entry prints the command it runs.
+
 ## Before you touch the box
 
 1. **Point DNS at it.** Create an `A` (and `AAAA` if you have IPv6) record for `node1.example.com`.

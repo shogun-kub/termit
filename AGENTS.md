@@ -92,9 +92,9 @@ The agent may restart its own services and rewrite Xray config. It must never:
 ```
 cmd/uv/                 entry point: subcommand dispatch (init, doctor, status, device, uri, enroll,
                         sync, agent, unblock, migrate, renew-cert, renew-site, warp, uninstall,
-                        version)
+                        version, menu) and the node menu (menu.go)
 cmd/mn/                 entry point: serve, init, invite, uv, check, policy, sub, status, backup,
-                        restore, version
+                        restore, version, menu — and the server menu (menu.go)
 internal/cred/          pair-credential derivation (shared, has test vectors — do not change
                         derivation without a plan for rotating every existing credential)
 internal/proto/         API request/response types, problem codes, vless URL build/parse
@@ -108,6 +108,7 @@ internal/uv/web/        generated nginx config (TLS, decoy root, proxy of the se
 internal/uv/acme/       ACME (HTTP-01), certificate store, renewal
 internal/uv/warp/       warp-cli lifecycle, proxy-mode health and the SOCKS5 trace
 internal/uv/state/      local state + atomic JSON persistence
+internal/termui/        the shared interactive front end: numbered menu, prompts, colour
 internal/mn/server/     HTTP API, middleware, auth, rate limiting
 internal/mn/store/      SQLite schema, queries, migrations
 internal/mn/probe/      health prober (xray-core worker; cert/decoy; DNS)
@@ -123,8 +124,8 @@ deploy/release/         the release builder (`go run ./deploy/release`): cross-c
 test/lab/               SSH-driven acceptance suite (build tag `lab`)
 test/integration/       planned Docker Compose suite (not built; the lab is the gate)
 docs/                   design and operations docs
-docs/guide/             the user guide (overview, node, server, troubleshooting): what a participant
-                        needs, as opposed to what an operator needs
+docs/guide/             the user guide (overview, node, server, the interactive menu, troubleshooting):
+                        what a participant needs, as opposed to what an operator needs
 docs/guide/ru/          the same pages in Russian — the one Russian content in the repository,
                         because the audience for the guide is Russian-speaking
 ```
