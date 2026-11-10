@@ -47,7 +47,7 @@ func (r Remote) Enroll(ctx context.Context, req EnrollRequest) (proto.EnrollResp
 	if err != nil {
 		return proto.EnrollResponse{}, fmt.Errorf("agent: encode the enrollment: %w", err)
 	}
-	endpoint := strings.TrimRight(r.BaseURL, "/") + "/api/v1/enroll"
+	endpoint := strings.TrimRight(r.BaseURL, "/") + "/enroll"
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return proto.EnrollResponse{}, fmt.Errorf("agent: build the request: %w", err)
@@ -68,7 +68,7 @@ func (r Remote) Enroll(ctx context.Context, req EnrollRequest) (proto.EnrollResp
 		if err := json.NewDecoder(resp.Body).Decode(&problem); err == nil && problem.Code != "" {
 			return proto.EnrollResponse{}, &Refusal{Status: resp.StatusCode, Problem: problem}
 		}
-		return proto.EnrollResponse{}, fmt.Errorf("agent: the server answered %s", resp.Status)
+		return proto.EnrollResponse{}, statusError(resp)
 	}
 
 	var answer proto.EnrollResponse
@@ -79,6 +79,15 @@ func (r Remote) Enroll(ctx context.Context, req EnrollRequest) (proto.EnrollResp
 		return proto.EnrollResponse{}, errors.New("agent: the enrollment answer carries no credentials")
 	}
 	return answer, nil
+}
+
+// statusError explains a refusal the server made no problem body for. The 404 is called out because it
+// has one likely cause an operator can fix in a second: the MN URL without the server's api_prefix.
+func statusError(resp *http.Response) error {
+	if resp.StatusCode == http.StatusNotFound {
+		return fmt.Errorf("agent: the server has no API at %s: does the MN URL include the server's api_prefix?", resp.Request.URL)
+	}
+	return fmt.Errorf("agent: the server answered %s", resp.Status)
 }
 
 // Refusal is a rejection with the server's problem code, so the CLI can say which check failed instead

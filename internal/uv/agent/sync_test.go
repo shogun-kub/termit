@@ -66,7 +66,7 @@ func TestFetchSendsTheAgentKeyAndReadsTheAnswer(t *testing.T) {
 	}))
 	defer server.Close()
 
-	remote := agent.Remote{BaseURL: server.URL}
+	remote := agent.Remote{BaseURL: server.URL + "/k3f9x2"}
 	got, err := remote.Fetch(context.Background(), "agent-key", proto.SyncRequest{})
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
@@ -74,8 +74,8 @@ func TestFetchSendsTheAgentKeyAndReadsTheAnswer(t *testing.T) {
 	if gotKey != "Bearer agent-key" {
 		t.Errorf("authorization = %q", gotKey)
 	}
-	if gotPath != "/api/v1/agent/sync" {
-		t.Errorf("path = %q", gotPath)
+	if gotPath != "/k3f9x2/agent/sync" {
+		t.Errorf("path = %q, want the base URL's prefix kept", gotPath)
 	}
 	if len(got.Peers) != 1 || got.Peers[0].UUID != peerUUID {
 		t.Errorf("answer = %+v", got)
@@ -313,5 +313,31 @@ func TestPreviewReportsDriftWithoutWriting(t *testing.T) {
 	}
 	if !second.Unchanged {
 		t.Errorf("Preview reported drift right after a successful apply: %+v", second)
+	}
+}
+
+// A 404 is not a refusal about the node: it is the wrong URL, and the message must say so or the
+// operator will debug the invite or the agent key for an hour.
+func TestNotFoundNamesThePrefix(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	_, err := (agent.Remote{BaseURL: server.URL + "/wrong"}).Enroll(context.Background(),
+		agent.EnrollRequest{Domain: "node.example.com", InviteCode: "CODE-1",
+			BasicVLESSURL: "vless://11111111-2222-4333-8444-555555555555@node.example.com:443?type=xhttp"})
+	if err == nil {
+		t.Fatal("Enroll accepted a 404")
+	}
+	if !strings.Contains(err.Error(), "api_prefix") {
+		t.Errorf("error %q does not name the api_prefix", err)
+	}
+
+	_, err = (agent.Remote{BaseURL: server.URL + "/wrong"}).Fetch(context.Background(), "agent-key",
+		proto.SyncRequest{})
+	if err == nil || !strings.Contains(err.Error(), "api_prefix") {
+		t.Errorf("Fetch error = %v, want one that names the api_prefix", err)
 	}
 }

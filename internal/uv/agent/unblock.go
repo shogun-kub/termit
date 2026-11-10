@@ -18,7 +18,7 @@ import (
 // rebuilt box sends.
 func (r Remote) Unblock(ctx context.Context, agentKey string, request proto.UnblockRequest) (proto.UnblockResponse, error) {
 	var answer proto.UnblockResponse
-	err := r.postAgent(ctx, agentKey, "/api/v1/agent/unblock", "unblock", request, &answer)
+	err := r.postAgent(ctx, agentKey, "/agent/unblock", "unblock", request, &answer)
 	return answer, err
 }
 
@@ -27,7 +27,7 @@ func (r Remote) Unblock(ctx context.Context, agentKey string, request proto.Unbl
 // request before it touches the record.
 func (r Remote) Relocate(ctx context.Context, agentKey string, request proto.RelocateRequest) (proto.RelocateResponse, error) {
 	var answer proto.RelocateResponse
-	err := r.postAgent(ctx, agentKey, "/api/v1/agent/relocate", "relocate", request, &answer)
+	err := r.postAgent(ctx, agentKey, "/agent/relocate", "relocate", request, &answer)
 	return answer, err
 }
 
@@ -67,7 +67,7 @@ func (r Remote) postAgent(ctx context.Context, agentKey, path, what string, requ
 		if err := json.NewDecoder(resp.Body).Decode(&problem); err == nil && problem.Code != "" {
 			return &Refusal{Status: resp.StatusCode, Problem: problem}
 		}
-		return fmt.Errorf("agent: the server answered %s", resp.Status)
+		return statusError(resp)
 	}
 	if err := json.NewDecoder(resp.Body).Decode(response); err != nil {
 		return fmt.Errorf("agent: decode the %s answer: %w", what, err)

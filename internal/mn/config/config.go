@@ -38,11 +38,18 @@ const (
 	ModeOpen = "open"
 )
 
+// DefaultAPIPrefix is what a configuration written before the prefix existed, and every test, expects.
+// `termit-mn init` replaces it with a random one unless the operator passes --api-prefix.
+const DefaultAPIPrefix = "/api/v1"
+
 // Config is the whole file.
 type Config struct {
-	SchemaVersion int        `yaml:"schema_version"`
-	Domain        string     `yaml:"domain"`
-	Listen        string     `yaml:"listen"`
+	SchemaVersion int    `yaml:"schema_version"`
+	Domain        string `yaml:"domain"`
+	Listen        string `yaml:"listen"`
+	// APIPrefix is the path the node API is served under. It is random on a fresh install so a
+	// scanner cannot find the API by trying the usual names; the node learns it as part of its MN URL.
+	APIPrefix     string     `yaml:"api_prefix"`
 	AdminSocket   string     `yaml:"admin_socket"`
 	DataDir       string     `yaml:"data_dir"`
 	DBPath        string     `yaml:"db_path"`
@@ -213,6 +220,9 @@ func (c *Config) Validate() error {
 			problems = append(problems, fmt.Errorf("prober.url %q is not an http(s) URL with a host", c.Prober.URL))
 		}
 	}
+	if err := validateAPIPrefix(c.APIPrefix); err != nil {
+		problems = append(problems, err)
+	}
 	if c.ACME.Directory == "" {
 		problems = append(problems, errors.New("acme.directory is required"))
 	}
@@ -241,6 +251,9 @@ func (c *Config) Validate() error {
 func (c *Config) applyDefaults() {
 	if c.Listen == "" {
 		c.Listen = ":443"
+	}
+	if c.APIPrefix == "" {
+		c.APIPrefix = DefaultAPIPrefix
 	}
 	if c.DataDir == "" {
 		c.DataDir = "/var/lib/termit/mn"
@@ -303,6 +316,32 @@ func (c *Config) ListenPort() int {
 		return 0
 	}
 	return number
+}
+
+// validateAPIPrefix keeps the prefix to what an URL path segment may contain, because it is pasted into
+// every node's configuration and every documented example.
+func validateAPIPrefix(prefix string) error {
+	switch {
+	case prefix == "":
+		return errors.New("api_prefix cannot be empty")
+	case !strings.HasPrefix(prefix, "/"):
+		return fmt.Errorf("api_prefix %q must start with /", prefix)
+	case len(prefix) < 2:
+		return fmt.Errorf("api_prefix %q is too short to be a path", prefix)
+	case strings.HasSuffix(prefix, "/"):
+		return fmt.Errorf("api_prefix %q must not end with /", prefix)
+	case len(prefix) > 128:
+		return fmt.Errorf("api_prefix %q is longer than 128 characters", prefix)
+	}
+	for _, r := range prefix[1:] {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		case r == '-' || r == '_' || r == '.' || r == '~' || r == '/':
+		default:
+			return fmt.Errorf("api_prefix %q contains %q, which an URL path cannot carry here", prefix, r)
+		}
+	}
+	return nil
 }
 
 func validateDomain(domain string) error {

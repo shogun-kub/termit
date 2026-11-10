@@ -11,9 +11,11 @@ import (
 // ServerInfo is what the process knows about itself and the CLI cannot: the caller fills it at
 // startup. Zero values mean "unknown" and are printed as such, never hidden.
 type ServerInfo struct {
-	Domain        string
-	Version       string
-	Listen        string
+	Domain  string
+	Version string
+	Listen  string
+	// APIPrefix is the path the node API is served under. Empty means the historical default.
+	APIPrefix     string
 	Started       time.Time
 	SchemaVersion int
 	// ProberUp is false when no probe worker could be built: every check is then unknown.
@@ -28,8 +30,11 @@ type ServerInfo struct {
 // ServerState is the server half of the `termit-mn status` dashboard: the process, the database and the
 // scheduler's backlog. It carries no node identifier; the per-node view is `uv.list`/`uv.show`.
 type ServerState struct {
-	Domain        string    `json:"domain"`
-	Listen        string    `json:"listen"`
+	Domain string `json:"domain"`
+	Listen string `json:"listen"`
+	// APIPrefix is where the node API lives. It is not a secret, and an operator who cannot find it
+	// cannot hand a node its URL either.
+	APIPrefix     string    `json:"api_prefix"`
 	Version       string    `json:"version"`
 	StartedAt     time.Time `json:"started_at,omitempty"`
 	UptimeSeconds int64     `json:"uptime_seconds"`
@@ -72,6 +77,7 @@ func (s *Service) serverState(ctx context.Context) (any, *Error) {
 	state := ServerState{
 		Domain:        s.Server.Domain,
 		Listen:        s.Server.Listen,
+		APIPrefix:     s.Server.APIPrefix,
 		Version:       s.Server.Version,
 		StartedAt:     s.Server.Started,
 		SchemaVersion: s.Server.SchemaVersion,

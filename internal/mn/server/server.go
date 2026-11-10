@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/shogun-kub/termit/internal/acme"
+	"github.com/shogun-kub/termit/internal/mn/config"
 	"github.com/shogun-kub/termit/internal/mn/enroll"
 	"github.com/shogun-kub/termit/internal/mn/metrics"
 	"github.com/shogun-kub/termit/internal/mn/store"
@@ -33,7 +34,11 @@ type Options struct {
 	Store      *store.Store
 	Enrollment *enroll.Service
 	Domain     string
-	Logger     *slog.Logger
+	// APIPrefix is the path the node API lives under, so a scanner cannot find it by trying /api/v1.
+	// Empty means the built-in default, which is what tests and a configuration written before the
+	// option existed expect.
+	APIPrefix string
+	Logger    *slog.Logger
 	// Attempts is how many enrollments one address may try inside Window.
 	Attempts int
 	Window   time.Duration
@@ -96,13 +101,23 @@ func New(opts Options) (*Handler, error) {
 	}
 	h := &Handler{opts: opts, limiter: newLimiter(opts.Attempts, opts.Window, opts.Now),
 		subs: newLimiter(subscriptionAttempts, subscriptionWindow, opts.Now)}
+	if h.opts.APIPrefix == "" {
+		h.opts.APIPrefix = config.DefaultAPIPrefix
+	}
+	prefix := strings.TrimRight(h.opts.APIPrefix, "/")
 	h.mux = http.NewServeMux()
-	h.mux.HandleFunc("GET /healthz", h.health)
+	// Health and the node API live under the prefix: a probe looking for /healthz or /api/v1 must find
+	// nothing, or the prefix would only hide the endpoints from somebody who did not read the source.
+	h.mux.HandleFunc("GET "+prefix+"/healthz", h.health)
+	h.mux.HandleFunc("POST "+prefix+"/enroll", h.enroll)
+	h.mux.HandleFunc("POST "+prefix+"/agent/sync", h.sync)
+	h.mux.HandleFunc("POST "+prefix+"/agent/unblock", h.unblock)
+	h.mux.HandleFunc("POST "+prefix+"/agent/relocate", h.relocate)
+	// Metrics stay where a scrape configuration expects them, and are refused off loopback: the path is
+	// not a secret, the access is.
 	h.mux.HandleFunc("GET /metrics", h.metrics)
-	h.mux.HandleFunc("POST /api/v1/enroll", h.enroll)
-	h.mux.HandleFunc("POST /api/v1/agent/sync", h.sync)
-	h.mux.HandleFunc("POST /api/v1/agent/unblock", h.unblock)
-	h.mux.HandleFunc("POST /api/v1/agent/relocate", h.relocate)
+	// Subscriptions stay at /sub: the URL is handed to a client and has to survive, and the token in it
+	// is a 256-bit secret, not a path a scanner can enumerate.
 	h.mux.HandleFunc("GET /sub/{token}", h.subscription)
 	h.mux.HandleFunc("GET /sub/{token}/json", h.subscription)
 	h.mux.HandleFunc("/", h.notFound)

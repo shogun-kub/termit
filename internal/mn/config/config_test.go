@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -127,5 +128,70 @@ func TestCertDir(t *testing.T) {
 	}
 	if got := cfg.ListenPort(); got != 443 {
 		t.Errorf("ListenPort = %d, want 443", got)
+	}
+}
+
+func TestAPIPrefix(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name   string
+		prefix string
+		ok     bool
+	}{
+		{"random", "/k3f9x2q7m1zp", true},
+		{"versioned", "/api/v1", true},
+		{"nested", "/a/b/c", true},
+		{"no slash", "api", false},
+		{"trailing slash", "/api/", false},
+		{"bare slash", "/", false},
+		{"space", "/api v1", false},
+		{"empty", "", false},
+		{"query-ish", "/api?v=1", false},
+		{"too long", "/" + strings.Repeat("a", 128), false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := config.Default()
+			c.Domain = "mn.example.net"
+			c.APIPrefix = tc.prefix
+			err := c.Validate()
+			if tc.ok && err != nil {
+				t.Fatalf("Validate(%q) = %v", tc.prefix, err)
+			}
+			if !tc.ok && err == nil {
+				t.Fatalf("Validate(%q) accepted an unusable prefix", tc.prefix)
+			}
+		})
+	}
+}
+
+// A configuration written before the option existed has no api_prefix, and must keep working on the path
+// it has always served.
+func TestAPIPrefixDefaultsForAnOldConfiguration(t *testing.T) {
+	t.Parallel()
+	c, err := config.Parse(strings.NewReader("schema_version: 1\ndomain: mn.example.net\n"))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if c.APIPrefix != config.DefaultAPIPrefix {
+		t.Errorf("api_prefix = %q, want %q", c.APIPrefix, config.DefaultAPIPrefix)
+	}
+}
+
+func TestAPIPrefixSurvivesARoundTrip(t *testing.T) {
+	t.Parallel()
+	c := config.Default()
+	c.Domain = "mn.example.net"
+	c.APIPrefix = "/k3f9x2q7m1zp"
+	data, err := c.Marshal()
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	again, err := config.Parse(bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if again.APIPrefix != "/k3f9x2q7m1zp" {
+		t.Errorf("api_prefix = %q after a round trip", again.APIPrefix)
 	}
 }

@@ -29,8 +29,10 @@ func TestEnrollSendsWhatTheServerNeeds(t *testing.T) {
 	t.Parallel()
 	var got proto.EnrollRequest
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/enroll" {
-			t.Errorf("path = %q", r.URL.Path)
+		// The prefix is part of the configured URL: the agent appends its path to whatever base the
+		// operator gave it, and must not assume a prefix of its own.
+		if r.URL.Path != "/k3f9x2/enroll" {
+			t.Errorf("path = %q, want the base URL's prefix kept", r.URL.Path)
 		}
 		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
 			t.Errorf("decode: %v", err)
@@ -40,7 +42,7 @@ func TestEnrollSendsWhatTheServerNeeds(t *testing.T) {
 	}))
 	defer server.Close()
 
-	answer, err := agent.Remote{BaseURL: server.URL}.Enroll(context.Background(), agent.EnrollRequest{
+	answer, err := agent.Remote{BaseURL: server.URL + "/k3f9x2"}.Enroll(context.Background(), agent.EnrollRequest{
 		InviteCode:    "  CODE-1234  ",
 		Domain:        "node.example.com",
 		BasicVLESSURL: "vless://uuid@node.example.com:443?type=xhttp",

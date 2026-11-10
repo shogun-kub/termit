@@ -59,7 +59,7 @@ func (r Remote) Fetch(ctx context.Context, agentKey string, request proto.SyncRe
 	if err != nil {
 		return proto.SyncResponse{}, fmt.Errorf("agent: encode the sync request: %w", err)
 	}
-	endpoint := strings.TrimRight(r.BaseURL, "/") + "/api/v1/agent/sync"
+	endpoint := strings.TrimRight(r.BaseURL, "/") + "/agent/sync"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return proto.SyncResponse{}, fmt.Errorf("agent: build the request: %w", err)
@@ -81,7 +81,7 @@ func (r Remote) Fetch(ctx context.Context, agentKey string, request proto.SyncRe
 		if err := json.NewDecoder(resp.Body).Decode(&problem); err == nil && problem.Code != "" {
 			return proto.SyncResponse{}, &Refusal{Status: resp.StatusCode, Problem: problem}
 		}
-		return proto.SyncResponse{}, fmt.Errorf("agent: the server answered %s", resp.Status)
+		return proto.SyncResponse{}, statusError(resp)
 	}
 
 	var answer proto.SyncResponse

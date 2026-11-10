@@ -43,6 +43,8 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 	adminName := flags.String("admin", "operator", "name of the first admin token")
 	adminTokenOut := flags.String("admin-token-out", "",
 		"write the new admin token to this file (0600) instead of printing it")
+	apiPrefix := flags.String("api-prefix", "",
+		"path the node API is served under (default: a random one; /api/v1 for the old shape)")
 	if err := flags.Parse(args); err != nil {
 		return flagExit(err)
 	}
@@ -67,6 +69,26 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 			return exitFailure
 		}
 		cfg.Domain = *domain
+	}
+	if freshConfig {
+		// A fresh install gets a prefix nobody can guess, unless the operator named one: /api/v1 is the
+		// first thing a scanner tries, so it is never the default for a new server.
+		if *apiPrefix != "" {
+			cfg.APIPrefix = *apiPrefix
+		} else {
+			prefix, err := randomAPIPrefix()
+			if err != nil {
+				fmt.Fprintf(stderr, "termit-mn init: %v\n", err)
+				return exitFailure
+			}
+			cfg.APIPrefix = prefix
+		}
+	} else if *apiPrefix != "" && *apiPrefix != cfg.APIPrefix {
+		// Moving the prefix on an installed server would cut every node off, and the nodes only learn it
+		// from the URL they were given: this is a migration, not a re-run.
+		fmt.Fprintf(stderr, "termit-mn init: the API prefix is already %q; moving it to %q needs every node "+
+			"re-enrolled, so it is not done from init\n", cfg.APIPrefix, *apiPrefix)
+		return exitFailure
 	}
 	if cfg.Domain == "" {
 		fmt.Fprintln(stderr, "termit-mn init: --domain is required on the first run")
@@ -158,6 +180,7 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 
 	fmt.Fprintf(stdout, "domain:       %s\n", cfg.Domain)
 	fmt.Fprintf(stdout, "listen:       %s\n", cfg.Listen)
+	fmt.Fprintf(stdout, "api prefix:   %s\n", cfg.APIPrefix)
 	fmt.Fprintf(stdout, "config:       %s\n", *configPath)
 	fmt.Fprintf(stdout, "database:     %s (schema %d)\n", cfg.DBPath, store.SchemaVersion)
 	fmt.Fprintf(stdout, "master key:   %s%s\n", cfg.MasterKeyFile, map[bool]string{true: " (generated now)", false: " (kept)"}[created])
@@ -171,9 +194,27 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 	if inviteCode != "" {
 		fmt.Fprintf(stdout, "\nfirst invite code (shown once, %d use(s)):\n  %s\n", *inviteUses, inviteCode)
 	}
+	fmt.Fprintf(stdout, "\nshow a node the way in (the prefix is part of the URL; without it the node cannot reach the API):\n")
+	fmt.Fprintf(stdout, "  termit-uv enroll --mn https://%s%s --invite <code>\n", cfg.Domain, cfg.APIPrefix)
 	fmt.Fprintf(stdout, "\nback up %s together with the database: without it no pair credential can be derived.\n",
 		cfg.MasterKeyFile)
 	return exitOK
+}
+
+// randomAPIPrefix is one path segment of random characters: long enough that a scanner walking a word
+// list will not find it, and unambiguous when read aloud or copied by hand.
+func randomAPIPrefix() (string, error) {
+	const alphabet = "abcdefghijkmnopqrstuvwxyz23456789" // no l, no 0 or 1: these get misread
+	buf := make([]byte, 12)
+	if _, err := rand.Read(buf); err != nil {
+		return "", fmt.Errorf("random API prefix: %w", err)
+	}
+	var b strings.Builder
+	b.WriteString("/")
+	for _, value := range buf {
+		b.WriteByte(alphabet[int(value)%len(alphabet)])
+	}
+	return b.String(), nil
 }
 
 // writeAdminToken puts the token where the operator asked for it. Printing it is the fallback, not the

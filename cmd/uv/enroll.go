@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"time"
@@ -20,11 +21,23 @@ import (
 func enrollAgentVersion() string { return version.String("termit-uv") }
 
 // absoluteSubscriptionURL completes a relative subscription path with the server it belongs to.
+//
+// The path is resolved against the base's origin, not appended to the base: the base carries the API
+// prefix, and a subscription lives outside it (`/sub/<token>` at the server root). Appending would
+// produce .../prefix/sub/token, a URL that answers 404 in a client nobody would think to debug.
 func absoluteSubscriptionURL(base, path string) string {
 	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
 		return path
 	}
-	return strings.TrimRight(base, "/") + path
+	baseURL, err := url.Parse(base)
+	if err != nil || baseURL.Host == "" {
+		return strings.TrimRight(base, "/") + path
+	}
+	ref, err := url.Parse(path)
+	if err != nil {
+		return strings.TrimRight(base, "/") + path
+	}
+	return baseURL.ResolveReference(ref).String()
 }
 
 // runEnroll registers this node with its management server and stores the credentials.
@@ -96,10 +109,12 @@ func (a *application) runEnroll(args []string) int {
 	}
 
 	st.Credentials = &state.Credentials{
-		AgentKey:        answer.AgentKey,
-		SubToken:        answer.SubToken,
-		ProbeUUID:       answer.ProbeUUID,
-		SubscriptionURL: answer.SubscriptionURL,
+		AgentKey:  answer.AgentKey,
+		SubToken:  answer.SubToken,
+		ProbeUUID: answer.ProbeUUID,
+		// Stored absolute: the answer carries a path, and "where this node's subscription is" is a
+		// question the state should be able to answer without knowing which server answered.
+		SubscriptionURL: absoluteSubscriptionURL(url, answer.SubscriptionURL),
 		EnrolledAt:      a.now().UTC(),
 	}
 	st.Touch()
@@ -115,7 +130,7 @@ func (a *application) runEnroll(args []string) int {
 		fmt.Fprintf(a.stdout, "notice:    %s\n", answer.Notice)
 	}
 	if answer.SubscriptionURL != "" {
-		fmt.Fprintf(a.stdout, "subscribe: %s\n", absoluteSubscriptionURL(url, answer.SubscriptionURL))
+		fmt.Fprintf(a.stdout, "subscribe: %s\n", st.Credentials.SubscriptionURL)
 	}
 	fmt.Fprintln(a.stdout, "credentials are stored in the state file (0600); they are never printed again")
 
