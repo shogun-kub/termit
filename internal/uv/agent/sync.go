@@ -31,6 +31,9 @@ type Remote struct {
 	BaseURL string
 	// CAFile is trusted instead of the system roots; empty means the system store.
 	CAFile string
+	// CertPin is the certificate the node currently serves, sent with the request so the server can
+	// pin its probes to it. It is per call: the node renews the certificate while the agent runs.
+	CertPin string
 	// Timeout bounds one call. Defaults to 30s.
 	Timeout time.Duration
 }
@@ -63,6 +66,9 @@ func (r Remote) Fetch(ctx context.Context, agentKey string, request proto.SyncRe
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+agentKey)
+	if r.CertPin != "" {
+		req.Header.Set(proto.HeaderCertSHA256, r.CertPin)
+	}
 
 	resp, err := client.Do(req)
 	if err != nil {

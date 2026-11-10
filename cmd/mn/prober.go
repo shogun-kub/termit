@@ -28,6 +28,7 @@ func newProber(cfg *config.Config, logger *slog.Logger) (enroll.Prober, error) {
 		WorkDir:  filepath.Join(cfg.DataDir, "probe"),
 		ProbeURL: cfg.Prober.URL,
 		CAFile:   cfg.Prober.CAFile,
+		Roots:    trustStore(cfg),
 	})
 	if err != nil {
 		// A broken worker must not take the server down: agents keep enrolling, every check reports
@@ -82,22 +83,25 @@ type certChecker struct {
 	roots *x509.CertPool
 }
 
-// newCertChecker builds the checker, trusting prober.ca_file when it is set. A private CA is a
+// trustStore parses prober.ca_file once. The same pool is used by the enrollment checker and by the
+// prober's certificate precheck; xray itself gets the file through SSL_CERT_FILE. A private CA is a
 // configuration value, not something to install into the host's trust store.
-func newCertChecker(cfg *config.Config) enroll.CertChecker {
-	checker := certChecker{}
-	if cfg.Prober.CAFile != "" {
-		pem, err := os.ReadFile(cfg.Prober.CAFile) // #nosec G304 -- the operator configured this path.
-		if err != nil {
-			// Without the bundle the chain check fails later with a clear message; enrollment then
-			// refuses rather than silently trusting nothing.
-			return checker
-		}
-		pool := x509.NewCertPool()
-		pool.AppendCertsFromPEM(pem)
-		checker.roots = pool
+func trustStore(cfg *config.Config) *x509.CertPool {
+	if cfg.Prober.CAFile == "" {
+		return nil
 	}
-	return checker
+	pem, err := os.ReadFile(cfg.Prober.CAFile) // #nosec G304 -- the operator configured this path.
+	if err != nil {
+		return nil
+	}
+	pool := x509.NewCertPool()
+	pool.AppendCertsFromPEM(pem)
+	return pool
+}
+
+// newCertChecker builds the checker, trusting prober.ca_file when it is set.
+func newCertChecker(cfg *config.Config) enroll.CertChecker {
+	return certChecker{roots: trustStore(cfg)}
 }
 
 func (c certChecker) Check(ctx context.Context, domain string) (enroll.Pin, error) {

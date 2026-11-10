@@ -5,6 +5,11 @@
 // the tunnel probe pins. Pinning is what makes the probe independent of the machine's trust store: the
 // prober does not have to be told which CA to trust — it trusts exactly the certificate that was
 // checked here, and nothing else.
+//
+// The two answers are kept apart because callers treat them differently. An expired certificate is a
+// verdict about the node (clients see the same rejection). A chain or hostname failure may be the
+// checker's own trust store, so the caller decides; and a leaf that differs from the pinned one is
+// what a renewal looks like, which is never evidence against the node.
 package certcheck
 
 import (
@@ -32,6 +37,11 @@ const (
 	ClassInvalidChain Class = "tls_invalid"
 	ClassHostname     Class = "tls_hostname_mismatch"
 	ClassExpiring     Class = "tls_expiring"
+	// ClassExpired means the certificate's validity window has passed. It is a verdict about the node:
+	// clients see the same error. ClassNotYetValid is kept apart because a certificate from the future
+	// is more likely to mean the checking clock is behind than the node is broken.
+	ClassExpired     Class = "tls_expired"
+	ClassNotYetValid Class = "tls_not_yet_valid"
 )
 
 // Result is what the node presented.
@@ -133,6 +143,15 @@ func Check(ctx context.Context, domain string, opts Options) (Result, error) {
 		var hostnameErr x509.HostnameError
 		if errors.As(err, &hostnameErr) {
 			class = ClassHostname
+		}
+		// Expiry is worth its own class: it is the one certificate failure that is unambiguously about
+		// the node, while a chain failure can also mean the checker trusts the wrong root.
+		var invalid x509.CertificateInvalidError
+		if errors.As(err, &invalid) && invalid.Reason == x509.Expired {
+			class = ClassNotYetValid
+			if !now.Before(leaf.NotAfter) {
+				class = ClassExpired
+			}
 		}
 		return result, &Error{Class: class, Detail: err.Error()}
 	}

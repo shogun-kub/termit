@@ -16,6 +16,12 @@ type SyncRequest struct {
 	Check        *CheckReport `json:"check,omitempty"`
 }
 
+// HeaderCertSHA256 carries the leaf certificate the node currently serves, lowercase hex, so the
+// server can pin its probes to what the node actually presents. It is a header rather than a body
+// field: an older server ignores a header it does not know instead of rejecting the whole body, and
+// the fingerprint is public data.
+const HeaderCertSHA256 = "X-Territ-Cert-SHA256"
+
 // SyncPeer is one node as the asking node must configure it.
 type SyncPeer struct {
 	ID     string `json:"id"`

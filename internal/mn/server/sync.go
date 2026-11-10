@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -37,6 +38,16 @@ func (h *Handler) sync(w http.ResponseWriter, r *http.Request) {
 	now := h.opts.Now().UTC()
 	if err := h.opts.Store.TouchUV(r.Context(), node.ID, sourceIP(r), strings.TrimSpace(req.AgentVersion), now); err != nil {
 		h.opts.Logger.Error("sync: touch node", "uv", node.ID, "err", err)
+	}
+	// The node reports the certificate it serves and the prober pins it. A renewal replaces that
+	// leaf; a server still pinning the old one would close every later check on a mismatch, so the pin
+	// follows the report. It is authenticated by the agent key and the fingerprint is public.
+	if pin := normalizePin(r.Header.Get(proto.HeaderCertSHA256)); pin != "" && pin != node.CertSHA256 {
+		if err := h.opts.Store.SetUVCertPin(r.Context(), node.ID, pin); err != nil {
+			h.opts.Logger.Error("sync: record the certificate pin", "uv", node.ID, "err", err)
+		} else {
+			h.opts.Logger.Info("sync: certificate pin updated", "uv", node.ID)
+		}
 	}
 	// The self-report is kept next to the server's own probes. It never moves a node's state — only
 	// the probe does — but it lets an operator tell "the box is broken" from "the path is broken".
@@ -164,6 +175,19 @@ func (h *Handler) authenticateAgentWith(w http.ResponseWriter, r *http.Request, 
 		return store.UV{}, true
 	}
 	return node, false
+}
+
+// normalizePin accepts a leaf fingerprint only in the one shape the prober pins: 64 hex characters.
+// Anything else is ignored instead of stored, so a malformed report cannot disable a node's checks.
+func normalizePin(raw string) string {
+	pin := strings.ToLower(strings.TrimSpace(raw))
+	if len(pin) != 64 {
+		return ""
+	}
+	if _, err := hex.DecodeString(pin); err != nil {
+		return ""
+	}
+	return pin
 }
 
 // subscriptionURLFor rebuilds the URL from the sealed copy of the token: the digest answers lookups,

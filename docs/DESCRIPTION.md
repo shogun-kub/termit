@@ -299,6 +299,13 @@ Rules (all thresholds configurable on MN, defaults in parentheses):
   No automatic un-blocking, to avoid flapping.
 - **MN never blocks on a check it could not perform.** A prober outage, MN-side DNS failure, or a
   missing probe binary yields `unknown`, never `failed`. This is an invariant, see §11.
+- **The probe reads the certificate before it opens the tunnel.** It verifies the chain, the
+  hostname and the validity window in its own process, then pins the tunnel to that leaf:
+  - an **expired** certificate is a verdict (`cert_expired`): clients are rejected too;
+  - a leaf the server has not pinned is **`unknown`** (`cert_changed`), because that is exactly what
+    a renewal looks like before the node has reported it — it must never block a healthy node;
+  - every sync carries the node's current leaf (`X-Territ-Cert-SHA256`), so the pin follows a
+    renewal instead of freezing the certificate the node had at enrollment.
 
 ### 7.3 Scenario A — first registration and the steady loop
 
@@ -314,7 +321,8 @@ Rules (all thresholds configurable on MN, defaults in parentheses):
    approval is required), generates `agent_key` + `sub_token` + `probe_uuid`, and returns them once.
 6. UV stores them `0600`, adds `probe_uuid` as a client, and performs its first sync.
 7. Daily cycle, per UV, at its own random time: local self-check → `POST /api/v1/agent/sync`
-   (agent key) with the check report → MN runs/refreshes its own checks if due → response carries the
+   (agent key) with the check report and the leaf certificate it serves (`X-Territ-Cert-SHA256`) →
+   MN runs/refreshes its own checks if due → response carries the
    desired peer list, the add/remove delta, the subscription URL, and the next due time.
 8. UV reconciles the running core with the desired set: the generated config is compared with the
    file **and** the core is asked which clients it actually serves, so an API update or a hand edit
@@ -396,7 +404,7 @@ against an API it does not understand. Errors are RFC 9457-style problem objects
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
 | `POST` | `/api/v1/enroll` | invite code | register a new UV |
-| `POST` | `/api/v1/agent/sync` | agent key | report self-check, fetch desired state + subscription URL |
+| `POST` | `/api/v1/agent/sync` | agent key | report self-check and the leaf pin, fetch desired state + subscription URL |
 | `POST` | `/api/v1/agent/unblock` | agent key | Scenario B |
 | `POST` | `/api/v1/agent/relocate` | agent key | Scenario C |
 | `GET` | `/sub/{token}` | token | base64 `vless://` list |

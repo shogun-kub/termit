@@ -122,6 +122,54 @@ func (f *fixture) sync(t *testing.T, key string, body string) *httptest.Response
 	return recorder
 }
 
+// syncWithPin is sync with the node's certificate report, the header a real agent sets on every call.
+func (f *fixture) syncWithPin(t *testing.T, key, pin string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/sync", strings.NewReader("{}"))
+	req.RemoteAddr = "203.0.113.10:5555"
+	req.Header.Set("Authorization", "Bearer "+key)
+	if pin != "" {
+		req.Header.Set(proto.HeaderCertSHA256, pin)
+	}
+	recorder := httptest.NewRecorder()
+	f.handler.ServeHTTP(recorder, req)
+	return recorder
+}
+
+func TestSyncFollowsTheCertificateTheNodeReports(t *testing.T) {
+	t.Parallel()
+	fx := newFixture(t)
+	ctx := context.Background()
+
+	// A node that renewed its certificate reports the new leaf; the server must pin that leaf, or
+	// every later check would close the tunnel on a mismatch.
+	renewed := strings.Repeat("b", 64)
+	if rec := fx.syncWithPin(t, fx.agentKey, renewed); rec.Code != http.StatusOK {
+		t.Fatalf("sync = %d: %s", rec.Code, rec.Body.String())
+	}
+	node, err := fx.store.UVByID(ctx, fx.nodeID)
+	if err != nil {
+		t.Fatalf("UVByID: %v", err)
+	}
+	if node.CertSHA256 != renewed {
+		t.Errorf("pin = %q, want the reported certificate", node.CertSHA256)
+	}
+
+	// A malformed report is ignored: a bad header must not be able to break a node's checks.
+	for _, bad := range []string{"not-a-fingerprint", strings.Repeat("z", 64), strings.Repeat("b", 63)} {
+		if rec := fx.syncWithPin(t, fx.agentKey, bad); rec.Code != http.StatusOK {
+			t.Fatalf("sync with %q = %d: %s", bad, rec.Code, rec.Body.String())
+		}
+		node, err = fx.store.UVByID(ctx, fx.nodeID)
+		if err != nil {
+			t.Fatalf("UVByID: %v", err)
+		}
+		if node.CertSHA256 != renewed {
+			t.Errorf("a malformed pin %q replaced the good one with %q", bad, node.CertSHA256)
+		}
+	}
+}
+
 func TestSyncReturnsThePeerSetWithPairCredentials(t *testing.T) {
 	t.Parallel()
 	fx := newFixture(t)

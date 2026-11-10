@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/shogun-kub/termit/internal/acme"
+	"github.com/shogun-kub/termit/internal/uv/config"
 	"github.com/shogun-kub/termit/internal/uv/state"
 )
 
@@ -21,7 +22,13 @@ type certificateStep struct{ e *stepEnv }
 func (*certificateStep) Name() string { return "certificate" }
 
 func (s *certificateStep) paths() (certPath, keyPath string) {
-	return filepath.Join(s.e.cfg.Paths.CertDir, certFile), filepath.Join(s.e.cfg.Paths.CertDir, keyFile)
+	return LeafCertPath(s.e.cfg), filepath.Join(s.e.cfg.Paths.CertDir, keyFile)
+}
+
+// LeafCertPath is where the certificate nginx serves lives. Callers outside these steps — the agent
+// reporting its pin on sync, for one — use it instead of spelling the filename again.
+func LeafCertPath(cfg *config.Config) string {
+	return filepath.Join(cfg.Paths.CertDir, certFile)
 }
 
 func (s *certificateStep) renewBefore() time.Duration {

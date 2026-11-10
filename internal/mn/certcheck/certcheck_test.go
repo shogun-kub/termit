@@ -25,6 +25,13 @@ var testNow = time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC)
 // tests turn.
 func issue(t *testing.T, dnsNames []string, notAfter time.Time) (tls.Certificate, *x509.Certificate) {
 	t.Helper()
+	return issueBetween(t, dnsNames, testNow.Add(-time.Hour), notAfter)
+}
+
+// issueBetween is issue with both ends of the validity window, for the tests that care about expiry
+// rather than the renewal window.
+func issueBetween(t *testing.T, dnsNames []string, notBefore, notAfter time.Time) (tls.Certificate, *x509.Certificate) {
+	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		t.Fatalf("GenerateKey: %v", err)
@@ -36,7 +43,7 @@ func issue(t *testing.T, dnsNames []string, notAfter time.Time) (tls.Certificate
 	template := &x509.Certificate{
 		SerialNumber:          serial,
 		Subject:               pkix.Name{CommonName: dnsNames[0]},
-		NotBefore:             testNow.Add(-time.Hour),
+		NotBefore:             notBefore,
 		NotAfter:              notAfter,
 		DNSNames:              dnsNames,
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
@@ -159,6 +166,40 @@ func TestCheckRefusesAnExpiringCertificate(t *testing.T) {
 	}
 	if refused.Detail == "" {
 		t.Error("the refusal does not say when the certificate expires")
+	}
+}
+
+func TestCheckReportsAnExpiredCertificate(t *testing.T) {
+	t.Parallel()
+	const domain = "node.example.com"
+	chain, leaf := issueBetween(t, []string{domain}, testNow.Add(-72*time.Hour), testNow.Add(-24*time.Hour))
+	port := serve(t, chain)
+
+	result, err := certcheck.Check(context.Background(), domain, certcheck.Options{
+		Port: port, Address: "127.0.0.1", Roots: rootsWith(leaf), Now: func() time.Time { return testNow },
+	})
+	var refused *certcheck.Error
+	if !errors.As(err, &refused) || refused.Class != certcheck.ClassExpired {
+		t.Fatalf("Check = %v, want an expired certificate", err)
+	}
+	// The fingerprint is still reported: the caller may want to record what it saw.
+	if result.Fingerprint == "" {
+		t.Error("the expired certificate came back without a fingerprint")
+	}
+}
+
+func TestCheckKeepsACertificateFromTheFutureApart(t *testing.T) {
+	t.Parallel()
+	const domain = "node.example.com"
+	chain, leaf := issueBetween(t, []string{domain}, testNow.Add(24*time.Hour), testNow.Add(72*time.Hour))
+	port := serve(t, chain)
+
+	_, err := certcheck.Check(context.Background(), domain, certcheck.Options{
+		Port: port, Address: "127.0.0.1", Roots: rootsWith(leaf), Now: func() time.Time { return testNow },
+	})
+	var refused *certcheck.Error
+	if !errors.As(err, &refused) || refused.Class != certcheck.ClassNotYetValid {
+		t.Fatalf("Check = %v, want a not-yet-valid certificate", err)
 	}
 }
 

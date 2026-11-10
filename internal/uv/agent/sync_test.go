@@ -2,7 +2,10 @@ package agent_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -76,6 +79,57 @@ func TestFetchSendsTheAgentKeyAndReadsTheAnswer(t *testing.T) {
 	}
 	if len(got.Peers) != 1 || got.Peers[0].UUID != peerUUID {
 		t.Errorf("answer = %+v", got)
+	}
+}
+
+func TestFetchReportsTheCertificateTheNodeServes(t *testing.T) {
+	t.Parallel()
+	var gotPin string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPin = r.Header.Get(proto.HeaderCertSHA256)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(answer())
+	}))
+	defer server.Close()
+
+	pin := strings.Repeat("a", 64)
+	remote := agent.Remote{BaseURL: server.URL, CertPin: pin}
+	if _, err := remote.Fetch(context.Background(), "agent-key", proto.SyncRequest{}); err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if gotPin != pin {
+		t.Errorf("certificate header = %q, want %q", gotPin, pin)
+	}
+
+	// Without a pin the header is absent: the server keeps whatever it has instead of being told
+	// about a zero fingerprint.
+	remote.CertPin = ""
+	if _, err := remote.Fetch(context.Background(), "agent-key", proto.SyncRequest{}); err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if gotPin != "" {
+		t.Errorf("certificate header = %q without a pin", gotPin)
+	}
+}
+
+func TestCertFingerprintReadsTheLeaf(t *testing.T) {
+	t.Parallel()
+	der := []byte("not-a-real-certificate, but a PEM block is all the function reads")
+	dir := t.TempDir()
+	path := filepath.Join(dir, "fullchain.pem")
+	block := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+	if err := os.WriteFile(path, block, 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	sum := sha256.Sum256(der)
+	if got := agent.CertFingerprint(path); got != hex.EncodeToString(sum[:]) {
+		t.Errorf("CertFingerprint = %q", got)
+	}
+	if got := agent.CertFingerprint(dir + "/missing.pem"); got != "" {
+		t.Errorf("a missing file returned %q", got)
+	}
+	if got := agent.CertFingerprint(""); got != "" {
+		t.Errorf("an empty path returned %q", got)
 	}
 }
 

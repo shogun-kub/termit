@@ -12,6 +12,7 @@ import (
 	"github.com/shogun-kub/termit/internal/proto"
 	"github.com/shogun-kub/termit/internal/uv/agent"
 	"github.com/shogun-kub/termit/internal/uv/config"
+	"github.com/shogun-kub/termit/internal/uv/install"
 	"github.com/shogun-kub/termit/internal/uv/state"
 )
 
@@ -67,7 +68,7 @@ func (a *application) runSync(args []string) int {
 	}
 	defer unlock()
 
-	remote := agent.Remote{BaseURL: cfg.MN.URL, CAFile: cfg.MN.CAFile}
+	remote := agent.Remote{BaseURL: cfg.MN.URL, CAFile: cfg.MN.CAFile, CertPin: agent.CertFingerprint(install.LeafCertPath(cfg))}
 	answer, err := remote.Fetch(ctx, st.Credentials.AgentKey, proto.SyncRequest{AgentVersion: proto.APIVersion})
 	if err != nil {
 		fmt.Fprintf(stderr, "uv sync: %v\n", err)

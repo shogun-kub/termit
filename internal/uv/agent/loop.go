@@ -102,6 +102,9 @@ type Loop struct {
 	Remote    Remote
 	Logger    *slog.Logger
 	StatePath string
+	// CertPath is the leaf certificate the node serves. The loop reports its fingerprint on every
+	// sync so the server's probe pin follows a renewal. Empty disables the report.
+	CertPath string
 	// Now and Sleep are seams for tests; production leaves them nil.
 	Now   func() time.Time
 	Sleep func(ctx context.Context, d time.Duration) bool
@@ -221,7 +224,11 @@ func (l *Loop) cycle(ctx context.Context) (CycleReport, error) {
 	if l.Check != nil {
 		request.Check = checkReport(report.Check)
 	}
-	answer, err := l.Remote.Fetch(ctx, st.Credentials.AgentKey, request)
+	// The pin is read afresh every cycle: the renewal timer may have replaced the certificate since
+	// the last one, and a server still pinning the previous leaf would fail the next check.
+	remote := l.Remote
+	remote.CertPin = CertFingerprint(l.CertPath)
+	answer, err := remote.Fetch(ctx, st.Credentials.AgentKey, request)
 	if err != nil {
 		if ctx.Err() != nil {
 			return report, ctx.Err()

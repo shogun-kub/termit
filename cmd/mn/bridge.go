@@ -119,10 +119,14 @@ func (a enrollProberAdapter) Probe(ctx context.Context, targets []probe.Target) 
 			Pin:    target.PinnedCertSHA256,
 		})
 		result := probe.Result{ID: target.ID, OK: outcome.Class == "" && !outcome.Unknown, Err: outcome.Err}
-		if outcome.Unknown {
-			result.Class = probe.ClassWorker
-		} else if outcome.Class != "" {
+		// The class is what tells the operator apart "the prober could not run" from "the node is
+		// serving a certificate the server has not pinned"; both are unknown, but only the first is
+		// our fault, and erasing the difference hides a renewal.
+		switch {
+		case outcome.Class != "":
 			result.Class = probe.Class(outcome.Class)
+		case outcome.Unknown:
+			result.Class = probe.ClassWorker
 		}
 		results = append(results, result)
 	}

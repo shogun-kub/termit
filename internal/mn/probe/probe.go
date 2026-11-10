@@ -11,6 +11,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -24,6 +25,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/shogun-kub/termit/internal/mn/certcheck"
 )
 
 // Class describes why a probe failed. The empty class means success.
@@ -41,6 +44,12 @@ const (
 	// ClassClosed on purpose: "the node closed the tunnel" and "we could not make the check work" are
 	// different statements, and the second one is never evidence against the node.
 	ClassProbeError Class = "probe_error"
+	// ClassCertExpired means the node serves a certificate whose validity window has passed. Clients
+	// see the same rejection, so it is a verdict about the node, not the prober.
+	ClassCertExpired Class = "cert_expired"
+	// ClassCertChanged means the node serves a certificate the server has not pinned. That is exactly
+	// what a renewal looks like before the node has reported it, so it is never a failure.
+	ClassCertChanged Class = "cert_changed"
 )
 
 // Target is one node to check.
@@ -67,7 +76,9 @@ type Result struct {
 }
 
 // Unknown reports whether the prober failed rather than the node.
-func (r Result) Unknown() bool { return r.Class == ClassWorker || r.Class == ClassProbeError }
+func (r Result) Unknown() bool {
+	return r.Class == ClassWorker || r.Class == ClassProbeError || r.Class == ClassCertChanged
+}
 
 // Config configures a Worker.
 type Config struct {
@@ -85,7 +96,13 @@ type Config struct {
 	BasePort int
 	// CAFile is a PEM bundle the worker trusts instead of the system roots. A lab CA or a private
 	// PKI needs it; empty means the system bundle.
+	// CAFile is the PEM bundle xray trusts for the tunnel's own TLS. Roots is the same bundle parsed
+	// once, for the certificate precheck that runs in this process.
 	CAFile string
+	// Roots is the trust store the certificate precheck verifies against. Nil means the system roots.
+	Roots *x509.CertPool
+	// Now is the clock the precheck judges validity with; tests set it.
+	Now func() time.Time
 	// BreakerThreshold is how many consecutive worker failures open the breaker. Defaults to 3.
 	BreakerThreshold int
 	// BreakerCooldown is how long the breaker stays open. Defaults to 5 minutes.
@@ -269,9 +286,54 @@ func (w *Worker) Probe(ctx context.Context, targets []Target) ([]Result, error) 
 
 	results := make([]Result, len(targets))
 	for i, t := range targets {
+		if result, failed := w.certificateResult(ctx, t); failed {
+			results[i] = result
+			continue
+		}
 		results[i] = w.probeOne(ctx, t, ports[i])
 	}
 	return results, nil
+}
+
+// certificateResult judges the certificate a node serves before the tunnel is tried.
+//
+// The pin makes xray trust exactly one leaf, and this build of xray does not check that leaf's
+// validity window while pinning, so an expired certificate would otherwise pass the tunnel check and
+// a renewed one would fail it with an indistinguishable reset. Reading the certificate here separates
+// "this node is broken" (expired) from "this node renewed and the server has not been told yet"
+// (a different leaf, which is unknown, never a verdict).
+func (w *Worker) certificateResult(ctx context.Context, t Target) (Result, bool) {
+	if t.ServerName == "" {
+		return Result{}, false
+	}
+	checked, err := certcheck.Check(ctx, t.ServerName, certcheck.Options{
+		Roots: w.cfg.Roots, Address: t.Address, Port: t.Port, Timeout: w.cfg.Timeout, Now: w.cfg.Now,
+	})
+	if err != nil {
+		var certErr *certcheck.Error
+		if errors.As(err, &certErr) {
+			switch certErr.Class {
+			case certcheck.ClassExpiring:
+				// Valid and inside the renewal window: the node still has time, and the tunnel check
+				// is what decides.
+				return Result{}, false
+			case certcheck.ClassUnreachable:
+				return Result{ID: t.ID, Class: ClassTimeout, Err: err}, true
+			case certcheck.ClassExpired:
+				return Result{ID: t.ID, Class: ClassCertExpired, Err: err}, true
+			}
+		}
+		return Result{ID: t.ID, Class: ClassProbeError, Err: err}, true
+	}
+	if t.PinnedCertSHA256 != "" && checked.Fingerprint != t.PinnedCertSHA256 {
+		served := checked.Fingerprint
+		if len(served) > 12 {
+			served = served[:12]
+		}
+		return Result{ID: t.ID, Class: ClassCertChanged,
+			Err: fmt.Errorf("probe: the node serves certificate %s…, not the pinned one", served)}, true
+	}
+	return Result{}, false
 }
 
 func (w *Worker) probeOne(ctx context.Context, t Target, socksPort int) Result {

@@ -15,6 +15,7 @@ import (
 	"github.com/shogun-kub/termit/internal/proto"
 	"github.com/shogun-kub/termit/internal/uv/agent"
 	"github.com/shogun-kub/termit/internal/uv/config"
+	"github.com/shogun-kub/termit/internal/uv/install"
 	"github.com/shogun-kub/termit/internal/uv/service"
 	"github.com/shogun-kub/termit/internal/uv/state"
 	"github.com/shogun-kub/termit/internal/uv/xray"
@@ -69,6 +70,7 @@ func (a *application) newLoop(cfg *config.Config) *agent.Loop {
 		Remote:    agent.Remote{BaseURL: cfg.MN.URL, CAFile: cfg.MN.CAFile},
 		Logger:    slog.Default(),
 		StatePath: cfg.Paths.StatePath(),
+		CertPath:  install.LeafCertPath(cfg),
 		Now:       a.now,
 		Check: func(ctx context.Context, st *state.State) state.SelfCheckReport {
 			return agent.RunSelfCheck(ctx, agent.SelfCheckOptions{
