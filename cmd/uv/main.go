@@ -102,6 +102,8 @@ func (a *application) run(args []string) int {
 		return a.runAgent(rest)
 	case "unblock":
 		return a.runUnblock(rest)
+	case "migrate":
+		return a.runMigrate(rest)
 	case "uri":
 		return a.runURI(rest)
 	case "version":
@@ -110,7 +112,7 @@ func (a *application) run(args []string) int {
 	case "help", "-h", "--help":
 		a.usage(a.stdout)
 		return exitOK
-	case "migrate", "warp":
+	case "warp":
 		return a.notImplemented(command)
 	default:
 		fmt.Fprintf(a.stderr, "uv: unknown command %q\n\n", command)
@@ -142,12 +144,13 @@ Commands:
   sync         reconcile the core with the server's peer set; --check reports drift
   agent        run the long-running node loop (the systemd service); --once runs one cycle
   unblock      ask the server to verify this node and lift a block
+  migrate      move this node to a new domain (--relocate)
   uninstall    remove Termit from this node
   version      print build and protocol version
   help         show this help
 
 Planned, not in this build:
-  migrate, warp
+  warp
 
 Exit status: 0 success, 1 failure, 2 usage error, 3 command not implemented,
              4 sync --check found drift.

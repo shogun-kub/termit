@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -12,6 +13,21 @@ import (
 	"github.com/shogun-kub/termit/internal/uv/config"
 	"github.com/shogun-kub/termit/internal/uv/state"
 )
+
+// localProfile is the endpoint this box actually serves: its configured domain, its own self
+// credential and its current path. The server verifies exactly this, so unblock and migrate build it
+// the same way instead of each growing its own copy.
+func localProfile(cfg *config.Config, st *state.State, domain string) (proto.Profile, error) {
+	if st.Identity.SelfUUID == "" || st.Identity.XHTTPPath == "" {
+		return proto.Profile{}, errors.New("the node identity is missing; run `uv init` first")
+	}
+	return proto.Profile{
+		Domain: domain,
+		UUID:   st.Identity.SelfUUID,
+		Path:   "/" + st.Identity.XHTTPPath + "/",
+		Label:  domain,
+	}, nil
+}
 
 // runUnblock is Scenario B from the node's side: ask the server to re-run the enrollment checks and
 // let this node back in. It carries the identity the node answers on now, so a rebuilt box can send
@@ -51,8 +67,9 @@ state. Only a successful set of checks changes anything; traffic and state stay 
 	if request.Domain == "" {
 		request.Domain = cfg.Domain
 	}
-	if st.Identity.SelfUUID == "" || st.Identity.XHTTPPath == "" {
-		fmt.Fprintln(a.stderr, "uv unblock: the node identity is missing; run `uv init` first")
+	profile, err := localProfile(cfg, st, request.Domain)
+	if err != nil {
+		fmt.Fprintf(a.stderr, "uv unblock: %v\n", err)
 		return exitFailure
 	}
 	// The default URL is built from the local identity. A rebuilt box knows its own domain, credential
@@ -61,12 +78,7 @@ state. Only a successful set of checks changes anything; traffic and state stay 
 	// to name a different endpoint.
 	url := *vlessURL
 	if url == "" {
-		built, err := proto.BuildVLESSUrl(proto.Profile{
-			Domain: request.Domain,
-			UUID:   st.Identity.SelfUUID,
-			Path:   "/" + st.Identity.XHTTPPath + "/",
-			Label:  cfg.Domain,
-		})
+		built, err := proto.BuildVLESSUrl(profile)
 		if err != nil {
 			fmt.Fprintf(a.stderr, "uv unblock: %v\n", err)
 			return exitFailure

@@ -179,7 +179,8 @@ credential is ever regenerated.`)
 			return exitFailure
 		}
 		fmt.Fprintln(a.stdout, "\nrelocated: a new identity is installed; the server still holds the old one.")
-		fmt.Fprintln(a.stdout, "next: termit-uv unblock   (the request carries the new endpoint built from this identity)")
+		fmt.Fprintln(a.stdout, "next: termit-uv unblock                              (the node keeps its domain)")
+		fmt.Fprintln(a.stdout, "      termit-uv migrate --relocate                   (the node moved to a new domain)")
 	}
 	if len(pendingWork) > 0 {
 		fmt.Fprintf(a.stdout, "not yet installed by this build: %s\n", joinWords(pendingWork))
