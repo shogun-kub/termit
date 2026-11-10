@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/shogun-kub/termit/internal/termui"
 	"github.com/shogun-kub/termit/internal/version"
 )
 
@@ -20,6 +21,11 @@ func main() {
 }
 
 func run(args []string, stdout, stderr *os.File) int {
+	// On a terminal the bare binary is the menu; anywhere else it stays the usage text, so a script
+	// that runs `mn` by mistake gets exit 2 and a short page, not a prompt waiting for input.
+	if len(args) == 0 && termui.Interactive(os.Stdin, os.Stdout) {
+		return runMenu(stdout, stderr, os.Stdin, termui.PlainColour(stdout))
+	}
 	if len(args) == 0 {
 		usage(stderr)
 		return exitUsage
@@ -52,6 +58,8 @@ func run(args []string, stdout, stderr *os.File) int {
 		return runServerCheck(args[1:], stdout, stderr)
 	case "status":
 		return runStatus(args[1:], stdout, stderr)
+	case "menu":
+		return runMenu(stdout, stderr, os.Stdin, termui.PlainColour(stdout))
 	default:
 		fmt.Fprintf(stderr, "mn: unknown command %q\n\n", args[0])
 		usage(stderr)
@@ -80,6 +88,7 @@ Admin:
   status       show server, nodes and the check schedule
 
   version      print build and protocol version
+  menu         the interactive menu (what the bare command does on a terminal)
   help         show this help
 
 Admin commands talk to the running server over a unix socket; they never open the
