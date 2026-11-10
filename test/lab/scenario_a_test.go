@@ -372,6 +372,7 @@ func oneLine(text string) string {
 func restore(t *testing.T, l *lab.Lab, uv2ID string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 	defer cancel()
+	_, _ = l.UV2.Run(ctx, "systemctl reset-failed termit-xray termit-uv-agent")
 	for _, unit := range []string{"termit-xray", "termit-uv-agent"} {
 		if out, err := l.UV2.Unit(ctx, "start", unit); err != nil {
 			t.Logf("cleanup: start %s: %v\n%s", unit, err, out)
