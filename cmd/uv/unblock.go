@@ -21,7 +21,8 @@ func (a *application) runUnblock(args []string) int {
 state. Only a successful set of checks changes anything; traffic and state stay as they are otherwise.`)
 	configPath := flags.String("config", configPathDefault(), "path to config.yaml")
 	domain := flags.String("domain", "", "the domain this node answers on (default: the configured domain)")
-	vlessURL := flags.String("vless-url", "", "the node's own vless:// URI, for a box that was rebuilt")
+	vlessURL := flags.String("vless-url", "",
+		"the node's own vless:// URI (default: built from the local identity, which is what a rebuilt box needs)")
 	noSync := flags.Bool("no-sync", false, "do not run a sync after a successful unblock")
 	if err := flags.Parse(args); err != nil {
 		return a.flagError(err)
@@ -50,18 +51,38 @@ state. Only a successful set of checks changes anything; traffic and state stay 
 	if request.Domain == "" {
 		request.Domain = cfg.Domain
 	}
-	if *vlessURL != "" {
-		parsed, err := proto.ParseVLESSUrl(*vlessURL)
+	if st.Identity.SelfUUID == "" || st.Identity.XHTTPPath == "" {
+		fmt.Fprintln(a.stderr, "uv unblock: the node identity is missing; run `uv init` first")
+		return exitFailure
+	}
+	// The default URL is built from the local identity. A rebuilt box knows its own domain, credential
+	// and path, and a URL on the command line would put a credential into the shell history and the
+	// remote process list for no benefit; --vless-url stays for the odd case where the operator wants
+	// to name a different endpoint.
+	url := *vlessURL
+	if url == "" {
+		built, err := proto.BuildVLESSUrl(proto.Profile{
+			Domain: request.Domain,
+			UUID:   st.Identity.SelfUUID,
+			Path:   "/" + st.Identity.XHTTPPath + "/",
+			Label:  cfg.Domain,
+		})
 		if err != nil {
 			fmt.Fprintf(a.stderr, "uv unblock: %v\n", err)
 			return exitFailure
 		}
-		if !strings.EqualFold(parsed.Domain, request.Domain) {
-			fmt.Fprintf(a.stderr, "uv unblock: the URL names %q, the domain is %q\n", parsed.Domain, request.Domain)
-			return exitFailure
-		}
-		request.BasicVLESSURL = *vlessURL
+		url = built
 	}
+	parsed, err := proto.ParseVLESSUrl(url)
+	if err != nil {
+		fmt.Fprintf(a.stderr, "uv unblock: %v\n", err)
+		return exitFailure
+	}
+	if !strings.EqualFold(parsed.Domain, request.Domain) {
+		fmt.Fprintf(a.stderr, "uv unblock: the URL names %q, the domain is %q\n", parsed.Domain, request.Domain)
+		return exitFailure
+	}
+	request.BasicVLESSURL = url
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
