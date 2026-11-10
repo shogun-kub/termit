@@ -199,8 +199,11 @@ func TestApplyWritesTheDesiredClients(t *testing.T) {
 			t.Errorf("the config does not contain %s", want)
 		}
 	}
-	// The core was checked before the file was installed and restarted after it.
-	if len(runner.calls) != 2 || !strings.Contains(runner.calls[0], "-test") || !strings.Contains(runner.calls[1], "restart") {
+	// The core was checked before the file was installed and restarted after it. The start-limit
+	// counter is cleared before the restart: a deliberate restart must not be refused because a
+	// previous one happened moments ago.
+	if len(runner.calls) != 3 || !strings.Contains(runner.calls[0], "-test") ||
+		!strings.Contains(runner.calls[1], "reset-failed") || !strings.Contains(runner.calls[2], "restart") {
 		t.Errorf("commands = %v", runner.calls)
 	}
 

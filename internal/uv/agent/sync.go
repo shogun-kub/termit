@@ -440,6 +440,9 @@ func (a Applier) restart(ctx context.Context) error {
 	if a.Runner == nil || a.Unit == "" {
 		return nil
 	}
+	// A deliberate restart can follow a burst of them and systemd's start limiter would refuse to
+	// start the core at all. Clear the counter first; a restart that genuinely fails still fails.
+	_, _ = a.Runner.Run(ctx, "systemctl", "reset-failed", a.Unit)
 	_, err := a.Runner.Run(ctx, "systemctl", "restart", a.Unit)
 	return err
 }

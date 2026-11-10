@@ -150,6 +150,12 @@ func (s *xrayConfigStep) restartIfRunning(ctx context.Context, previous []byte, 
 	if !s.e.serviceActive(ctx, service.XrayUnitName) {
 		return nil
 	}
+	// A deliberate restart can follow a burst of them — an upgrade, a mode switch, a sync — and
+	// systemd's start limiter would then refuse to start the core at all: the node would be down
+	// because it was restarted too often, not because anything is wrong with it. Clearing the
+	// counter first is systemd's own remedy, and a restart that genuinely cannot start the core
+	// still reports the failure.
+	_, _ = s.e.exec.Run(ctx, Cmd{Name: "systemctl", Args: []string{"reset-failed", service.XrayUnitName}})
 	_, err := s.e.exec.Run(ctx, Cmd{Name: "systemctl", Args: []string{"restart", service.XrayUnitName}})
 	if err == nil {
 		return nil

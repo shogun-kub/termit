@@ -201,6 +201,9 @@ func (a *application) applyWarpRoute(cfg *config.Config, configPath string) int 
 		return exitFailure
 	}
 	if _, err := a.exec.Run(context.Background(), install.Cmd{Name: "systemctl", Args: []string{"is-active", "--quiet", "termit-uv-agent"}}); err == nil {
+		// Same reason as the core's restart in the step: a deliberate restart must not be refused
+		// because an earlier one was too recent.
+		_, _ = a.exec.Run(context.Background(), install.Cmd{Name: "systemctl", Args: []string{"reset-failed", "termit-uv-agent"}})
 		if _, err := a.exec.Run(context.Background(), install.Cmd{Name: "systemctl", Args: []string{"restart", "termit-uv-agent"}}); err != nil {
 			fmt.Fprintf(a.stderr, "uv warp mode: restart the agent: %v\n", err)
 			return exitFailure
