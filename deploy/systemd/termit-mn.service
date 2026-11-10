@@ -1,0 +1,63 @@
+# Termit management server unit.
+#
+# Unlike the node's units — rendered by `termit-uv` from its configuration, because every path in them
+# is configurable — the server has one layout, so this is a plain file an operator (or a package)
+# installs. Copy it to /etc/systemd/system/ and adjust the two paths if the binary or the
+# configuration is not in its default place.
+#
+#   install -m 0644 deploy/systemd/termit-mn.service /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now termit-mn
+#
+# The server issues its own TLS certificate on the first start, so :80 and :443 must be reachable and
+# the configured domain must already resolve to this machine (docs/OPERATIONS.md §3).
+
+[Unit]
+Description=Termit management server
+Documentation=https://github.com/shogun-kub/termit
+After=network-online.target
+Wants=network-online.target
+# A deliberate upgrade or configuration change restarts the server; a crash loop still stops after
+# five attempts in five minutes, which is the same limit the node's units use.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/termit-mn serve --config /etc/termit/mn/config.yaml
+Restart=on-failure
+RestartSec=5s
+LimitNOFILE=65535
+UMask=0077
+
+# The server needs root for three things: :443 and the temporary :80 ACME listener, the master key in
+# /etc, and the admin socket it owns. Everything else is taken away.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/termit/mn /run/termit/mn
+RuntimeDirectory=termit/mn
+RuntimeDirectoryMode=0750
+StateDirectory=termit/mn
+StateDirectoryMode=0750
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+# ProtectHome stays off: the probe worker's binary (`prober.xray_binary`) and its CA bundle
+# (`prober.ca_file`) are operator-supplied absolute paths, and an operator who keeps them under /root
+# would watch every check turn unknown with no explanation. Same trade-off as the node agent's unit.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+[Install]
+WantedBy=multi-user.target

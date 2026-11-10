@@ -11,14 +11,18 @@ credentials, and serves each owner one subscription containing every healthy nod
 
 Status: milestones M1–M3 are implemented and verified on a three-machine lab, and M4.1 (WARP) is in:
 the mode, the routing, the fail-open policy and the refusal path are tested, while the tunnel itself
-needs a host with `/dev/net/tun`, which the lab does not have. A tagged release is still ahead. See
-[What is not here yet](#what-is-not-here-yet).
+needs a host with `/dev/net/tun`, which the lab does not have. The operator documentation of M4.2
+(`docs/OPERATIONS.md`, `docs/PROTOCOL.md`, `docs/THREAT_MODEL.md`) is written and checked against a
+running mesh. A tagged release is still ahead. See [What is not here yet](#what-is-not-here-yet).
 
 ## Documents
 
 | Document | Contents |
 |---|---|
 | [`docs/DESCRIPTION.md`](docs/DESCRIPTION.md) | The design: architecture, credential model, state machine, protocol, invariants, security. |
+| [`docs/OPERATIONS.md`](docs/OPERATIONS.md) | Running it: install, upgrade, backup and restore, recovery, uninstall, troubleshooting. |
+| [`docs/PROTOCOL.md`](docs/PROTOCOL.md) | The wire contract: endpoints, payloads, problem codes, subscription formats. |
+| [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) | Adversaries, mitigations, residual risk, and what is deliberately not defended. |
 | [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) | Milestones, tasks, acceptance criteria, risks, effort. |
 | [`docs/QUESTIONS.md`](docs/QUESTIONS.md) | Decisions taken and questions still open. |
 | [`AGENTS.md`](AGENTS.md) | Rules for anyone (human or agent) changing this repository, including the lab setup. |
@@ -90,8 +94,11 @@ and needs the environment from [`AGENTS.md`](AGENTS.md) §4.1.
   the switch back. Installing `cloudflare-warp`, registering and connecting is implemented but its
   acceptance needs a KVM VM or a privileged container.
 - **A bootstrap installer** (`deploy/install/uv.sh`) with checksum verification and an upgrade path
-  that preserves the node's identity.
-- **Operator documentation**: `docs/OPERATIONS.md`, `docs/PROTOCOL.md`, `docs/THREAT_MODEL.md`.
+  that preserves the node's identity. Until it exists, installation is the two commands in
+  [`docs/OPERATIONS.md`](docs/OPERATIONS.md) §3 and §4.
+- **Certificate self-renewal on the management server**: it renews its own certificate when it starts,
+  not on a timer, so a server that runs for months needs a scheduled restart. Documented in
+  `docs/OPERATIONS.md` §15.
 - **Release artifacts**: no tags yet; goreleaser, checksums and the release workflow arrive with the
   first tag.
 - **A Docker Compose harness** for developers without lab hardware. The lab is the acceptance gate.

@@ -816,11 +816,19 @@ Two defects the lab found and the fix:
 
 ### M4.2 Operations surface
 
-- `docs/OPERATIONS.md` (install, upgrade, rotate, recover, backup, uninstall, troubleshooting),
-  `docs/PROTOCOL.md` (API contract with examples), `docs/THREAT_MODEL.md`.
+- **Done: the three operator documents.** `docs/OPERATIONS.md` (install, upgrade, rotate, recover,
+  backup, uninstall, troubleshooting, a shipped `termit-mn.service`), `docs/PROTOCOL.md` (the exact
+  wire contract with examples, checked against a running server) and `docs/THREAT_MODEL.md`
+  (adversaries, assets as implemented, residual risk). Writing them produced four findings, recorded
+  rather than papered over: there was no systemd unit for the management server at all
+  (`deploy/systemd/termit-mn.service` now exists and was started on the lab); `uv uninstall` stopped a
+  unit that no longer exists (`termit-uv.service`) and left the running agent alive, now fixed and
+  proved by a test plus a real uninstall/reinstall on the lab; the server renews its certificate only
+  on startup (documented in `OPERATIONS.md` §15, fix is the next item); and `DESCRIPTION.md` §8/§15
+  describe a sync shape and an Argon2id hash that the code does not implement.
 - Extend the `mn status` dashboard (prober/worker health, queue age, per-node history), Prometheus
   metrics, structured logs with redaction tests. The basic dashboard (state counts, last and next
-  check, runtime policy override) landed early in M3.1.
+  check, runtime policy override) landed early in M3.1; `/metrics` is still two gauges.
 - Bootstrap installer script (`deploy/install/uv.sh`) with checksum (and optional minisign)
   verification, plus an upgrade path that preserves state.
 

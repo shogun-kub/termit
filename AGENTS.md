@@ -113,9 +113,9 @@ internal/mn/probe/      health prober (xray-core worker; cert/decoy; DNS)
 internal/mn/sub/        subscription rendering (base64 and sing-box JSON)
 internal/mn/sched/      scheduler, check queue, state machine server side
 internal/mn/admin/      unix-socket admin API + CLI glue
-deploy/systemd/         installed copies of the units, for readers; the authoritative generator is
+deploy/systemd/         installed copies of the units, for readers; the node's units are rendered by
                         `internal/uv/service` (paths come from the configuration, so nothing is shipped
-                        as a static file)
+                        as a static file), while `termit-mn.service` has no generator and is shipped here
 deploy/install/         bootstrap shell script and release checks
 test/lab/               SSH-driven acceptance suite (build tag `lab`)
 test/integration/       planned Docker Compose suite (not built; the lab is the gate)
