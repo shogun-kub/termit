@@ -144,16 +144,22 @@ $env:GOPATH = "$(Get-Location)\.spike-out\gopath"
 The cache overrides are required: the file sandbox denies writes to the default `%LOCALAPPDATA%`
 cache, and a build then fails with a permission error rather than a compile error.
 
-Still missing: `docker` (only needed once the planned Compose suite exists), `make` (the `Makefile` is convenience only),
-`golangci-lint` (CI lints anyway). `puttygen` on this host rejects `-O`, so PPK conversion does not
-work here — see §4.3.
+Still missing: `docker` (only needed once the planned Compose suite exists), `make` (the `Makefile` is
+convenience only), and a `golangci-lint` binary. Do not install a prebuilt one: a golangci-lint binary
+carries the Go version it was compiled with and refuses a module targeting a newer release (v1.64 is
+go1.24 and cannot read this module at all). Build it with the module's own toolchain, exactly as CI
+does — `go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0` — and read
+`.golangci.yml` for why `fmt.Fprint*` is excluded from `errcheck`. `puttygen` on this host rejects
+`-O`, so PPK conversion does not work here — see §4.3.
 
 The acceptance lab is three Debian machines reachable over SSH (one MN, two UVs), optionally a fourth
 (another UV) when the mesh tests need a third node. Their coordinates never go into the repository —
 they come from environment variables (§4.3).
 
-Go version: pinned by the `go` directive in `go.mod`. Use the toolchain the module declares; do not
-add a `toolchain` line that requires a newer release than CI uses.
+Go version: pinned by the `go` directive in `go.mod`, patch level included — `go 1.27.3` rather than
+`go 1.27.0`, because the standard library collects security fixes in patch releases and `govulncheck`
+gates on the toolchain that built the binary, not only on the module graph. Use the toolchain the
+module declares; do not add a `toolchain` line that requires a newer release than CI uses.
 
 **CGO is off.** Builds are fully static (`CGO_ENABLED=0`) and the SQLite driver is pure Go. Never
 introduce a cgo dependency.
@@ -168,7 +174,8 @@ go test ./cmd/... ./internal/...                 # unit tests
 go test -race ./internal/...                     # race detector on library code
 go vet ./cmd/... ./internal/...                  # cheap correctness pass
 go test ./deploy/release                         # the release tool's own tests
-golangci-lint run ./cmd/... ./internal/...       # lint (CI gate)
+go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0   # once per toolchain
+"$(go env GOPATH)/bin/golangci-lint" run ./cmd/... ./internal/...           # lint (CI gate)
 go run ./cmd/uv --help
 go run ./cmd/mn init --domain mn.localhost --data-dir ./.dev/mn
 gofmt -l cmd internal deploy                     # must print nothing
