@@ -26,12 +26,15 @@ jobs:
 
       - name: gofmt
         run: |
-          out=$(gofmt -l cmd internal)
+          out=$(gofmt -l cmd internal test)
           if [ -n "$out" ]; then
             echo "gofmt needed on:"; echo "$out"; exit 1
           fi
 
       - run: go vet $PKGS
+
+      - name: vet the lab harness
+        run: go vet -tags=lab ./test/lab
 
       - run: go test -race $PKGS
 
