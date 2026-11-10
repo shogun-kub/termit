@@ -708,3 +708,55 @@ A useful alert set, in the order that matters:
 When nothing obvious is wrong, the order is: `uv doctor` on the node, `mn uv show` on the server,
 then the journals of both. A failing check that says `unknown` is a failure of the observer, not of
 the node — say so in the report rather than "fixing" the node.
+
+## 17. Building and publishing a release
+
+A release is one command, and CI runs the same one on a tag:
+
+```bash
+go run ./deploy/release --version v0.1.0 --out dist
+```
+
+It cross-compiles both binaries for `linux/amd64` and `linux/arm64` with `CGO_ENABLED=0 -trimpath`,
+stamps `internal/version` (version, commit, date), copies the bootstrap script and the management
+server's unit from the repository, and writes `SHA256SUMS`:
+
+| File | What it is |
+|---|---|
+| `termit-uv_<version>_linux_<arch>` | the node binary; this is what `uv.sh` downloads |
+| `termit-mn_<version>_linux_<arch>` | the management server binary |
+| `uv.sh` | the bootstrap installer (§4) |
+| `termit-mn.service` | the unit from `deploy/systemd/`, so a server install needs no clone |
+| `SHA256SUMS` | covers every file above, in `sha256sum -c` format |
+
+The names are a contract with `uv.sh`, which fetches `<base>/<version>/<asset>` and
+`<base>/<version>/SHA256SUMS`; a renamed asset is a broken installation, so the tool refuses a version
+that is not a `vX.Y.Z` tag rather than sanitising it.
+
+Verify a directory the way an operator would:
+
+```bash
+cd dist/v0.1.0 && sha256sum -c SHA256SUMS
+```
+
+There are deliberately no tarballs: one artifact per platform, verified by digest, is what the
+installer consumes, and a tarball would add an unpacking step that protects nothing. The build is
+reproducible given the same toolchain, commit and `--date`:
+
+```bash
+go run ./deploy/release --version v0.1.0 --out /tmp/a --commit "$(git rev-parse --short HEAD)" --date 2026-11-10T00:00:00Z
+go run ./deploy/release --version v0.1.0 --out /tmp/b --commit "$(git rev-parse --short HEAD)" --date 2026-11-10T00:00:00Z
+diff /tmp/a/v0.1.0/SHA256SUMS /tmp/b/v0.1.0/SHA256SUMS
+```
+
+Publishing is a tag push: `.github/workflows/release.yaml` builds the directory, runs
+`sha256sum -c SHA256SUMS`, asserts `uv.sh` is executable, and attaches everything to the GitHub
+release, including `uv.sh` — the documentation's install URL points at
+`releases/download/<version>/uv.sh`. The workflow marks the release `prerelease: true`: clearing that
+flag is the deliberate act that records the production pass of `docs/IMPLEMENTATION_PLAN.md` M4.3 (a
+real domain, a real CA, a phone client). A maintainer can do the same by hand with `gh release create`
+and the files from `dist/<version>/`; the assets are plain files, so nothing depends on the workflow.
+
+CI gates on a tag and on every push: `gofmt`, `go vet`, the unit suite with `-race`, the cross-build,
+the release tool's own tests, and `govulncheck`. The lab suite is the acceptance gate and is run by
+hand (§4 in `AGENTS.md`); CI does not claim it.

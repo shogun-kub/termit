@@ -835,16 +835,20 @@ constant time (they are SHA-256 digests looked up through an index, deliberately
 `mn sub show`, which does not exist. `docs/PROTOCOL.md` is what the build does; the design document
 should be reconciled with it before the first tag.
 
-### M4.3 Release
+### M4.3 Release — done except the manual VPS pass
 
-- `v0.1.0` tag; `goreleaser` (or a small script) producing linux/amd64 + linux/arm64 archives,
-  `SHA256SUMS`, and a systemd unit bundle. The bootstrap installer fetches
-  `<base>/<version>/termit-uv_<version>_linux_<arch>` and `<base>/<version>/SHA256SUMS`, so the release
-  must name its assets exactly that way and publish `uv.sh` beside them.
-- CI: lint, unit, race, govulncheck, cross-build; the lab suite is the acceptance gate. The Docker
-  Compose harness is a developer convenience (QUESTIONS Q9.4) and is not built yet, so CI does not
-  claim it.
-- Final manual VPS checklist on real Debian 13 with a real domain and Let's Encrypt.
+| Task | Where | Verified |
+|---|---|---|
+| A release tool, `go run ./deploy/release --version v0.1.0`, that cross-compiles both binaries for linux/amd64 and linux/arm64 (`CGO_ENABLED=0 -trimpath`), stamps version/commit/date, copies `uv.sh` and `termit-mn.service` out of the repository, and writes `SHA256SUMS` | `deploy/release` | unit tests for the asset-name contract, the version pattern, the checksum format, digesting and both refusals; two builds with a fixed commit and date produce byte-identical `SHA256SUMS` |
+| Asset names exactly as the installer expects, with `uv.sh` published beside them; no tarballs | `deploy/release` | lab: `sha256sum -c SHA256SUMS` on all six files, then an install from the release directory — `termit-uv v0.1.0 (commit …, api 1, profile v1)`, identity and certificate intact, services active; the server binary reports the same version after a restart |
+| CI: `govulncheck` against our packages; a tag-triggered release job that builds, verifies the checksums and attaches the artifacts | `.github/workflows/ci.yaml`, `.github/workflows/release.yaml` | `govulncheck v1.9.0` locally: no vulnerabilities reachable from our code; the workflow runs the same commands the release tool documents |
+| `v0.1.0` tag | `git tag` | created locally; pushing it publishes a **pre-release** release, and flipping that flag is the act that says the production pass is done |
+
+Deferred, and stated as such rather than claimed: **the final manual VPS pass** on real Debian 13 with a
+real domain and Let's Encrypt. The lab does everything else (ACME against Pebble, TLS, the mesh, an
+upgrade from a release directory), but a production CA, a real DNS provider and a phone client are not
+lab-shaped — so the publish workflow marks every release `prerelease: true` until someone runs that
+pass. The Docker Compose harness remains a developer convenience (QUESTIONS Q9.4) and is not built.
 
 ---
 
@@ -880,7 +884,7 @@ These are not separate milestones; they must be updated in the milestone that to
 | R2 | `cloudflare-warp` unsupported on some hosts/arches | Medium | Medium | refuse with a reason; never silently degrade; document supported matrix |
 | R3 | MN's vantage point differs from users' and blocks healthy nodes | Medium | High | `unknown` invariant, retries, configurable thresholds, admin override; multi-vantage later |
 | R4 | Daily convergence means up to 24 h of stale peers | High (by design) | Low | documented; `mn check now` + admin CLI for urgent cases; sync interval configurable |
-| R5 | Let's Encrypt path untested in the LAN lab | High | Medium | Pebble covers the ACME code path; real-domain checklist gates `v0.1.0` |
+| R5 | Let's Encrypt path untested in the LAN lab | High | Medium | Pebble covers the ACME code path; the real-domain pass gates promoting a release out of pre-release, and the workflow publishes pre-release until it is done |
 | R6 | MN compromise or DB theft exposes all pair credentials | Low | Critical | master key can live outside the DB; backups encrypted by the operator; threat model documented |
 | R7 | Scope creep toward a panel/quota/billing product | High | Medium | non-goals list is explicit; v1 API stays minimal |
 | R8 | Dependency churn (SQLite, ACME, xray-core pinning) | Medium | Medium | pin versions + checksums, `govulncheck`, small module graph |

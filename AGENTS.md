@@ -117,6 +117,8 @@ deploy/systemd/         installed copies of the units, for readers; the node's u
                         `internal/uv/service` (paths come from the configuration, so nothing is shipped
                         as a static file), while `termit-mn.service` has no generator and is shipped here
 deploy/install/         bootstrap shell script and release checks
+deploy/release/         the release builder (`go run ./deploy/release`): cross-compiles, stamps the
+                        version, writes SHA256SUMS. Not a shipped binary; CI runs the same command
 test/lab/               SSH-driven acceptance suite (build tag `lab`)
 test/integration/       planned Docker Compose suite (not built; the lab is the gate)
 docs/                   design and operations docs
@@ -165,15 +167,15 @@ go build ./cmd/... ./internal/...                # compile everything we own
 go test ./cmd/... ./internal/...                 # unit tests
 go test -race ./internal/...                     # race detector on library code
 go vet ./cmd/... ./internal/...                  # cheap correctness pass
+go test ./deploy/release                         # the release tool's own tests
 golangci-lint run ./cmd/... ./internal/...       # lint (CI gate)
 go run ./cmd/uv --help
 go run ./cmd/mn init --domain mn.localhost --data-dir ./.dev/mn
-gofmt -l cmd internal                            # must print nothing
-goimports -l cmd internal                        # must print nothing
+gofmt -l cmd internal deploy                     # must print nothing
+goimports -l cmd internal deploy                 # must print nothing
 
-# release builds
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.version=$(git describe --tags --always)"
-CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w"
+# the release directory (four binaries, uv.sh, termit-mn.service, SHA256SUMS), as CI builds it
+go run ./deploy/release --version v0.1.0 --out dist
 ```
 
 On Windows use PowerShell equivalents or WSL; do not introduce `make`-only workflows. A `Makefile`
@@ -330,7 +332,10 @@ is a leaf: nothing else imports it.
 - Commit messages: Conventional Commits (`feat(uv): …`, `fix(mn/probe): …`, `docs: …`). One logical
   change per commit.
 - Do not force-push shared branches. Do not amend someone else's commit.
-- The repository has no tags yet; versioning starts at `v0.1.0` after M1.
+- Tags are releases. `v0.1.0` exists; a new release is a tag plus `go run ./deploy/release`, and
+  pushing the tag is what publishes it (`.github/workflows/release.yaml`). Never move or delete a
+  published tag, and never retag a commit that was already released: a version that means two
+  different trees is worse than a wrong one.
 
 ## 10. Definition of done
 

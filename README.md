@@ -9,11 +9,19 @@ through the tunnel,
 with a valid certificate, from its own network — keeps the membership list, hands out per-pair
 credentials, and serves each owner one subscription containing every healthy node in the mesh.
 
-Status: milestones M1–M3 are implemented and verified on a three-machine lab, and M4.2 (operations) is
-done: the operator documentation, the dashboard, real Prometheus metrics, the checksum-verifying
-bootstrap installer and in-place certificate renewal on the management server. M4.1's WARP works and is
-tested around the tunnel, but the tunnel itself needs a host with `/dev/net/tun`, which the lab does
-not have. A tagged release is still ahead. See [What is not here yet](#what-is-not-here-yet).
+Status: M1–M4 are implemented and verified on a three-machine lab, and `v0.1.0` is cut: a release
+directory with both binaries for amd64 and arm64, the bootstrap installer, the management server's unit
+and a `SHA256SUMS` that covers them. Install a node from it:
+
+```bash
+curl -fsSLO https://github.com/shogun-kub/termit/releases/download/v0.1.0/uv.sh
+sh uv.sh --version v0.1.0 --domain node1.example.net --email you@example.com \
+  --mn https://mn.example.com --invite ABCD-EFGH-IJKL
+```
+
+M4.1's WARP works and is tested around the tunnel, but the tunnel itself needs a host with
+`/dev/net/tun`, which the lab does not have; the same goes for a production-CA run on a real VPS. See
+[What is not here yet](#what-is-not-here-yet).
 
 ## Documents
 
@@ -66,7 +74,9 @@ module's directory tree, and `./...` would compile it.
 go build ./cmd/... ./internal/...                # compile everything we own
 go test ./cmd/... ./internal/...                 # unit tests
 go vet ./cmd/... ./internal/...                  # cheap correctness pass
-gofmt -l cmd internal test                       # must print nothing
+gofmt -l cmd internal deploy test                # must print nothing
+
+go run ./deploy/release --version v0.1.0 --out dist   # the release directory, as CI builds it
 
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath ./cmd/...
 CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath ./cmd/...
@@ -93,9 +103,10 @@ and needs the environment from [`AGENTS.md`](AGENTS.md) §4.1.
   refusal, the generated route, fail-open (traffic keeps flowing while the sidecar port is dead) and
   the switch back. Installing `cloudflare-warp`, registering and connecting is implemented but its
   acceptance needs a KVM VM or a privileged container.
-- **Release artifacts**: no tags yet; goreleaser, checksums and the release workflow arrive with the
-  first tag. The bootstrap script (`deploy/install/uv.sh`) already installs from such a release and
-  verifies its `SHA256SUMS`, so a test release directory can be built by hand today.
+- **A production run**: the release line is cut and everything except WARP is exercised on the lab
+  (ACME against Pebble, TLS, the mesh, upgrades, restore), but the first install against a real domain
+  and Let's Encrypt, and a real phone client behind the subscription, is still a manual pass somebody
+  has to run. `docs/IMPLEMENTATION_PLAN.md` M4.3 says so instead of claiming it.
 - **A Docker Compose harness** for developers without lab hardware. The lab is the acceptance gate.
 
 ## References
