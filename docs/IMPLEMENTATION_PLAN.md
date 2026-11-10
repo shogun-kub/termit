@@ -875,8 +875,11 @@ Two decisions worth keeping:
   setup, and a file owned by somebody else is a way for them to choose the credential. The refusal names
   the `chmod` or `chown` that fixes it.
 
-Rotation is the next step and is not in this milestone: today a leaked token still means rebuilding the
-registry (see "what is not here yet" in the README).
+Rotation followed in the next milestone (`termit-mn admin rotate`): the caller replaces its own
+credential, the id moves with the token because it is derived from it, `last_used_at` is cleared because a
+fresh token has never been presented, and the old digest stops resolving in the same write. A lost token
+still has no online recovery — that is the price of storing only a digest — and the operations document
+keeps the delete-the-row procedure for it.
 
 ### Documentation: a guide for participants — done
 

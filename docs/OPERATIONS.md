@@ -625,12 +625,36 @@ Restore from backup (§10.1). If there is no backup, the mesh cannot be rebuilt 
 every node: each node's pair credentials derive from the master key, and the master key is not
 recoverable from a node.
 
+### The admin token leaked
+
+Rotate it. The command replaces the credential it authenticated with, and the old one stops working the
+moment the new one is issued:
+
+```bash
+termit-mn admin rotate --token-out /etc/termit/mn/admin.token
+```
+
+It needs the current token — a rotation you could start without one would be a takeover, not a rotation,
+and only the authenticated admin's own row is touched. Before you run it, list what still carries the old
+token: every timer, cron entry and playbook that does will fail at its next run with
+`the admin token is not valid`. `--token-out` writes the new token `0600`; without it the token is printed
+once and nowhere else, so if that output is lost the rotation is lost with it.
+
 ### The admin token is lost
 
-There is no recovery command by design: the token is stored as a hash. Take a backup, then remove the
-`admin` row with `sqlite3 /var/lib/termit/mn/termit.db 'delete from admin;'`, restart the server and
-run `termit-mn init` (it mints one token when none exists and keeps everything else). Treat this as an
-incident: whoever has the token has the registry.
+Rotation needs the current token, so a lost token is the one case that has no online recovery: the server
+stores only a digest, deliberately. Take a backup of the database, then remove the `admin` row and let
+`init` mint a fresh credential:
+
+```bash
+sqlite3 /var/lib/termit/mn/termit.db 'delete from admin;'
+systemctl restart termit-mn
+termit-mn init --config /etc/termit/mn/config.yaml --admin-token-out /etc/termit/mn/admin.token
+```
+
+`init` on an installed server keeps every other decision — domain, listen, master key, the nodes — and
+only adds the missing admin. Treat it as an incident: whoever has the old token had the registry, and the
+digest in the database no longer matches it after this.
 
 ### The clock drifted
 

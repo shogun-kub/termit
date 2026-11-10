@@ -454,7 +454,7 @@ by default), created `0600`, one JSON request per connection with a 30 s deadlin
 ```
 
 or `{"error": {"code": "not_found", "detail": "no such node"}}`. Operations are `invite.*`, `uv.*`,
-`check.now`, `policy.*`, `sub.rotate` and `server.state`; `termit-mn help` lists the commands, and every
+`check.now`, `policy.*`, `sub.rotate`, `admin.rotate` and `server.state`; `termit-mn help` lists the commands, and every
 mutation is audited. Two answers are worth knowing:
 
 - `uv.show` carries the node's recent history (`checks`, newest first: the server's probes and the

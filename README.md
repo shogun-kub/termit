@@ -148,8 +148,6 @@ tool's tests and `govulncheck`.
 - **WARP against a real tunnel**: the lab has no `/dev/net/tun`, so the suite proves the refusal, the
   generated route, fail-open and the switch back; installing, registering and connecting needs a KVM VM
   or a privileged container.
-- **Admin-token rotation**: the token is created once by `termit-mn init` and stored hashed; there is no
-  rotate command yet, so a leaked token means rebuilding the registry.
 - **A Docker Compose harness** for development without lab hardware.
 
 ## Licence

@@ -83,6 +83,18 @@ termit-mn init --domain mn.example.com --email you@example.com \
 If that write fails, `init` prints the token anyway and exits non-zero: the token exists in the database
 by then, and a token nobody saw would leave a server nobody can administer.
 
+If the token leaks, rotate it. The command replaces the credential it authenticated with — its own, not
+somebody else's — and hands back the new one once:
+
+```bash
+termit-mn admin rotate --token-out /etc/termit/mn/admin.token
+```
+
+Every script, timer and playbook that still carries the old token stops working at that moment. That is
+what rotation is for, and it is also the thing to check before running it. Rotating needs the current
+token: if that is what you have lost, the recovery is in
+[the operations guide](../OPERATIONS.md#the-admin-token-is-lost).
+
 ## First start
 
 ```bash
@@ -246,6 +258,7 @@ journalctl -u termit-mn -f
 | `termit-mn check now <node>\|--all` | run health checks immediately |
 | `termit-mn policy show\|set` | read or change scheduler thresholds |
 | `termit-mn sub rotate <node>` | issue a new subscription token |
+| `termit-mn admin rotate` | replace the admin token you authenticated with; `--token-out FILE` writes it |
 | `termit-mn status` | server, nodes and schedule |
 | `termit-mn backup`, `termit-mn restore` | snapshot and restore |
 | `termit-mn version` | build and protocol version |
@@ -262,7 +275,8 @@ They never open the database behind the server's back.
 - **Run one server.** Two instances on one database corrupt it, and the second one cannot issue
   certificates for the same name anyway.
 - **Keep `termit-mn status`' prober line green.** A dead prober is not a broken mesh, but it is a blind one.
-- **Protect the admin token like the master key.** It is created once by `termit-mn init` and stored hashed;
-  this build has no rotate command, so a leaked token is a compromised registry. Keep it in
-  `/etc/termit/mn/admin.env` (mode `0600`) rather than in a shell history, and keep it out of backups
-  you share.Next: [Using a node](using-uv.md) · [When something goes wrong](troubleshooting.md)
+- **Protect the admin token like the master key.** It is created by `termit-mn init` and stored hashed;
+  `termit-mn admin rotate` replaces it, and the old one stops working immediately. Keep it in a file with
+  mode `0600` rather than in a shell history, and keep it out of backups you share.
+
+Next: [Using a node](using-uv.md) · [When something goes wrong](troubleshooting.md)

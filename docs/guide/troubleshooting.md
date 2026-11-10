@@ -44,6 +44,9 @@ path to it is broken". For anything else: `journalctl -u termit-uv-agent` on the
 | `termit-mn` refuses the token file: `is mode 0644` | the file is readable by the group or the world | `chmod 600` it — a token file that others can read is a leaked credential |
 | `termit-mn` refuses the token file: `owned by uid N` | the file belongs to somebody else, who could rewrite it | `chown` it to the user running the commands (`root` on a server), or create it as that user |
 | `termit-mn` refuses `--token` together with `--token-file` | two credentials at once | pass one: an explicit flag is never guessed over another |
+| a timer or script suddenly says `the admin token is not valid` | somebody rotated the token | read the new one from wherever it was written (`--token-out`), or rotate again from a shell that has it |
+| `termit-mn admin rotate` says `the admin token is not valid` | rotation needs the current token, and this one is no longer it | find the token that works; if none does, the recovery is the delete-the-row procedure in the operations guide |
+| after rotating, every node and timer still works but `termit-mn` does not | the rotation replaced the CLI credential, not the mesh: nodes use agent keys and subscriptions, not admin tokens | update only the admin token wherever it is stored |
 | `termit-mn` commands say `the admin token is not valid` | wrong token, or a database restored without its `admin` table | use the token printed by `termit-mn init` |
 
 ## Enrolling a node
