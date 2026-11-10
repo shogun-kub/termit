@@ -218,11 +218,10 @@ func subscriptionBody(t *testing.T, ctx context.Context, m *lab.Machine) string 
 	if !strings.HasPrefix(url, "http") {
 		t.Fatalf("%s: subscription URL %q is not absolute", m.Name, url)
 	}
+	// A private CA can be trusted two ways: named for this one server in mn.ca_file, or installed in the
+	// host's trust store. The harness trusts whatever the node does, instead of insisting on the first.
 	ca := strings.TrimSpace(m.MustRun(t, ctx,
 		`sed -n 's/^  ca_file: *//p' /etc/termit/uv/config.yaml`))
-	if ca == "" {
-		t.Fatalf("%s: the config has no mn.ca_file", m.Name)
-	}
 	// The lab images have no curl or wget, but Python is part of the base system on both sides.
 	const script = "/tmp/termit-lab-subscription.py"
 	if err := m.WriteFile(ctx, []byte(subscriptionFetcher), script, "0644"); err != nil {
@@ -231,10 +230,12 @@ func subscriptionBody(t *testing.T, ctx context.Context, m *lab.Machine) string 
 	return m.MustRun(t, ctx, "python3 "+script+" "+url+"/json "+ca)
 }
 
-// subscriptionFetcher is a stdlib HTTPS client that trusts exactly the configured CA.
+// subscriptionFetcher is a stdlib HTTPS client that trusts the CA the node was given: the one named in
+// mn.ca_file when there is one, the host's trust store otherwise.
 const subscriptionFetcher = `import ssl, sys, urllib.request
 
-context = ssl.create_default_context(cafile=sys.argv[2])
+ca = sys.argv[2] if len(sys.argv) > 2 else ""
+context = ssl.create_default_context(cafile=ca) if ca else ssl.create_default_context()
 with urllib.request.urlopen(sys.argv[1], context=context, timeout=15) as response:
     sys.stdout.write(response.read().decode())
 `
