@@ -41,7 +41,10 @@ termit-mn status                  # на сервере: prober, очередь,
 | `termit-mn serve` выходит с ошибкой ACME | DNS ещё не указывает сюда, или порт 80 закрыт | проверьте `dig +short mn.example.com` и доступность порта снаружи |
 | `termit-mn serve` выходит: `cannot read the master key` | `/etc/termit/mn/master.key` отсутствует или недоступен | восстановите из резервной копии — без него реестр бесполезен |
 | `termit-mn status` говорит `cannot reach the server at …` | сервис не запущен или сокет переехал | `systemctl status termit-mn`, затем `admin_socket` в конфигурации |
-| команды `termit-mn` требуют `an admin token is required` | не задан `TERMIT_MN_ADMIN_TOKEN` | экспортируйте его или передайте `--token` |
+| команды `termit-mn` требуют `an admin token is required` | токена нет нигде | экспортируйте `TERMIT_MN_ADMIN_TOKEN` или передайте `--token` либо `--token-file` |
+| `termit-mn` отклоняет файл токена: `is mode 0644` | файл читаем группой или всеми | `chmod 600` — файл с токеном, который читают другие, это утёкшие учётные данные |
+| `termit-mn` отклоняет файл токена: `owned by uid N` | файл принадлежит другому пользователю, который может его переписать | `chown` на того, кто запускает команды (`root` на сервере), или создайте файл от его имени |
+| `termit-mn` отклоняет `--token` вместе с `--token-file` | два креденшела сразу | передайте один: явный флаг никогда не перебивается догадкой |
 | команды `termit-mn` говорят `the admin token is not valid` | не тот токен, или база восстановлена без таблицы `admin` | используйте токен, который напечатал `termit-mn init` |
 
 ## Вступление узла

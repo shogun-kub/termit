@@ -56,6 +56,33 @@ Put the token in the environment, so it stays out of your shell history:
 export TERMIT_MN_ADMIN_TOKEN='<token>'
 ```
 
+Or keep it in a file — that is what a timer, a cron job or an Ansible task needs, because none of them
+has a shell to export from. The CLI reads it only when asked, and refuses a file it cannot vouch for:
+
+```bash
+# write it once, readable by nobody else
+install -m 0600 /dev/null /etc/termit/mn/admin.token
+printf '%s\n' '<token>' > /etc/termit/mn/admin.token
+
+termit-mn status --token-file /etc/termit/mn/admin.token
+export TERMIT_MN_ADMIN_TOKEN_FILE=/etc/termit/mn/admin.token   # or name it once per shell
+```
+
+The file must be mode `0600` and owned by the user running the command; anything else is refused with
+the `chmod` that fixes it. A token file readable by the group or the world is a leaked credential that
+looks like a tidy setup.
+
+`termit-mn init --admin-token-out FILE` writes the token straight into a file with mode `0600` instead
+of printing it, so a provisioned server never has its only copy in somebody's scrollback:
+
+```bash
+termit-mn init --domain mn.example.com --email you@example.com \
+  --admin-token-out /etc/termit/mn/admin.token
+```
+
+If that write fails, `init` prints the token anyway and exits non-zero: the token exists in the database
+by then, and a token nobody saw would leave a server nobody can administer.
+
 ## First start
 
 ```bash
@@ -212,7 +239,7 @@ journalctl -u termit-mn -f
 
 | Command | What it does |
 |---|---|
-| `termit-mn init` | create config, database, master key, admin token and the first invite |
+| `termit-mn init` | create config, database, master key, admin token and the first invite; `--admin-token-out FILE` writes the token to a file instead of printing it |
 | `termit-mn serve` | run the server (`--http` for development only, never on a public address) |
 | `termit-mn invite create\|list\|revoke` | manage invite codes |
 | `termit-mn uv list\|show\|approve\|reject\|block\|unblock\|rm\|forget\|reissue\|agentkey` | manage nodes |
@@ -224,7 +251,8 @@ journalctl -u termit-mn -f
 | `termit-mn version` | build and protocol version |
 
 Admin commands talk to the running server over a unix socket (`/run/termit/mn/admin.sock`) and
-authenticate with `TERMIT_MN_ADMIN_TOKEN`. They never open the database behind the server's back.
+authenticate with `TERMIT_MN_ADMIN_TOKEN`, `TERMIT_MN_ADMIN_TOKEN_FILE`, `--token` or `--token-file`.
+They never open the database behind the server's back.
 
 ## Rules worth keeping
 

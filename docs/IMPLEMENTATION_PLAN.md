@@ -858,6 +858,26 @@ Deliberately absent: starting `termit-mn serve` from the menu (the unit owns the
 own (a dropped SSH session loses nothing). Interactive prompts stay out of the install path — the menu
 builds flags, it does not replace them, which is why `uv.sh`, `termit-uv init` and `termit-mn init` remain scriptable.
 
+### The admin credential, from a file — done
+
+The admin token was environment-only, which is fine at a terminal and useless in a timer: systemd has no
+shell to export from, so the token ended up pasted into a unit file or a playbook. `termit-mn` now reads
+it from a file as well (`--token-file`, `TERMIT_MN_ADMIN_TOKEN_FILE`), and `termit-mn init
+--admin-token-out FILE` writes a new token straight into one.
+
+Two decisions worth keeping:
+
+- **No default path.** A well-known location would authenticate silently from a file nobody remembers
+  writing, and a stale token would present as a wrong password. The operator names the file or it is not
+  read.
+- **Refuse a file we cannot vouch for.** Mode must be `0600` or narrower and the owner must be the user
+  running the command, because a group-readable token file is a leaked credential shaped like a tidy
+  setup, and a file owned by somebody else is a way for them to choose the credential. The refusal names
+  the `chmod` or `chown` that fixes it.
+
+Rotation is the next step and is not in this milestone: today a leaked token still means rebuilding the
+registry (see "what is not here yet" in the README).
+
 ### Documentation: a guide for participants — done
 
 The reference documents assume an operator. A person who owns one node needs a different entry point, so

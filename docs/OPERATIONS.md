@@ -118,11 +118,35 @@ back up /etc/termit/mn/master.key together with the database: without it no pair
 ```
 
 Store both values now. The admin token is needed for every `termit-mn` command; put it in the environment
-rather than in a shell history:
+rather than in a shell history, or in a file for the jobs that have no shell:
 
 ```bash
-export TERMIT_MN_ADMIN_TOKEN='<token>'       # /etc/termit/mn/admin.env, mode 0600, if you prefer a file
+export TERMIT_MN_ADMIN_TOKEN='<token>'
 ```
+
+A timer, a cron job or a configuration-management task has no shell to export from, so the CLI can read
+the token from a file instead. It reads only what it is told to read — there is no default path, because a
+stale file in a well-known place would authenticate silently:
+
+```bash
+install -m 0600 /dev/null /etc/termit/mn/admin.token
+printf '%s\n' '<token>' > /etc/termit/mn/admin.token
+termit-mn status --token-file /etc/termit/mn/admin.token
+export TERMIT_MN_ADMIN_TOKEN_FILE=/etc/termit/mn/admin.token
+
+# what a backup timer looks like
+termit-mn backup --out /var/backups/termit --token-file /etc/termit/mn/admin.token
+```
+
+Precedence, highest first: `--token`, `--token-file`, `TERMIT_MN_ADMIN_TOKEN`,
+`TERMIT_MN_ADMIN_TOKEN_FILE`. An explicit flag beats the environment, and passing both `--token` and
+`--token-file` is refused rather than guessed. The file must be a regular file, mode `0600` or narrower,
+owned by the user running the command, and at most 4 KiB; anything else is refused with the fix in the
+message, because a world-readable token file is a leaked credential that looks like a tidy setup.
+
+`termit-mn init --admin-token-out FILE` writes the token to a file instead of printing it. That is how a
+provisioned server keeps its only copy out of an operator's scrollback; if the write fails, `init` prints
+the token and exits non-zero rather than leaving a server with a credential nobody has seen.
 
 Then install the unit and start it:
 

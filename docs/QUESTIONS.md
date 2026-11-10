@@ -17,6 +17,7 @@ Legend: **Q** = question, **Rec** = recommended default, **Why** = what changes 
 | Q3.3 Registration trust | **Invite codes + admin approval by default**, configurable (`open` for trusted groups). |
 | Q2.3 MN deployment | **Single binary + SQLite + systemd + built-in ACME**; Compose documented as an alternative, Postgres later behind an interface. |
 | Q2.4 Admin UI | **No web UI in v1**: HTTP API + `termit-mn` CLI over a unix socket. |
+| Q2.5 Admin credential | **Environment or file, never a default path**: `--token`, `--token-file`, `TERMIT_MN_ADMIN_TOKEN`, `TERMIT_MN_ADMIN_TOKEN_FILE`, in that order; `termit-mn init --admin-token-out FILE` writes the first token at creation. The file must be `0600` and owned by the caller. No well-known default location: a stale file there would authenticate silently. Rotation is still open — today a leaked token means rebuilding the registry. |
 | Subscription format | **Both**: base64 `vless://` list on `/sub/{token}`, sing-box JSON on `/sub/{token}/json`. |
 | Q1.2 Licence | **Public, AGPL-3.0**. |
 | Q9.4 Test strategy | The maintainer provides **three Debian machines over SSH (1 MN, 2 UV) with LAN DNS**. That is the primary acceptance environment; Docker Compose is a developer convenience. See `IMPLEMENTATION_PLAN.md` §7 for what the lab still needs. |

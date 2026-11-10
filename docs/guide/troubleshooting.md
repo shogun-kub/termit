@@ -40,7 +40,10 @@ path to it is broken". For anything else: `journalctl -u termit-uv-agent` on the
 | `termit-mn serve` exits: ACME error | DNS not pointing here yet, or port 80 blocked | check `dig +short mn.example.com`, and that the port is reachable from outside |
 | `termit-mn serve` exits: `cannot read the master key` | `/etc/termit/mn/master.key` missing or unreadable | restore it from a backup — without it the registry is useless |
 | `termit-mn status` says `cannot reach the server at …` | the service is not running, or the socket moved | `systemctl status termit-mn`, then check `admin_socket` in the config |
-| `termit-mn` commands say `an admin token is required` | `TERMIT_MN_ADMIN_TOKEN` unset | export it, or pass `--token` |
+| `termit-mn` commands say `an admin token is required` | no token anywhere | export `TERMIT_MN_ADMIN_TOKEN`, or pass `--token` or `--token-file` |
+| `termit-mn` refuses the token file: `is mode 0644` | the file is readable by the group or the world | `chmod 600` it — a token file that others can read is a leaked credential |
+| `termit-mn` refuses the token file: `owned by uid N` | the file belongs to somebody else, who could rewrite it | `chown` it to the user running the commands (`root` on a server), or create it as that user |
+| `termit-mn` refuses `--token` together with `--token-file` | two credentials at once | pass one: an explicit flag is never guessed over another |
 | `termit-mn` commands say `the admin token is not valid` | wrong token, or a database restored without its `admin` table | use the token printed by `termit-mn init` |
 
 ## Enrolling a node
