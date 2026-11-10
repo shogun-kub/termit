@@ -329,14 +329,24 @@ Rules (all thresholds configurable on MN, defaults in parentheses):
 
 ### 7.4 Scenario B — unblock
 
-1. The owner (on the same or a rebuilt box) runs `uv unblock [--domain D] [--vless-url U]` with the
-   agent key.
-2. `POST /api/v1/agent/unblock` with `{domain?, basic_vless_url?}`.
-3. MN applies the same DNS + decoy + VLESS checks as enrollment, against the supplied or stored
-   domain/URL.
-4. On success: state → `active`, `failed_cycles = 0`, peers re-add it at their next sync. On failure:
-   `blocked` remains, the response says which check failed.
-5. The command then runs a normal sync, so a successful unblock converges the node's own set
+1. On a rebuilt box (empty state, same owner): `uv init --relocate --agent-key-file <0600 file>`
+   installs everything, mints a new identity (self UUID, XHTTP path, certificate) and stores the saved
+   agent key instead of enrolling. Minting an identity is refused when the state already has one: a
+   working node is not something an init may rewrite. The server still has the old record and the old
+   endpoint, and the node is still `blocked` (a rebuilt box that merely comes back healthy is not
+   admitted by a check).
+2. The owner runs `uv unblock [--domain D] [--vless-url U]` with the agent key. Without `--vless-url`
+   the box builds its own URI from the local identity — exactly what a rebuilt box must present — so a
+   credential never appears on a command line or in the remote process list.
+3. `POST /api/v1/agent/unblock` with `{domain?, basic_vless_url?}`.
+4. MN applies the same DNS + decoy + VLESS checks as enrollment, against the supplied or stored
+   domain/URL: DNS must point at the requesting box, the decoy must answer, and the tunnel must carry
+   traffic for the claimed UUID at the claimed path.
+5. On success: state → `active`, `failed_cycles = 0`, and the stored profile (self UUID, path) and
+   certificate pin are replaced together. The node id and every pair credential are keyed by the
+   record, so peers keep their credentials and only the endpoint in their subscription changes. On
+   failure: `blocked` remains, the response says which check failed.
+6. The command then runs a normal sync, so a successful unblock converges the node's own set
    immediately instead of waiting for the daily cycle. The normal daily loop resumes either way.
 
 ### 7.5 Scenario C — the server changed

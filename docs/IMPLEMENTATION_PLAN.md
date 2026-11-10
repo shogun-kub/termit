@@ -658,12 +658,42 @@ run answered `429`. A subscription token is unguessable and clients refresh on e
 subscription counter is load control, not brute-force defence: it is now a separate limiter at 60 per
 15 minutes, with a boundary test (60 pass, 61 is refused).
 
-### M3.4 Scenario B acceptance
+### M3.4 Scenario B acceptance — **done**
 
 From a rebuilt machine (new `self_uuid`, same agent key), `uv init --relocate` followed by
-`uv unblock --vless-url <new>` (Scenario B accepts a new URL, which is what a rebuild produces) →
-MN verifies DNS/decoy/VLESS → `active`; peers converge; the subscription contains the new URL. A
-blocked node that merely comes back healthy stays blocked until this explicit request.
+`uv unblock` (the box builds the new URL from its own identity) → MN verifies DNS/decoy/VLESS →
+`active`; peers converge; the subscription contains the new endpoint. A blocked node that merely comes
+back healthy stays blocked until this explicit request.
+
+Done so far:
+
+| Piece | State |
+|---|---|
+| `uv init --relocate --agent-key-file` — fresh install, new identity, saved key, no enrollment | done |
+| `uv unblock` builds the node's own URI from the local identity when `--vless-url` is absent | done |
+| Scenario B as a lab test (`test/lab/scenario_b_test.go`) | done |
+
+The key file has to be `0600`; the check is part of the command, not a convention. Passing the URL on
+the command line would have put a credential into the shell history and the remote process list, so the
+default is to build it locally — this is also what makes a rebuilt box work without the operator
+having to copy anything but the key.
+
+Lab, repeatable: uv2 blocked, its agent key saved to a 0600 file and its config to a copy,
+`uv uninstall --purge`, restore the config, `uv init --relocate --agent-key-file` → new identity
+(different fingerprint), `enrolled: true`, server still `blocked`, still two nodes; `uv unblock` →
+`active` (DNS + decoy + VLESS against the new UUID/path), and its own sync restores the probe
+credential and the peer. uv1's subscription then carries the rebuilt path and not the old one, while
+the `peer-<id>` credential and the node id are unchanged. Whole scenario ~15 s.
+
+The test also proves the negative: after the rebuild and before the unblock, the server has not been
+touched (blocked, same node count). Cleanup removes the key file, restarts the units, unblocks and
+syncs; if the rebuild died half-way it finishes the init from the saved key and config.
+
+One lab-only obstacle was also a product wart: a rebuild restarts the agent several times, and the
+fifth start inside five minutes tripped systemd's start limit, leaving the unit failed. `uv init` now
+clears the unit's failed state before restarting the agent (a re-runnable command must not break its
+own service), and the agent's burst is ten instead of five — a real crash loop still stops after ten
+attempts with `RestartSec=30s`.
 
 ### M3.5 Scenario C acceptance
 
