@@ -889,4 +889,9 @@ git push && go run ./deploy/clean   # the habit: the artifacts are spent once th
 
 It removes the release directory, stray binaries, the local development state and everything in the
 scratch directory that is not on its keep list — the Go toolchain, the caches and the lab's notes stay,
-so the next build is as fast as this one. `--all` also drops the caches, `--toolchain` the toolchain.
+so the next build is as fast as this one.
+
+When space is the problem, `--build-cache` is the cheap half: it drops the compiled output (gigabytes
+after a release cycle) and keeps the downloaded modules, so the next build recompiles for a few seconds
+and downloads nothing. `--module-cache` drops the modules as well and costs a download; `--all` does
+both; `--toolchain` removes Go itself.

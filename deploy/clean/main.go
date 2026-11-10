@@ -50,16 +50,23 @@ var scratchKeep = map[string]bool{
 	"shotgen":        true, // a source file, not output
 }
 
-// caches are kept by default and removed by --all: they are big and merely slow to rebuild.
-var caches = []string{"gocache", "gomodcache", "gopath", "golangci", ".golangci", "lintcache"}
+// buildCaches hold compiled output: removing them costs time, because the next build recompiles, but
+// nothing is downloaded. They are the honest answer to "the disk is full and I still want to work".
+var buildCaches = []string{"gocache", "golangci", ".golangci", "lintcache"}
+
+// moduleCaches hold downloaded and extracted modules: removing them costs network, and a build on a
+// host without it simply fails. Kept apart from the build caches for that reason.
+var moduleCaches = []string{"gomodcache"}
 
 type options struct {
-	root      string
-	dryRun    bool
-	all       bool
-	toolchain bool
-	quiet     bool
-	stdout    io.Writer
+	root        string
+	dryRun      bool
+	buildCache  bool
+	moduleCache bool
+	all         bool
+	toolchain   bool
+	quiet       bool
+	stdout      io.Writer
 	// remove is os.RemoveAll in production; tests swap it when they need to see the order.
 	remove func(string) error
 	// stat is os.Lstat in production; it keeps the size report out of tests.
@@ -75,7 +82,11 @@ func main() {
 	opts := options{root: root, stdout: os.Stdout, remove: os.RemoveAll, size: treeSize}
 	flags := flag.NewFlagSet("clean", flag.ExitOnError)
 	flags.BoolVar(&opts.dryRun, "dry-run", false, "report what would be removed and change nothing")
-	flags.BoolVar(&opts.all, "all", false, "also remove the build caches (the next build starts cold)")
+	flags.BoolVar(&opts.buildCache, "build-cache", false,
+		"also remove the build caches: the next build recompiles, nothing is downloaded")
+	flags.BoolVar(&opts.moduleCache, "module-cache", false,
+		"also remove the module cache: the next build downloads the modules again")
+	flags.BoolVar(&opts.all, "all", false, "also remove every cache (build and modules)")
 	flags.BoolVar(&opts.toolchain, "toolchain", false, "also remove .spike-out/tools; Go must be installed again")
 	flags.BoolVar(&opts.quiet, "quiet", false, "print the summary only")
 	_ = flags.Parse(os.Args[1:])
@@ -88,7 +99,7 @@ func main() {
 
 // run removes the planned paths and reports what it did.
 func run(opts options) error {
-	plan, err := plan(opts.root, opts.all, opts.toolchain)
+	plan, err := plan(opts.root, opts)
 	if err != nil {
 		return err
 	}
@@ -97,7 +108,9 @@ func run(opts options) error {
 		return nil
 	}
 
+	exe, _ := os.Executable()
 	var freed int64
+	var failed []error
 	for _, path := range plan {
 		rel, err := filepath.Rel(opts.root, path)
 		if err != nil {
@@ -108,7 +121,18 @@ func run(opts options) error {
 		if opts.dryRun {
 			verb = "would remove"
 		} else if err := opts.remove(path); err != nil {
-			return fmt.Errorf("%s: %w", rel, err)
+			// `go run` compiles this command into the build cache and runs it from there, so the running
+			// image is the one thing that cannot be deleted: the cache goes, its own binary does not. That
+			// is a property of the toolchain, not a failure — say so and leave the rest of the run clean.
+			if within(exe, path) {
+				if !opts.quiet {
+					fmt.Fprintf(opts.stdout, "%-13s %-40s %s\n", "left", filepath.ToSlash(rel),
+						"in use: this is the running command; build it outside the cache to remove it")
+				}
+				continue
+			}
+			failed = append(failed, fmt.Errorf("%s: %w", rel, err))
+			continue
 		}
 		freed += size
 		if !opts.quiet {
@@ -120,14 +144,39 @@ func run(opts options) error {
 		verb = "would free"
 	}
 	fmt.Fprintf(opts.stdout, "%d path(s), %s %s\n", len(plan), humanSize(freed), verb)
+	if opts.buildCache || opts.all {
+		fmt.Fprintln(opts.stdout, "the next build recompiles; nothing is downloaded")
+	}
+	if opts.moduleCache || opts.all {
+		fmt.Fprintln(opts.stdout, "the next build downloads the modules again")
+	}
+	if opts.toolchain {
+		fmt.Fprintln(opts.stdout, "the Go toolchain is gone: install it under .spike-out/tools before the next build")
+	}
 	if opts.dryRun {
 		fmt.Fprintln(opts.stdout, "nothing was changed: --dry-run")
+	}
+	if len(failed) > 0 {
+		return errors.Join(failed...)
 	}
 	return nil
 }
 
+// within reports whether path is the running executable or one of its parents.
+func within(exe, path string) bool {
+	if exe == "" {
+		return false
+	}
+	exe, err := filepath.Abs(exe)
+	if err != nil {
+		return false
+	}
+	rel, err := filepath.Rel(path, exe)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
 // plan lists the paths to remove, deepest last: an artifact directory goes as a whole.
-func plan(root string, all, toolchain bool) ([]string, error) {
+func plan(root string, opts options) ([]string, error) {
 	info, err := os.Stat(root)
 	if err != nil {
 		return nil, err
@@ -141,10 +190,13 @@ func plan(root string, all, toolchain bool) ([]string, error) {
 		return nil, fmt.Errorf("%s is not a git checkout", root)
 	}
 
-	var out []string
+	// A set, because two patterns can match one file: `coverage.out` is both `*.out` and `coverage.*`,
+	// and removing it twice would count its size twice in the report.
+	planned := map[string]struct{}{}
+	add := func(path string) { planned[path] = struct{}{} }
 	for _, name := range artifacts {
 		if path := filepath.Join(root, name); exists(path) {
-			out = append(out, path)
+			add(path)
 		}
 	}
 	for _, pattern := range artifactPatterns {
@@ -152,7 +204,9 @@ func plan(root string, all, toolchain bool) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, matches...)
+		for _, match := range matches {
+			add(match)
+		}
 	}
 
 	scratch := filepath.Join(root, scratchDir)
@@ -167,21 +221,25 @@ func plan(root string, all, toolchain bool) ([]string, error) {
 			name := entry.Name()
 			switch {
 			case name == "tools":
-				if toolchain {
-					out = append(out, filepath.Join(scratch, name))
+				if opts.toolchain {
+					add(filepath.Join(scratch, name))
 				}
 			case scratchKeep[name]:
-				if all && isCache(name) {
-					out = append(out, filepath.Join(scratch, name))
+				if opts.removeCache(name) {
+					add(filepath.Join(scratch, name))
 				}
 			case entry.IsDir() && exists(filepath.Join(scratch, name, ".git")):
 				// A checkout inside the scratch directory is somebody's work, not output.
 			default:
-				out = append(out, filepath.Join(scratch, name))
+				add(filepath.Join(scratch, name))
 			}
 		}
 	}
 
+	out := make([]string, 0, len(planned))
+	for path := range planned {
+		out = append(out, path)
+	}
 	sort.Strings(out)
 	return out, nil
 }
@@ -209,9 +267,21 @@ func exists(path string) bool {
 	return err == nil
 }
 
-func isCache(name string) bool {
-	for _, cache := range caches {
-		if name == cache {
+// removeCache answers whether this cache was asked for, and by which flag. The two families are kept
+// apart because one costs time and the other costs network.
+func (o options) removeCache(name string) bool {
+	if contains(buildCaches, name) {
+		return o.buildCache || o.all
+	}
+	if contains(moduleCaches, name) {
+		return o.moduleCache || o.all
+	}
+	return false
+}
+
+func contains(list []string, name string) bool {
+	for _, item := range list {
+		if item == name {
 			return true
 		}
 	}

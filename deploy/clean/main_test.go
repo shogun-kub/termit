@@ -37,6 +37,9 @@ func tree(t *testing.T) string {
 	write(".dev/mn/termit.db", 512)
 	write(".spike-out/tools/go/bin/go", 8192)
 	write(".spike-out/gocache/cache", 1024)
+	write(".spike-out/gomodcache/mod", 1024)
+	write(".spike-out/golangci/cache", 512)
+	write(".spike-out/lintcache/cache", 512)
 	write(".spike-out/lab.md", 256)
 	write(".spike-out/mn-admin.token", 43)
 	write(".spike-out/ssh/lab.pub", 128)
@@ -65,7 +68,7 @@ func relative(t *testing.T, root string, paths []string) []string {
 func TestPlanRemovesArtifactsAndScratchButKeepsTheToolchain(t *testing.T) {
 	t.Parallel()
 	root := tree(t)
-	paths, err := plan(root, false, false)
+	paths, err := plan(root, options{root: root})
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
@@ -94,7 +97,7 @@ func TestPlanRemovesArtifactsAndScratchButKeepsTheToolchain(t *testing.T) {
 func TestAllAlsoDropsTheCachesButNotGo(t *testing.T) {
 	t.Parallel()
 	root := tree(t)
-	paths, err := plan(root, true, false)
+	paths, err := plan(root, options{root: root, all: true})
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
@@ -102,11 +105,14 @@ func TestAllAlsoDropsTheCachesButNotGo(t *testing.T) {
 	if !strings.Contains(got, ".spike-out/gocache") {
 		t.Errorf("--all left the build cache behind: %s", got)
 	}
+	if !strings.Contains(got, ".spike-out/gomodcache") {
+		t.Errorf("--all left the module cache behind: %s", got)
+	}
 	if strings.Contains(got, ".spike-out/tools") {
 		t.Errorf("--all removed the toolchain without --toolchain: %s", got)
 	}
 
-	paths, err = plan(root, true, true)
+	paths, err = plan(root, options{root: root, all: true, toolchain: true})
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
@@ -120,7 +126,7 @@ func TestAllAlsoDropsTheCachesButNotGo(t *testing.T) {
 func TestPlanRefusesWhatIsNotACheckout(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	if _, err := plan(dir, false, false); err == nil {
+	if _, err := plan(dir, options{root: dir}); err == nil {
 		t.Fatal("a directory without .git was accepted")
 	}
 }
@@ -178,7 +184,7 @@ func TestPlanKeepsNestedCheckouts(t *testing.T) {
 	if err := os.MkdirAll(nested, 0o750); err != nil {
 		t.Fatalf("%v", err)
 	}
-	paths, err := plan(root, false, false)
+	paths, err := plan(root, options{root: root})
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
@@ -227,5 +233,85 @@ func TestRunStaysInsideTheTree(t *testing.T) {
 		if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
 			t.Errorf("%q is not a path inside the tree", path)
 		}
+	}
+}
+
+// The partial answer to a full disk: the build cache costs time to rebuild, the module cache costs
+// network. Asking for one must not take the other, and neither is touched by default.
+func TestCachesAreChosenSeparately(t *testing.T) {
+	t.Parallel()
+	root := tree(t)
+	if err := os.MkdirAll(filepath.Join(root, ".spike-out", "gomodcache"), 0o750); err != nil {
+		t.Fatalf("%v", err)
+	}
+
+	cases := []struct {
+		name string
+		opts options
+		want []string
+		deny []string
+	}{
+		{
+			name: "by default nothing is removed",
+			opts: options{root: root},
+			deny: []string{"gocache", "gomodcache", "tools"},
+		},
+		{
+			name: "the build cache alone",
+			opts: options{root: root, buildCache: true},
+			want: []string{".spike-out/gocache", ".spike-out/golangci", ".spike-out/lintcache"},
+			deny: []string{"gomodcache", "tools"},
+		},
+		{
+			name: "the module cache alone",
+			opts: options{root: root, moduleCache: true},
+			want: []string{".spike-out/gomodcache"},
+			deny: []string{"gocache", "tools"},
+		},
+		{
+			name: "both, and the toolchain only when asked",
+			opts: options{root: root, buildCache: true, moduleCache: true},
+			want: []string{".spike-out/gocache", ".spike-out/gomodcache"},
+			deny: []string{"tools"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			paths, err := plan(root, tc.opts)
+			if err != nil {
+				t.Fatalf("%v", err)
+			}
+			got := " " + strings.Join(relative(t, root, paths), " ") + " "
+			for _, path := range tc.want {
+				if !strings.Contains(got, " "+path+" ") {
+					t.Errorf("missing %q: %s", path, got)
+				}
+			}
+			for _, path := range tc.deny {
+				if strings.Contains(got, " "+path+" ") {
+					t.Errorf("removed %q: %s", path, got)
+				}
+			}
+		})
+	}
+}
+
+// The run says what the next build costs, because a freed gigabyte is someone's five minutes.
+func TestRunExplainsWhatItCost(t *testing.T) {
+	t.Parallel()
+	root := tree(t)
+	out := &strings.Builder{}
+	opts := options{
+		root: root, buildCache: true, quiet: true, stdout: out,
+		remove: os.RemoveAll, size: treeSize,
+	}
+	if err := run(opts); err != nil {
+		t.Fatalf("%v", err)
+	}
+	if !strings.Contains(out.String(), "recompiles") {
+		t.Errorf("no word about the rebuild:\n%s", out.String())
+	}
+	if strings.Contains(out.String(), "downloads the modules") {
+		t.Errorf("the module cache was not asked for:\n%s", out.String())
 	}
 }

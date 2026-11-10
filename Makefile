@@ -6,7 +6,7 @@ GO      ?= go
 PKGS    := ./cmd/... ./internal/...
 VERSION ?= v0.1.0
 
-.PHONY: all build test race vet fmt lint dist lab clean push
+.PHONY: all build test race vet fmt lint dist lab clean clean-cache push
 
 all: build
 
@@ -42,6 +42,11 @@ lab:
 # `deploy/clean` keeps the Go toolchain, the caches and the lab notes unless asked otherwise.
 clean:
 	$(GO) run ./deploy/clean
+
+# The partial cleanup: the compiled output goes, the downloaded modules stay. The next build is a short
+# recompile rather than a download.
+clean-cache:
+	$(GO) run ./deploy/clean --build-cache
 
 # Push the current branch, then clean: the two steps go together, because after a push the artifacts are
 # spent and the next thing that happens is a fresh build.

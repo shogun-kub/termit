@@ -142,6 +142,8 @@ gofmt -l cmd internal deploy test     # must print nothing
 goimports -l cmd internal deploy      # must print nothing
 go run ./deploy/release --version v0.1.0 --out dist   # the release directory, as CI builds it
 go run ./deploy/clean                 # drop the artifacts and the scratch; --dry-run lists them first
+go run ./deploy/clean --build-cache   # and the compiled output: the next build recompiles, nothing is
+                                      # downloaded (the module cache is --module-cache, which is)
 ```
 
 Windows: PowerShell equivalents or WSL; no `make`-only workflow. A `Makefile` may exist, but every
@@ -306,7 +308,15 @@ release are spent once they are on the server, and the scratch directory grows b
 per cycle. `deploy/clean` removes the build output, the lab logs and everything in `.spike-out/` that is
 not on its keep list — the Go toolchain, the caches, `lab.md`, the admin token and the two directories
 holding input — and refuses to touch a directory that contains its own `.git`. `--dry-run` shows the list
-and the freed bytes; `--all` also drops the caches, `--toolchain` the toolchain itself.
+and the freed bytes.
+
+The caches are split by what losing them costs, because that is the only distinction that matters when
+the disk is full: `--build-cache` drops the compiled output (2.7 GB after a release cycle; the next build
+recompiles in seconds and downloads nothing), `--module-cache` drops the downloaded modules (a build away
+from a download, so it is a separate decision), `--all` both, `--toolchain` the Go toolchain itself. When
+the build cache is the target, build the command outside it first — `go build -o /tmp/clean ./deploy/clean`
+— because `go run` executes the command from inside the very directory being deleted; it notices, says so
+and leaves its own binary behind.
 
 ## 10. Definition of done
 
