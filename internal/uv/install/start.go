@@ -60,6 +60,11 @@ func (s *startStep) Run(ctx context.Context) error {
 
 	// The agent starts last. `enable --now` leaves an already-running unit on the old binary after an
 	// upgrade, so it is restarted rather than merely started: its job changes with the build.
+	//
+	// A rebuild or an upgrade can run `uv init` several times in a few minutes, and every run restarts
+	// the agent; without clearing the start limit the fifth run would leave it failed with "started too
+	// often", which a re-runnable command must never do to its own service.
+	_, _ = s.e.exec.Run(ctx, Cmd{Name: "systemctl", Args: []string{"reset-failed", service.AgentUnitName}})
 	if _, err := s.e.exec.Run(ctx, Cmd{Name: "systemctl", Args: []string{"enable", "--now", service.AgentUnitName}}); err != nil {
 		return fmt.Errorf("enable %s: %w", service.AgentUnitName, err)
 	}

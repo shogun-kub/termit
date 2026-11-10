@@ -116,8 +116,10 @@ Description=Termit node agent
 Documentation=https://github.com/shogun-kub/termit
 After=network-online.target termit-xray.service
 Wants=network-online.target
+# Every uv init restarts the agent (it is also the upgrade path), so the burst leaves room for a few
+# deliberate restarts; a real crash loop still stops after ten attempts.
 StartLimitIntervalSec=300
-StartLimitBurst=5
+StartLimitBurst=10
 
 [Service]
 Type=simple
