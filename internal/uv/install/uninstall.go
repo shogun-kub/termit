@@ -253,22 +253,6 @@ func (r *UninstallReport) removeFile(target string, dryRun bool) {
 
 // removeDir removes a directory only when it is empty: a directory that still holds something the
 // manifest does not know about is left alone and reported.
-// pruneEmptyDirs removes empty directories below target, deepest first. ACME leaves an empty
-// .well-known/acme-challenge behind, and a directory that is not empty cannot be removed — but only
-// empty directories are touched, so nothing the owner put there is at risk.
-func pruneEmptyDirs(target string) {
-	var dirs []string
-	_ = filepath.WalkDir(target, func(path string, entry os.DirEntry, err error) error {
-		if err == nil && entry.IsDir() && path != target {
-			dirs = append(dirs, path)
-		}
-		return nil
-	})
-	for i := len(dirs) - 1; i >= 0; i-- {
-		_ = os.Remove(dirs[i])
-	}
-}
-
 func (r *UninstallReport) removeDir(target string, dryRun bool) {
 	if dryRun {
 		r.Removed = append(r.Removed, target)

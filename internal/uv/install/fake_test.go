@@ -28,18 +28,6 @@ func (f *fakeExecutor) Run(ctx context.Context, cmd Cmd) (Result, error) {
 	return handler(cmd)
 }
 
-// ran reports whether a command was executed.
-func (f *fakeExecutor) ran(name string) bool {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	for _, cmd := range f.calls {
-		if cmd.Name == name {
-			return true
-		}
-	}
-	return false
-}
-
 // okResult is a successful command.
 func okResult(stdout string) (Result, error) { return Result{Stdout: stdout}, nil }
 

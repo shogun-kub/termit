@@ -154,7 +154,7 @@ func fakeSocks(t *testing.T, response string) (string, <-chan string) {
 	if err != nil {
 		t.Fatalf("Listen: %v", err)
 	}
-	t.Cleanup(func() { listener.Close() })
+	t.Cleanup(func() { _ = listener.Close() })
 	requested := make(chan string, 4)
 	go func() {
 		for {
@@ -163,7 +163,7 @@ func fakeSocks(t *testing.T, response string) (string, <-chan string) {
 				return
 			}
 			go func(conn net.Conn) {
-				defer conn.Close()
+				defer func() { _ = conn.Close() }()
 				greeting := make([]byte, 3)
 				if _, err := io.ReadFull(conn, greeting); err != nil {
 					return
@@ -227,7 +227,7 @@ func TestDialSocks5ForwardsTheName(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DialSocks5: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	if _, err := io.WriteString(conn, "GET / HTTP/1.1\r\nHost: trace.invalid\r\n\r\n"); err != nil {
 		t.Fatalf("write: %v", err)
 	}
@@ -254,13 +254,13 @@ func TestDialSocks5ReportsARefusal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Listen: %v", err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 	go func() {
 		conn, err := listener.Accept()
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		buf := make([]byte, 3)
 		_, _ = io.ReadFull(conn, buf)
 		_, _ = conn.Write([]byte{0x05, 0x00})

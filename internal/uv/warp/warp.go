@@ -287,9 +287,15 @@ func parseState(out string) string {
 	}
 }
 
+// isWordRune reports whether r can appear inside a status word. parseState lowercases first, so the
+// alphabet is lowercase letters and digits; everything else separates words.
+func isWordRune(r rune) bool {
+	return (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9')
+}
+
 func containsWord(text, word string) bool {
 	for _, field := range strings.FieldsFunc(text, func(r rune) bool {
-		return !(r >= 'a' && r <= 'z') && !(r >= '0' && r <= '9')
+		return !isWordRune(r)
 	}) {
 		if field == word {
 			return true

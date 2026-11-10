@@ -27,8 +27,6 @@ const (
 	exitFailure = 1
 	// exitUsage means the command line was wrong.
 	exitUsage = 2
-	// exitNotImplemented means the command exists in the interface but not in this build.
-	exitNotImplemented = 3
 	// exitDrift is what `uv sync --check` returns when the node differs from the server's set.
 	exitDrift = 4
 )
@@ -128,11 +126,6 @@ func (a *application) run(args []string) int {
 	}
 }
 
-func (a *application) notImplemented(command string) int {
-	fmt.Fprintf(a.stderr, "uv %s: not implemented in this build; it arrives with the proxy lifecycle work\n", command)
-	return exitNotImplemented
-}
-
 func (a *application) usage(w io.Writer) {
 	fmt.Fprint(w, `termit-uv — Termit node installer, agent and CLI
 
@@ -157,8 +150,7 @@ Commands:
   version      print build and protocol version
   help         show this help
 
-Exit status: 0 success, 1 failure, 2 usage error, 3 command not implemented,
-             4 sync --check found drift.
+Exit status: 0 success, 1 failure, 2 usage error, 4 sync --check found drift.
 
 Configuration lives in /etc/termit/uv/config.yaml and state in /var/lib/termit/uv/;
 both paths are overridable in the configuration file, and the configuration path with

@@ -1,0 +1,23 @@
+# golangci-lint configuration. Pinned by the linter version CI installs; see AGENTS.md §4.2.
+#
+# v2 format: `version: "2"` is required for golangci-lint v2, which is what a module targeting Go 1.27
+# needs — a prebuilt v1 binary is compiled with an older Go and refuses to analyse the module at all.
+version: "2"
+
+linters:
+  settings:
+    errcheck:
+      # Both binaries are CLIs: nearly all of their output is fmt.Fprint* to stdout or stderr, and a
+      # write that fails because the reader closed the pipe is not actionable — the exit code already
+      # carries the outcome. Nothing in this repository writes a file with fmt, so the exclusion costs
+      # no real error check; files are written through the atomic helpers, where errors are handled.
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+
+issues:
+  # Report everything. The defaults cap repeated findings at three per linter, which turns a first
+  # lint run into a sample instead of a list.
+  max-issues-per-linter: 0
+  max-same-issues: 0

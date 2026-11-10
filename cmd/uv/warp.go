@@ -142,9 +142,7 @@ removes the route, and direct traffic is never affected.`)
 	}
 	if *selected != "" {
 		cfg.Warp.Selected = nil
-		for _, domain := range splitList(*selected) {
-			cfg.Warp.Selected = append(cfg.Warp.Selected, domain)
-		}
+		cfg.Warp.Selected = append(cfg.Warp.Selected, splitList(*selected)...)
 	}
 	cfg.Warp.Mode = mode
 	if err := cfg.Validate(); err != nil {

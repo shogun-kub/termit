@@ -157,13 +157,6 @@ func (b *breaker) record(ok bool) {
 	}
 }
 
-// state reports the current failure count and whether the breaker is open.
-func (b *breaker) state() (int, bool) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.failures, b.now().Before(b.openUntil)
-}
-
 // Worker runs xray-core and probes targets through it.
 type Worker struct {
 	cfg     Config

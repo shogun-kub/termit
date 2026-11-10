@@ -130,8 +130,8 @@ install it, get a valid certificate, see a decoy site, and connect with a manual
 ### M1.1 CLI, config, state — **done**
 
 - `uv init`, `doctor`, `status`, `uninstall` and `version` are implemented. The rest of the command
-  set is declared and exits `3` ("not implemented in this build"), so a caller script can tell "not
-  written yet" from "failed".
+  set was declared and exited `3` ("not implemented in this build") until it landed; every documented
+  command is implemented now, so the reserved status is gone and the usage text no longer lists it.
 - Configuration: strict YAML (`KnownFields`), `schema_version: 1`, defaults for every field, and one
   message listing *all* validation problems. It holds only what the owner decides — domain, ACME
   account, pinned core, decoy template, paths — never a generated value.
