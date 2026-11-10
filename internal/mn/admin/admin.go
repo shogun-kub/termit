@@ -271,6 +271,8 @@ type NodeView struct {
 	CreatedAt       time.Time  `json:"created_at"`
 	ApprovedAt      *time.Time `json:"approved_at,omitempty"`
 	LastSeenAt      *time.Time `json:"last_seen_at,omitempty"`
+	LastCheckAt     *time.Time `json:"last_check_at,omitempty"`
+	NextCheckAt     *time.Time `json:"next_check_at,omitempty"`
 	LastRequestIP   string     `json:"last_request_ip,omitempty"`
 	AgentVersion    string     `json:"agent_version,omitempty"`
 	FailedCycles    int        `json:"failed_cycles"`
@@ -283,7 +285,8 @@ func view(uv store.UV) NodeView {
 	return NodeView{
 		ID: uv.ID, Label: uv.Label, Domain: uv.Domain, State: string(uv.State),
 		StateReason: uv.StateReason, CreatedAt: uv.CreatedAt, ApprovedAt: uv.ApprovedAt,
-		LastSeenAt: uv.LastSeenAt, LastRequestIP: uv.LastRequestIP, AgentVersion: uv.AgentVersion,
+		LastSeenAt: uv.LastSeenAt, LastCheckAt: uv.LastCheckAt, NextCheckAt: uv.NextCheckAt,
+		LastRequestIP: uv.LastRequestIP, AgentVersion: uv.AgentVersion,
 		FailedCycles: uv.FailedCycles, CredentialEpoch: uv.CredentialEpoch,
 		HasAgentKey: uv.AgentKeyHash != "", HasSubToken: uv.SubTokenHash != "",
 	}

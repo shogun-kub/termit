@@ -399,7 +399,6 @@ against an API it does not understand. Errors are RFC 9457-style problem objects
 | `POST` | `/api/v1/agent/sync` | agent key | report self-check, fetch desired state + subscription URL |
 | `POST` | `/api/v1/agent/unblock` | agent key | Scenario B |
 | `POST` | `/api/v1/agent/relocate` | agent key | Scenario C |
-| `GET` | `/api/v1/agent/state` | agent key | read-only state, for `uv status` |
 | `GET` | `/sub/{token}` | token | base64 `vless://` list |
 | `GET` | `/sub/{token}/json` | token | sing-box profile (same peers, richer routing) |
 | `GET` | `/healthz`, `/metrics` | none / loopback | liveness, Prometheus |
@@ -675,12 +674,12 @@ pair credentials cannot be re-derived.
 
 ```
 mn invite create --note "berlin box" --uses 1
-mn uv list                      # state, last check, latency, agent version
+mn uv list                      # state, last seen, agent version
 mn uv approve uv_…   |  mn uv block uv_…  |  mn uv unblock uv_…  |  mn uv rm uv_…
 mn check now uv_…    |  mn check now --all
-mn policy set block_after_failed_cycles=2 probe_retries=3
+mn policy show       |  mn policy set check_interval 12h   # or probe_retries 3
 mn sub show uv_…     |  mn sub rotate uv_…
-mn status            # scheduler, prober health, queue depth, DB size
+mn status            # state counts, per-node last/next check, effective interval
 ```
 
 ## 14. Data model (MN, SQLite)

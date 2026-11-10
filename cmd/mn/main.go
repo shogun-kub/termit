@@ -48,9 +48,10 @@ func run(args []string, stdout, stderr *os.File) int {
 	case "help", "-h", "--help":
 		usage(stdout)
 		return exitOK
-	case "check", "status":
-		fmt.Fprintf(stderr, "mn %s: not in this build yet\n", args[0])
-		return exitFailure
+	case "check":
+		return runServerCheck(args[1:], stdout, stderr)
+	case "status":
+		return runStatus(args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "mn: unknown command %q\n\n", args[0])
 		usage(stderr)
@@ -73,10 +74,10 @@ Server:
 Admin:
   invite       create, list and revoke invite codes
   uv           list, show, approve, block, unblock and remove nodes
-  check        run health checks now
+  check        run health checks now (one node, or the whole mesh with --all)
   policy       read and change scheduler thresholds
   sub          show and rotate subscription tokens
-  status       show server, scheduler and prober health
+  status       show server, nodes and the check schedule
 
   version      print build and protocol version
   help         show this help
