@@ -50,8 +50,19 @@ type Options struct {
 type Handler struct {
 	opts    Options
 	limiter *limiter
+	subs    *limiter
 	mux     *http.ServeMux
 }
+
+// Subscription limits are looser than enrollment's and counted separately. An enrollment limit
+// defends a guessable invite code; a subscription token is a 256-bit secret that cannot be guessed,
+// so its counter is load control. Ten requests per quarter hour is what an app doing one refresh at
+// launch would hit in a week of restarts, and a client that reconnects in a loop would look like an
+// attack to the owner.
+const (
+	subscriptionAttempts = 60
+	subscriptionWindow   = 15 * time.Minute
+)
 
 // New builds the router.
 func New(opts Options) (*Handler, error) {
@@ -73,7 +84,8 @@ func New(opts Options) (*Handler, error) {
 	if opts.Window == 0 {
 		opts.Window = 15 * time.Minute
 	}
-	h := &Handler{opts: opts, limiter: newLimiter(opts.Attempts, opts.Window, opts.Now)}
+	h := &Handler{opts: opts, limiter: newLimiter(opts.Attempts, opts.Window, opts.Now),
+		subs: newLimiter(subscriptionAttempts, subscriptionWindow, opts.Now)}
 	h.mux = http.NewServeMux()
 	h.mux.HandleFunc("GET /healthz", h.health)
 	h.mux.HandleFunc("GET /metrics", h.metrics)

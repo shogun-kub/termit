@@ -652,6 +652,12 @@ core can hit a single failed probe (`check_failed: EOF`) even though the previou
 a fresh listener answers before its handlers settle. The test now requires the node to pass two checks
 in a row before unblocking; the product path is unchanged and the retry is not automatic.
 
+The subscription check also found a real defect the manual transcripts had missed: the endpoint shared
+the enrollment limiter (10 requests / 15 minutes) keyed per token, so the fourth fetch in one scenario
+run answered `429`. A subscription token is unguessable and clients refresh on every launch, so the
+subscription counter is load control, not brute-force defence: it is now a separate limiter at 60 per
+15 minutes, with a boundary test (60 pass, 61 is refused).
+
 ### M3.4 Scenario B acceptance
 
 From a rebuilt machine (new `self_uuid`, same agent key), `uv init --relocate` followed by

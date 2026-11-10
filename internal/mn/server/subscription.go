@@ -20,7 +20,7 @@ func (h *Handler) subscription(w http.ResponseWriter, r *http.Request) {
 	token := strings.TrimSpace(r.PathValue("token"))
 	jsonFormat := strings.HasSuffix(r.URL.Path, "/json")
 
-	if token == "" || !h.limiter.allow("sub:"+token) {
+	if token == "" || !h.subs.allow(token) {
 		writeProblem(w, http.StatusTooManyRequests, proto.NewProblem(http.StatusTooManyRequests,
 			proto.CodeRateLimited, "Too Many Requests", "too many subscription requests; wait and retry"))
 		return

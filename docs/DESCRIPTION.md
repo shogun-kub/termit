@@ -683,7 +683,9 @@ audit 1 year, `uv_event` forever (small).
 
 - TLS 1.3 only between UV and MN; certificates from Let's Encrypt via built-in ACME on both sides.
 - Agent keys hashed with Argon2id; compared in constant time; per-key and per-IP rate limits.
-- Subscription tokens separate, revocable, rotatable, and never accepted on agent endpoints.
+- Subscription tokens separate, revocable, rotatable, and never accepted on agent endpoints. Their
+  rate limit (60 requests per 15 minutes, per token) is load control, not brute-force defence: the
+  token is unguessable, and a client that refreshes at launch must not see `429`.
 - Admin surface on a unix socket with file permissions; every mutation audited.
 - No secret in URLs except the subscription token; no secret in logs; no secret in metrics.
 - The decoy site is deterministic per install (seeded), self-contained (no external fonts/CDNs), and
