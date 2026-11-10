@@ -186,11 +186,13 @@ func TestPreflightFailsOnPortConflict(t *testing.T) {
 	}
 }
 
-func TestPreflightTunRequiredForWarp(t *testing.T) {
+// WARP is on by default, so a container without TUN is the normal case, not a broken host: the
+// preflight warns, the install refuses WARP with a reason, and the node runs direct.
+func TestPreflightWarnsWhenWarpCannotRun(t *testing.T) {
 	t.Parallel()
 	cfg := config.Default()
 	cfg.Domain = "vpn.example.com"
-	cfg.Warp.Enabled = true
+	cfg.Warp.Mode = config.WarpAll
 	opts := healthyChecks(t, &fakeExecutor{handler: func(cmd Cmd) (Result, error) { return okResult("yes") }}, cfg)
 	opts.Stat = func(name string) (os.FileInfo, error) {
 		if name == "/run/systemd/system" {
@@ -200,11 +202,11 @@ func TestPreflightTunRequiredForWarp(t *testing.T) {
 	}
 
 	report := RunPreflight(context.Background(), opts)
-	if report.OK() {
-		t.Fatal("warp.enabled without /dev/net/tun was accepted")
+	if got := statuses(report)["tun"]; got != StatusWarn {
+		t.Errorf("tun check = %q, want warn", got)
 	}
-	if got := statuses(report)["tun"]; got != StatusFail {
-		t.Errorf("tun check = %q, want fail", got)
+	if !report.OK() {
+		t.Error("a host without TUN is a working node and must pass the preflight")
 	}
 }
 

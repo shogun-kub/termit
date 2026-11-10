@@ -22,8 +22,7 @@ exist to order the work and expose the critical path, not to promise dates.
 | Target | Debian 13, amd64 + arm64 | packaging, checks |
 | Acceptance | three Debian machines over SSH (1 MN, 2 UV) + LAN DNS | lab suite is the release gate |
 
-Still open (see §9): the exact XHTTP mode/tuning, whether WARP is enabled by default on fresh
-installs, and the lab coordinates. Resolved since the first draft: module path and repository URL,
+Still open (see §9): the exact XHTTP mode/tuning and the lab coordinates. Resolved since the first draft: module path and repository URL,
 and the decoy inspiration source.
 
 ## 1. Critical path and ordering
@@ -150,8 +149,9 @@ install it, get a valid certificate, see a decoy site, and connect with a manual
   the next run resumes at the first unsatisfied step. `--only`/`--skip`/`--dry-run` exist for
   debugging and are covered by tests.
 - Preflight: root, Debian ≥ 13 (12 warns), systemd, architecture, clock, ownership of :80/:443, DNS,
-  ACME directory reachability, `/dev/net/tun` when WARP is enabled, free space (measured on the
-  nearest existing ancestor, so it works before the first install), memory, apt.
+  ACME directory reachability, `/dev/net/tun` when WARP is wanted (it is by default; a missing device
+  is a warning with the reason, not a failed install), free space (measured on the nearest existing
+  ancestor, so it works before the first install), memory, apt.
 - Core: a pinned release table with a per-architecture SHA-256 that is **verified before anything is
   extracted**; the archive is cached by digest, a mismatch is refused rather than installed, and the
   installed binary is checked by running `xray version` and hashing it into the state.
@@ -782,16 +782,37 @@ not perform.
 
 ## M4 — Hardening and release (6–8 d)
 
-### M4.1 WARP
+### M4.1 WARP — done
 
-- `warp-cli` proxy-mode install and supervision; health check via `cdn-cgi/trace`; fail-open and
-  fail-closed modes; `uv warp status|mode`.
-- Refusal path with a clear reason when unsupported (no `/dev/net/tun`, unsupported arch, missing
-  virtualization).
-- Optional MN probe that reports `warp=on`.
-- The lab cannot exercise WARP (LXC, no `/dev/net/tun`); accepted by the maintainer on 2026-11-09.
-  The implementation follows the reference's `warp-cli` proxy mode, and real verification moves to the
-  release checklist on a host with TUN.
+Maintainer decision on 2026-11-10: `warp-cli` in proxy mode as designed (not userspace WireGuard),
+and **WARP on by default**, opt-out. The reason is in the design: a client-side application that asks
+"what address am I coming from?" must not be told the node's own.
+
+Delivered:
+
+| Piece | Where | Verified by |
+|---|---|---|
+| `warp.mode: off\|all\|selected` (default `all`), `warp.fail_open` (default `true`), `warp.selected`; the old `warp.enabled` migrates and is never written again | `internal/uv/config` | unit tests (default, migration both ways, selected normalisation, invalid modes) |
+| WARP outbound (SOCKS5 to `127.0.0.1:40000`), catch-all/domain rule, loopback stays direct, `observatory` + `balancer` with `fallbackTag: direct` for fail-open, no balancer for fail-closed | `internal/uv/xray` | unit tests for all four shapes; `xray -test` on the lab accepts the generated file |
+| `warp-cli` package install from Cloudflare's signed apt repo, registration, proxy mode, connect, wait; `status`/`trace` through a hand-written SOCKS5 client | `internal/uv/warp` | unit tests with a fake runner and a fake SOCKS5 server (name forwarded unresolved, refusal reported) |
+| Install step between `packages` and `xray`; refuses an unsupported host with a reason and still reports a converged node | `internal/uv/install` | unit tests; lab: `uv init`-time refusal path |
+| `uv warp status\|mode`, `uv init --warp/--no-warp/--warp-selected`, `uv status` line, `uv doctor` check, uninstall disconnects the tunnel | `cmd/uv`, `internal/uv/install` | unit tests; lab |
+| Self-check reports off / unavailable-with-reason / healthy / failing (fail-open says "traffic exits directly") | `internal/uv/agent` | unit tests for all five outcomes |
+
+The lab cannot run WARP itself (unprivileged LXC, no `/dev/net/tun`), so `test/lab/warp_test.go`
+proves what surrounds the tunnel, end to end: the migration to a mode, the refusal with its reason,
+the generated route accepted by the node's own core, **fail-open with a dead sidecar** (a real Xray
+client fetches `https://1.1.1.1/cdn-cgi/trace` through the node and gets an answer with `warp=off`
+while nothing listens on port 40000), the server still seeing the node as healthy, status and doctor
+telling the truth, and the switch back removing the route without interrupting traffic. Registration
+and the connected tunnel remain on the release checklist for a host with TUN.
+
+Two defects the lab found and the fix:
+
+- `uv warp mode` restarted the core twice (the `xray-config` step already restarts it after `xray
+  -test`), which tripped systemd's start limit; the command now leaves the restart to the step.
+- The running agent holds the configuration it read at start, so its next sync would have regenerated
+  the old route; the command now restarts `termit-uv-agent` after the change.
 
 ### M4.2 Operations surface
 
@@ -915,6 +936,7 @@ path cooperate.
    maintainer-provided pages, captured locally under `captures/decoy-samples/` (gitignored, no URLs
    recorded). See `DESCRIPTION.md` §5.3 and `IMPLEMENTATION_PLAN.md` M1.3.
 3. Lab coordinates and the DNS suffix, plus the answers to §7.
-4. Whether `uv` should enable WARP by default on fresh installs (`off` is the current default).
+4. ~~Whether `uv` should enable WARP by default on fresh installs~~ **Resolved** on 2026-11-10: on by
+   default, opt-out with `--no-warp` or `warp.mode: off`. See M4.1.
 5. Whether the MN domain and the UV domains are expected to live in the same DNS zone (affects the
    DNS-consistency check and documentation).

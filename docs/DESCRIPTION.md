@@ -102,7 +102,7 @@ Two binaries, one repository:
 | `:443/tcp` | `nginx` | TLS termination, the decoy site, and the proxy hop for the secret path |
 | `127.0.0.1:8443/tcp` | `xray` | VLESS+XHTTP, plaintext, loopback only |
 | `127.0.0.1:10085/tcp` | `xray` | management API (inbounds, users), loopback only |
-| `127.0.0.1:40000/tcp` | `warp-cli` (optional) | WARP SOCKS5 proxy |
+| `127.0.0.1:40000/tcp` | `warp-cli` (WARP on by default) | WARP SOCKS5 proxy |
 
 The front is nginx because the routing decision is a **prefix** match. Xray's `fallbacks` compare the
 request path exactly, while an XHTTP client appends a per-request identifier to its configured path
@@ -430,7 +430,7 @@ Sync response shape (abridged):
   ],
   "changes": {"added": ["uv_…"], "removed": []},
   "subscription": {"url": "https://mn.example.com/sub/<token>", "etag": "…"},
-  "policy": {"probe_retries": 3, "warp": "optional"}
+  "policy": {"probe_retries": 3, "warp": "on"}
 }
 ```
 
@@ -454,9 +454,12 @@ when the node set changes and validated with `xray -test` before start. The prob
 narrow (`Probe(ctx, vlessURL) (Latency, error)`) so a native Go implementation can replace it later
 without touching the state machine.
 
-Optional third check when WARP is enabled on a node: fetch
-`https://www.cloudflare.com/cdn-cgi/trace` through the tunnel and assert `warp=on`, so the owner
-learns that "WARP enabled" actually means "traffic exits through WARP".
+The node checks its own WARP: the local self-check fetches
+`https://www.cloudflare.com/cdn-cgi/trace` through the WARP sidecar, and `uv status` / `uv doctor`
+report the address Cloudflare saw or say that traffic left directly. The sync request carries the same
+ok/class summary as every other self-check item; the detail stays on the node. The design listed an
+MN-side WARP check as optional and it is not in this build: the node-side check answers the question
+with the node's own eyes, and MN already sees the result.
 
 ## 10. Traffic rules on the UV
 
@@ -470,21 +473,34 @@ Two independent rule groups, each toggleable in `config.yaml`:
 - **Shape the user experience**: block `geosite:category-ads-all`, `geosite:win-spy`, and an
   optional extra domain list from a local file.
 
-Egress:
+Egress, from `config.yaml`:
 
-- `warp = off` — everything not blocked exits `direct` from the VPS address.
-- `warp = all` — everything not blocked exits via WARP; DNS follows the same path (no leaks).
-- `warp = selected` — only domains in the local list use WARP; the rest is direct.
-- **WARP failure policy** (`fail_open` by default): when the WARP SOCKS proxy is unhealthy, the agent
-  removes the WARP route and traffic falls back to `direct`, flags it in `uv status`, retries in the
-  background, and reports it to MN. `fail_closed` is available for owners who would rather lose
-  connectivity than expose their real exit IP.
+- `warp.mode: off` — everything not blocked exits `direct` from the node's address.
+- `warp.mode: all` — **the default** — proxied traffic exits via WARP; a domain is forwarded to the
+  sidecar unresolved, so the lookup happens inside the tunnel and does not leak the node's resolver.
+- `warp.mode: selected` — only the domains in `warp.selected` (each also covering its subdomains)
+  use WARP; everything else is direct.
+- **Failure policy** — `warp.fail_open`, default `true`. Fail-open is implemented *inside the core*,
+  not by rewriting the configuration: an Xray `observatory` fetches the trace through the WARP
+  outbound every 30 s, and a `balancer` over that outbound has `fallbackTag: direct`. While WARP
+  answers, traffic uses it; when it stops answering, new connections go direct without a config
+  reload or a restart, and `uv status` / `uv doctor` say the exit is direct. With
+  `warp.fail_open: false` there is no balancer and the route names the WARP outbound directly, so
+  traffic fails rather than exposing the node's address.
+
+WARP is on by default. The reason is not privacy theatre: an application on a client's device often
+asks the internet what address it is coming from, and a node whose address is the answer is a node
+that can be probed and blocked. `uv init --no-warp` (or `warp.mode: off`) opts out, and an existing
+configuration written before modes existed keeps the choice its old `warp.enabled` switch recorded.
 
 WARP is implemented as `warp-cli` in **proxy mode** (SOCKS5 on loopback). Proxy mode never touches
 host routing, which is exactly the "direct traffic intact" guarantee; full-tunnel WARP is rejected by
-design. If `warp-cli` cannot work on the box (no `/dev/net/tun`, unsupported arch, missing
-virtualization features), the agent refuses to enable WARP with an explicit reason instead of
-silently degrading.
+design. The install step installs `cloudflare-warp` from Cloudflare's signed apt repository, registers
+the device, switches the client to proxy mode and connects; `uv warp status` reports the mode, what
+`warp-cli` says and what a real fetch through the sidecar reports, and `uv warp mode` changes it. If
+`warp-cli` cannot work on the box (no `/dev/net/tun`, unsupported arch), the step and the command
+refuse with that exact reason, the mode stays recorded, and the node keeps working with direct egress;
+nothing is silently degraded. `uv uninstall` disconnects the tunnel and leaves the package installed.
 
 ## 11. Safety invariants
 
@@ -587,8 +603,10 @@ curl -fsSL https://get.termit.example/uv.sh | sudo bash -s -- \
 ```
 
 The bootstrap verifies a release checksum (and signature when configured), installs `termit-uv`,
-pinned `xray-core`, and optionally `cloudflare-warp`, then runs `uv init`. Non-interactive by design;
-`uv doctor` for diagnosis, `uv uninstall [--purge]` for removal.
+pinned `xray-core`, and `cloudflare-warp` when WARP is wanted — the default — then runs `uv init`.
+Non-interactive by design; `uv doctor` for diagnosis, `uv uninstall [--purge]` for removal. A host
+that cannot run WARP is not a failed install: `uv init` records the refusal, keeps the mode the owner
+asked for, and leaves traffic on the direct path.
 
 The Xray release is pinned in the binary with a per-architecture SHA-256 taken from the release's
 `.dgst` file. The archive is verified before anything is extracted, cached by digest, and a mismatch

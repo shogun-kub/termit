@@ -3,13 +3,16 @@
 A cooperative proxy mesh for people who own a small VPS.
 
 Each participant runs **UV** on their own Debian box: it becomes a disguised VLESS over XHTTP+TLS
-endpoint with a generated decoy website, opinionated traffic rules, and (planned) optional Cloudflare
-WARP egress. A small self-hosted **MN** verifies that every node actually works — through the tunnel,
+endpoint with a generated decoy website, opinionated traffic rules, and Cloudflare WARP egress (on by
+default, one flag to turn it off). A small self-hosted **MN** verifies that every node actually works —
+through the tunnel,
 with a valid certificate, from its own network — keeps the membership list, hands out per-pair
 credentials, and serves each owner one subscription containing every healthy node in the mesh.
 
-Status: milestones M1–M3 are implemented and verified on a three-machine lab; a tagged release is
-still ahead. WARP is not in this build. See [What is not here yet](#what-is-not-here-yet).
+Status: milestones M1–M3 are implemented and verified on a three-machine lab, and M4.1 (WARP) is in:
+the mode, the routing, the fail-open policy and the refusal path are tested, while the tunnel itself
+needs a host with `/dev/net/tun`, which the lab does not have. A tagged release is still ahead. See
+[What is not here yet](#what-is-not-here-yet).
 
 ## Documents
 
@@ -37,6 +40,10 @@ every code path, and Termit never touches the routing table or the firewall.
 - **`termit-uv-agent.service`** runs the node's daily cycle: local self-check, `uv sync` against the
   management server, and reconciliation of the core's client set. `termit-uv-renew.timer` renews the
   certificate; the agent reports the new leaf on its next sync so the server's probe pin follows it.
+- **`warp-cli`** runs in proxy mode and listens on `127.0.0.1:40000`. The core sends proxied traffic
+  there (`warp.mode: all` by default); the host's own traffic never enters it. A node without
+  `/dev/net/tun` says so and exits directly, and a WARP that dies mid-life is bypassed within half a
+  minute by the core's own balancer.
 - Config lives in `/etc/termit/uv/config.yaml`, state in `/var/lib/termit/uv/`, public content in
   `/var/www/termit/`, binaries in `/usr/lib/termit/bin/`.
 
@@ -78,9 +85,10 @@ and needs the environment from [`AGENTS.md`](AGENTS.md) §4.1.
 
 ## What is not here yet
 
-- **WARP** (`uv warp`): the config key exists and the self-check reports it as unknown when enabled,
-  but the `warp-cli` lifecycle is not implemented. The lab has no `/dev/net/tun`, so its acceptance
-  runs on a host that does.
+- **WARP against a real tunnel**: the lab has no `/dev/net/tun`, so what the suite proves is the
+  refusal, the generated route, fail-open (traffic keeps flowing while the sidecar port is dead) and
+  the switch back. Installing `cloudflare-warp`, registering and connecting is implemented but its
+  acceptance needs a KVM VM or a privileged container.
 - **A bootstrap installer** (`deploy/install/uv.sh`) with checksum verification and an upgrade path
   that preserves the node's identity.
 - **Operator documentation**: `docs/OPERATIONS.md`, `docs/PROTOCOL.md`, `docs/THREAT_MODEL.md`.

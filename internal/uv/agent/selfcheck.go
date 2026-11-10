@@ -14,6 +14,7 @@ import (
 	"github.com/shogun-kub/termit/internal/uv/config"
 	"github.com/shogun-kub/termit/internal/uv/service"
 	"github.com/shogun-kub/termit/internal/uv/state"
+	"github.com/shogun-kub/termit/internal/uv/warp"
 	"github.com/shogun-kub/termit/internal/uv/xray"
 )
 
@@ -34,6 +35,11 @@ type SelfCheckOptions struct {
 	Active func(ctx context.Context, unit string) (bool, error)
 	// Dial checks that something accepts a TCP connection on addr. Nil makes port checks unknown.
 	Dial func(ctx context.Context, addr string) error
+	// WarpHost overrides the platform facts WARP is judged on; tests set it, production leaves it nil
+	// so the real host is checked.
+	WarpHost *warp.Host
+	// Warp probes the sidecar end to end. Nil makes the check unknown when WARP is on and supported.
+	Warp func(ctx context.Context) (warp.Status, error)
 }
 
 // RunSelfCheck answers "is this node broken on its own terms": the core is running and listening,
@@ -54,7 +60,7 @@ func RunSelfCheck(ctx context.Context, opts SelfCheckOptions) state.SelfCheckRep
 	// down is still unreachable, and that difference is exactly what the server cannot see.
 	report.Items = append(report.Items, checkPort(ctx, opts.Dial, "web", "127.0.0.1:443"))
 	report.Items = append(report.Items, checkCertificate(opts.Config, now()))
-	report.Items = append(report.Items, checkWarp(opts.Config))
+	report.Items = append(report.Items, checkWarp(ctx, opts.Config, opts.WarpHost, opts.Warp))
 
 	report.OK = true
 	for _, item := range report.Items {
@@ -143,16 +149,51 @@ func checkCertificate(cfg *config.Config, now time.Time) state.SelfCheckItem {
 	return item
 }
 
-// checkWarp reports the egress mode the configuration asks for. WARP itself arrives in M4.1; until
-// then a configuration that enables it is reported as unknown instead of being silently ignored.
-func checkWarp(cfg *config.Config) state.SelfCheckItem {
+// checkWarp reports the egress the configuration asks for.
+//
+// Three outcomes matter and they are not the same thing. WARP is off: fine, direct egress is the
+// owner's choice. WARP is on but this host cannot run it: also fine for the node — it exits directly
+// and the detail says why, so nobody mistakes a container without TUN for a broken tunnel. WARP is
+// on and should work but does not: that is a failure, because the address the owner wanted to hide
+// is now exposed through the fail-open route.
+func checkWarp(ctx context.Context, cfg *config.Config, host *warp.Host, probe func(context.Context) (warp.Status, error)) state.SelfCheckItem {
 	item := state.SelfCheckItem{Name: "warp"}
-	if cfg == nil || !cfg.Warp.Enabled {
+	if cfg == nil {
+		item.Unknown = true
+		item.Detail = "no configuration"
+		return item
+	}
+	if !cfg.Warp.UsesWarp() {
 		item.OK = true
 		item.Detail = "off"
 		return item
 	}
-	item.Unknown = true
-	item.Detail = "warp is configured but this build does not manage it"
+	judge := warp.Host{}
+	if host != nil {
+		judge = *host
+	}
+	if err := judge.Check(); err != nil {
+		item.OK = true
+		item.Detail = err.Error() + "; traffic exits directly"
+		return item
+	}
+	if probe == nil {
+		item.Unknown = true
+		item.Detail = "WARP needs a probe and this build has none here"
+		return item
+	}
+	status, err := probe(ctx)
+	switch {
+	case err != nil:
+		item.Unknown = true
+		item.Detail = "could not ask the sidecar: " + err.Error()
+	case status.Healthy():
+		item.OK = true
+		item.Detail = status.Detail
+	case !cfg.Warp.FailOpenEnabled():
+		item.Detail = "WARP is down and fail_open is false, so proxied traffic is failing: " + status.Detail
+	default:
+		item.Detail = "WARP is down, so proxied traffic exits directly: " + status.Detail
+	}
 	return item
 }

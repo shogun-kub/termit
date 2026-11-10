@@ -262,3 +262,77 @@ func TestMarshalIsDeterministic(t *testing.T) {
 		t.Errorf("Marshal lost its header:\n%s", first)
 	}
 }
+
+// WARP is on by default: an application on a client device that asks what address it is coming from
+// must not see the node's address. The old enabled switch survives as a migration.
+func TestWarpDefaultsToAll(t *testing.T) {
+	t.Parallel()
+	cfg, err := config.Parse(strings.NewReader(minimal))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if cfg.Warp.Mode != config.WarpAll {
+		t.Errorf("warp.mode = %q, want %q", cfg.Warp.Mode, config.WarpAll)
+	}
+	if !cfg.Warp.FailOpenEnabled() {
+		t.Error("warp fails closed by default")
+	}
+	if !cfg.Warp.UsesWarp() {
+		t.Error("the default configuration does not use WARP")
+	}
+}
+
+func TestWarpMigratesTheOldEnabledSwitch(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{"the old off switch", "warp:\n  enabled: false\n", config.WarpOff},
+		{"the old on switch", "warp:\n  enabled: true\n", config.WarpAll},
+		{"no switch at all", "", config.WarpAll},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cfg, err := config.Parse(strings.NewReader(minimal + tc.body))
+			if err != nil {
+				t.Fatalf("Parse: %v", err)
+			}
+			if cfg.Warp.Mode != tc.want {
+				t.Errorf("mode = %q, want %q", cfg.Warp.Mode, tc.want)
+			}
+			// Saving must not write the key it was migrated from.
+			out, err := cfg.Marshal()
+			if err != nil {
+				t.Fatalf("Marshal: %v", err)
+			}
+			if strings.Contains(string(out), "\n  enabled:") {
+				t.Errorf("the old switch survived a save:\n%s", out)
+			}
+		})
+	}
+}
+
+func TestWarpSelectedMode(t *testing.T) {
+	t.Parallel()
+	cfg, err := config.Parse(strings.NewReader(minimal +
+		"warp:\n  mode: selected\n  selected:\n    - Example.COM.\n    - b.example.com\n    - example.com\n  fail_open: false\n"))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if got := strings.Join(cfg.Warp.Selected, ","); got != "b.example.com,example.com" {
+		t.Errorf("selected = %q, want the list normalised and sorted", got)
+	}
+	if cfg.Warp.FailOpenEnabled() {
+		t.Error("fail_open: false was ignored")
+	}
+
+	if _, err := config.Parse(strings.NewReader(minimal + "warp:\n  mode: selected\n")); err == nil {
+		t.Error("selected mode without a list was accepted")
+	}
+	if _, err := config.Parse(strings.NewReader(minimal + "warp:\n  mode: somewhere\n")); err == nil {
+		t.Error("an unknown mode was accepted")
+	}
+}

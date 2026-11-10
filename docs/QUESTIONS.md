@@ -166,6 +166,11 @@ switchable at install and later via `uv warp mode …`; implemented as `warp-cli
 (SOCKS5 on loopback), so host traffic, SSH, the decoy site, and inbound 443 are untouched.
 **Why** Proxy mode is the only WARP integration that provably keeps direct traffic intact; full-tunnel
 WARP would hijack the host's routing and break SSH/web.
+**Decided 2026-11-10** WARP is **on by default** (`all`): an application on a client's device that
+asks "what address am I coming from?" must not be told the node's. Opt-out is `--no-warp` or
+`warp.mode: off`. Fail-open is the default and is implemented in the core (observatory + balancer with
+`fallbackTag: direct`), so a dead sidecar does not need a config rewrite or a restart; `fail_open:
+false` removes the balancer and lets traffic fail instead of exposing the address. See M4.1.
 
 **Q5.4** WARP transport fallback: if `warp-cli` cannot run (old kernel, no `/dev/net/tun`, arm64
 packaging gaps), should UV fall back to `wgcf` + WireGuard with policy routing, or simply refuse to

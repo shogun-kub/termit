@@ -12,6 +12,7 @@ import (
 
 	"github.com/shogun-kub/termit/internal/uv/config"
 	"github.com/shogun-kub/termit/internal/uv/state"
+	"github.com/shogun-kub/termit/internal/uv/warp"
 )
 
 // CheckResult is a step's answer to "is my effect already present?".
@@ -48,6 +49,9 @@ type Options struct {
 	ConfigPath string
 	// Executable overrides the binary path written into the units; empty means os.Executable().
 	Executable string
+	// WarpHost overrides the platform facts the WARP step judges. Tests set it; production leaves it
+	// nil so the real host decides.
+	WarpHost *warp.Host
 }
 
 // Installer runs the install steps in order and records them in the journal.
@@ -124,6 +128,9 @@ func New(opts Options) (*Installer, error) {
 	if env.configPath == "" {
 		env.configPath = cfg.Paths.ConfigFile
 	}
+	if opts.WarpHost != nil {
+		env.warpHost = opts.WarpHost
+	}
 	return &Installer{
 		cfg:         cfg,
 		st:          st,
@@ -136,6 +143,7 @@ func New(opts Options) (*Installer, error) {
 			&userStep{env},
 			&dirsStep{env},
 			&packagesStep{env},
+			&warpStep{env},
 			&xrayStep{env},
 			&identityStep{env},
 			&decoyStep{env},

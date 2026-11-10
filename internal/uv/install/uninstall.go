@@ -15,6 +15,7 @@ import (
 
 	"github.com/shogun-kub/termit/internal/uv/config"
 	"github.com/shogun-kub/termit/internal/uv/state"
+	"github.com/shogun-kub/termit/internal/uv/warp"
 )
 
 // unitNames are the services Termit supervises. They are listed here as well as in the manifest so
@@ -69,6 +70,20 @@ func Uninstall(ctx context.Context, opts UninstallOptions) (*UninstallReport, er
 	}
 	if err != nil {
 		return nil, err
+	}
+
+	// 0. The tunnel exists only to carry this node's traffic. Leaving it connected after the node is
+	// gone would be a VPN nobody asked for; the package itself stays, like every other package.
+	client := warp.New(warpRunner{exec: opts.Exec})
+	if client.Installed(ctx) {
+		if opts.DryRun {
+			report.Removed = append(report.Removed, "the WARP tunnel (disconnect)")
+		} else if err := client.Disconnect(ctx); err != nil {
+			report.Warnings = append(report.Warnings, "disconnect WARP: "+err.Error())
+		} else {
+			report.Removed = append(report.Removed, "the WARP tunnel (disconnected)")
+		}
+		report.Kept = append(report.Kept, "cloudflare-warp (remove it with `apt-get remove cloudflare-warp`)")
 	}
 
 	// 1. Stop the services before their binaries disappear.

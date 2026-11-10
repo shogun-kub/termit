@@ -35,8 +35,8 @@ If a task contradicts these documents, stop and ask — do not "fix" the documen
 Termit builds two Go binaries from one module:
 
 - `termit-uv` (`cmd/uv`) — installs and supervises a VLESS+XHTTP+TLS node on a Debian box: Xray
-  config, ACME certificate, generated decoy site, traffic rules, optional Cloudflare WARP, and a
-  daily sync with the management server.
+  config, ACME certificate, generated decoy site, traffic rules, Cloudflare WARP (on by default), and
+  a daily sync with the management server.
 - `termit-mn` (`cmd/mn`) — the management server: node registry, health prober, credential
   derivation, subscription rendering, admin CLI over a unix socket.
 
@@ -82,14 +82,16 @@ The agent may restart its own services and rewrite Xray config. It must never:
 - reboot the host, change `sshd`, or touch `/etc/network`;
 - install packages outside the declared dependency list in `internal/uv/install`;
 - delete user data outside `/var/lib/termit` and its own generated files;
-- contact any host other than the configured MN and the configured ACME directory.
+- contact any host other than the configured MN, the configured ACME directory, and Cloudflare's WARP
+  endpoint and package repository — the two the WARP feature exists to talk to, and only when WARP is
+  enabled.
 
 ## 3. Repository layout
 
 ```
 cmd/uv/                 entry point: subcommand dispatch (init, doctor, status, device, uri, enroll,
-                        sync, agent, unblock, migrate, renew-cert, renew-site, uninstall, version;
-                        warp is not in this build yet)
+                        sync, agent, unblock, migrate, renew-cert, renew-site, warp, uninstall,
+                        version)
 cmd/mn/                 entry point: serve, init, invite, uv, check, policy, sub, status, backup,
                         restore, version
 internal/cred/          pair-credential derivation (shared, has test vectors — do not change
@@ -103,7 +105,7 @@ internal/uv/service/    generated systemd units and the nginx drop-in
 internal/uv/decoy/      deterministic site generator + embedded templates
 internal/uv/web/        generated nginx config (TLS, decoy root, proxy of the secret prefix)
 internal/uv/acme/       ACME (HTTP-01), certificate store, renewal
-internal/uv/warp/       warp-cli lifecycle and health
+internal/uv/warp/       warp-cli lifecycle, proxy-mode health and the SOCKS5 trace
 internal/uv/state/      local state + atomic JSON persistence
 internal/mn/server/     HTTP API, middleware, auth, rate limiting
 internal/mn/store/      SQLite schema, queries, migrations

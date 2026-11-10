@@ -138,6 +138,9 @@ type Applier struct {
 	Hot HotUsers
 	// Canary, when set, proves the new client set carries traffic before Apply reports success.
 	Canary CanaryCheck
+	// Warp is the egress the generated config must keep. The daily reconcile regenerates the whole
+	// file, so a WARP route that is not in the spec would silently disappear every day.
+	Warp xray.WarpSpec
 }
 
 // Result is what applying a set changed.
@@ -180,6 +183,7 @@ func (a Applier) desired(answer proto.SyncResponse, local []state.LocalUser) map
 func (a Applier) spec(answer proto.SyncResponse, local []state.LocalUser) (xray.Spec, error) {
 	spec := xray.DefaultSpec()
 	spec.Path = a.Path
+	spec.Warp = a.Warp
 	desired := a.desired(answer, local)
 	ids := make([]string, 0, len(desired))
 	for id := range desired {

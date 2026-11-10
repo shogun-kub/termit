@@ -18,6 +18,7 @@ import (
 	"github.com/shogun-kub/termit/internal/uv/install"
 	"github.com/shogun-kub/termit/internal/uv/service"
 	"github.com/shogun-kub/termit/internal/uv/state"
+	"github.com/shogun-kub/termit/internal/uv/warp"
 	"github.com/shogun-kub/termit/internal/uv/xray"
 )
 
@@ -79,12 +80,29 @@ func (a *application) newLoop(cfg *config.Config) *agent.Loop {
 				Now:    a.now,
 				Active: activeUnit,
 				Dial:   dialLoopback,
+				Warp:   a.warpProbe(),
 			})
 		},
 		Apply: func(ctx context.Context, st *state.State, answer proto.SyncResponse) (agent.Result, error) {
 			return a.applier(cfg, st).Apply(ctx, answer, st.LocalUsers)
 		},
 	}
+}
+
+// warpProbe performs the end-to-end WARP check: a fetch through the sidecar that reports what
+// Cloudflare sees. No configuration is needed for it, which keeps the closure cheap.
+func (a *application) warpProbe() func(ctx context.Context) (warp.Status, error) {
+	return func(ctx context.Context) (warp.Status, error) {
+		return warp.New(warpRunner{exec: a.exec}).Status(ctx)
+	}
+}
+
+// warpRunner adapts the shared command executor to the WARP package's command interface.
+type warpRunner struct{ exec install.Executor }
+
+func (r warpRunner) Run(ctx context.Context, name string, args ...string) (string, string, error) {
+	result, err := r.exec.Run(ctx, install.Cmd{Name: name, Args: args})
+	return result.Stdout, result.Stderr, err
 }
 
 // applier builds the core reconciler for one state snapshot.
@@ -106,6 +124,11 @@ func (a *application) applier(cfg *config.Config, st *state.State) agent.Applier
 			Path:    path,
 			WorkDir: cfg.Paths.StateDir,
 			Runner:  execRunner{},
+		},
+		Warp: xray.WarpSpec{
+			Mode:     cfg.Warp.Mode,
+			Selected: cfg.Warp.Selected,
+			FailOpen: cfg.Warp.FailOpenEnabled(),
 		},
 		Canary: agent.Canary{
 			Binary:    binary,

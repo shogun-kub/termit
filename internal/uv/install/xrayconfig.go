@@ -34,6 +34,11 @@ func (s *xrayConfigStep) spec() (xray.Spec, error) {
 		return spec, errors.New("the node identity has not been generated")
 	}
 	spec.Path = "/" + s.e.st.Identity.XHTTPPath + "/"
+	spec.Warp = xray.WarpSpec{
+		Mode:     s.e.cfg.Warp.Mode,
+		Selected: s.e.cfg.Warp.Selected,
+		FailOpen: s.e.cfg.Warp.FailOpenEnabled(),
+	}
 	spec.Clients = []xray.Client{{ID: s.e.st.Identity.SelfUUID, Email: ownerEmail}}
 	for _, user := range s.e.st.LocalUsers {
 		spec.Clients = append(spec.Clients, xray.Client{ID: user.ID, Email: localEmail(user)})

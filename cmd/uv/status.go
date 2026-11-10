@@ -8,7 +8,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shogun-kub/termit/internal/uv/config"
 	"github.com/shogun-kub/termit/internal/uv/state"
+	"github.com/shogun-kub/termit/internal/uv/warp"
 )
 
 // jsonStatus is the machine-readable half of `uv status`. It carries fingerprints, never secrets.
@@ -37,6 +39,15 @@ type jsonStatus struct {
 	LastSyncState string         `json:"last_sync_result,omitempty"`
 	SyncFailures  int            `json:"sync_failures,omitempty"`
 	SelfCheck     *jsonSelfCheck `json:"self_check,omitempty"`
+	Warp          jsonWarpStatus `json:"warp"`
+}
+
+// jsonWarpStatus is the egress as the last self-check saw it. It is a report, not a live probe:
+// `uv warp status` is the command that fetches through the tunnel.
+type jsonWarpStatus struct {
+	Mode   string `json:"mode"`
+	State  string `json:"state"`
+	Detail string `json:"detail,omitempty"`
 }
 
 // jsonPeer is one peer as the server last described it. The pair credential is not printed.
@@ -156,6 +167,7 @@ the last install run. Secrets are shown as sha256 prefixes only.`)
 		}
 		out.SelfCheck = self
 	}
+	out.Warp = describeWarp(cfg, node.LastSelfCheck)
 	if last := journal.Last(); last != nil {
 		out.LastRun = last.Result
 		out.LastRunAt = &last.StartedAt
@@ -228,6 +240,17 @@ the last install run. Secrets are shown as sha256 prefixes only.`)
 	if out.NextSyncAt != nil {
 		fmt.Fprintf(a.stdout, "next sync:    %s\n", out.NextSyncAt.UTC().Format(time.RFC3339))
 	}
+	if out.Warp.Mode != "" {
+		// "off, off" is noise; a mode that is its own state gets one word.
+		line := out.Warp.Mode
+		if out.Warp.State != out.Warp.Mode {
+			line += ", " + out.Warp.State
+		}
+		if out.Warp.Detail != "" {
+			line += " (" + out.Warp.Detail + ")"
+		}
+		fmt.Fprintf(a.stdout, "warp:         %s\n", line)
+	}
 	if out.SelfCheck != nil {
 		state := "ok"
 		if !out.SelfCheck.OK {
@@ -245,6 +268,45 @@ the last install run. Secrets are shown as sha256 prefixes only.`)
 	}
 	fmt.Fprintf(a.stdout, "state:        %s\n", cfg.Paths.StatePath())
 	return exitOK
+}
+
+// describeWarp says where proxied traffic leaves. WARP is on by default, so "direct" is the line that
+// tells an operator the address the node presents is its own.
+func describeWarp(cfg *config.Config, report *state.SelfCheckReport) jsonWarpStatus {
+	out := jsonWarpStatus{Mode: cfg.Warp.Mode}
+	if !cfg.Warp.UsesWarp() {
+		out.State = "off"
+		return out
+	}
+	// The host fact comes first: a container without a tun device reports an honest "unavailable"
+	// rather than the "on" a converged self-check item would otherwise suggest.
+	if err := (warp.Host{}).Check(); err != nil {
+		out.State = "unavailable"
+		out.Detail = err.Error()
+		return out
+	}
+	out.State = "unknown"
+	if report == nil {
+		out.Detail = "no self-check has run yet"
+		return out
+	}
+	for _, item := range report.Items {
+		if item.Name != "warp" {
+			continue
+		}
+		out.Detail = item.Detail
+		switch {
+		case item.Unknown:
+			out.State = "unknown"
+		case item.OK:
+			out.State = "on"
+		case cfg.Warp.FailOpenEnabled():
+			out.State = "direct"
+		default:
+			out.State = "blocked"
+		}
+	}
+	return out
 }
 
 // describeCertificate says when the certificate expires and how long that is, so an operator does not

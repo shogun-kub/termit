@@ -360,18 +360,21 @@ func (p *preflight) checkACME(ctx context.Context) Check {
 
 func (p *preflight) checkTun(context.Context) Check {
 	_, err := p.opts.Stat("/dev/net/tun")
-	warpEnabled := p.opts.Config != nil && p.opts.Config.Warp.Enabled
+	warpWanted := p.opts.Config != nil && p.opts.Config.Warp.UsesWarp()
 	switch {
 	case err == nil:
 		return Check{Name: "tun", Status: StatusOK, Detail: "/dev/net/tun is available"}
-	case warpEnabled:
+	case warpWanted:
+		// A host without TUN is still a node. WARP is on by default, so this is the common case for
+		// a container; the install step reports the refusal, the route fails open to direct, and the
+		// operator sees the warning here rather than a failed install.
 		return Check{
-			Name: "tun", Status: StatusFail, Detail: "/dev/net/tun is missing but warp.enabled is true",
-			Hint: "warp-cli needs TUN; enable WARP on a host that has it, or set warp.enabled: false",
+			Name: "tun", Status: StatusWarn, Detail: "/dev/net/tun is missing, so WARP cannot run on this host",
+			Hint: "traffic exits directly and uv status says so; set warp.mode: off to silence this warning",
 		}
 	default:
 		return Check{Name: "tun", Status: StatusSkip,
-			Detail: "/dev/net/tun is missing (WARP is unavailable here and is not enabled)"}
+			Detail: "/dev/net/tun is missing (WARP is unavailable here and is off)"}
 	}
 }
 

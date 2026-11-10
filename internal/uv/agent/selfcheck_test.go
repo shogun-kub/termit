@@ -11,11 +11,13 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/shogun-kub/termit/internal/uv/agent"
 	"github.com/shogun-kub/termit/internal/uv/config"
+	"github.com/shogun-kub/termit/internal/uv/warp"
 )
 
 // writeCertificate puts a self-signed leaf with the given lifetime where nginx expects it.
@@ -57,6 +59,9 @@ func healthySelfCheckOptions(t *testing.T, now time.Time) agent.SelfCheckOptions
 		Now:    func() time.Time { return now },
 		Active: func(context.Context, string) (bool, error) { return true, nil },
 		Dial:   func(context.Context, string) error { return nil },
+		// A host that cannot run WARP, so the default configuration (WARP on) is a converged state
+		// and the test does not depend on the machine it runs on.
+		WarpHost: &warp.Host{GOOS: "windows", GOARCH: "amd64"},
 	}
 }
 
@@ -157,19 +162,62 @@ func TestSelfCheckTreatsAnUnanswerableCheckAsUnknown(t *testing.T) {
 	}
 }
 
-func TestSelfCheckReportsWarpAsUnknownWhenItIsConfigured(t *testing.T) {
+// WARP has three different answers and they must not be flattened: off is fine, a host that cannot
+// run it is fine with a reason, and a tunnel that should work but does not is a failure.
+func TestSelfCheckWarp(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 11, 10, 8, 0, 0, 0, time.UTC)
-	opts := healthySelfCheckOptions(t, now)
-	opts.Config.Warp.Enabled = true
-	report := agent.RunSelfCheck(context.Background(), opts)
-	for _, item := range report.Items {
-		if item.Name == "warp" {
-			if !item.Unknown || item.OK {
-				t.Errorf("warp item = %+v, want unknown", item)
-			}
-			return
-		}
+	tun := filepath.Join(t.TempDir(), "tun")
+	if err := os.WriteFile(tun, nil, 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
 	}
-	t.Fatal("no warp item")
+	supported := &warp.Host{GOOS: "linux", GOARCH: "amd64", TunPath: tun}
+	healthy := func(context.Context) (warp.Status, error) {
+		return warp.Status{Installed: true, State: "connected", Detail: "via 203.0.113.7 (AMS)",
+			Trace: &warp.Trace{IP: "203.0.113.7", Warp: "on"}}, nil
+	}
+
+	tests := []struct {
+		name    string
+		mode    string
+		host    *warp.Host
+		probe   func(context.Context) (warp.Status, error)
+		wantOK  bool
+		wantUnk bool
+		want    string
+	}{
+		{"off", config.WarpOff, supported, healthy, true, false, "off"},
+		{"a host that cannot run it", config.WarpAll, &warp.Host{GOOS: "windows"}, nil, true, false, "traffic exits directly"},
+		{"a healthy tunnel", config.WarpAll, supported, healthy, true, false, "203.0.113.7"},
+		{"a tunnel that is down and fails open", config.WarpAll, supported, func(context.Context) (warp.Status, error) {
+			return warp.Status{Installed: true, State: "disconnected", Detail: "warp-cli reports disconnected"}, nil
+		}, false, false, "exits directly"},
+		{"a probe that cannot run", config.WarpAll, supported, func(context.Context) (warp.Status, error) {
+			return warp.Status{}, errors.New("no route")
+		}, false, true, "could not ask"},
+		{"no probe at all", config.WarpAll, supported, nil, false, true, "needs a probe"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			opts := healthySelfCheckOptions(t, now)
+			opts.Config.Warp.Mode = tc.mode
+			opts.WarpHost = tc.host
+			opts.Warp = tc.probe
+			report := agent.RunSelfCheck(context.Background(), opts)
+			for _, item := range report.Items {
+				if item.Name != "warp" {
+					continue
+				}
+				if item.OK != tc.wantOK || item.Unknown != tc.wantUnk {
+					t.Errorf("warp item = %+v, want ok=%v unknown=%v", item, tc.wantOK, tc.wantUnk)
+				}
+				if !strings.Contains(item.Detail, tc.want) {
+					t.Errorf("detail = %q, want it to mention %q", item.Detail, tc.want)
+				}
+				return
+			}
+			t.Fatal("no warp item")
+		})
+	}
 }

@@ -113,7 +113,7 @@ func (a *application) run(args []string) int {
 		a.usage(a.stdout)
 		return exitOK
 	case "warp":
-		return a.notImplemented(command)
+		return a.runWarp(rest)
 	default:
 		fmt.Fprintf(a.stderr, "uv: unknown command %q\n\n", command)
 		a.usage(a.stderr)
@@ -145,12 +145,10 @@ Commands:
   agent        run the long-running node loop (the systemd service); --once runs one cycle
   unblock      ask the server to verify this node and lift a block
   migrate      move this node to a new domain (--relocate)
+  warp         show the egress, or change its mode (all, selected, off)
   uninstall    remove Termit from this node
   version      print build and protocol version
   help         show this help
-
-Planned, not in this build:
-  warp
 
 Exit status: 0 success, 1 failure, 2 usage error, 3 command not implemented,
              4 sync --check found drift.

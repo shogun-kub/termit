@@ -15,6 +15,7 @@ import (
 	"github.com/shogun-kub/termit/internal/uv/decoy"
 	"github.com/shogun-kub/termit/internal/uv/service"
 	"github.com/shogun-kub/termit/internal/uv/state"
+	"github.com/shogun-kub/termit/internal/uv/warp"
 )
 
 // DiagnoseOptions configure the health half of `uv doctor`.
@@ -22,6 +23,9 @@ type DiagnoseOptions struct {
 	Config *config.Config
 	Exec   Executor
 	Now    func() time.Time
+	// WarpHost overrides the platform facts WARP is judged on. Tests set it so the check does not
+	// depend on whether the machine running the suite has a tun device.
+	WarpHost *warp.Host
 }
 
 // Diagnose checks the installed node, not the host: the state, the services, the certificate, the
@@ -58,6 +62,11 @@ func Diagnose(ctx context.Context, opts DiagnoseOptions) []Check {
 	checks = append(checks, diagnoseCertificate(cfg, st, opts.Now()))
 	checks = append(checks, diagnoseDecoy(cfg, st))
 	checks = append(checks, diagnoseProxy(ctx, opts.Exec, cfg))
+	warpClient := warp.New(warpRunner{exec: opts.Exec})
+	if opts.WarpHost != nil {
+		warpClient.Host = *opts.WarpHost
+	}
+	checks = append(checks, diagnoseWarp(ctx, cfg, warpClient))
 	return checks
 }
 

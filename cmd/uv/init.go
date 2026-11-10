@@ -24,6 +24,9 @@ credential is ever regenerated.`)
 	acmeCA := flags.String("acme-ca", "", "ACME directory URL")
 	acmeInsecure := flags.Bool("acme-skip-tls-verify", false, "lab only: do not verify the ACME server certificate")
 	template := flags.String("decoy-template", "", "decoy site archetype")
+	warpMode := flags.String("warp", "", "WARP egress: all (default), selected or off")
+	flags.Bool("no-warp", false, "opt out of WARP and exit directly")
+	warpSelected := flags.String("warp-selected", "", "domains that use WARP in selected mode, comma separated")
 	xrayVersion := flags.String("xray-version", "", "Xray-core release to install")
 	xrayBase := flags.String("xray-download-base", "", "release directory: an http(s) URL, a file URL or a local path")
 	dryRun := flags.Bool("dry-run", false, "report what would change without touching the host")
@@ -71,6 +74,23 @@ credential is ever regenerated.`)
 	}
 	if set["decoy-template"] {
 		cfg.Decoy.Template = *template
+	}
+	switch {
+	case set["warp"] && set["no-warp"]:
+		fmt.Fprintln(a.stderr, "uv init: --warp and --no-warp contradict each other")
+		return exitUsage
+	case set["no-warp"]:
+		cfg.Warp.Mode = config.WarpOff
+	case set["warp"]:
+		cfg.Warp.Mode = strings.ToLower(strings.TrimSpace(*warpMode))
+	}
+	if set["warp-selected"] {
+		cfg.Warp.Selected = nil
+		for _, domain := range strings.Split(*warpSelected, ",") {
+			if domain = strings.TrimSpace(domain); domain != "" {
+				cfg.Warp.Selected = append(cfg.Warp.Selected, domain)
+			}
+		}
 	}
 	if set["xray-version"] {
 		cfg.Xray.Version = *xrayVersion

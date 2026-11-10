@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/shogun-kub/termit/internal/uv/config"
+	"github.com/shogun-kub/termit/internal/uv/warp"
 )
 
 // checkStatuses turns a check list into a name → status map, which is what these tests assert on.
@@ -53,7 +54,8 @@ func TestDiagnoseOnAnInstalledNode(t *testing.T) {
 	t.Parallel()
 	cfg, sb := installForDiagnose(t)
 
-	checks := Diagnose(context.Background(), DiagnoseOptions{Config: cfg, Exec: sb.exec, Now: fixedNow})
+	checks := Diagnose(context.Background(), DiagnoseOptions{Config: cfg, Exec: sb.exec, Now: fixedNow,
+		WarpHost: &warp.Host{GOOS: "windows", GOARCH: "amd64"}})
 	got := checkStatuses(checks)
 	want := map[string]CheckStatus{
 		"state":        StatusOK,
@@ -61,6 +63,8 @@ func TestDiagnoseOnAnInstalledNode(t *testing.T) {
 		"certificate":  StatusFail, // the step was skipped, so there is no certificate
 		"decoy":        StatusOK,
 		"proxy config": StatusOK,
+		// WARP is on by default and this host cannot run it: a skip with a reason, not a failure.
+		"warp": StatusSkip,
 	}
 	for name, status := range want {
 		if got[name] != status {
@@ -81,7 +85,8 @@ func TestDiagnoseCatchesABrokenNode(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(cfg.Paths.SiteDir, "index.html"), []byte("<html>tampered</html>"), 0o644); err != nil {
 		t.Fatalf("tamper: %v", err)
 	}
-	checks := Diagnose(context.Background(), DiagnoseOptions{Config: cfg, Exec: sb.exec, Now: fixedNow})
+	checks := Diagnose(context.Background(), DiagnoseOptions{Config: cfg, Exec: sb.exec, Now: fixedNow,
+		WarpHost: &warp.Host{GOOS: "windows", GOARCH: "amd64"}})
 	if got := checkStatuses(checks)["decoy"]; got != StatusFail {
 		t.Errorf("decoy = %q, want %q", got, StatusFail)
 	}

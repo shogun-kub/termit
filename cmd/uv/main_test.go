@@ -69,7 +69,7 @@ func TestDispatch(t *testing.T) {
 		{"long help", []string{"--help"}, exitOK, "Usage:"},
 		{"no command", nil, exitUsage, "Usage:"},
 		{"unknown", []string{"nope"}, exitUsage, "unknown command"},
-		{"planned command", []string{"warp"}, exitNotImplemented, "not implemented"},
+		{"warp without a configuration", []string{"warp", "--config", filepath.Join(t.TempDir(), "absent.yaml")}, exitFailure, "uv warp:"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -83,6 +83,59 @@ func TestDispatch(t *testing.T) {
 				t.Errorf("output %q does not contain %q", combined, tc.out)
 			}
 		})
+	}
+}
+
+// WARP is on by default, so `uv warp status` has to say "off" clearly when the owner opted out and
+// has to say where traffic leaves in every other case.
+func TestWarpStatusReportsTheMode(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	cfg := config.Default()
+	cfg.Domain = "vpn.example.com"
+	cfg.Warp.Mode = config.WarpOff
+	if err := cfg.Save(path); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	app, stdout, stderr := newTestApp(t)
+	if got := app.run([]string{"warp", "--config", path}); got != exitOK {
+		t.Fatalf("run = %d, want %d: %s", got, exitOK, stderr.String())
+	}
+	out := stdout.String()
+	for _, want := range []string{"mode:    off", "egress:  off", "exits directly"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output %q does not contain %q", out, want)
+		}
+	}
+
+	// The default is all; on a host that cannot run WARP, the command says so instead of claiming a
+	// tunnel that does not exist.
+	cfg.Warp.Mode = config.WarpAll
+	if err := cfg.Save(path); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	app, stdout, stderr = newTestApp(t)
+	if got := app.run([]string{"warp", "--config", path, "--json"}); got != exitOK {
+		t.Fatalf("run = %d, want %d: %s", got, exitOK, stderr.String())
+	}
+	var report struct {
+		Mode   string `json:"mode"`
+		State  string `json:"state"`
+		Detail string `json:"detail"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatalf("output is not JSON: %v\n%s", err, stdout.String())
+	}
+	if report.Mode != config.WarpAll {
+		t.Errorf("mode = %q, want %q", report.Mode, config.WarpAll)
+	}
+	if report.State != "on" && report.State != "unavailable" && report.State != "direct" && report.State != "not-installed" {
+		t.Errorf("state = %q, want one of the real answers", report.State)
+	}
+	if report.State == "unavailable" && !strings.Contains(report.Detail, "not available here") {
+		t.Errorf("detail = %q, want the refusal reason", report.Detail)
 	}
 }
 

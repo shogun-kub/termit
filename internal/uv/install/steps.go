@@ -13,6 +13,7 @@ import (
 
 	"github.com/shogun-kub/termit/internal/uv/config"
 	"github.com/shogun-kub/termit/internal/uv/state"
+	"github.com/shogun-kub/termit/internal/uv/warp"
 )
 
 // serviceUser owns the proxy core. It exists so Xray does not run as root: it listens on a loopback
@@ -27,7 +28,14 @@ var aptEnv = []string{
 
 // requiredPackages are the only packages Termit installs. nginx terminates TLS and serves both the
 // decoy and the proxy path; ca-certificates lets ACME verify the CA's own chain.
-var requiredPackages = []string{"nginx", "ca-certificates"}
+// curl is here for the WARP step's apt-repository setup: the key for Cloudflare's repository is
+// fetched with it, and a minimal Debian image does not ship curl.
+var requiredPackages = []string{"nginx", "ca-certificates", "curl"}
+
+// warpPackage is installed by the warp step, not by the packages step: only a host that can run WARP
+// and is asked to should get a VPN client, and the packages step runs on every host. It is part of
+// the declared dependency set all the same, from Cloudflare's signed apt repository.
+const warpPackage = "cloudflare-warp"
 
 // aptRefresh is how long an apt index is considered current before `uv init` updates it again.
 const aptRefresh = 6 * time.Hour
@@ -45,6 +53,9 @@ type stepEnv struct {
 	// configPath is the file this run was started with; executable is the binary the units run.
 	configPath string
 	executable string
+	// warpHost overrides the platform facts the WARP step judges; tests set it, production leaves it
+	// nil so the real host is checked.
+	warpHost *warp.Host
 	// forced is true while a step that the run explicitly forced is executing. A step whose Run is
 	// not idempotent (renewing a certificate) needs to know the difference between "converge" and
 	// "do it again".

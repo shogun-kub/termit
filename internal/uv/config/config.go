@@ -18,6 +18,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -113,12 +114,46 @@ type Decoy struct {
 	Template string `yaml:"template"`
 }
 
-// Warp describes the optional Cloudflare WARP egress.
+// Warp describes the Cloudflare WARP egress.
+//
+// WARP is on by default. An application on a client's device often asks the internet what address it
+// is coming from; with direct egress the answer is the node's own address, which is exactly what a
+// proxy should not reveal. WARP puts a Cloudflare address there instead. An owner who does not want
+// that sets mode to off.
+//
+// The traffic path is always the same: Xray routes proxied traffic to warp-cli's loopback SOCKS5
+// proxy. Nothing on the host is re-routed, so SSH, the decoy and the ACME challenge never touch WARP.
 type Warp struct {
-	// Enabled routes proxied traffic through warp-cli's loopback SOCKS5 proxy. It never changes
-	// host routing.
-	Enabled bool `yaml:"enabled"`
+	// Mode is off, all or selected. Empty means all on a new configuration and, for a file written
+	// before modes existed, whatever the old enabled switch said.
+	Mode string `yaml:"mode"`
+	// Selected lists the destinations that use WARP in selected mode. A domain here also covers its
+	// subdomains; everything else exits directly.
+	Selected []string `yaml:"selected,omitempty"`
+	// FailOpen falls back to direct egress when WARP is unhealthy. The default is true: a node whose
+	// WARP is down keeps carrying traffic, and uv status says that the exit is direct. An owner who
+	// would rather lose connectivity than reveal the address sets it to false.
+	FailOpen *bool `yaml:"fail_open,omitempty"`
+	// Enabled is the switch this setting had before modes existed. It is read so an existing
+	// configuration still loads, and never written again.
+	Enabled *bool `yaml:"enabled,omitempty"`
 }
+
+// WARP modes.
+const (
+	WarpOff      = "off"
+	WarpAll      = "all"
+	WarpSelected = "selected"
+)
+
+// FailOpenEnabled reports whether a failed WARP falls back to direct egress. A configuration that
+// never set it fails open, which is the documented default.
+func (w Warp) FailOpenEnabled() bool {
+	return w.FailOpen == nil || *w.FailOpen
+}
+
+// UsesWarp reports whether proxied traffic is supposed to leave through WARP at all.
+func (w Warp) UsesWarp() bool { return w.Mode == WarpAll || w.Mode == WarpSelected }
 
 // Paths are the locations the agent writes to. Every field has a default derived from the standard
 // layout; they are configurable for tests and for an owner who keeps state on another filesystem,
@@ -247,6 +282,20 @@ func (c *Config) Validate() error {
 	if !templatePattern.MatchString(c.Decoy.Template) {
 		problems = append(problems, fmt.Errorf("decoy.template %q must be a short lower-case name", c.Decoy.Template))
 	}
+	switch c.Warp.Mode {
+	case WarpOff, WarpAll:
+	case WarpSelected:
+		if len(c.Warp.Selected) == 0 {
+			problems = append(problems, errors.New("warp.mode is selected but warp.selected is empty"))
+		}
+	default:
+		problems = append(problems, fmt.Errorf("warp.mode %q must be off, all or selected", c.Warp.Mode))
+	}
+	for _, domain := range c.Warp.Selected {
+		if err := validateDomain(domain); err != nil {
+			problems = append(problems, fmt.Errorf("warp.selected: %w", err))
+		}
+	}
 	problems = append(problems, c.Paths.validate()...)
 
 	if len(problems) > 0 {
@@ -289,7 +338,46 @@ func (c *Config) applyDefaults() {
 	if c.Decoy.Template == "" {
 		c.Decoy.Template = DefaultDecoyTemplate
 	}
+	c.Warp.applyDefaults()
 	c.Paths.applyDefaults()
+}
+
+// applyDefaults migrates the old enabled switch to a mode and normalises the selected list. It runs
+// on every load, so a file written by an older build keeps the behaviour the owner chose.
+func (w *Warp) applyDefaults() {
+	if strings.TrimSpace(w.Mode) == "" {
+		switch {
+		case w.Enabled == nil:
+			// A configuration that never mentioned WARP gets it: that is the point of the default.
+			w.Mode = WarpAll
+		case *w.Enabled:
+			w.Mode = WarpAll
+		default:
+			w.Mode = WarpOff
+		}
+	}
+	w.Mode = strings.ToLower(strings.TrimSpace(w.Mode))
+	// The old key is read once and dropped: saving the configuration must not resurrect it beside
+	// the mode it was migrated into.
+	w.Enabled = nil
+	if w.FailOpen == nil {
+		open := true
+		w.FailOpen = &open
+	}
+	if len(w.Selected) > 0 {
+		seen := make(map[string]bool, len(w.Selected))
+		kept := make([]string, 0, len(w.Selected))
+		for _, domain := range w.Selected {
+			domain = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(domain)), ".")
+			if domain == "" || seen[domain] {
+				continue
+			}
+			seen[domain] = true
+			kept = append(kept, domain)
+		}
+		sort.Strings(kept)
+		w.Selected = kept
+	}
 }
 
 func (p *Paths) applyDefaults() {

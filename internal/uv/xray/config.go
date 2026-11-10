@@ -9,8 +9,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -47,7 +49,44 @@ type Spec struct {
 	APIPort int
 	// LogLevel is an Xray log level: debug, info, warning, error.
 	LogLevel string
+	// Warp routes proxied traffic through the WARP sidecar. The zero value keeps direct egress.
+	Warp WarpSpec
 }
+
+// WarpSpec is the WARP egress the generator must wire in. It is a plain description of the intent;
+// whether the sidecar is actually up is the runtime's business, and the fail-open balancer is what
+// keeps a dead sidecar from taking the node's traffic with it.
+type WarpSpec struct {
+	// Mode is "all" or "selected"; anything else means WARP is off.
+	Mode string
+	// Selected lists the destinations that use WARP in selected mode.
+	Selected []string
+	// FailOpen falls back to direct egress when WARP does not answer its probe.
+	FailOpen bool
+	// Socks is the sidecar's loopback address; empty means DefaultWarpSocks.
+	Socks string
+}
+
+// Enabled reports whether traffic is supposed to leave through WARP.
+func (w WarpSpec) Enabled() bool { return w.Mode == "all" || w.Mode == "selected" }
+
+// Constants for the WARP sidecar. They are exported because the agent, the installer and the
+// `uv warp` command all have to agree on the same address and probe.
+const (
+	// DefaultWarpSocks is warp-cli's proxy-mode SOCKS5 listener on loopback.
+	DefaultWarpSocks = "127.0.0.1:40000"
+	// WarpTag names the WARP outbound; the balancer selects it by tag.
+	WarpTag = "warp"
+	// WarpBalancerTag names the fail-open balancer.
+	WarpBalancerTag = "warp-egress"
+	// WarpProbeURL is what the observatory fetches through WARP. It is a plain, cheap endpoint that
+	// answers only when the tunnel actually works.
+	WarpProbeURL = "https://www.cloudflare.com/cdn-cgi/trace"
+	// WarpProbeInterval is how often the observatory checks the sidecar. It is short on purpose: the
+	// interval is also the worst-case window during which a tunnel that died mid-life still takes new
+	// connections, and a half-minute of retries is a far better failure mode than five minutes of them.
+	WarpProbeInterval = "30s"
+)
 
 // DefaultSpec returns a spec with the ports and log level filled in.
 func DefaultSpec() Spec {
@@ -77,6 +116,29 @@ func (s Spec) Validate() error {
 	case "debug", "info", "warning", "error":
 	default:
 		problems = append(problems, fmt.Errorf("log level %q is not one of debug, info, warning, error", s.LogLevel))
+	}
+	switch s.Warp.Mode {
+	case "", "off", "all":
+	case "selected":
+		if len(s.Warp.Selected) == 0 {
+			problems = append(problems, errors.New("selected WARP mode needs at least one domain"))
+		}
+		for _, domain := range s.Warp.Selected {
+			if domain == "" || strings.ContainsAny(domain, " \t/") {
+				problems = append(problems, fmt.Errorf("warp domain %q is not a domain", domain))
+			}
+		}
+	default:
+		problems = append(problems, fmt.Errorf("warp mode %q must be off, all or selected", s.Warp.Mode))
+	}
+	if s.Warp.Enabled() {
+		socks := s.Warp.Socks
+		if socks == "" {
+			socks = DefaultWarpSocks
+		}
+		if _, _, err := net.SplitHostPort(socks); err != nil {
+			problems = append(problems, fmt.Errorf("warp socks address %q is not host:port", socks))
+		}
 	}
 	if len(s.Clients) == 0 {
 		problems = append(problems, errors.New("at least one client is required"))
@@ -166,11 +228,81 @@ func Generate(spec Spec) ([]byte, error) {
 		},
 	}
 
+	if spec.Warp.Enabled() {
+		config.Outbounds = append(config.Outbounds, warpOutbound(spec.Warp))
+		// The canary fetches the node's own decoy through the tunnel, and any owner-side tool may
+		// address loopback. Cloudflare cannot reach either, so loopback stays direct in every mode.
+		config.Routing.Rules = append(config.Routing.Rules, rule{
+			Type: "field", IP: []string{"127.0.0.0/8"}, OutboundTag: "direct",
+		})
+		if spec.Warp.FailOpen {
+			config.Observatory = &observatory{
+				SubjectSelector:   []string{WarpTag},
+				ProbeURL:          WarpProbeURL,
+				ProbeInterval:     WarpProbeInterval,
+				EnableConcurrency: true,
+			}
+			config.Routing.Balancers = []balancer{{
+				Tag: WarpBalancerTag, Selector: []string{WarpTag},
+				Strategy: &strategy{Type: "leastPing"}, FallbackTag: "direct",
+			}}
+			config.Routing.Rules = append(config.Routing.Rules, warpRule(spec.Warp, WarpBalancerTag))
+		} else {
+			config.Routing.Rules = append(config.Routing.Rules, warpRule(spec.Warp, ""))
+		}
+	}
+
 	data, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
 		return nil, fmt.Errorf("xray: encode config: %w", err)
 	}
 	return append(data, '\n'), nil
+}
+
+// warpOutbound is the SOCKS5 outbound to warp-cli's proxy-mode listener. Domains are forwarded, not
+// resolved here: the SOCKS request carries the name and the WARP client resolves it inside the
+// tunnel, so a lookup does not leak the node's address to the node's resolver.
+func warpOutbound(w WarpSpec) outbound {
+	host, port := warpSocks(w)
+	return outbound{
+		Tag: WarpTag, Protocol: "socks",
+		Settings: socksSettings{Servers: []socksServer{{Address: host, Port: port}}},
+	}
+}
+
+func warpSocks(w WarpSpec) (string, int) {
+	address := w.Socks
+	if address == "" {
+		address = DefaultWarpSocks
+	}
+	host, rawPort, err := net.SplitHostPort(address)
+	if err != nil {
+		host, rawPort = "127.0.0.1", "40000"
+	}
+	port, err := strconv.Atoi(rawPort)
+	if err != nil || port < 1 || port > 65535 {
+		port = 40000
+	}
+	return host, port
+}
+
+// warpRule is the routing decision for proxied traffic. It names a balancer when fail-open is on and
+// the outbound directly when it is not; selected mode narrows it to the configured domains.
+func warpRule(w WarpSpec, balancerTag string) rule {
+	r := rule{Type: "field"}
+	if w.Mode == "selected" {
+		domains := append([]string(nil), w.Selected...)
+		sort.Strings(domains)
+		r.Domain = domains
+	} else {
+		r.Network = "tcp,udp"
+	}
+	if balancerTag != "" {
+		r.BalancerTag = balancerTag
+	} else {
+		r.OutboundTag = WarpTag
+	}
+	return r
 }
 
 // APIAddress is the loopback address of the management API for this spec.
@@ -182,11 +314,12 @@ func (s Spec) ProxyAddress() string { return fmt.Sprintf("%s:%d", s.Listen, s.Po
 // --- the JSON document -------------------------------------------------------
 
 type config struct {
-	Log       logConfig  `json:"log"`
-	API       apiConfig  `json:"api"`
-	Inbounds  []inbound  `json:"inbounds"`
-	Outbounds []outbound `json:"outbounds"`
-	Routing   routing    `json:"routing"`
+	Log         logConfig    `json:"log"`
+	API         apiConfig    `json:"api"`
+	Inbounds    []inbound    `json:"inbounds"`
+	Outbounds   []outbound   `json:"outbounds"`
+	Routing     routing      `json:"routing"`
+	Observatory *observatory `json:"observatory,omitempty"`
 }
 
 type logConfig struct {
@@ -252,13 +385,52 @@ type finalRule struct {
 	Port    string   `json:"port,omitempty"`
 }
 
-type routing struct {
-	DomainStrategy string `json:"domainStrategy"`
-	Rules          []rule `json:"rules"`
+type socksSettings struct {
+	Servers []socksServer `json:"servers"`
 }
 
+type socksServer struct {
+	Address string `json:"address"`
+	Port    int    `json:"port"`
+}
+
+type routing struct {
+	DomainStrategy string     `json:"domainStrategy"`
+	Rules          []rule     `json:"rules"`
+	Balancers      []balancer `json:"balancers,omitempty"`
+}
+
+// rule is one routing decision. Most rules set OutboundTag; a WARP rule with fail-open sets
+// BalancerTag instead, and the balancer falls back to direct when WARP is not answering.
 type rule struct {
 	Type        string   `json:"type"`
-	InboundTag  []string `json:"inboundTag"`
-	OutboundTag string   `json:"outboundTag"`
+	InboundTag  []string `json:"inboundTag,omitempty"`
+	Domain      []string `json:"domain,omitempty"`
+	IP          []string `json:"ip,omitempty"`
+	Network     string   `json:"network,omitempty"`
+	OutboundTag string   `json:"outboundTag,omitempty"`
+	BalancerTag string   `json:"balancerTag,omitempty"`
+}
+
+// balancer picks one of the tagged outbounds. A single selector plus fallbackTag is the whole
+// fail-open mechanism: while WARP answers the observatory's probe, traffic uses it; when it stops
+// answering, the balancer moves to direct without a config reload or a restart.
+type balancer struct {
+	Tag         string    `json:"tag"`
+	Selector    []string  `json:"selector"`
+	Strategy    *strategy `json:"strategy,omitempty"`
+	FallbackTag string    `json:"fallbackTag,omitempty"`
+}
+
+type strategy struct {
+	Type string `json:"type"`
+}
+
+// observatory probes the outbounds a balancer may pick. Its probe goes through the outbound itself,
+// so for WARP it is a real end-to-end test of the sidecar.
+type observatory struct {
+	SubjectSelector   []string `json:"subjectSelector"`
+	ProbeURL          string   `json:"probeUrl"`
+	ProbeInterval     string   `json:"probeInterval"`
+	EnableConcurrency bool     `json:"enableConcurrency,omitempty"`
 }
