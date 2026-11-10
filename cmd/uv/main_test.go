@@ -53,6 +53,9 @@ func newTestApp(t *testing.T) (*application, *bytes.Buffer, *bytes.Buffer) {
 		now:      func() time.Time { return time.Unix(0, 0).UTC() },
 		exec:     stubExecutor{},
 		warpHost: &warp.Host{GOOS: "windows", GOARCH: "amd64"},
+		// Tests declare the host: without this, "no arguments" would open the menu when the suite
+		// happens to run on a terminal and print usage when it does not.
+		interactiveFn: func() bool { return false },
 		http: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusOK,

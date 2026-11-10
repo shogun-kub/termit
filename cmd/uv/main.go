@@ -76,9 +76,21 @@ type application struct {
 	// euid answers "is this process root"; nil means os.Geteuid. Tests set it so a suite run as root
 	// and a suite run as a normal user assert the same thing.
 	euid func() int
+	// in is the interactive menu's input; nil means os.Stdin.
+	in io.Reader
+	// configPath overrides the default configuration path; tests point it at a temporary directory so
+	// the menu does not inspect the machine it runs on.
+	configPath string
+	// interactiveFn answers "may the menu open"; nil means "ask the terminal".
+	interactiveFn func() bool
 }
 
 func (a *application) run(args []string) int {
+	// On a terminal the bare binary is the menu; anywhere else it stays the usage text, so a script
+	// that runs `uv` by mistake gets exit 2 and a short page, not a prompt waiting for input.
+	if len(args) == 0 && a.interactive() {
+		return a.runMenu()
+	}
 	if len(args) == 0 {
 		a.usage(a.stderr)
 		return exitUsage
@@ -119,6 +131,8 @@ func (a *application) run(args []string) int {
 		return exitOK
 	case "warp":
 		return a.runWarp(rest)
+	case "menu":
+		return a.runMenu()
 	default:
 		fmt.Fprintf(a.stderr, "uv: unknown command %q\n\n", command)
 		a.usage(a.stderr)
@@ -148,6 +162,7 @@ Commands:
   warp         show the egress, or change its mode (all, selected, off)
   uninstall    remove Termit from this node
   version      print build and protocol version
+  menu         the interactive menu (what the bare command does on a terminal)
   help         show this help
 
 Exit status: 0 success, 1 failure, 2 usage error, 4 sync --check found drift.
