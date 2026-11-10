@@ -861,14 +861,21 @@ go run ./deploy/release --version v0.1.0 --out /tmp/b --commit "$(git rev-parse 
 diff /tmp/a/v0.1.0/SHA256SUMS /tmp/b/v0.1.0/SHA256SUMS
 ```
 
-Publishing is a tag push: `.github/workflows/release.yaml` builds the directory, runs
-`sha256sum -c SHA256SUMS`, asserts `uv.sh` is executable, and attaches everything to the GitHub
-release, including `uv.sh` — the documentation's install URL points at
-`releases/download/<version>/uv.sh`. The workflow marks the release `prerelease: true`: clearing that
-flag is the deliberate act that records the production pass of `docs/IMPLEMENTATION_PLAN.md` M4.3 (a
-real domain, a real CA, a phone client). A maintainer can do the same by hand with `gh release create`
-and the files from `dist/<version>/`; the assets are plain files, so nothing depends on the workflow.
+Publishing is a tag push on `main`, after the branch process in `AGENTS.md` §9 has put a tested tree
+there: `.github/workflows/release.yaml` builds the directory, runs `sha256sum -c SHA256SUMS`, asserts
+`uv.sh` is executable, and attaches everything to the GitHub release, including `uv.sh` — the
+documentation's install URL points at `releases/download/<version>/uv.sh`. The workflow marks the
+release `prerelease: true`: clearing that flag is the deliberate act that records the production pass of
+`docs/IMPLEMENTATION_PLAN.md` M4.3 (a real domain, a real CA, a phone client). A maintainer can do the
+same by hand with `gh release create` and the files from `dist/<version>/`; the assets are plain files,
+so nothing depends on the workflow.
 
-CI gates on a tag and on every push: `gofmt`, `go vet`, the unit suite with `-race`, the cross-build,
-the release tool's own tests, and `govulncheck`. The lab suite is the acceptance gate and is run by
-hand (§4 in `AGENTS.md`); CI does not claim it.
+Before that tag exists, a `release/<version>` branch can be built by hand —
+`gh workflow run release.yaml --ref release/v0.1.1 -f publish_prerelease=true` — which attaches the same
+six files to a pre-release tagged `pre-v<version>-<run>`. That is how testers get a build without
+anything being published from `dev` or from `main`.
+
+CI gates on every push to `main`, `dev` and `release/**`, and on tags and pull requests: `gofmt`,
+`go vet`, the unit suite with `-race`, the cross-build, the release tool's own tests, and
+`govulncheck`. It never publishes except through the two doors above. The lab suite is the acceptance
+gate and is run by hand (§4.3 in `AGENTS.md`); CI does not claim it.

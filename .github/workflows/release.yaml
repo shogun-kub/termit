@@ -1,10 +1,23 @@
 name: release
 
-# A tag is the only way to publish. The build is `go run ./deploy/release`, which is the same command a
-# maintainer runs by hand, so a release cannot differ from what was tested on a workstation.
+# Publishing has two doors, and only two (AGENTS.md §9):
+#
+#   * a tag `v<version>` on `main` publishes the release a participant installs;
+#   * a manual run on a `release/<version>` branch builds the same artifacts and may publish them as a
+#     pre-release tagged `pre-v<version>-<run>`.
+#
+# Nothing is published from `dev` or `main` directly, and the build in both doors is
+# `go run ./deploy/release` — the command a maintainer runs by hand — so a published artifact cannot
+# differ from what was tested.
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      publish_prerelease:
+        description: 'publish the build as a GitHub pre-release'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -13,7 +26,67 @@ env:
   CGO_ENABLED: "0"
 
 jobs:
+  # The pre-release door: a stabilisation branch, built on demand, optionally published for testers.
+  prerelease:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The tool stamps the commit, and a wrong stamp is a lie in `--version`.
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: the branch name is the version
+        id: identity
+        run: |
+          case "$GITHUB_REF_NAME" in
+            release/v*) ;;
+            *)
+              echo "a pre-release is built from release/<version>, not from $GITHUB_REF_NAME"
+              exit 1
+              ;;
+          esac
+          version="${GITHUB_REF_NAME#release/}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=pre-$version-$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
+
+      - name: build the release
+        run: go run ./deploy/release --version "${{ steps.identity.outputs.version }}" --out dist
+
+      - name: verify the checksums the way an operator will
+        run: |
+          cd "dist/${{ steps.identity.outputs.version }}"
+          sha256sum -c SHA256SUMS
+          test -x uv.sh
+
+      - name: keep the artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.identity.outputs.tag }}
+          path: dist/${{ steps.identity.outputs.version }}/*
+          if-no-files-found: error
+
+      - name: publish
+        if: inputs.publish_prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.identity.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: ${{ steps.identity.outputs.tag }}
+          files: dist/${{ steps.identity.outputs.version }}/*
+          fail_on_unmatched_files: true
+          draft: false
+          prerelease: true
+          generate_release_notes: true
+
+  # The final door: the tag pushed on `main` after `release/<version>` was merged there.
   publish:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
