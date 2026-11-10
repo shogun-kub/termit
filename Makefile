@@ -2,16 +2,9 @@
 #
 # Package patterns are explicit (`./cmd/... ./internal/...`) on purpose: `references/` contains
 # third-party Go source inside this module's directory tree, and `./...` would compile it.
-GO       ?= go
-PKGS     := ./cmd/... ./internal/...
-VERSION  ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
-COMMIT   ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
-DATE     ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
-VERPKG   := github.com/shogun-kub/termit/internal/version
-LDFLAGS  := -s -w \
-	-X $(VERPKG).Version=$(VERSION) \
-	-X $(VERPKG).Commit=$(COMMIT) \
-	-X $(VERPKG).Date=$(DATE)
+GO      ?= go
+PKGS    := ./cmd/... ./internal/...
+VERSION ?= v0.1.0
 
 .PHONY: all build test race vet fmt lint dist lab clean
 
@@ -30,17 +23,16 @@ vet:
 	$(GO) vet $(PKGS)
 
 fmt:
-	gofmt -l -w cmd internal
+	gofmt -l -w cmd internal deploy
 
 lint:
 	golangci-lint run $(PKGS)
 
-# Cross-compiled release binaries. Never build on the target host.
+# The release directory, built by the same tool CI uses: four binaries, the bootstrap script, the
+# management server's unit and SHA256SUMS. Override the version for a real release:
+# `make dist VERSION=v0.2.0`. Never build on the target host.
 dist:
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build -trimpath -ldflags '$(LDFLAGS)' -o dist/linux-amd64/termit-uv ./cmd/uv
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build -trimpath -ldflags '$(LDFLAGS)' -o dist/linux-amd64/termit-mn ./cmd/mn
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GO) build -trimpath -ldflags '$(LDFLAGS)' -o dist/linux-arm64/termit-uv ./cmd/uv
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GO) build -trimpath -ldflags '$(LDFLAGS)' -o dist/linux-arm64/termit-mn ./cmd/mn
+	$(GO) run ./deploy/release --version $(VERSION) --out dist
 
 # Requires the environment described in AGENTS.md §4.3.
 lab:

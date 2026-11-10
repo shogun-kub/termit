@@ -1,0 +1,52 @@
+name: release
+
+# A tag is the only way to publish. The build is `go run ./deploy/release`, which is the same command a
+# maintainer runs by hand, so a release cannot differ from what was tested on a workstation.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+env:
+  CGO_ENABLED: "0"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The tag is what is being released; a shallow clone still has it, but the tool stamps the
+          # commit, and a wrong stamp is a lie in `--version`.
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: build the release
+        run: go run ./deploy/release --version "$GITHUB_REF_NAME" --out dist
+
+      - name: verify the checksums the way an operator will
+        run: |
+          cd "dist/$GITHUB_REF_NAME"
+          sha256sum -c SHA256SUMS
+          test -x uv.sh
+
+      - name: publish
+        uses: softprops/action-gh-release@v2
+        with:
+          # `uv.sh`, `SHA256SUMS` and both architectures: the bootstrap script fetches
+          # <base>/<version>/SHA256SUMS and <base>/<version>/termit-uv_<version>_linux_<arch>, and the
+          # documentation points at <base>/uv.sh.
+          files: dist/${{ github.ref_name }}/*
+          fail_on_unmatched_files: true
+          draft: false
+          # Every release stays a pre-release until somebody has run the production pass described in
+          # docs/IMPLEMENTATION_PLAN.md M4.3 (a real domain, a real CA, a phone client). Flipping this
+          # to false is a deliberate, recorded act, not a side effect of tagging.
+          prerelease: true
+          generate_release_notes: true

@@ -45,6 +45,22 @@ jobs:
           GOOS=linux GOARCH=amd64 go build -trimpath $PKGS
           GOOS=linux GOARCH=arm64 go build -trimpath $PKGS
 
+      - name: release tool tests
+        run: go test ./deploy/release
+
+  # The dependency set is small on purpose; this is what keeps it honest, and it is the only gate that
+  # looks at the standard library's own advisories as well as our direct modules.
+  vuln:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 $PKGS
+
   lint:
     runs-on: ubuntu-latest
     steps:
