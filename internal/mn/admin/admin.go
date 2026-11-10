@@ -74,6 +74,9 @@ type Service struct {
 	// Runner is the scheduler. `check now` uses it; the rest of the admin surface does not, so a
 	// server without a scheduler still administers nodes.
 	Runner *sched.Runner
+	// Server is what the process knows about itself: version, uptime, whether checks can run. It is
+	// filled by `mn serve`; a zero value is reported as unknown rather than as a healthy server.
+	Server ServerInfo
 }
 
 // New validates the wiring.
@@ -124,6 +127,8 @@ func (s *Service) Handle(ctx context.Context, req Request) (any, *Error) {
 		return s.setPolicy(ctx, req.Args)
 	case "sub.rotate":
 		return s.rotateSubToken(ctx, req.Args)
+	case "server.state":
+		return s.serverState(ctx)
 	default:
 		return nil, &Error{Code: CodeBadRequest, Detail: fmt.Sprintf("unknown operation %q", req.Op)}
 	}
@@ -309,7 +314,15 @@ type uvShowResult struct {
 	Events    []store.Event `json:"events"`
 	Check     *store.Check  `json:"check,omitempty"`
 	SelfCheck *store.Check  `json:"self_check,omitempty"`
+	// Checks is the node's recent history, newest first: both the server's probes and the node's own
+	// self-reports, because "the box is broken" and "the path to it is broken" look the same in a
+	// single row and different in a series.
+	Checks []store.Check `json:"checks,omitempty"`
 }
+
+// historyLimit is how many rows `mn uv show` prints. A day of cycles produced at most a handful, and
+// an operator scrolling past ten rows is not reading them.
+const historyLimit = 10
 
 func (s *Service) showUV(ctx context.Context, raw json.RawMessage) (any, *Error) {
 	var args inviteIDArgs
@@ -330,6 +343,9 @@ func (s *Service) showUV(ctx context.Context, raw json.RawMessage) (any, *Error)
 	}
 	if self, err := s.Store.LatestCheck(ctx, node.ID, "self"); err == nil {
 		result.SelfCheck = &self
+	}
+	if checks, err := s.Store.Checks(ctx, node.ID, historyLimit); err == nil {
+		result.Checks = checks
 	}
 	return result, nil
 }

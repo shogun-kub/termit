@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"syscall"
 	"time"
@@ -18,9 +19,11 @@ import (
 	"github.com/shogun-kub/termit/internal/mn/config"
 	"github.com/shogun-kub/termit/internal/mn/dns"
 	"github.com/shogun-kub/termit/internal/mn/enroll"
+	"github.com/shogun-kub/termit/internal/mn/metrics"
 	"github.com/shogun-kub/termit/internal/mn/sched"
 	"github.com/shogun-kub/termit/internal/mn/server"
 	"github.com/shogun-kub/termit/internal/mn/store"
+	"github.com/shogun-kub/termit/internal/version"
 )
 
 // shutdownGrace is how long in-flight requests get after a termination signal.
@@ -53,6 +56,9 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 		return exitFailure
 	}
 
+	// The process's own start, shared by the metrics gauges and the admin dashboard.
+	start := time.Now().UTC()
+
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
@@ -63,14 +69,20 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 	}
 	defer func() { _ = db.Close() }()
 
+	// One registry feeds /metrics; the scheduler and the HTTP handlers write to it, nothing reads it
+	// back. It shares the process start, so the uptime gauge and the dashboard agree.
+	registry := metrics.New(start)
+
+	schedulerProber, proberInfo := schedProber(cfg, logger)
 	scheduler := newScheduler(schedulerConfig{
 		CheckInterval: cfg.Policy.CheckInterval,
 		Retries:       cfg.Policy.ProbeRetries,
 		Logger:        logger,
-	}, db, schedProber(cfg, logger), newCertChecker(cfg))
+	}, db, schedulerProber, newCertChecker(cfg))
 	scheduler.PolicyFn = policyFromSettings(cfg, db)
+	scheduler.Metrics = registry
 
-	handler, err := buildHandler(cfg, db, logger)
+	handler, err := buildHandler(cfg, db, logger, registry, proberInfo)
 	if err != nil {
 		fmt.Fprintf(stderr, "mn serve: %v\n", err)
 		return exitFailure
@@ -87,13 +99,24 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 
 	// The admin socket is best-effort at startup: a server that cannot offer its CLI must still serve
 	// the agents, and the operator sees exactly why the CLI is missing.
+	var adminService *admin.Service
 	if listener, err := listenAdmin(cfg.AdminSocket); err != nil {
 		logger.Warn("admin socket unavailable", "path", cfg.AdminSocket, "err", err)
 	} else {
-		adminService, err := admin.New(db)
+		adminService, err = admin.New(db)
 		if err == nil {
 			adminService.Master = mustMasterKey(cfg, logger)
 			adminService.Runner = scheduler
+			// The dashboard's server block: what this process is, and whether its checks can run.
+			adminService.Server = admin.ServerInfo{
+				Domain:        cfg.Domain,
+				Version:       version.Version,
+				Listen:        cfg.Listen,
+				Started:       start,
+				SchemaVersion: store.SchemaVersion,
+				ProberUp:      proberInfo.Up,
+				ProberDetail:  proberInfo.Detail,
+			}
 		}
 		if err != nil {
 			fmt.Fprintf(stderr, "mn serve: %v\n", err)
@@ -131,6 +154,10 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stderr, "mn serve: %v\n", err)
 			return exitFailure
 		}
+		if adminService != nil {
+			// The dashboard reports the certificate it is serving, not one it might issue.
+			adminService.Server.CertificateNotAfter = &tlsPaths.NotAfter
+		}
 		logger.Info("serving TLS", "domain", cfg.Domain, "listen", cfg.Listen,
 			"not_after", tlsPaths.NotAfter.UTC().Format(time.RFC3339))
 		go func() { serveErr <- server.ListenAndServeTLS(tlsPaths.CertPath, tlsPaths.KeyPath) }()
@@ -157,12 +184,13 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 }
 
 // buildHandler wires the HTTP surface: the enrollment service needs a store, resolvers and a prober.
-func buildHandler(cfg *config.Config, db *store.Store, logger *slog.Logger) (http.Handler, error) {
+func buildHandler(cfg *config.Config, db *store.Store, logger *slog.Logger,
+	registry *metrics.Registry, proberInfo proberState) (http.Handler, error) {
 	resolvers := []enroll.Resolver{dns.System{}}
 	if cfg.DNS.Secondary != "" {
 		resolvers = append(resolvers, dns.Server{Addr: cfg.DNS.Secondary})
 	}
-	prober, err := newProber(cfg, logger)
+	prober, _, err := newProber(cfg, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -193,6 +221,9 @@ func buildHandler(cfg *config.Config, db *store.Store, logger *slog.Logger) (htt
 		CheckInterval: cfg.Policy.CheckInterval,
 		SyncInterval:  cfg.Policy.SyncInterval,
 		MinSyncDelay:  2 * time.Hour,
+		Metrics:       registry,
+		ProberUp:      proberInfo.Up,
+		CertPath:      filepath.Join(cfg.CertDir(), "fullchain.pem"),
 	})
 }
 

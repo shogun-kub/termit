@@ -60,6 +60,21 @@ type Cycle struct {
 	Errored error
 }
 
+// Cycle outcomes as an observer sees them. They are plain words on purpose: the scheduler does not
+// import a metrics package, and a counter label is not worth a dependency edge.
+const (
+	ResultOK      = "ok"
+	ResultFailed  = "failed"
+	ResultUnknown = "unknown"
+	ResultError   = "error"
+)
+
+// CheckObserver is told about every cycle the runner finishes. It exists so the server can expose
+// counters and a latency histogram without the state machine knowing what a metric is.
+type CheckObserver interface {
+	ObserveCheck(result string, took time.Duration)
+}
+
 // Runner checks nodes on a schedule and applies the transition table to what it finds.
 type Runner struct {
 	Store    *store.Store
@@ -68,6 +83,8 @@ type Runner struct {
 	Policy   Policy
 	Now      func() time.Time
 	Logger   *slog.Logger
+	// Metrics, when set, sees every cycle: its outcome and its duration.
+	Metrics CheckObserver
 	// Sleep waits between attempts. Tests replace it; production leaves it nil.
 	Sleep func(ctx context.Context, d time.Duration) bool
 	// PolicyFn, when set, supplies the policy for each pass. It is how an operator changes the
@@ -91,6 +108,31 @@ func (r *Runner) CheckNow(ctx context.Context, node store.UV) (Cycle, error) {
 }
 
 func (r *Runner) check(ctx context.Context, node store.UV, retries RetryPolicy) (Cycle, error) {
+	started := r.Now()
+	cycle, err := r.runCycle(ctx, node, retries)
+	// A cancelled context is a shutdown, not a cycle that failed: counting it would make every
+	// restart look like a burst of errors.
+	if r.Metrics != nil && ctx.Err() == nil {
+		r.Metrics.ObserveCheck(cycleResult(cycle, err), r.Now().Sub(started))
+	}
+	return cycle, err
+}
+
+// cycleResult classifies a finished cycle for the observer.
+func cycleResult(cycle Cycle, err error) string {
+	switch {
+	case err != nil:
+		return ResultError
+	case cycle.Event == EventCheckOK:
+		return ResultOK
+	case cycle.Event == EventCheckFailed:
+		return ResultFailed
+	default:
+		return ResultUnknown
+	}
+}
+
+func (r *Runner) runCycle(ctx context.Context, node store.UV, retries RetryPolicy) (Cycle, error) {
 	cycle := Cycle{Node: node}
 
 	target, ok := r.target(ctx, node)

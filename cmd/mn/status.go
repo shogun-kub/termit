@@ -48,6 +48,10 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "mn status: %v\n", err)
 		return exitFailure
 	}
+	// The server block is best effort: an older server does not have the operation, and a status that
+	// refuses to print the node table over one missing line would be worse than the missing line.
+	var server admin.ServerState
+	hasServer := client.Call(callCtx, "server.state", nil, &server) == nil
 	// A runtime override, if any, is what the scheduler actually uses; the file value is the fallback.
 	var policy struct {
 		Policy map[string]string `json:"policy"`
@@ -64,6 +68,20 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 	fmt.Fprintf(stdout, "server:   %s\n", cfg.Domain)
 	fmt.Fprintf(stdout, "listen:   %s\n", cfg.Listen)
 	fmt.Fprintf(stdout, "version:  %s\n", version.String("termit-mn"))
+	if hasServer {
+		if !server.StartedAt.IsZero() {
+			fmt.Fprintf(stdout, "uptime:   %s (started %s)\n",
+				humanUptime(time.Duration(server.UptimeSeconds)*time.Second), checkTime(&server.StartedAt))
+		}
+		fmt.Fprintf(stdout, "database: %s (%s, schema %d)\n",
+			server.Database.Path, humanBytes(server.Database.Bytes), server.SchemaVersion)
+		fmt.Fprintf(stdout, "prober:   %s\n", describeProber(server.Prober.Up, server.Prober.Detail))
+		fmt.Fprintf(stdout, "queue:    %s\n", describeQueue(server))
+		if server.Certificate != nil {
+			fmt.Fprintf(stdout, "cert:     %s (in %d days)\n",
+				server.Certificate.NotAfter.UTC().Format(time.RFC3339), server.Certificate.DaysUntil)
+		}
+	}
 	fmt.Fprintf(stdout, "nodes:    %d (%s)\n", len(nodes), summarizeStates(nodes))
 	fmt.Fprintf(stdout, "check:    every %s, times below are UTC%s\n", humanInterval(interval), note)
 	fmt.Fprintln(stdout)
@@ -121,6 +139,75 @@ func humanInterval(d time.Duration) string {
 		return fmt.Sprintf("%dh", hours)
 	}
 	return fmt.Sprintf("%dm", int(d.Round(time.Minute)/time.Minute))
+}
+
+// humanUptime renders a process's age in the two units that matter at that scale.
+func humanUptime(d time.Duration) string {
+	if d < 0 {
+		d = 0
+	}
+	days := int(d / (24 * time.Hour))
+	hours := int(d % (24 * time.Hour) / time.Hour)
+	minutes := int(d % time.Hour / time.Minute)
+	switch {
+	case days > 0:
+		return fmt.Sprintf("%dd%dh", days, hours)
+	case hours > 0:
+		return fmt.Sprintf("%dh%dm", hours, minutes)
+	default:
+		return fmt.Sprintf("%dm", minutes)
+	}
+}
+
+// humanBytes is a file size an operator can read without counting digits. Binary units, because the
+// number comes from the filesystem.
+func humanBytes(n int64) string {
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%d B", n)
+	}
+	value := float64(n)
+	for _, suffix := range []string{"KiB", "MiB", "GiB", "TiB"} {
+		value /= unit
+		if value < unit {
+			return fmt.Sprintf("%.1f %s", value, suffix)
+		}
+	}
+	return fmt.Sprintf("%.1f PiB", value/unit)
+}
+
+// describeProber says whether checks can run. "0 due" over a broken prober is the failure this line
+// exists to prevent: it is the difference between "nothing to do" and "nothing is being done".
+func describeProber(up bool, detail string) string {
+	if up {
+		if detail == "" {
+			return "ready"
+		}
+		return "ready (" + detail + ")"
+	}
+	if detail == "" {
+		detail = "no probe worker"
+	}
+	return "unavailable — every check reports unknown (" + detail + ")"
+}
+
+// describeQueue renders the scheduler's backlog: how many nodes are overdue, how late the oldest one
+// is, and when the next check is due.
+func describeQueue(server admin.ServerState) string {
+	next := "nothing scheduled"
+	if server.Queue.NextDueAt != nil {
+		next = "next " + checkTime(server.Queue.NextDueAt) + " UTC"
+	}
+	switch {
+	case server.Queue.Due == 0:
+		return "0 due, " + next
+	case server.Queue.OldestDueAt == nil:
+		// Due but never scheduled: freshly enrolled nodes waiting for their first cycle.
+		return fmt.Sprintf("%d due (never checked), %s", server.Queue.Due, next)
+	default:
+		return fmt.Sprintf("%d due, oldest %s late, %s",
+			server.Queue.Due, humanUptime(time.Duration(server.Queue.OldestDueSeconds)*time.Second), next)
+	}
 }
 
 // runServerCheck runs one cycle for every node the scheduler would probe. With a node argument it is

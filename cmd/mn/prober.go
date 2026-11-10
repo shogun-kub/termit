@@ -13,15 +13,25 @@ import (
 	"github.com/shogun-kub/termit/internal/mn/probe"
 )
 
+// proberState says whether checks can actually run, and where the worker comes from when they can.
+//
+// It is separate from the prober value on purpose: a server without a worker still has a prober, one
+// that answers "unknown" for every node. That keeps the mesh safe, and this struct is what tells the
+// operator — and /metrics, and `mn status` — why nothing is being checked.
+type proberState struct {
+	Up     bool
+	Detail string
+}
+
 // newProber returns the prober the enrollment service uses.
 //
 // With no xray binary configured — a fresh install, or a machine that is not meant to probe — every
 // check reports "unknown". That is the safe default: an unknown check never blocks a node, and it is
 // visible in the log instead of silently looking like a healthy node.
-func newProber(cfg *config.Config, logger *slog.Logger) (enroll.Prober, error) {
+func newProber(cfg *config.Config, logger *slog.Logger) (enroll.Prober, proberState, error) {
 	if cfg.Prober.XrayBinary == "" {
 		logger.Warn("no prober configured: enrollment checks will report unknown and nodes stay pending")
-		return unknownProber{}, nil
+		return unknownProber{}, proberState{Detail: "prober.xray_binary is not set"}, nil
 	}
 	worker, err := probe.NewWorker(probe.Config{
 		Binary:   cfg.Prober.XrayBinary,
@@ -34,9 +44,9 @@ func newProber(cfg *config.Config, logger *slog.Logger) (enroll.Prober, error) {
 		// A broken worker must not take the server down: agents keep enrolling, every check reports
 		// unknown, and the operator sees exactly why in the log.
 		logger.Error("prober unavailable; checks will report unknown", "err", err)
-		return unknownProber{}, nil
+		return unknownProber{}, proberState{Detail: "the prober could not start: " + err.Error()}, nil
 	}
-	return workerProber{worker: worker}, nil
+	return workerProber{worker: worker}, proberState{Up: true, Detail: cfg.Prober.XrayBinary}, nil
 }
 
 // workerProber adapts the xray-core worker to the narrow interface enrollment needs.

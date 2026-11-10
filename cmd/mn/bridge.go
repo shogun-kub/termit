@@ -134,14 +134,14 @@ func (a enrollProberAdapter) Probe(ctx context.Context, targets []probe.Target) 
 }
 
 // schedProber builds the scheduler's prober from the configuration. When no worker can be built the
-// returned prober reports every node as unknown.
-func schedProber(cfg *config.Config, logger *slog.Logger) sched.Prober {
-	inner, err := newProber(cfg, logger)
+// returned prober reports every node as unknown, and the state says why.
+func schedProber(cfg *config.Config, logger *slog.Logger) (sched.Prober, proberState) {
+	inner, state, err := newProber(cfg, logger)
 	if err != nil {
 		logger.Warn("the prober is unavailable; every node will be unknown", "err", err)
-		return unknownSchedProber{}
+		return unknownSchedProber{}, proberState{Detail: err.Error()}
 	}
-	return enrollProberAdapter{inner: inner}
+	return enrollProberAdapter{inner: inner}, state
 }
 
 // unknownSchedProber is the scheduler's prober when no worker exists: every node is unknown.

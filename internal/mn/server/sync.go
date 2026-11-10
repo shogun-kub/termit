@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/shogun-kub/termit/internal/cred"
+	"github.com/shogun-kub/termit/internal/mn/metrics"
 	"github.com/shogun-kub/termit/internal/mn/secret"
 	"github.com/shogun-kub/termit/internal/mn/store"
 	"github.com/shogun-kub/termit/internal/proto"
@@ -19,6 +20,9 @@ import (
 // The response is a full set rather than a delta on purpose. A node that missed the previous response,
 // or that restarted with an empty memory, must converge from this one answer alone.
 func (h *Handler) sync(w http.ResponseWriter, r *http.Request) {
+	outcome := metrics.ResultRefused
+	defer func() { h.observeSync(outcome) }()
+
 	node, refused := h.authenticateAgent(w, r)
 	if refused {
 		return
@@ -129,7 +133,15 @@ func (h *Handler) sync(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.opts.Logger.Info("sync served", "uv", node.ID, "peers", len(response.Peers))
+	outcome = metrics.ResultOK
 	writeJSON(w, http.StatusOK, response)
+}
+
+// observeSync records one agent sync, tolerating a handler built without a registry.
+func (h *Handler) observeSync(outcome string) {
+	if h.opts.Metrics != nil {
+		h.opts.Metrics.ObserveSync(outcome)
+	}
 }
 
 // authenticateAgent resolves the bearer token to a node. A blocked or removed node gets the same

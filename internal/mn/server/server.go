@@ -10,7 +10,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -18,7 +17,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/shogun-kub/termit/internal/acme"
 	"github.com/shogun-kub/termit/internal/mn/enroll"
+	"github.com/shogun-kub/termit/internal/mn/metrics"
 	"github.com/shogun-kub/termit/internal/mn/store"
 	"github.com/shogun-kub/termit/internal/proto"
 	"github.com/shogun-kub/termit/internal/version"
@@ -44,6 +45,15 @@ type Options struct {
 	SyncInterval  time.Duration
 	// MinSyncDelay is how long a fresh node waits before its first own cycle.
 	MinSyncDelay time.Duration
+	// Metrics receives the counters behind /metrics. Optional: a test or a plain handler runs without
+	// one, and the endpoint then reports only the gauges it can read from the database.
+	Metrics *metrics.Registry
+	// ProberUp says whether checks can actually run. The server keeps serving either way; this is
+	// what makes "every node is unknown" visible instead of mysterious.
+	ProberUp bool
+	// CertPath is the server's own certificate; its expiry is a gauge, because a management server
+	// that renews only on restart is a failure an alert should catch.
+	CertPath string
 }
 
 // Handler is the router plus its state.
@@ -124,15 +134,45 @@ func (h *Handler) health(w http.ResponseWriter, r *http.Request) {
 
 // metrics is loopback-only: it describes the server's internals, and the monitoring agent that reads
 // it runs on the same host.
+//
+// The counters are aggregates and the gauges are read here rather than cached, because a number that
+// disagrees with `mn status` would cost more to explain than one small query costs to run.
 func (h *Handler) metrics(w http.ResponseWriter, r *http.Request) {
 	if !isLoopback(r.RemoteAddr) {
 		http.Error(w, "metrics are available on loopback only", http.StatusForbidden)
 		return
 	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	snap := metrics.Snapshot{
+		Version:       version.Version,
+		SchemaVersion: store.SchemaVersion,
+		Now:           h.opts.Now().UTC(),
+		ProberUp:      h.opts.ProberUp,
+	}
+	if counts, err := h.opts.Store.StateCounts(ctx); err != nil {
+		h.opts.Logger.Warn("metrics: state counts", "err", err)
+	} else {
+		snap.Nodes = counts
+	}
+	if queue, err := h.opts.Store.Queue(ctx, snap.Now); err != nil {
+		h.opts.Logger.Warn("metrics: check queue", "err", err)
+	} else {
+		snap.Due, snap.OldestDue, snap.NextDue = queue.Due, queue.OldestDue, queue.NextDue
+	}
+	if h.opts.CertPath != "" {
+		if notAfter, err := acme.CertNotAfter(h.opts.CertPath); err == nil {
+			snap.CertificateNotAfter = &notAfter
+		}
+	}
+
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
-	fmt.Fprint(w, "# HELP termit_mn_up Whether the server answers.\n# TYPE termit_mn_up gauge\ntermit_mn_up 1\n")
-	fmt.Fprint(w, "# HELP termit_mn_build_info Build identity.\n# TYPE termit_mn_build_info gauge\n")
-	fmt.Fprintf(w, "termit_mn_build_info{version=%q} 1\n", version.Version)
+	if h.opts.Metrics != nil {
+		h.opts.Metrics.Write(w, snap)
+		return
+	}
+	metrics.New(snap.Now).Write(w, snap)
 }
 
 func (h *Handler) notFound(w http.ResponseWriter, r *http.Request) {
@@ -142,6 +182,11 @@ func (h *Handler) notFound(w http.ResponseWriter, r *http.Request) {
 
 // enroll handles POST /api/v1/enroll.
 func (h *Handler) enroll(w http.ResponseWriter, r *http.Request) {
+	// Every path out of this handler is one enrollment attempt: refused unless the last line says
+	// otherwise. The counter is what makes a wave of refusals visible without reading logs.
+	outcome := metrics.ResultRefused
+	defer func() { h.observeEnrollment(outcome) }()
+
 	ip := sourceIP(r)
 	if !h.limiter.allow(ip) {
 		// The limit exists because an invite code is a guessable-length secret and enrollment is the
@@ -176,8 +221,20 @@ func (h *Handler) enroll(w http.ResponseWriter, r *http.Request) {
 
 	h.opts.Logger.Info("node enrolled",
 		"uv", result.UV.ID, "domain", result.UV.Domain, "state", result.UV.State, "ip", ip)
+	if result.UV.State == store.StatePending {
+		outcome = metrics.ResultPending
+	} else {
+		outcome = metrics.ResultOK
+	}
 	// The secrets are in this response and nowhere else: no log line above carries them.
 	writeJSON(w, http.StatusCreated, result.Secrets)
+}
+
+// observeEnrollment records one attempt, tolerating a handler built without a registry.
+func (h *Handler) observeEnrollment(outcome string) {
+	if h.opts.Metrics != nil {
+		h.opts.Metrics.ObserveEnrollment(outcome)
+	}
 }
 
 func titleFor(status int) string {

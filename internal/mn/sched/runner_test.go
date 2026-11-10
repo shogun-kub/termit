@@ -255,6 +255,96 @@ func TestTheNextCheckIsScheduledWithinTheJitter(t *testing.T) {
 	}
 }
 
+func TestEveryCycleIsObservedOnce(t *testing.T) {
+	t.Parallel()
+	db := newStore(t)
+	enroll(t, db, "uv_1", "one.example.com", store.StateActive)
+
+	observer := &recordingObserver{}
+	r := runner(db, &scriptedProber{results: []probe.Result{okResult()}}, staticTargeter{ok: true})
+	r.Metrics = observer
+	node, err := db.UVByID(context.Background(), "uv_1")
+	if err != nil {
+		t.Fatalf("UVByID: %v", err)
+	}
+	if _, err := r.CheckOne(context.Background(), node); err != nil {
+		t.Fatalf("CheckOne: %v", err)
+	}
+
+	// One cycle, one observation: three attempts are one verdict, and a counter that counted attempts
+	// would report a failing node three times as loudly as a healthy one.
+	if len(observer.seen) != 1 {
+		t.Fatalf("%d observations, want 1", len(observer.seen))
+	}
+	if observer.seen[0] != sched.ResultOK {
+		t.Errorf("result = %q, want ok", observer.seen[0])
+	}
+}
+
+func TestTheObserverSeesTheOtherOutcomes(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name     string
+		prober   sched.Prober
+		targeter sched.Targeter
+		want     string
+	}{
+		{"a failing node", &scriptedProber{results: []probe.Result{failResult()}}, staticTargeter{ok: true}, sched.ResultFailed},
+		{"a prober that cannot do its job", &scriptedProber{results: []probe.Result{unknownResult()}}, staticTargeter{ok: true}, sched.ResultUnknown},
+		{"a node with no target", &scriptedProber{results: []probe.Result{okResult()}}, staticTargeter{ok: false}, sched.ResultUnknown},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			db := newStore(t)
+			enroll(t, db, "uv_1", "one.example.com", store.StateActive)
+			observer := &recordingObserver{}
+			r := runner(db, tc.prober, tc.targeter)
+			r.Metrics = observer
+			node, err := db.UVByID(context.Background(), "uv_1")
+			if err != nil {
+				t.Fatalf("UVByID: %v", err)
+			}
+			if _, err := r.CheckOne(context.Background(), node); err != nil {
+				t.Fatalf("CheckOne: %v", err)
+			}
+			if len(observer.seen) != 1 || observer.seen[0] != tc.want {
+				t.Errorf("results = %v, want [%s]", observer.seen, tc.want)
+			}
+		})
+	}
+}
+
+// recordingObserver keeps what the runner reported.
+type recordingObserver struct {
+	seen []string
+}
+
+func (o *recordingObserver) ObserveCheck(result string, _ time.Duration) {
+	o.seen = append(o.seen, result)
+}
+
+func TestARequeueIsNotAWholeCycle(t *testing.T) {
+	t.Parallel()
+	db := newStore(t)
+	node := enroll(t, db, "uv_1", "one.example.com", store.StateActive)
+
+	observer := &recordingObserver{}
+	// A cancelled context stops the cycle before the verdict; nothing is added to the counters,
+	// because "we shut down" is not a fact about the node.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	r := runner(db, &scriptedProber{results: []probe.Result{okResult()}}, staticTargeter{ok: true})
+	r.Metrics = observer
+	if _, err := r.CheckOne(ctx, node); err == nil {
+		t.Fatal("a cancelled cycle returned no error")
+	}
+	if len(observer.seen) != 0 {
+		t.Errorf("a cancelled cycle was observed as %v", observer.seen)
+	}
+}
+
 func TestPassTakesOnlyDueNodes(t *testing.T) {
 	t.Parallel()
 	db := newStore(t)

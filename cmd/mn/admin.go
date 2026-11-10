@@ -442,6 +442,13 @@ func runUVShow(args []string, stdout, stderr io.Writer) int {
 			OK         bool      `json:"ok"`
 			ErrorClass string    `json:"error_class"`
 		} `json:"self_check"`
+		Checks []struct {
+			At         time.Time `json:"at"`
+			Kind       string    `json:"kind"`
+			OK         bool      `json:"ok"`
+			LatencyMS  int       `json:"latency_ms"`
+			ErrorClass string    `json:"error_class"`
+		} `json:"checks"`
 	}
 	callCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -482,6 +489,26 @@ func runUVShow(args []string, stdout, stderr io.Writer) int {
 		for _, event := range result.Events {
 			fmt.Fprintf(stdout, "  %s  %s -> %s  %s (%s)\n", event.At.UTC().Format("2006-01-02 15:04"),
 				event.FromState, event.ToState, event.Reason, event.Actor)
+		}
+	}
+	if len(result.Checks) > 0 {
+		// Both kinds in one series: a probe that fails while the node's own self-check passes is a
+		// path problem, and the two rows next to each other are what says so.
+		fmt.Fprintln(stdout, "checks (newest first):")
+		for _, check := range result.Checks {
+			verdict := "ok"
+			if !check.OK {
+				verdict = "failed"
+				if check.ErrorClass != "" {
+					verdict += " (" + check.ErrorClass + ")"
+				}
+			}
+			latency := ""
+			if check.LatencyMS > 0 {
+				latency = fmt.Sprintf("  %dms", check.LatencyMS)
+			}
+			fmt.Fprintf(stdout, "  %s  %-5s  %s%s\n",
+				check.At.UTC().Format("2006-01-02 15:04"), check.Kind, verdict, latency)
 		}
 	}
 	return exitOK

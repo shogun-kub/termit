@@ -13,6 +13,7 @@ import (
 	"github.com/shogun-kub/termit/internal/cred"
 	"github.com/shogun-kub/termit/internal/mn/config"
 	"github.com/shogun-kub/termit/internal/mn/enroll"
+	"github.com/shogun-kub/termit/internal/mn/metrics"
 	"github.com/shogun-kub/termit/internal/mn/secret"
 	"github.com/shogun-kub/termit/internal/mn/server"
 	"github.com/shogun-kub/termit/internal/mn/store"
@@ -28,6 +29,7 @@ var (
 type fixture struct {
 	handler  http.Handler
 	store    *store.Store
+	registry *metrics.Registry
 	agentKey string
 	nodeID   string
 	peerID   string
@@ -99,15 +101,18 @@ func newFixtureWithProber(t *testing.T, prober enroll.Prober) *fixture {
 	if err != nil {
 		t.Fatalf("enroll.New: %v", err)
 	}
+	registry := metrics.New(testNow)
 	handler, err := server.New(server.Options{
 		Store: db, Enrollment: service, Domain: "mn.example.com",
 		MasterKey: masterKey, CheckInterval: 24 * time.Hour, SyncInterval: 24 * time.Hour,
 		MinSyncDelay: 2 * time.Hour, Now: func() time.Time { return testNow },
+		Metrics: registry, ProberUp: true,
 	})
 	if err != nil {
 		t.Fatalf("server.New: %v", err)
 	}
-	return &fixture{handler: handler, store: db, agentKey: agentKey, nodeID: "uv_one", peerID: "uv_two"}
+	return &fixture{handler: handler, store: db, registry: registry, agentKey: agentKey,
+		nodeID: "uv_one", peerID: "uv_two"}
 }
 
 func (f *fixture) sync(t *testing.T, key string, body string) *httptest.ResponseRecorder {
