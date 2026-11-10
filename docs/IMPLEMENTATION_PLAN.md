@@ -427,15 +427,16 @@ Still to do in this milestone:
 - The second node (termit-uv2 has no install yet).
 - `SPIKES.md` S15 write-up of the two probe defects.
 
-### M2.3 Prober — **in progress**
+### M2.3 Prober — **done**
 
 Done: the xray-core worker, the certificate checker with a 14-day minimum validity and a pinned leaf, the
 two-resolver DNS check (system plus an optional second one, `prober.ca_file` for a private CA), the
 result model with stable classes, and the circuit breaker: three consecutive worker failures open it for
 five minutes, during which every target answers `worker_unavailable` without starting the core.
 
-Remaining: the decoy-specific check (today the decoy is proven by the TLS + tunnel checks, not by an
-HTML assertion), and the scheduler that consumes the classes (M3.1).
+Decided: the decoy is proven by the TLS + tunnel checks rather than a separate HTML assertion — a node
+that answers TLS and carries a VLESS connection is serving the web tier, and a byte-level HTML check
+would break whenever the template changes. The scheduler that consumes the classes landed in M3.1.
 
 - `probe.Prober` interface; xray-core worker implementation from M0.4; cert/decoy checker; DNS
   checker with two resolvers (`system`, DoH) and `extra_roots` for the lab.
@@ -544,7 +545,7 @@ add` (4) after a peer credential was removed from the core config, then `0` agai
 
 Purpose: the three scenarios from the concept, end to end, verified in the lab.
 
-### M3.1 Scheduler and state machine (MN) — **in progress**
+### M3.1 Scheduler and state machine (MN) — **done**
 
 - Queue keyed by `next_check_at` with jitter; worker pool; per-node serialization.
 - Retry policy inside a cycle (3 × 10 min, configurable); cycle outcome aggregation (`ok`, `failed`,
@@ -564,7 +565,8 @@ Done so far:
 | Queue, cycle runner with in-cycle retries, aggregator, jitter, `mn uv check now` | done |
 | Certificate pin stored at enrollment (schema v5) — without it every scheduled check fails | done |
 | `mn uv show` prints the last probe | done |
-| `mn policy set`, per-node serialisation across processes | not yet |
+| `mn policy` show and set, per-node serialisation within a pass | done |
+| `mn check now` for the whole mesh; `mn status` dashboard (counts, last/next check) | done |
 
 The table is the contract M3.2 and the scenario milestones build on: `active → unavailable` on the
 first failed cycle, `unavailable → blocked` on the second, `blocked → active` only through an explicit
@@ -767,7 +769,9 @@ full on MN, SQLite lock contention. Each drill asserts the invariant it protects
 
 - `docs/OPERATIONS.md` (install, upgrade, rotate, recover, backup, uninstall, troubleshooting),
   `docs/PROTOCOL.md` (API contract with examples), `docs/THREAT_MODEL.md`.
-- `mn status` dashboard text, Prometheus metrics, structured logs with redaction tests.
+- Extend the `mn status` dashboard (prober/worker health, queue age, per-node history), Prometheus
+  metrics, structured logs with redaction tests. The basic dashboard (state counts, last and next
+  check, runtime policy override) landed early in M3.1.
 - Bootstrap installer script (`deploy/install/uv.sh`) with checksum (and optional minisign)
   verification, plus an upgrade path that preserves state.
 
@@ -775,8 +779,9 @@ full on MN, SQLite lock contention. Each drill asserts the invariant it protects
 
 - `v0.1.0` tag; `goreleaser` (or a small script) producing linux/amd64 + linux/arm64 archives,
   `SHA256SUMS`, and a systemd unit bundle.
-- CI: lint, unit, race, govulncheck, cross-build, Compose integration; lab suite documented as a
-  manual gate.
+- CI: lint, unit, race, govulncheck, cross-build; the lab suite is the acceptance gate. The Docker
+  Compose harness is a developer convenience (QUESTIONS Q9.4) and is not built yet, so CI does not
+  claim it.
 - Final manual VPS checklist on real Debian 13 with a real domain and Let's Encrypt.
 
 ---

@@ -116,7 +116,7 @@ deploy/systemd/         installed copies of the units, for readers; the authorit
                         as a static file)
 deploy/install/         bootstrap shell script and release checks
 test/lab/               SSH-driven acceptance suite (build tag `lab`)
-test/integration/       Docker Compose suite
+test/integration/       planned Docker Compose suite (not built; the lab is the gate)
 docs/                   design and operations docs
 ```
 
@@ -140,7 +140,7 @@ $env:GOPATH = "$(Get-Location)\.spike-out\gopath"
 The cache overrides are required: the file sandbox denies writes to the default `%LOCALAPPDATA%`
 cache, and a build then fails with a permission error rather than a compile error.
 
-Still missing: `docker` (needed for the Compose suite), `make` (the `Makefile` is convenience only),
+Still missing: `docker` (only needed once the planned Compose suite exists), `make` (the `Makefile` is convenience only),
 `golangci-lint` (CI lints anyway). `puttygen` on this host rejects `-O`, so PPK conversion does not
 work here — see §4.3.
 
