@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"flag"
 	"fmt"
@@ -155,12 +156,20 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 			return exitFailure
 		}
 		if adminService != nil {
-			// The dashboard reports the certificate it is serving, not one it might issue.
-			adminService.Server.CertificateNotAfter = &tlsPaths.NotAfter
+			adminService.Server.CertificatePath = tlsPaths.CertPath
 		}
+		// The certificate is served through a loader rather than loaded once, so a renewal reaches
+		// this running process: the loop below re-evaluates it, and the next handshake picks up the
+		// new pair. Without it a server that outlives its first certificate would expire in service.
+		loader := cert.NewLoader(tlsPaths.CertPath, tlsPaths.KeyPath)
+		server.TLSConfig = &tls.Config{GetCertificate: loader.GetCertificate}
+		go cert.KeepFresh(ctx, 6*time.Hour, func(attempt context.Context) (bool, error) {
+			renewed, err := cert.Ensure(attempt, cert.Options{Config: cfg, Logger: logger})
+			return renewed.Renewed, err
+		}, logger)
 		logger.Info("serving TLS", "domain", cfg.Domain, "listen", cfg.Listen,
 			"not_after", tlsPaths.NotAfter.UTC().Format(time.RFC3339))
-		go func() { serveErr <- server.ListenAndServeTLS(tlsPaths.CertPath, tlsPaths.KeyPath) }()
+		go func() { serveErr <- server.ListenAndServeTLS("", "") }()
 	}
 
 	select {

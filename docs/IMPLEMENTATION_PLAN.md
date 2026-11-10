@@ -814,7 +814,7 @@ Two defects the lab found and the fix:
 - The running agent holds the configuration it read at start, so its next sync would have regenerated
   the old route; the command now restarts `termit-uv-agent` after the change.
 
-### M4.2 Operations surface — done, one item carried
+### M4.2 Operations surface — done
 
 Delivered:
 
@@ -827,11 +827,7 @@ Delivered:
 | The dashboard's server block: uptime, database size and schema, prober state with its reason, queue backlog and age, certificate expiry | `admin server.state`, `mn status` | unit tests; live lab output |
 | Per-node history in one series: the last ten probes and self-reports together | `admin uv.show` → `mn uv show` | live lab output |
 | A redaction test: enrolment and sync log identifiers, never the agent key, subscription token, probe UUID, invite code or node UUID | `internal/mn/server` | the test fails if any of them appears |
-
-Carried forward: **the management server renews its certificate only at startup**. It is documented as
-a known limitation, `termit_mn_certificate_expiry_timestamp_seconds` makes it alertable, and the fix —
-self-renewal inside `mn serve` with a hot certificate swap — belongs with the release work rather than
-with the documentation that found it.
+| In-place certificate renewal on the server: it re-checks every six hours, writes through the CA's chain and serves the new pair on the next handshake — no restart, and a failed attempt keeps the old certificate in service | `internal/mn/cert` (loader + loop), `mn serve` | unit tests for the reload, the broken-pair case and the loop; lab: a certificate swapped under a running server was served immediately, swapped back, and the real chain still validated |
 
 Also outstanding, and a maintainer decision rather than a defect fix: `DESCRIPTION.md` §8 shows a sync
 body shape the server does not send, §15 says agent keys are hashed with Argon2id and compared in

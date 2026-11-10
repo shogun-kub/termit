@@ -4,6 +4,8 @@ import (
 	"context"
 	"os"
 	"time"
+
+	"github.com/shogun-kub/termit/internal/acme"
 )
 
 // ServerInfo is what the process knows about itself and the CLI cannot: the caller fills it at
@@ -17,8 +19,10 @@ type ServerInfo struct {
 	// ProberUp is false when no probe worker could be built: every check is then unknown.
 	ProberUp bool
 	// ProberDetail is where the worker came from, or why there is none.
-	ProberDetail        string
-	CertificateNotAfter *time.Time
+	ProberDetail string
+	// CertificatePath is the server's own certificate. The dashboard reads its expiry on demand, so a
+	// renewal shows up without a restart.
+	CertificatePath string
 }
 
 // ServerState is the server half of the `mn status` dashboard: the process, the database and the
@@ -94,13 +98,17 @@ func (s *Service) serverState(ctx context.Context) (any, *Error) {
 			state.Queue.OldestDueSeconds = 0
 		}
 	}
-	if s.Server.CertificateNotAfter != nil && !s.Server.CertificateNotAfter.IsZero() {
-		state.Certificate = &struct {
-			NotAfter  time.Time `json:"not_after"`
-			DaysUntil int       `json:"days_until"`
-		}{
-			NotAfter:  *s.Server.CertificateNotAfter,
-			DaysUntil: int(s.Server.CertificateNotAfter.Sub(now).Hours() / 24),
+	if s.Server.CertificatePath != "" {
+		// Read at query time, not at startup: the running server renews its own certificate, and a
+		// dashboard that reported the one it started with would hide exactly that.
+		if notAfter, err := acme.CertNotAfter(s.Server.CertificatePath); err == nil {
+			state.Certificate = &struct {
+				NotAfter  time.Time `json:"not_after"`
+				DaysUntil int       `json:"days_until"`
+			}{
+				NotAfter:  notAfter,
+				DaysUntil: int(notAfter.Sub(now).Hours() / 24),
+			}
 		}
 	}
 	return state, nil

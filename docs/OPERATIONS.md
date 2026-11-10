@@ -363,11 +363,17 @@ On a node:
 - The agent reports the new leaf on its next sync; the server follows the pin, so a renewal does not
   break the probes.
 
-On the MN, `mn serve` evaluates the certificate **when it starts** and issues a new one if it is
-inside `acme.renew_before_days`. There is no renewal timer in this build yet, so a server that must
-not be restarted for months needs either a scheduled restart inside the window or the self-renewal
-that is on the M4.2 list — see [Known limitations](#15-known-limitations). A machine that restarts for
-an upgrade every few weeks never notices.
+On the MN, `mn serve` issues a certificate at startup if it is inside `acme.renew_before_days`, then
+re-checks every six hours. A renewal replaces the files and the running server serves the new pair on
+the next handshake — no restart, no window where the old one is already gone:
+
+- Nothing is written until the CA returns a chain, so a failed attempt leaves the current certificate
+  serving. The failure is logged (`certificate renewal failed; the current certificate stays in
+  service`) and retried six hours later.
+- `mn status` and `termit_mn_certificate_expiry_timestamp_seconds` read the certificate from disk, so a
+  renewal is visible immediately rather than after the next restart.
+- The renewal needs `:80` for the HTTP-01 challenge. If something else on the host holds it, the
+  attempt fails and is logged; the certificate keeps serving until that is fixed.
 
 To move a deployment off production Let's Encrypt (a lab, a private CA with an ACME endpoint):
 
@@ -664,9 +670,6 @@ A useful alert set, in the order that matters:
 
 ## 15. Known limitations
 
-- **The management server renews its certificate only when it starts** (§7). Until the self-renewal
-  lands, plan a restart inside the renewal window, or watch
-  `termit_mn_certificate_expiry_timestamp_seconds`.
 - **WARP acceptance needs a host with `/dev/net/tun`.** The mode, the route, the fail-open behaviour
   and the refusal are tested; installing, registering and connecting the tunnel is on the release
   checklist for a host where it can run.
