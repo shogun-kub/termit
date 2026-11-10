@@ -336,3 +336,37 @@ func TestWarpSelectedMode(t *testing.T) {
 		t.Error("an unknown mode was accepted")
 	}
 }
+
+func TestValidateMNURL(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		url  string
+		ok   bool
+	}{
+		{"empty", "", true},
+		{"plain", "https://mn.example.com", true},
+		{"with prefix", "https://mn.example.com/6rfjdqfn5nno", true},
+		{"port", "https://mn.example.com:8443/api", true},
+		{"http", "http://127.0.0.1:8181/p", true},
+		{"no scheme", "mn.example.com", false},
+		{"wrong scheme", "ftp://mn.example.com", false},
+		{"no host", "https://", false},
+		{"query", "https://mn.example.com/x?a=1", false},
+		{"fragment", "https://mn.example.com/x#f", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := config.Default()
+			c.Domain = "node.example.com"
+			c.MN.URL = tc.url
+			err := c.Validate()
+			if tc.ok && err != nil {
+				t.Fatalf("Validate(%q) = %v", tc.url, err)
+			}
+			if !tc.ok && err == nil {
+				t.Fatalf("Validate(%q) accepted an unusable URL", tc.url)
+			}
+		})
+	}
+}

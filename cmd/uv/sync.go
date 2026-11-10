@@ -14,6 +14,7 @@ import (
 	"github.com/shogun-kub/termit/internal/uv/config"
 	"github.com/shogun-kub/termit/internal/uv/install"
 	"github.com/shogun-kub/termit/internal/uv/state"
+	"github.com/shogun-kub/termit/internal/version"
 )
 
 // execRunner runs one command and returns its combined output.
@@ -69,7 +70,7 @@ func (a *application) runSync(args []string) int {
 	defer unlock()
 
 	remote := agent.Remote{BaseURL: cfg.MN.URL, CAFile: cfg.MN.CAFile, CertPin: agent.CertFingerprint(install.LeafCertPath(cfg))}
-	answer, err := remote.Fetch(ctx, st.Credentials.AgentKey, proto.SyncRequest{AgentVersion: proto.APIVersion})
+	answer, err := remote.Fetch(ctx, st.Credentials.AgentKey, proto.SyncRequest{AgentVersion: version.Agent("termit-uv")})
 	if err != nil {
 		fmt.Fprintf(stderr, "termit-uv sync: %v\n", err)
 		return exitFailure

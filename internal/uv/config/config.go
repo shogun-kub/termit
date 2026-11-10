@@ -258,6 +258,9 @@ func (c *Config) Validate() error {
 	if err := validateDomain(c.Domain); err != nil {
 		problems = append(problems, err)
 	}
+	if err := validateMNURL(c.MN.URL); err != nil {
+		problems = append(problems, err)
+	}
 	if c.Email != "" && (strings.ContainsAny(c.Email, " \t") || !strings.Contains(c.Email, "@") || len(c.Email) > emailLocalMaxLen) {
 		problems = append(problems, fmt.Errorf("email %q is not a usable address", c.Email))
 	}
@@ -462,6 +465,27 @@ func (p Paths) validate() []error {
 		}
 	}
 	return problems
+}
+
+// validateMNURL keeps mn.url an absolute http(s) URL. The path matters: it carries the management
+// server's API prefix, and a URL without it is a node that enrolls and then cannot sync.
+func validateMNURL(raw string) error {
+	if raw == "" {
+		return nil // a node may be installed before it is given a server
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("mn.url %q is not a URL: %w", raw, err)
+	}
+	switch {
+	case parsed.Scheme != "https" && parsed.Scheme != "http":
+		return fmt.Errorf("mn.url %q must start with https:// or http://", raw)
+	case parsed.Host == "":
+		return fmt.Errorf("mn.url %q has no host", raw)
+	case parsed.RawQuery != "" || parsed.Fragment != "":
+		return fmt.Errorf("mn.url %q must not carry a query or a fragment", raw)
+	}
+	return nil
 }
 
 func validateDomain(domain string) error {

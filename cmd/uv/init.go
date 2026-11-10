@@ -20,6 +20,7 @@ identity. Re-running converges: steps whose effect is already present do nothing
 credential is ever regenerated.`)
 	configFlag := flags.String("config", configPathDefault(), "path to config.yaml")
 	domain := flags.String("domain", "", "node domain name; required on the first run")
+	mnURL := flags.String("mn", "", "management server URL, the server's API prefix included")
 	email := flags.String("email", "", "ACME account contact address")
 	acmeCA := flags.String("acme-ca", "", "ACME directory URL")
 	acmeInsecure := flags.Bool("acme-skip-tls-verify", false, "lab only: do not verify the ACME server certificate")
@@ -62,6 +63,9 @@ credential is ever regenerated.`)
 	// Flags win over the file, and a flag that was not given leaves the file's value alone.
 	if set["domain"] {
 		cfg.Domain = *domain
+	}
+	if set["mn"] {
+		cfg.MN.URL = strings.TrimRight(strings.TrimSpace(*mnURL), "/")
 	}
 	if set["email"] {
 		cfg.Email = *email

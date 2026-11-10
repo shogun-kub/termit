@@ -10,6 +10,7 @@ import (
 
 	"github.com/shogun-kub/termit/internal/proto"
 	"github.com/shogun-kub/termit/internal/uv/state"
+	"github.com/shogun-kub/termit/internal/version"
 )
 
 const (
@@ -220,7 +221,7 @@ func (l *Loop) cycle(ctx context.Context) (CycleReport, error) {
 		st.LastSelfCheck = &report.Check
 	}
 
-	request := proto.SyncRequest{AgentVersion: proto.APIVersion}
+	request := proto.SyncRequest{AgentVersion: version.Agent("termit-uv")}
 	if l.Check != nil {
 		request.Check = checkReport(report.Check)
 	}

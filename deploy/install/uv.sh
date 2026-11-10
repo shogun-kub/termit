@@ -252,6 +252,11 @@ set -- init --config "$CONFIG"
 if [ -n "$DOMAIN" ]; then
 	set -- "$@" --domain "$DOMAIN"
 fi
+if [ -n "$MN_URL" ]; then
+	# The URL belongs in the configuration, not only in the enroll call: the agent reads mn.url on every
+	# cycle, and a node that enrolled with the flag alone cannot sync.
+	set -- "$@" --mn "$MN_URL"
+fi
 if [ -n "$EMAIL" ]; then
 	set -- "$@" --email "$EMAIL"
 fi

@@ -18,7 +18,7 @@ import (
 
 // enrollAgentVersion is what the server records for this node. It is the binary's identity, not a
 // hand-written string, so `termit-mn uv list` shows what actually runs.
-func enrollAgentVersion() string { return version.String("termit-uv") }
+func enrollAgentVersion() string { return version.Agent("termit-uv") }
 
 // absoluteSubscriptionURL completes a relative subscription path with the server it belongs to.
 //
@@ -106,6 +106,18 @@ func (a *application) runEnroll(args []string) int {
 	if err != nil {
 		fmt.Fprintf(a.stderr, "termit-uv enroll: %v\n", err)
 		return exitFailure
+	}
+
+	// The URL the enrollment just used becomes the node's own: a node that enrolls and then cannot sync
+	// because nobody wrote mn.url is the gap this closes. An existing value is left alone — `--mn` is an
+	// override for one call unless the configuration was empty.
+	if cfg.MN.URL == "" {
+		cfg.MN.URL = strings.TrimRight(url, "/")
+		if err := cfg.Save(*configPath); err != nil {
+			fmt.Fprintf(a.stderr, "termit-uv enroll: %v\n", err)
+			return exitFailure
+		}
+		fmt.Fprintf(a.stdout, "mn.url:    %s (saved to %s)\n", cfg.MN.URL, *configPath)
 	}
 
 	st.Credentials = &state.Credentials{

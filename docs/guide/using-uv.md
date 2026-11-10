@@ -40,7 +40,10 @@ sh uv.sh --version v0.1.0 \
 given only the host reaches nothing — it will say so rather than reporting a bad invite.
 
 The script verifies the release checksum against `SHA256SUMS`, installs `termit-uv`, runs
-`termit-uv init` (which does the actual work) and then `termit-uv enroll` with your invite.
+`termit-uv init` (which does the actual work) and then `termit-uv enroll` with your invite. `--mn`
+reaches both: `init --mn` writes it to the configuration as `mn.url`, which is what the agent reads on
+every sync, and `enroll` uses it for the registration itself. Running `termit-uv enroll --mn URL`
+yourself later also records the URL when the configuration has none.
 
 Useful variations:
 

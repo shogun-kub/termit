@@ -270,6 +270,7 @@ sh uv.sh --version v0.1.0 \
 | `--base-url` | release directory: an `https://` URL, a `file://` URL or a local path (a mirror, or a USB stick) |
 | `--checksum-file` / `--sha256` | verify against a local `SHA256SUMS` or an explicit digest, for a private build |
 | `--no-warp` / `--warp selected --warp-selected …` | the WARP decision (`all` is the default) |
+| `--mn URL` | the management server, prefix included; written to `mn.url` by `init` and used by `enroll` |
 | `--no-enroll` | install and converge, skip enrollment |
 | `--dry-run` | verify the download, then run `termit-uv init --dry-run` without installing anything |
 
@@ -282,7 +283,9 @@ Without the script, the two commands it wraps are:
 
 ```bash
 install -m 0755 termit-uv /usr/bin/termit-uv
-termit-uv init --domain node1.example.net --email you@example.com
+termit-uv init --domain node1.example.net --email you@example.com \
+  --mn https://mn.example.com/6rfjdqfn5nno
+termit-uv enroll --invite ABCD-EFGH-IJKL
 ```
 
 `termit-uv init` runs one pipeline of steps, in this order, and every step is idempotent:
