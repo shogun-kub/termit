@@ -37,6 +37,10 @@ const (
 	EventUnblock Event = "unblock"
 	// EventUnblockFailed is the same request with checks that did not pass.
 	EventUnblockFailed Event = "unblock_failed"
+	// EventRelocate is the owner presenting the same node at a new host, with checks that passed. The
+	// move has already proved the new address works, so it re-admits a blocked or unavailable node;
+	// an active one keeps its state and only its endpoint changes.
+	EventRelocate Event = "relocate"
 	// EventAdminBlock, EventAdminUnblock and EventAdminRemove are operator overrides.
 	EventAdminBlock   Event = "admin_block"
 	EventAdminUnblock Event = "admin_unblock"
@@ -97,12 +101,17 @@ func Transition(state State, event Event) Outcome {
 		case EventAdminBlock:
 			return Outcome{Next: StateBlocked, Changed: true, Reason: "blocked by an operator",
 				Effects: []Effect{EffectPeersDirty, EffectAudit}}
+		case EventRelocate:
+			// Admission is a decision: a node that has not been approved cannot move itself in.
+			return Outcome{Next: state, Reason: "a pending node cannot move before it is approved"}
 		}
 
 	case StateActive:
 		switch event {
 		case EventCheckOK:
 			return Outcome{Next: state, Reason: "checks passed"}
+		case EventRelocate:
+			return Outcome{Next: state, Reason: "the endpoint moved; the state does not change"}
 		case EventCheckFailed:
 			return Outcome{Next: StateUnavailable, Changed: true, Reason: "checks failed",
 				Effects: []Effect{EffectPeersDirty, EffectNotice}}
@@ -131,6 +140,9 @@ func Transition(state State, event Event) Outcome {
 		case EventAdminRemove:
 			return Outcome{Next: StateRemoved, Changed: true, Reason: "removed by an operator",
 				Effects: []Effect{EffectCredentialsInvalid, EffectPeersDirty, EffectAudit}}
+		case EventRelocate:
+			return Outcome{Next: StateActive, Changed: true, Reason: "relocated after a successful check",
+				Effects: []Effect{EffectPeersDirty, EffectAudit, EffectNotice}}
 		}
 
 	case StateBlocked:
@@ -145,6 +157,9 @@ func Transition(state State, event Event) Outcome {
 				Effects: []Effect{EffectPeersDirty, EffectAudit, EffectNotice}}
 		case EventUnblockFailed:
 			return Outcome{Next: state, Reason: "the unblock request failed its checks"}
+		case EventRelocate:
+			return Outcome{Next: StateActive, Changed: true, Reason: "relocated after a successful check",
+				Effects: []Effect{EffectPeersDirty, EffectAudit, EffectNotice}}
 		case EventAdminUnblock:
 			return Outcome{Next: StateActive, Changed: true, Reason: "unblocked by an operator",
 				Effects: []Effect{EffectPeersDirty, EffectAudit, EffectNotice}}

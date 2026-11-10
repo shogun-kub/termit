@@ -13,7 +13,7 @@ var allStates = []sched.State{
 var allEvents = []sched.Event{
 	sched.EventCheckOK, sched.EventCheckFailed, sched.EventCheckUnknown,
 	sched.EventApprove, sched.EventReject,
-	sched.EventUnblock, sched.EventUnblockFailed,
+	sched.EventUnblock, sched.EventUnblockFailed, sched.EventRelocate,
 	sched.EventAdminBlock, sched.EventAdminUnblock, sched.EventAdminRemove,
 }
 
@@ -71,6 +71,10 @@ func TestLifecycle(t *testing.T) {
 		{"a blocked node stays blocked on success", sched.StateBlocked, sched.EventCheckOK, sched.StateBlocked},
 		{"an unblock request with passing checks restores it", sched.StateBlocked, sched.EventUnblock, sched.StateActive},
 		{"a failed unblock request changes nothing", sched.StateBlocked, sched.EventUnblockFailed, sched.StateBlocked},
+		{"a successful relocation re-admits a blocked node", sched.StateBlocked, sched.EventRelocate, sched.StateActive},
+		{"a successful relocation re-admits an unavailable node", sched.StateUnavailable, sched.EventRelocate, sched.StateActive},
+		{"an active node keeps its state when it moves", sched.StateActive, sched.EventRelocate, sched.StateActive},
+		{"a pending node cannot move itself in", sched.StatePending, sched.EventRelocate, sched.StatePending},
 		{"approval admits a pending node", sched.StatePending, sched.EventApprove, sched.StateActive},
 		{"a pending node that answers is still pending", sched.StatePending, sched.EventCheckOK, sched.StatePending},
 		{"rejection removes it", sched.StatePending, sched.EventReject, sched.StateRemoved},

@@ -102,6 +102,21 @@ type UnblockResponse struct {
 	Notice     string `json:"notice,omitempty"`
 }
 
+// RelocateRequest is Scenario C: the same node at a new host. The URL carries the identity the box
+// now presents, and the server verifies it against the request's source address before touching the
+// record.
+type RelocateRequest struct {
+	Domain        string `json:"domain"`
+	BasicVLESSURL string `json:"basic_vless_url"`
+}
+
+// RelocateResponse is the record after the move.
+type RelocateResponse struct {
+	APIVersion string `json:"api_version"`
+	Node       Node   `json:"node"`
+	Notice     string `json:"notice,omitempty"`
+}
+
 // Problem is the RFC 9457-style error body.
 type Problem struct {
 	Type   string `json:"type"`

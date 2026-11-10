@@ -451,6 +451,24 @@ func (s *Store) SetUVEndpoint(ctx context.Context, id, selfUUID, profileJSON, ce
 	return expectOne(res, id)
 }
 
+// RelocateUV moves a node to a new host. The domain, the self UUID, the profile and the certificate
+// pin change together, because a half-moved record would describe an endpoint neither box serves; the
+// id, the probe credential and every pair credential are untouched, which is what lets peers keep
+// their access and only see the endpoint change. A domain already owned by another node is reported as
+// ErrDuplicate.
+func (s *Store) RelocateUV(ctx context.Context, id, domain, selfUUID, profileJSON, certPin string) error {
+	if id == "" || domain == "" {
+		return errors.New("store: a node needs an id and a domain")
+	}
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE uv SET domain = ?, self_uuid = ?, profile_json = ?, cert_sha256 = ? WHERE id = ?`,
+		domain, selfUUID, profileJSON, certPin, id)
+	if err != nil {
+		return wrapDuplicate(err, "store: move "+id)
+	}
+	return expectOne(res, id)
+}
+
 // UVEvents returns the transition log of one node, newest first.
 func (s *Store) UVEvents(ctx context.Context, uvID string, limit int) ([]Event, error) {
 	if limit <= 0 {
