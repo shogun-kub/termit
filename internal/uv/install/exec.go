@@ -1,7 +1,7 @@
 // Package install turns a fresh Debian host into a Termit node, one idempotent step at a time.
 //
 // Every step answers two questions: "is my effect already present?" (Check) and "produce it" (Run).
-// Re-running `uv init` therefore converges instead of regenerating: a step that finds its effect in
+// Re-running `termit-uv init` therefore converges instead of regenerating: a step that finds its effect in
 // place does nothing, and a step that was interrupted is simply run again. The journal records what
 // happened, which step failed, and where a previous run stopped.
 package install

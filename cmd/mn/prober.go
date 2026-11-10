@@ -17,7 +17,7 @@ import (
 //
 // It is separate from the prober value on purpose: a server without a worker still has a prober, one
 // that answers "unknown" for every node. That keeps the mesh safe, and this struct is what tells the
-// operator — and /metrics, and `mn status` — why nothing is being checked.
+// operator — and /metrics, and `termit-mn status` — why nothing is being checked.
 type proberState struct {
 	Up     bool
 	Detail string

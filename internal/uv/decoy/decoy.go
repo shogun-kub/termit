@@ -3,7 +3,7 @@
 //
 // Generation is deterministic from (domain, seed, template). The seed is created once at install and
 // kept in the state file, so the site the owner sees today is the site the owner sees after a reboot,
-// a reinstall of the package or a `uv renew-site` that nobody asked for. Nothing is fetched at
+// a reinstall of the package or a `termit-uv renew-site` that nobody asked for. Nothing is fetched at
 // runtime: every byte of the tree is produced here, and no page references an external host.
 //
 // The site is a file tree; nginx serves it. The agent never listens on :80 or :443 (see AGENTS.md

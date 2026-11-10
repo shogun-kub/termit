@@ -562,7 +562,7 @@ func stripClients(document any) {
 
 // RememberSubscription stores the subscription URL the server hands out. A node enrolled by an older
 // build, or one whose token was rotated on the server, has no URL in its state; the next sync repairs
-// it, and `uv status` can show it again. It reports whether the stored value changed.
+// it, and `termit-uv status` can show it again. It reports whether the stored value changed.
 func RememberSubscription(st *state.State, answer proto.SyncResponse) bool {
 	if st.Credentials == nil || answer.SubscriptionURL == "" {
 		return false

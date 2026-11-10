@@ -29,7 +29,7 @@ func (a *application) runURI(args []string) int {
 		return exitFailure
 	}
 	if err != nil {
-		fmt.Fprintf(a.stderr, "uv uri: %v\n", err)
+		fmt.Fprintf(a.stderr, "termit-uv uri: %v\n", err)
 		return exitFailure
 	}
 	node, err := state.LoadInstalled(cfg.Paths.StatePath())
@@ -38,11 +38,11 @@ func (a *application) runURI(args []string) int {
 		return exitFailure
 	}
 	if err != nil {
-		fmt.Fprintf(a.stderr, "uv uri: %v\n", err)
+		fmt.Fprintf(a.stderr, "termit-uv uri: %v\n", err)
 		return exitFailure
 	}
 	if node.Identity.SelfUUID == "" || node.Identity.XHTTPPath == "" {
-		fmt.Fprintln(a.stderr, "uv uri: the node has no identity yet; run `uv init`")
+		fmt.Fprintln(a.stderr, "termit-uv uri: the node has no identity yet; run `termit-uv init`")
 		return exitFailure
 	}
 
@@ -57,7 +57,7 @@ func (a *application) runURI(args []string) int {
 		Label:  name,
 	})
 	if err != nil {
-		fmt.Fprintf(a.stderr, "uv uri: %v\n", err)
+		fmt.Fprintf(a.stderr, "termit-uv uri: %v\n", err)
 		return exitFailure
 	}
 	fmt.Fprintln(a.stdout, uri)

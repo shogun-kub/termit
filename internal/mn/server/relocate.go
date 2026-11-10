@@ -59,10 +59,10 @@ func (h *Handler) relocate(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.EqualFold(req.Domain, node.Domain) {
 		// A new identity on the same host is Scenario B: the box there is a rebuild, not a move, and
-		// `uv unblock` already updates the endpoint.
+		// `termit-uv unblock` already updates the endpoint.
 		writeProblem(w, http.StatusConflict, proto.NewProblem(http.StatusConflict,
 			proto.CodeConflict, "Conflict",
-			fmt.Sprintf("this node already answers on %s; use `uv unblock` to refresh its identity", node.Domain)))
+			fmt.Sprintf("this node already answers on %s; use `termit-uv unblock` to refresh its identity", node.Domain)))
 		return
 	}
 

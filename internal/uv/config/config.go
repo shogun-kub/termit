@@ -3,7 +3,7 @@
 //
 // The split between this file and the state file is deliberate. The configuration holds what the
 // owner decides (domain, ACME account, pinned Xray release); the state holds what the agent
-// generates once (identity, decoy seed, certificate). Re-running `uv init` or editing the config
+// generates once (identity, decoy seed, certificate). Re-running `termit-uv init` or editing the config
 // never regenerates a credential, and no secret is ever written here.
 package config
 
@@ -131,7 +131,7 @@ type Warp struct {
 	// subdomains; everything else exits directly.
 	Selected []string `yaml:"selected,omitempty"`
 	// FailOpen falls back to direct egress when WARP is unhealthy. The default is true: a node whose
-	// WARP is down keeps carrying traffic, and uv status says that the exit is direct. An owner who
+	// WARP is down keeps carrying traffic, and termit-uv status says that the exit is direct. An owner who
 	// would rather lose connectivity than reveal the address sets it to false.
 	FailOpen *bool `yaml:"fail_open,omitempty"`
 	// Enabled is the switch this setting had before modes existed. It is read so an existing
@@ -176,7 +176,7 @@ type Paths struct {
 	ErrorLog     string `yaml:"error_log"`
 }
 
-// Default returns a configuration with every default applied and no domain. It is what `uv doctor`
+// Default returns a configuration with every default applied and no domain. It is what `termit-uv doctor`
 // uses on a host that has not been installed yet.
 func Default() *Config {
 	c := &Config{SchemaVersion: SchemaVersion}
@@ -237,7 +237,7 @@ func (c *Config) Save(filename string) error {
 // Marshal renders the configuration as the bytes stored on disk.
 func (c *Config) Marshal() ([]byte, error) {
 	var b bytes.Buffer
-	b.WriteString("# Termit node configuration, written by `uv init`.\n")
+	b.WriteString("# Termit node configuration, written by `termit-uv init`.\n")
 	b.WriteString("# The node's identity, certificate and decoy seed live in the state file, never here.\n")
 	enc := yaml.NewEncoder(&b)
 	enc.SetIndent(2)

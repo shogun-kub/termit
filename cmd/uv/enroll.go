@@ -16,7 +16,7 @@ import (
 )
 
 // enrollAgentVersion is what the server records for this node. It is the binary's identity, not a
-// hand-written string, so `mn uv list` shows what actually runs.
+// hand-written string, so `termit-mn uv list` shows what actually runs.
 func enrollAgentVersion() string { return version.String("termit-uv") }
 
 // absoluteSubscriptionURL completes a relative subscription path with the server it belongs to.
@@ -42,21 +42,21 @@ func (a *application) runEnroll(args []string) int {
 
 	cfg, err := config.Load(*configPath)
 	if err != nil {
-		fmt.Fprintf(a.stderr, "uv enroll: %v\n", err)
+		fmt.Fprintf(a.stderr, "termit-uv enroll: %v\n", err)
 		return exitFailure
 	}
 	st, err := state.LoadInstalled(filepath.Join(cfg.Paths.StateDir, "state.json"))
 	if err != nil {
-		fmt.Fprintf(a.stderr, "uv enroll: %v\n", err)
+		fmt.Fprintf(a.stderr, "termit-uv enroll: %v\n", err)
 		return exitFailure
 	}
 	if st.Credentials != nil && st.Credentials.AgentKey != "" && !*force {
-		fmt.Fprintln(a.stderr, "uv enroll: this node already has credentials; pass --force only if the server forgot it")
+		fmt.Fprintln(a.stderr, "termit-uv enroll: this node already has credentials; pass --force only if the server forgot it")
 		fmt.Fprintln(a.stderr, "  (an enrollment that duplicates a registered domain is refused, and the invite is not spent)")
 		return exitFailure
 	}
 	if st.Identity.SelfUUID == "" || st.Identity.XHTTPPath == "" {
-		fmt.Fprintln(a.stderr, "uv enroll: the node identity is missing; run `uv init` first")
+		fmt.Fprintln(a.stderr, "termit-uv enroll: the node identity is missing; run `termit-uv init` first")
 		return exitFailure
 	}
 
@@ -65,7 +65,7 @@ func (a *application) runEnroll(args []string) int {
 		url = cfg.MN.URL
 	}
 	if url == "" {
-		fmt.Fprintln(a.stderr, "uv enroll: no management server: pass --mn or set mn.url in the configuration")
+		fmt.Fprintln(a.stderr, "termit-uv enroll: no management server: pass --mn or set mn.url in the configuration")
 		return exitUsage
 	}
 
@@ -76,7 +76,7 @@ func (a *application) runEnroll(args []string) int {
 		Label:  cfg.Domain,
 	})
 	if err != nil {
-		fmt.Fprintf(a.stderr, "uv enroll: %v\n", err)
+		fmt.Fprintf(a.stderr, "termit-uv enroll: %v\n", err)
 		return exitFailure
 	}
 
@@ -91,7 +91,7 @@ func (a *application) runEnroll(args []string) int {
 		AgentVersion:  enrollAgentVersion(),
 	})
 	if err != nil {
-		fmt.Fprintf(a.stderr, "uv enroll: %v\n", err)
+		fmt.Fprintf(a.stderr, "termit-uv enroll: %v\n", err)
 		return exitFailure
 	}
 
@@ -104,7 +104,7 @@ func (a *application) runEnroll(args []string) int {
 	}
 	st.Touch()
 	if err := st.Save(filepath.Join(cfg.Paths.StateDir, "state.json")); err != nil {
-		fmt.Fprintf(a.stderr, "uv enroll: %v\n", err)
+		fmt.Fprintf(a.stderr, "termit-uv enroll: %v\n", err)
 		return exitFailure
 	}
 

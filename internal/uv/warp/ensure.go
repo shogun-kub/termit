@@ -49,7 +49,7 @@ func (c Client) Registered(ctx context.Context) bool {
 }
 
 // Ensure converges the sidecar: the package is installed, the device is registered, the client is in
-// proxy mode and connected. Every step first asks whether its effect is already there, so `uv init`
+// proxy mode and connected. Every step first asks whether its effect is already there, so `termit-uv init`
 // can run it on a fresh host and on a converged one.
 func (c Client) Ensure(ctx context.Context) error {
 	if err := c.Host.Check(); err != nil {
@@ -120,7 +120,7 @@ func (c Client) waitConnected(ctx context.Context) error {
 	return fmt.Errorf("the client did not connect within %s: %s", time.Duration(attempts)*interval, last)
 }
 
-// Remove stops the client and removes the package. It is what `uv uninstall --purge` needs: the
+// Remove stops the client and removes the package. It is what `termit-uv uninstall --purge` needs: the
 // tunnel's only purpose was this node's proxy, and leaving a connected VPN behind after the node is
 // gone would be a surprise.
 func (c Client) Remove(ctx context.Context) error {

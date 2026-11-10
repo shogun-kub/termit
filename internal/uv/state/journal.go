@@ -50,7 +50,7 @@ type Journal struct {
 	Runs          []Run `json:"runs"`
 }
 
-// Run is one `uv init` or `uv uninstall` execution.
+// Run is one `termit-uv init` or `termit-uv uninstall` execution.
 type Run struct {
 	StartedAt  time.Time    `json:"started_at"`
 	FinishedAt *time.Time   `json:"finished_at,omitempty"`

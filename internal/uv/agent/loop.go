@@ -20,8 +20,8 @@ const (
 	// maxJitter spreads the fleet's cycles. The server already spreads its own schedule; this is the
 	// node's own drift, so a group that enrolled together does not stay synchronised for life.
 	maxJitter = 10 * time.Minute
-	// maxSleep keeps the loop responsive to a state change made by an operator (`uv enroll`,
-	// `uv unblock`) without asking the network again.
+	// maxSleep keeps the loop responsive to a state change made by an operator (`termit-uv enroll`,
+	// `termit-uv unblock`) without asking the network again.
 	maxSleep = time.Hour
 	// notEnrolledPoll is how often an installed but unenrolled node looks for credentials.
 	notEnrolledPoll = time.Minute
@@ -136,7 +136,7 @@ func (l *Loop) Run(ctx context.Context) error {
 		if !l.sleep(ctx, l.untilNext(ctx)) {
 			return ctx.Err()
 		}
-		// The cycle owns the lock, not the sleep: a manual `uv sync` must not wait on a node that is
+		// The cycle owns the lock, not the sleep: a manual `termit-uv sync` must not wait on a node that is
 		// merely waiting for tomorrow.
 		report, err := l.onceLocked(ctx)
 		if err != nil && ctx.Err() == nil {
@@ -312,7 +312,7 @@ func (l *Loop) sleep(ctx context.Context, d time.Duration) bool {
 }
 
 // checkReport is the wire projection of the local self-check. The report stays a boolean plus one
-// class on purpose: an old server must accept the body, and the detail belongs in `uv status`.
+// class on purpose: an old server must accept the body, and the detail belongs in `termit-uv status`.
 func checkReport(report state.SelfCheckReport) *proto.CheckReport {
 	return &proto.CheckReport{
 		OK:         report.OK,
@@ -322,7 +322,7 @@ func checkReport(report state.SelfCheckReport) *proto.CheckReport {
 	}
 }
 
-// PeersFrom stores what the server said, so `uv status` can report the peer set without a network
+// PeersFrom stores what the server said, so `termit-uv status` can report the peer set without a network
 // call and the loop can persist it with the schedule.
 func PeersFrom(answer proto.SyncResponse) []state.Peer {
 	out := make([]state.Peer, 0, len(answer.Peers))

@@ -24,7 +24,7 @@ import (
 
 // Request is one operation.
 type Request struct {
-	// Token is the admin token printed by `mn init`. It travels over the socket, never over the wire
+	// Token is the admin token printed by `termit-mn init`. It travels over the socket, never over the wire
 	// of the public API.
 	Token string          `json:"token"`
 	Op    string          `json:"op"`
@@ -75,7 +75,7 @@ type Service struct {
 	// server without a scheduler still administers nodes.
 	Runner *sched.Runner
 	// Server is what the process knows about itself: version, uptime, whether checks can run. It is
-	// filled by `mn serve`; a zero value is reported as unknown rather than as a healthy server.
+	// filled by `termit-mn serve`; a zero value is reported as unknown rather than as a healthy server.
 	Server ServerInfo
 }
 
@@ -320,7 +320,7 @@ type uvShowResult struct {
 	Checks []store.Check `json:"checks,omitempty"`
 }
 
-// historyLimit is how many rows `mn uv show` prints. A day of cycles produced at most a handful, and
+// historyLimit is how many rows `termit-mn uv show` prints. A day of cycles produced at most a handful, and
 // an operator scrolling past ten rows is not reading them.
 const historyLimit = 10
 
@@ -518,7 +518,7 @@ func (s *Service) showAgentKey(ctx context.Context, raw json.RawMessage) (any, *
 		return nil, refused
 	}
 	if node.AgentKeySealed == "" {
-		return nil, &Error{Code: CodeNotFound, Detail: "this node has no stored key: rotate it with `mn uv reissue`"}
+		return nil, &Error{Code: CodeNotFound, Detail: "this node has no stored key: rotate it with `termit-mn uv reissue`"}
 	}
 	key, err := secret.Open(s.Master, node.AgentKeySealed)
 	if err != nil {

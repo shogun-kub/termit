@@ -2,7 +2,7 @@
 # Termit node bootstrap.
 #
 # Installs one node on a Debian host: fetch a pinned release, verify its SHA-256 against the release's
-# SHA256SUMS, install the binary, then let `uv init` converge the host and `uv enroll` register it.
+# SHA256SUMS, install the binary, then let `termit-uv init` converge the host and `termit-uv enroll` register it.
 #
 # Nothing here is interactive and nothing is piped from a branch: the version is an argument, the
 # checksum is checked before the binary is installed, and a mismatch aborts before anything is written.
@@ -10,7 +10,7 @@
 #   uv.sh --version v0.1.0 --domain node1.example.net --email you@example.com \
 #         --mn https://mn.example.com --invite ABCD-EFGH-IJKL
 #
-# Re-running it is the upgrade path: the binary is replaced and `uv init` converges, which never
+# Re-running it is the upgrade path: the binary is replaced and `termit-uv init` converges, which never
 # regenerates the node's identity, its Xray path or its certificate.
 set -eu
 
@@ -51,7 +51,7 @@ Required on a first install:
   --version VERSION        release to install, e.g. v0.1.0 or v0.1.0-rc1
   --domain NAME            the node's public name; its A/AAAA record must already point here
   --mn URL                 management server URL, e.g. https://mn.example.com
-  --invite CODE            invite code from `mn invite create`
+  --invite CODE            invite code from `termit-mn invite create`
 
 Options:
   --email ADDRESS          ACME account contact
@@ -60,8 +60,8 @@ Options:
   --warp MODE              all (default), selected or off
   --warp-selected LIST     domains that use WARP in selected mode
   --no-warp                opt out of WARP and exit directly
-  --no-enroll              install only; run `uv enroll` yourself
-  --dry-run                report what `uv init` would change, touch nothing
+  --no-enroll              install only; run `termit-uv enroll` yourself
+  --dry-run                report what `termit-uv init` would change, touch nothing
   --base-url URL|PATH      release directory (default: the GitHub releases page)
   --checksum-file PATH     local SHA256SUMS, when the mirror does not serve one
   --sha256 HEX             expected digest of the binary, for a private build
@@ -70,7 +70,7 @@ Options:
   -h, --help               this text
 
 The invite code is a secret: it is passed on the command line, so it appears in `ps` for the duration
-of the run. Revoke it afterwards if that matters to you (`mn invite revoke`).
+of the run. Revoke it afterwards if that matters to you (`termit-mn invite revoke`).
 EOF
 }
 
@@ -246,7 +246,7 @@ else
 	PROGRAM_BIN="$INSTALL_DIR/$PROGRAM"
 fi
 
-# `uv init` is the convergence: on a first run it installs everything, on a re-run it changes only
+# `termit-uv init` is the convergence: on a first run it installs everything, on a re-run it changes only
 # what drifted and never regenerates the identity, the path or the certificate.
 set -- init --config "$CONFIG"
 if [ -n "$DOMAIN" ]; then

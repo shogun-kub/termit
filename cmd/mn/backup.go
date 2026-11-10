@@ -27,7 +27,7 @@ func runBackup(args []string, stdout, stderr io.Writer) int {
 
 	cfg, err := config.Load(*configPath)
 	if err != nil {
-		fmt.Fprintf(stderr, "mn backup: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn backup: %v\n", err)
 		return exitFailure
 	}
 	if *out == "" {
@@ -41,7 +41,7 @@ func runBackup(args []string, stdout, stderr io.Writer) int {
 	// A read-only open is enough for VACUUM INTO and cannot migrate the database by accident.
 	db, err := store.OpenReadOnly(ctx, cfg.DBPath)
 	if err != nil {
-		fmt.Fprintf(stderr, "mn backup: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn backup: %v\n", err)
 		return exitFailure
 	}
 	defer func() { _ = db.Close() }()
@@ -53,7 +53,7 @@ func runBackup(args []string, stdout, stderr io.Writer) int {
 		Out:        *out,
 	})
 	if err != nil {
-		fmt.Fprintf(stderr, "mn backup: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn backup: %v\n", err)
 		return exitFailure
 	}
 	fmt.Fprintf(stdout, "archive:  %s\n", result.Path)
@@ -80,17 +80,17 @@ func runRestore(args []string, stdout, stderr io.Writer) int {
 	archive := *from
 	if archive == "" {
 		if flags.NArg() != 1 {
-			fmt.Fprintln(stderr, "mn restore: exactly one archive path is required (as --from or as the argument)")
+			fmt.Fprintln(stderr, "termit-mn restore: exactly one archive path is required (as --from or as the argument)")
 			return exitUsage
 		}
 		archive = flags.Arg(0)
 	} else if flags.NArg() > 0 {
-		fmt.Fprintf(stderr, "mn restore: unexpected argument %q\n", flags.Arg(0))
+		fmt.Fprintf(stderr, "termit-mn restore: unexpected argument %q\n", flags.Arg(0))
 		return exitUsage
 	}
 
 	if *dataDir == "" {
-		// The default layout is what `mn init` writes; anything else is passed explicitly.
+		// The default layout is what `termit-mn init` writes; anything else is passed explicitly.
 		*dataDir = "/var/lib/termit/mn"
 	}
 
@@ -105,7 +105,7 @@ func runRestore(args []string, stdout, stderr io.Writer) int {
 		Force:         *force,
 	})
 	if err != nil {
-		fmt.Fprintf(stderr, "mn restore: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn restore: %v\n", err)
 		return exitFailure
 	}
 	fmt.Fprintf(stdout, "restored: %s\n", archive)
@@ -114,9 +114,9 @@ func runRestore(args []string, stdout, stderr io.Writer) int {
 	fmt.Fprintf(stdout, "config:   %s\n", *configPath)
 	fmt.Fprintf(stdout, "data:     %s\n", *dataDir)
 	if _, err := os.Stat(filepath.Join(*dataDir, "termit.db")); err != nil && !errors.Is(err, os.ErrNotExist) {
-		fmt.Fprintf(stderr, "mn restore: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn restore: %v\n", err)
 		return exitFailure
 	}
-	fmt.Fprintln(stdout, "run `mn serve` to bring the server back up")
+	fmt.Fprintln(stdout, "run `termit-mn serve` to bring the server back up")
 	return exitOK
 }

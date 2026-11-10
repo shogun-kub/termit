@@ -136,7 +136,7 @@ func (h *Handler) health(w http.ResponseWriter, r *http.Request) {
 // it runs on the same host.
 //
 // The counters are aggregates and the gauges are read here rather than cached, because a number that
-// disagrees with `mn status` would cost more to explain than one small query costs to run.
+// disagrees with `termit-mn status` would cost more to explain than one small query costs to run.
 func (h *Handler) metrics(w http.ResponseWriter, r *http.Request) {
 	if !isLoopback(r.RemoteAddr) {
 		http.Error(w, "metrics are available on loopback only", http.StatusForbidden)

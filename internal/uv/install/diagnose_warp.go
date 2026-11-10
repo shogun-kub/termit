@@ -35,7 +35,7 @@ func diagnoseWarp(ctx context.Context, cfg *config.Config, client warp.Client) C
 	case status.State == "missing":
 		check.Status = StatusFail
 		check.Detail = "cloudflare-warp is not installed"
-		check.Hint = "run `uv init --only warp` to install and register it"
+		check.Hint = "run `termit-uv init --only warp` to install and register it"
 	case status.Healthy():
 		check.Status = StatusOK
 		check.Detail = status.Detail

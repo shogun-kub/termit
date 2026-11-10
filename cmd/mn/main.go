@@ -1,4 +1,4 @@
-// Command mn is the Termit management server and admin CLI.
+// Command termit-mn is the Termit management server and admin CLI.
 package main
 
 import (
@@ -61,7 +61,7 @@ func run(args []string, stdout, stderr *os.File) int {
 	case "menu":
 		return runMenu(stdout, stderr, os.Stdin, termui.PlainColour(stdout))
 	default:
-		fmt.Fprintf(stderr, "mn: unknown command %q\n\n", args[0])
+		fmt.Fprintf(stderr, "termit-mn: unknown command %q\n\n", args[0])
 		usage(stderr)
 		return exitUsage
 	}
@@ -71,7 +71,7 @@ func usage(w *os.File) {
 	fmt.Fprint(w, `termit-mn — Termit management server and admin CLI
 
 Usage:
-  mn <command> [flags]
+  termit-mn <command> [flags]
 
 Server:
   init         create config, database, master key and the first invite

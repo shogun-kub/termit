@@ -61,7 +61,7 @@ func Open(ctx context.Context, opts Options) (*Store, error) {
 	return open(ctx, opts.Path, "rwc")
 }
 
-// OpenReadOnly opens an existing database without creating it. `mn status` and backups use it, so a
+// OpenReadOnly opens an existing database without creating it. `termit-mn status` and backups use it, so a
 // diagnostic command can never migrate a database by accident.
 func OpenReadOnly(ctx context.Context, path string) (*Store, error) {
 	if _, err := os.Stat(path); err != nil {

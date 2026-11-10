@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// QueueStats describes how far behind the scheduler is. `mn status` prints it and /metrics exposes it
+// QueueStats describes how far behind the scheduler is. `termit-mn status` prints it and /metrics exposes it
 // as a gauge, because "the mesh looks fine but nothing has been checked for a week" is a failure mode
 // that no per-node view shows.
 type QueueStats struct {

@@ -13,7 +13,7 @@ import (
 	"github.com/shogun-kub/termit/internal/uv/warp"
 )
 
-// jsonStatus is the machine-readable half of `uv status`. It carries fingerprints, never secrets.
+// jsonStatus is the machine-readable half of `termit-uv status`. It carries fingerprints, never secrets.
 type jsonStatus struct {
 	Domain       string       `json:"domain"`
 	Installed    bool         `json:"installed"`
@@ -43,7 +43,7 @@ type jsonStatus struct {
 }
 
 // jsonWarpStatus is the egress as the last self-check saw it. It is a report, not a live probe:
-// `uv warp status` is the command that fetches through the tunnel.
+// `termit-uv warp status` is the command that fetches through the tunnel.
 type jsonWarpStatus struct {
 	Mode   string `json:"mode"`
 	State  string `json:"state"`
@@ -88,7 +88,7 @@ the last install run. Secrets are shown as sha256 prefixes only.`)
 		return a.flagError(err)
 	}
 	if flags.NArg() > 0 {
-		fmt.Fprintf(a.stderr, "uv status: unexpected argument %q\n", flags.Arg(0))
+		fmt.Fprintf(a.stderr, "termit-uv status: unexpected argument %q\n", flags.Arg(0))
 		return exitUsage
 	}
 
@@ -98,7 +98,7 @@ the last install run. Secrets are shown as sha256 prefixes only.`)
 		return exitFailure
 	}
 	if err != nil {
-		fmt.Fprintf(a.stderr, "uv status: %v\n", err)
+		fmt.Fprintf(a.stderr, "termit-uv status: %v\n", err)
 		return exitFailure
 	}
 	node, err := state.LoadInstalled(cfg.Paths.StatePath())
@@ -107,12 +107,12 @@ the last install run. Secrets are shown as sha256 prefixes only.`)
 		return exitFailure
 	}
 	if err != nil {
-		fmt.Fprintf(a.stderr, "uv status: %v\n", err)
+		fmt.Fprintf(a.stderr, "termit-uv status: %v\n", err)
 		return exitFailure
 	}
 	journal, err := state.LoadJournal(cfg.Paths.JournalPath())
 	if err != nil {
-		fmt.Fprintf(a.stderr, "uv status: %v\n", err)
+		fmt.Fprintf(a.stderr, "termit-uv status: %v\n", err)
 		return exitFailure
 	}
 
@@ -179,7 +179,7 @@ the last install run. Secrets are shown as sha256 prefixes only.`)
 	if *jsonOut {
 		body, err := json.MarshalIndent(out, "", "  ")
 		if err != nil {
-			fmt.Fprintf(a.stderr, "uv status: %v\n", err)
+			fmt.Fprintf(a.stderr, "termit-uv status: %v\n", err)
 			return exitFailure
 		}
 		fmt.Fprintln(a.stdout, string(body))

@@ -61,7 +61,7 @@ type Credentials struct {
 }
 
 // Schedule is the agent loop's persisted timing. It lives in the state file so a restart of the
-// service does not re-run a cycle the node already did, and so `uv status` can say when the next one
+// service does not re-run a cycle the node already did, and so `termit-uv status` can say when the next one
 // is due without asking the network.
 type Schedule struct {
 	// LastSyncAt is when the last cycle fetched the desired state, successfully or not.
@@ -84,7 +84,7 @@ type SelfCheckItem struct {
 	Detail  string `json:"detail,omitempty"`
 }
 
-// SelfCheckReport is the local half of a node's health, kept so `uv status` can show it offline.
+// SelfCheckReport is the local half of a node's health, kept so `termit-uv status` can show it offline.
 type SelfCheckReport struct {
 	At        time.Time       `json:"at"`
 	OK        bool            `json:"ok"`

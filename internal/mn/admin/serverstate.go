@@ -25,7 +25,7 @@ type ServerInfo struct {
 	CertificatePath string
 }
 
-// ServerState is the server half of the `mn status` dashboard: the process, the database and the
+// ServerState is the server half of the `termit-mn status` dashboard: the process, the database and the
 // scheduler's backlog. It carries no node identifier; the per-node view is `uv.list`/`uv.show`.
 type ServerState struct {
 	Domain        string    `json:"domain"`

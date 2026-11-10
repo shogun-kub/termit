@@ -1,4 +1,4 @@
-// Command uv is the installer, agent and CLI for one Termit node.
+// Command termit-uv is the installer, agent and CLI for one Termit node.
 package main
 
 import (
@@ -27,7 +27,7 @@ const (
 	exitFailure = 1
 	// exitUsage means the command line was wrong.
 	exitUsage = 2
-	// exitDrift is what `uv sync --check` returns when the node differs from the server's set.
+	// exitDrift is what `termit-uv sync --check` returns when the node differs from the server's set.
 	exitDrift = 4
 )
 
@@ -134,7 +134,7 @@ func (a *application) run(args []string) int {
 	case "menu":
 		return a.runMenu()
 	default:
-		fmt.Fprintf(a.stderr, "uv: unknown command %q\n\n", command)
+		fmt.Fprintf(a.stderr, "termit-uv: unknown command %q\n\n", command)
 		a.usage(a.stderr)
 		return exitUsage
 	}
@@ -144,7 +144,7 @@ func (a *application) usage(w io.Writer) {
 	fmt.Fprint(w, `termit-uv — Termit node installer, agent and CLI
 
 Usage:
-  uv <command> [flags]
+  termit-uv <command> [flags]
 
 Commands:
   init         install and configure this node (idempotent)
@@ -180,7 +180,7 @@ func (a *application) newFlagSet(name, summary string) *flag.FlagSet {
 	fs.Var(verboseFlag{}, "v", "log every step at info level")
 	fs.Var(verboseFlag{}, "verbose", "log every step at info level")
 	fs.Usage = func() {
-		fmt.Fprintf(a.stderr, "Usage: uv %s [flags]\n\n%s\n\nFlags:\n", name, summary)
+		fmt.Fprintf(a.stderr, "Usage: termit-uv %s [flags]\n\n%s\n\nFlags:\n", name, summary)
 		fs.PrintDefaults()
 	}
 	return fs

@@ -25,7 +25,7 @@ type menuEntry struct {
 	plan func(ui *termui.UI) ([][]string, error)
 }
 
-// runMenu is the interactive front end: the binary with no arguments on a terminal, or `uv menu`.
+// runMenu is the interactive front end: the binary with no arguments on a terminal, or `termit-uv menu`.
 func (a *application) runMenu() int {
 	ui := termui.New(a.stdin(), a.stdout, a.menuStyle())
 	entries := a.menuEntries()
@@ -82,7 +82,7 @@ func (a *application) runMenu() int {
 func (a *application) runPlan(ui *termui.UI, plan [][]string) int {
 	for _, argv := range plan {
 		ui.Blank()
-		ui.Say("$ uv " + strings.Join(argv, " "))
+		ui.Say("$ termit-uv " + strings.Join(argv, " "))
 		ui.Blank()
 		if code := a.run(argv); code != exitOK {
 			ui.Blank()

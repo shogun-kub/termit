@@ -20,7 +20,7 @@ type EnrollRequest struct {
 	// and the server checks that it names the same host.
 	Domain        string
 	BasicVLESSURL string
-	// AgentVersion is reported to the server and shown in `mn uv list`.
+	// AgentVersion is reported to the server and shown in `termit-mn uv list`.
 	AgentVersion string
 }
 

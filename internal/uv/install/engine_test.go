@@ -347,7 +347,7 @@ func TestNewRejectsDomainChange(t *testing.T) {
 		Now:    func() time.Time { return engineNow },
 		Arch:   "amd64",
 	})
-	if err == nil || !strings.Contains(err.Error(), "uv migrate") {
+	if err == nil || !strings.Contains(err.Error(), "termit-uv migrate") {
 		t.Fatalf("New error = %v, want a migrate hint", err)
 	}
 }

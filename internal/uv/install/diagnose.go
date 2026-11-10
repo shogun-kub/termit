@@ -18,7 +18,7 @@ import (
 	"github.com/shogun-kub/termit/internal/uv/warp"
 )
 
-// DiagnoseOptions configure the health half of `uv doctor`.
+// DiagnoseOptions configure the health half of `termit-uv doctor`.
 type DiagnoseOptions struct {
 	Config *config.Config
 	Exec   Executor
@@ -29,7 +29,7 @@ type DiagnoseOptions struct {
 }
 
 // Diagnose checks the installed node, not the host: the state, the services, the certificate, the
-// generated decoy and the generated proxy config. It is what `uv doctor` adds once a node exists —
+// generated decoy and the generated proxy config. It is what `termit-uv doctor` adds once a node exists —
 // preflight answers "can this host be installed", this answers "is the node working".
 //
 // A check that cannot be performed reports a skip, never a failure: an unavailable systemctl says
@@ -50,7 +50,7 @@ func Diagnose(ctx context.Context, opts DiagnoseOptions) []Check {
 			detail = err.Error()
 		}
 		return []Check{{Name: "state", Status: StatusSkip, Detail: detail,
-			Hint: "run `uv init` to install this node"}}
+			Hint: "run `termit-uv init` to install this node"}}
 	}
 
 	checks := []Check{{
@@ -89,7 +89,7 @@ func diagnoseServices(ctx context.Context, exec Executor) Check {
 		return Check{Name: "services", Status: StatusSkip, Detail: "systemctl could not be asked"}
 	case len(down) > 0:
 		return Check{Name: "services", Status: StatusFail, Detail: "not running: " + strings.Join(down, ", "),
-			Hint: "systemctl status <unit>; `uv init` starts them again"}
+			Hint: "systemctl status <unit>; `termit-uv init` starts them again"}
 	}
 	return Check{Name: "services", Status: StatusOK, Detail: "core, web tier, renewal timer and agent are running"}
 }
@@ -99,7 +99,7 @@ func diagnoseCertificate(cfg *config.Config, st *state.State, now time.Time) Che
 	switch {
 	case os.IsNotExist(err):
 		return Check{Name: "certificate", Status: StatusFail, Detail: "no certificate",
-			Hint: "`uv renew-cert`"}
+			Hint: "`termit-uv renew-cert`"}
 	case err != nil:
 		return Check{Name: "certificate", Status: StatusFail, Detail: err.Error()}
 	}
@@ -107,10 +107,10 @@ func diagnoseCertificate(cfg *config.Config, st *state.State, now time.Time) Che
 	switch {
 	case days < 0:
 		return Check{Name: "certificate", Status: StatusFail,
-			Detail: fmt.Sprintf("expired %d days ago", -days), Hint: "`uv renew-cert --force`"}
+			Detail: fmt.Sprintf("expired %d days ago", -days), Hint: "`termit-uv renew-cert --force`"}
 	case days < 14:
 		return Check{Name: "certificate", Status: StatusWarn,
-			Detail: fmt.Sprintf("expires in %d days", days), Hint: "check `uv renew-cert` and the renewal timer"}
+			Detail: fmt.Sprintf("expires in %d days", days), Hint: "check `termit-uv renew-cert` and the renewal timer"}
 	default:
 		return Check{Name: "certificate", Status: StatusOK, Detail: fmt.Sprintf("expires in %d days", days)}
 	}
@@ -131,7 +131,7 @@ func diagnoseDecoy(cfg *config.Config, st *state.State) Check {
 	if site.Digest != st.Decoy.Digest {
 		return Check{Name: "decoy", Status: StatusFail,
 			Detail: "the generated site no longer matches its recorded digest",
-			Hint:   "`uv renew-site`"}
+			Hint:   "`termit-uv renew-site`"}
 	}
 	// The digest proves the seed has not changed; comparing the files proves nobody edited them.
 	for name, want := range site.Files {
@@ -139,12 +139,12 @@ func diagnoseDecoy(cfg *config.Config, st *state.State) Check {
 		switch {
 		case errors.Is(err, os.ErrNotExist):
 			return Check{Name: "decoy", Status: StatusFail, Detail: name + " is missing from " + cfg.Paths.SiteDir,
-				Hint: "`uv renew-site`"}
+				Hint: "`termit-uv renew-site`"}
 		case err != nil:
 			return Check{Name: "decoy", Status: StatusFail, Detail: err.Error()}
 		case !bytes.Equal(got, want):
 			return Check{Name: "decoy", Status: StatusFail,
-				Detail: name + " differs from what the seed produces", Hint: "`uv renew-site`"}
+				Detail: name + " differs from what the seed produces", Hint: "`termit-uv renew-site`"}
 		}
 	}
 	return Check{Name: "decoy", Status: StatusOK, Detail: site.Template + " site, files match the seed"}
@@ -154,7 +154,7 @@ func diagnoseProxy(ctx context.Context, exec Executor, cfg *config.Config) Check
 	path := cfg.Paths.XrayConfig
 	info, err := os.Stat(path)
 	if err != nil {
-		return Check{Name: "proxy config", Status: StatusFail, Detail: "missing: " + path, Hint: "`uv init`"}
+		return Check{Name: "proxy config", Status: StatusFail, Detail: "missing: " + path, Hint: "`termit-uv init`"}
 	}
 	if chmodIsReal && info.Mode().Perm() != 0o640 {
 		return Check{Name: "proxy config", Status: StatusFail,

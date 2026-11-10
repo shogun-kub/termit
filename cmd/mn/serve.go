@@ -53,7 +53,7 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 
 	cfg, err := config.Load(*configPath)
 	if err != nil {
-		fmt.Fprintf(stderr, "mn serve: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn serve: %v\n", err)
 		return exitFailure
 	}
 
@@ -65,7 +65,7 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 
 	db, err := store.Open(ctx, store.Options{Path: cfg.DBPath})
 	if err != nil {
-		fmt.Fprintf(stderr, "mn serve: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn serve: %v\n", err)
 		return exitFailure
 	}
 	defer func() { _ = db.Close() }()
@@ -85,7 +85,7 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 
 	handler, err := buildHandler(cfg, db, logger, registry, proberInfo)
 	if err != nil {
-		fmt.Fprintf(stderr, "mn serve: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn serve: %v\n", err)
 		return exitFailure
 	}
 	server := &http.Server{
@@ -120,7 +120,7 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 			}
 		}
 		if err != nil {
-			fmt.Fprintf(stderr, "mn serve: %v\n", err)
+			fmt.Fprintf(stderr, "termit-mn serve: %v\n", err)
 			return exitFailure
 		}
 		logger.Info("admin socket ready", "path", cfg.AdminSocket)
@@ -145,14 +145,14 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 
 	serveErr := make(chan error, 1)
 	if *plainHTTP {
-		fmt.Fprintln(stderr, "mn serve: --http is set; the API is not encrypted")
+		fmt.Fprintln(stderr, "termit-mn serve: --http is set; the API is not encrypted")
 		go func() { serveErr <- server.ListenAndServe() }()
 	} else {
 		// Issuing blocks startup on purpose: a management API that silently falls back to HTTP is
 		// worse than one that refuses to start.
 		tlsPaths, err := cert.Ensure(ctx, cert.Options{Config: cfg, Logger: logger})
 		if err != nil {
-			fmt.Fprintf(stderr, "mn serve: %v\n", err)
+			fmt.Fprintf(stderr, "termit-mn serve: %v\n", err)
 			return exitFailure
 		}
 		if adminService != nil {
@@ -175,7 +175,7 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 	select {
 	case err := <-serveErr:
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			fmt.Fprintf(stderr, "mn serve: %v\n", err)
+			fmt.Fprintf(stderr, "termit-mn serve: %v\n", err)
 			return exitFailure
 		}
 		return exitOK
@@ -186,7 +186,7 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownGrace)
 	defer cancel()
 	if err := server.Shutdown(shutdownCtx); err != nil {
-		fmt.Fprintf(stderr, "mn serve: shutdown: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn serve: shutdown: %v\n", err)
 		return exitFailure
 	}
 	return exitOK
@@ -286,7 +286,7 @@ func retention(ctx context.Context, db *store.Store, logger *slog.Logger) {
 	}
 }
 
-// policyFromSettings lets `mn policy set` take effect on the next pass without a restart. An empty
+// policyFromSettings lets `termit-mn policy set` take effect on the next pass without a restart. An empty
 // setting means "use the configuration", which is what an unconfigured install gets anyway.
 func policyFromSettings(cfg *config.Config, db *store.Store) func(ctx context.Context) sched.Policy {
 	return func(ctx context.Context) sched.Policy {

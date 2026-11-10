@@ -35,10 +35,10 @@ func adminClient(configPath, socket, token string) (admin.Client, error) {
 	return admin.Client{Network: "unix", Address: socket, Token: token}, nil
 }
 
-// runInvite dispatches `mn invite …`.
+// runInvite dispatches `termit-mn invite …`.
 func runInvite(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "mn invite: one of create, list, revoke is required")
+		fmt.Fprintln(stderr, "termit-mn invite: one of create, list, revoke is required")
 		return exitUsage
 	}
 	switch args[0] {
@@ -49,7 +49,7 @@ func runInvite(args []string, stdout, stderr io.Writer) int {
 	case "revoke":
 		return runInviteRevoke(args[1:], stdout, stderr)
 	default:
-		fmt.Fprintf(stderr, "mn invite: unknown subcommand %q\n", args[0])
+		fmt.Fprintf(stderr, "termit-mn invite: unknown subcommand %q\n", args[0])
 		return exitUsage
 	}
 }
@@ -74,7 +74,7 @@ func runInviteCreate(args []string, stdout, stderr io.Writer) int {
 
 	client, err := adminClient(*configPath, *socket, *token)
 	if err != nil {
-		fmt.Fprintf(stderr, "mn invite create: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn invite create: %v\n", err)
 		return exitFailure
 	}
 	var result struct {
@@ -87,7 +87,7 @@ func runInviteCreate(args []string, stdout, stderr io.Writer) int {
 		"uses": *uses, "note": *note, "expires_hours": *expires,
 	}, &result)
 	if err != nil {
-		fmt.Fprintf(stderr, "mn invite create: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn invite create: %v\n", err)
 		return exitFailure
 	}
 	fmt.Fprintf(stdout, "invite: %s\n", result.ID)
@@ -107,14 +107,14 @@ func runInviteList(args []string, stdout, stderr io.Writer) int {
 	}
 	client, err := adminClient(*configPath, *socket, *token)
 	if err != nil {
-		fmt.Fprintf(stderr, "mn invite list: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn invite list: %v\n", err)
 		return exitFailure
 	}
 	var invites []admin.InviteView
 	callCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := client.Call(callCtx, "invite.list", nil, &invites); err != nil {
-		fmt.Fprintf(stderr, "mn invite list: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn invite list: %v\n", err)
 		return exitFailure
 	}
 	if len(invites) == 0 {
@@ -148,18 +148,18 @@ func runInviteRevoke(args []string, stdout, stderr io.Writer) int {
 		return exitUsage
 	}
 	if flags.NArg() != 1 {
-		fmt.Fprintln(stderr, "mn invite revoke: one invite id is required")
+		fmt.Fprintln(stderr, "termit-mn invite revoke: one invite id is required")
 		return exitUsage
 	}
 	client, err := adminClient(*configPath, *socket, *token)
 	if err != nil {
-		fmt.Fprintf(stderr, "mn invite revoke: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn invite revoke: %v\n", err)
 		return exitFailure
 	}
 	callCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := client.Call(callCtx, "invite.revoke", map[string]string{"id": flags.Arg(0)}, nil); err != nil {
-		fmt.Fprintf(stderr, "mn invite revoke: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn invite revoke: %v\n", err)
 		return exitFailure
 	}
 	fmt.Fprintf(stdout, "invite %s revoked\n", flags.Arg(0))
@@ -168,17 +168,17 @@ func runInviteRevoke(args []string, stdout, stderr io.Writer) int {
 
 // runUVReissue hands a node a new agent key, for an owner who lost the old one.
 func runUVReissue(args []string, stdout, stderr io.Writer) int {
-	flags, configPath, socket, token := uvFlags("uv reissue", stderr)
+	flags, configPath, socket, token := uvFlags("termit-uv reissue", stderr)
 	if err := flags.Parse(flagsFirst(args, map[string]bool{})); err != nil {
 		return exitUsage
 	}
 	if flags.NArg() != 1 {
-		fmt.Fprintln(stderr, "mn uv reissue: one node id or domain is required")
+		fmt.Fprintln(stderr, "termit-mn uv reissue: one node id or domain is required")
 		return exitUsage
 	}
 	client, err := adminClient(*configPath, *socket, *token)
 	if err != nil {
-		fmt.Fprintf(stderr, "mn uv reissue: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn uv reissue: %v\n", err)
 		return exitFailure
 	}
 	var result struct {
@@ -188,7 +188,7 @@ func runUVReissue(args []string, stdout, stderr io.Writer) int {
 	callCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := client.Call(callCtx, "uv.reissue", map[string]string{"id": flags.Arg(0)}, &result); err != nil {
-		fmt.Fprintf(stderr, "mn uv reissue: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn uv reissue: %v\n", err)
 		return exitFailure
 	}
 	fmt.Fprintf(stdout, "node:      %s\n", result.ID)
@@ -200,18 +200,18 @@ func runUVReissue(args []string, stdout, stderr io.Writer) int {
 // runUVState is the operator override for one node: block it, let it back in, or remove it. Each one
 // goes through the same state table the automatic checks use.
 func runUVState(verb string, args []string, stdout, stderr io.Writer) int {
-	flags, configPath, socket, token := uvFlags("uv "+verb, stderr)
+	flags, configPath, socket, token := uvFlags("termit-uv "+verb, stderr)
 	reason := flags.String("reason", "", "why, recorded with the state change")
 	if err := flags.Parse(flagsFirst(args, map[string]bool{"reason": true})); err != nil {
 		return exitUsage
 	}
 	if flags.NArg() != 1 {
-		fmt.Fprintf(stderr, "mn uv %s: one node id or domain is required\n", verb)
+		fmt.Fprintf(stderr, "termit-mn uv %s: one node id or domain is required\n", verb)
 		return exitUsage
 	}
 	client, err := adminClient(*configPath, *socket, *token)
 	if err != nil {
-		fmt.Fprintf(stderr, "mn uv %s: %v\n", verb, err)
+		fmt.Fprintf(stderr, "termit-mn uv %s: %v\n", verb, err)
 		return exitFailure
 	}
 	var result struct {
@@ -228,7 +228,7 @@ func runUVState(verb string, args []string, stdout, stderr io.Writer) int {
 		args2["reason"] = *reason
 	}
 	if err := client.Call(callCtx, "uv."+verb, args2, &result); err != nil {
-		fmt.Fprintf(stderr, "mn uv %s: %v\n", verb, err)
+		fmt.Fprintf(stderr, "termit-mn uv %s: %v\n", verb, err)
 		return exitFailure
 	}
 	if !result.Changed {
@@ -241,17 +241,17 @@ func runUVState(verb string, args []string, stdout, stderr io.Writer) int {
 
 // runUVForget erases a removed node, which is what frees its domain for a new enrollment.
 func runUVForget(args []string, stdout, stderr io.Writer) int {
-	flags, configPath, socket, token := uvFlags("uv forget", stderr)
+	flags, configPath, socket, token := uvFlags("termit-uv forget", stderr)
 	if err := flags.Parse(flagsFirst(args, map[string]bool{})); err != nil {
 		return exitUsage
 	}
 	if flags.NArg() != 1 {
-		fmt.Fprintln(stderr, "mn uv forget: one node id or domain is required")
+		fmt.Fprintln(stderr, "termit-mn uv forget: one node id or domain is required")
 		return exitUsage
 	}
 	client, err := adminClient(*configPath, *socket, *token)
 	if err != nil {
-		fmt.Fprintf(stderr, "mn uv forget: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn uv forget: %v\n", err)
 		return exitFailure
 	}
 	var result struct {
@@ -261,7 +261,7 @@ func runUVForget(args []string, stdout, stderr io.Writer) int {
 	callCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := client.Call(callCtx, "uv.forget", map[string]string{"id": flags.Arg(0)}, &result); err != nil {
-		fmt.Fprintf(stderr, "mn uv forget: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn uv forget: %v\n", err)
 		return exitFailure
 	}
 	fmt.Fprintf(stdout, "forgot %s (%s); the domain can be enrolled again\n", result.ID, result.Domain)
@@ -270,17 +270,17 @@ func runUVForget(args []string, stdout, stderr io.Writer) int {
 
 // runUVAgentKey prints a node's current key: for an owner who lost it, without breaking the node.
 func runUVAgentKey(args []string, stdout, stderr io.Writer) int {
-	flags, configPath, socket, token := uvFlags("uv agentkey", stderr)
+	flags, configPath, socket, token := uvFlags("termit-uv agentkey", stderr)
 	if err := flags.Parse(flagsFirst(args, map[string]bool{})); err != nil {
 		return exitUsage
 	}
 	if flags.NArg() != 1 {
-		fmt.Fprintln(stderr, "mn uv agentkey: one node id or domain is required")
+		fmt.Fprintln(stderr, "termit-mn uv agentkey: one node id or domain is required")
 		return exitUsage
 	}
 	client, err := adminClient(*configPath, *socket, *token)
 	if err != nil {
-		fmt.Fprintf(stderr, "mn uv agentkey: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn uv agentkey: %v\n", err)
 		return exitFailure
 	}
 	var result struct {
@@ -290,7 +290,7 @@ func runUVAgentKey(args []string, stdout, stderr io.Writer) int {
 	callCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := client.Call(callCtx, "uv.agentkey", map[string]string{"id": flags.Arg(0)}, &result); err != nil {
-		fmt.Fprintf(stderr, "mn uv agentkey: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn uv agentkey: %v\n", err)
 		return exitFailure
 	}
 	fmt.Fprintf(stdout, "node:      %s\n", result.ID)
@@ -298,10 +298,10 @@ func runUVAgentKey(args []string, stdout, stderr io.Writer) int {
 	return exitOK
 }
 
-// runSub dispatches `mn sub …`.
+// runSub dispatches `termit-mn sub …`.
 func runSub(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 || args[0] != "rotate" {
-		fmt.Fprintln(stderr, "mn sub: the only subcommand in this build is rotate")
+		fmt.Fprintln(stderr, "termit-mn sub: the only subcommand in this build is rotate")
 		return exitUsage
 	}
 	flags, configPath, socket, token := uvFlags("sub rotate", stderr)
@@ -310,12 +310,12 @@ func runSub(args []string, stdout, stderr io.Writer) int {
 		return exitUsage
 	}
 	if flags.NArg() != 1 {
-		fmt.Fprintln(stderr, "mn sub rotate: one node id or domain is required")
+		fmt.Fprintln(stderr, "termit-mn sub rotate: one node id or domain is required")
 		return exitUsage
 	}
 	client, err := adminClient(*configPath, *socket, *token)
 	if err != nil {
-		fmt.Fprintf(stderr, "mn sub rotate: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn sub rotate: %v\n", err)
 		return exitFailure
 	}
 	var result struct {
@@ -325,7 +325,7 @@ func runSub(args []string, stdout, stderr io.Writer) int {
 	callCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := client.Call(callCtx, "sub.rotate", map[string]string{"id": flags.Arg(0)}, &result); err != nil {
-		fmt.Fprintf(stderr, "mn sub rotate: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn sub rotate: %v\n", err)
 		return exitFailure
 	}
 	host := *domain
@@ -341,10 +341,10 @@ func runSub(args []string, stdout, stderr io.Writer) int {
 	return exitOK
 }
 
-// runUV dispatches `mn uv …`.
+// runUV dispatches `termit-mn uv …`.
 func runUV(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "mn uv: one of list, show, approve, reject, reissue, agentkey, block, unblock, rm, forget is required")
+		fmt.Fprintln(stderr, "termit-mn uv: one of list, show, approve, reject, reissue, agentkey, block, unblock, rm, forget is required")
 		return exitUsage
 	}
 	switch args[0] {
@@ -365,7 +365,7 @@ func runUV(args []string, stdout, stderr io.Writer) int {
 	case "check":
 		return runCheck(args[1:], stdout, stderr)
 	default:
-		fmt.Fprintf(stderr, "mn uv: unknown subcommand %q\n", args[0])
+		fmt.Fprintf(stderr, "termit-mn uv: unknown subcommand %q\n", args[0])
 		return exitUsage
 	}
 }
@@ -375,20 +375,20 @@ func uvFlags(name string, stderr io.Writer) (*flag.FlagSet, *string, *string, *s
 }
 
 func runUVList(args []string, stdout, stderr io.Writer) int {
-	flags, configPath, socket, token := uvFlags("uv list", stderr)
+	flags, configPath, socket, token := uvFlags("termit-uv list", stderr)
 	if err := flags.Parse(args); err != nil {
 		return exitUsage
 	}
 	client, err := adminClient(*configPath, *socket, *token)
 	if err != nil {
-		fmt.Fprintf(stderr, "mn uv list: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn uv list: %v\n", err)
 		return exitFailure
 	}
 	var nodes []admin.NodeView
 	callCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := client.Call(callCtx, "uv.list", nil, &nodes); err != nil {
-		fmt.Fprintf(stderr, "mn uv list: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn uv list: %v\n", err)
 		return exitFailure
 	}
 	if len(nodes) == 0 {
@@ -410,17 +410,17 @@ func runUVList(args []string, stdout, stderr io.Writer) int {
 }
 
 func runUVShow(args []string, stdout, stderr io.Writer) int {
-	flags, configPath, socket, token := uvFlags("uv show", stderr)
+	flags, configPath, socket, token := uvFlags("termit-uv show", stderr)
 	if err := flags.Parse(args); err != nil {
 		return exitUsage
 	}
 	if flags.NArg() != 1 {
-		fmt.Fprintln(stderr, "mn uv show: one node id or domain is required")
+		fmt.Fprintln(stderr, "termit-mn uv show: one node id or domain is required")
 		return exitUsage
 	}
 	client, err := adminClient(*configPath, *socket, *token)
 	if err != nil {
-		fmt.Fprintf(stderr, "mn uv show: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn uv show: %v\n", err)
 		return exitFailure
 	}
 	var result struct {
@@ -453,7 +453,7 @@ func runUVShow(args []string, stdout, stderr io.Writer) int {
 	callCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := client.Call(callCtx, "uv.show", map[string]string{"id": flags.Arg(0)}, &result); err != nil {
-		fmt.Fprintf(stderr, "mn uv show: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn uv show: %v\n", err)
 		return exitFailure
 	}
 	fmt.Fprintf(stdout, "id:      %s\n", result.Node.ID)
@@ -515,17 +515,17 @@ func runUVShow(args []string, stdout, stderr io.Writer) int {
 }
 
 func runUVDecide(decision string, args []string, stdout, stderr io.Writer) int {
-	flags, configPath, socket, token := uvFlags("uv "+decision, stderr)
+	flags, configPath, socket, token := uvFlags("termit-uv "+decision, stderr)
 	if err := flags.Parse(flagsFirst(args, map[string]bool{})); err != nil {
 		return exitUsage
 	}
 	if flags.NArg() != 1 {
-		fmt.Fprintf(stderr, "mn uv %s: one node id or domain is required\n", decision)
+		fmt.Fprintf(stderr, "termit-mn uv %s: one node id or domain is required\n", decision)
 		return exitUsage
 	}
 	client, err := adminClient(*configPath, *socket, *token)
 	if err != nil {
-		fmt.Fprintf(stderr, "mn uv %s: %v\n", decision, err)
+		fmt.Fprintf(stderr, "termit-mn uv %s: %v\n", decision, err)
 		return exitFailure
 	}
 	var result struct {
@@ -540,7 +540,7 @@ func runUVDecide(decision string, args []string, stdout, stderr io.Writer) int {
 	defer cancel()
 	op := "uv." + decision
 	if err := client.Call(callCtx, op, map[string]string{"id": flags.Arg(0)}, &result); err != nil {
-		fmt.Fprintf(stderr, "mn uv %s: %v\n", decision, err)
+		fmt.Fprintf(stderr, "termit-mn uv %s: %v\n", decision, err)
 		return exitFailure
 	}
 	if !result.Changed {
@@ -551,23 +551,23 @@ func runUVDecide(decision string, args []string, stdout, stderr io.Writer) int {
 	return exitOK
 }
 
-// runCheck is `mn uv check now <node>`: one cycle, synchronously, with the scheduler's own error text.
+// runCheck is `termit-mn uv check now <node>`: one cycle, synchronously, with the scheduler's own error text.
 func runCheck(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 || args[0] != "now" {
-		fmt.Fprintln(stderr, "mn uv check: the only subcommand in this build is now")
+		fmt.Fprintln(stderr, "termit-mn uv check: the only subcommand in this build is now")
 		return exitUsage
 	}
-	flags, configPath, socket, token := uvFlags("uv check now", stderr)
+	flags, configPath, socket, token := uvFlags("termit-uv check now", stderr)
 	if err := flags.Parse(flagsFirst(args[1:], map[string]bool{})); err != nil {
 		return exitUsage
 	}
 	if flags.NArg() != 1 {
-		fmt.Fprintln(stderr, "mn uv check now: one node id or domain is required")
+		fmt.Fprintln(stderr, "termit-mn uv check now: one node id or domain is required")
 		return exitUsage
 	}
 	client, err := adminClient(*configPath, *socket, *token)
 	if err != nil {
-		fmt.Fprintf(stderr, "mn uv check now: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn uv check now: %v\n", err)
 		return exitFailure
 	}
 	var result struct {
@@ -582,7 +582,7 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 	callCtx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 	if err := client.Call(callCtx, "check.now", map[string]string{"id": flags.Arg(0)}, &result); err != nil {
-		fmt.Fprintf(stderr, "mn uv check now: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn uv check now: %v\n", err)
 		return exitFailure
 	}
 	fmt.Fprintf(stdout, "event:    %s\n", result.Event)

@@ -71,7 +71,7 @@ type WarpSpec struct {
 func (w WarpSpec) Enabled() bool { return w.Mode == "all" || w.Mode == "selected" }
 
 // Constants for the WARP sidecar. They are exported because the agent, the installer and the
-// `uv warp` command all have to agree on the same address and probe.
+// `termit-uv warp` command all have to agree on the same address and probe.
 const (
 	// DefaultWarpSocks is warp-cli's proxy-mode SOCKS5 listener on loopback.
 	DefaultWarpSocks = "127.0.0.1:40000"

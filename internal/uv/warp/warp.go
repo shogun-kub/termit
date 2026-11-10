@@ -349,7 +349,7 @@ func (e *ExitError) Error() string {
 // Both shapes are real: the installer's executor wraps whatever the process launch returned
 // (*exec.Error from LookPath, which carries exec.ErrNotFound), and a caller that looked the path up
 // itself produces *os.PathError. A host without the package is a normal state — "warp-cli is not
-// installed" — not a failure of the node, so it must not surface as an error from `uv warp status`.
+// installed" — not a failure of the node, so it must not surface as an error from `termit-uv warp status`.
 func isMissingBinary(err error) bool {
 	var pathErr *os.PathError
 	var execErr *exec.Error

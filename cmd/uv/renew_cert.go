@@ -12,7 +12,7 @@ import (
 
 // runRenewCert renews the node's certificate.
 //
-// Without --force it is the same check `uv init` makes: the certificate is renewed only when it is
+// Without --force it is the same check `termit-uv init` makes: the certificate is renewed only when it is
 // inside the renewal window. With --force it is replaced regardless, which is what a drill or a
 // recovered CA wants. The decoy is not touched either way.
 func (a *application) runRenewCert(args []string) int {
@@ -30,7 +30,7 @@ func (a *application) runRenewCert(args []string) int {
 		return exitFailure
 	}
 	if err != nil {
-		fmt.Fprintf(a.stderr, "uv renew-cert: %v\n", err)
+		fmt.Fprintf(a.stderr, "termit-uv renew-cert: %v\n", err)
 		return exitFailure
 	}
 
@@ -38,7 +38,7 @@ func (a *application) runRenewCert(args []string) int {
 	defer cancel()
 	installer, err := install.New(a.installOptions(cfg, *configPath))
 	if err != nil {
-		fmt.Fprintf(a.stderr, "uv renew-cert: %v\n", err)
+		fmt.Fprintf(a.stderr, "termit-uv renew-cert: %v\n", err)
 		return exitFailure
 	}
 
@@ -49,7 +49,7 @@ func (a *application) runRenewCert(args []string) int {
 	report, err := installer.Run(ctx, opts)
 	a.printSteps(report)
 	if err != nil {
-		fmt.Fprintf(a.stderr, "uv renew-cert: %v\n", err)
+		fmt.Fprintf(a.stderr, "termit-uv renew-cert: %v\n", err)
 		return exitFailure
 	}
 	if node := installer.State(); node.Certificate != nil {

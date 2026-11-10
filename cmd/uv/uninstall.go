@@ -20,7 +20,7 @@ user. Packages are never removed and no other site on nginx is touched.`)
 		return a.flagError(err)
 	}
 	if flags.NArg() > 0 {
-		fmt.Fprintf(a.stderr, "uv uninstall: unexpected argument %q\n", flags.Arg(0))
+		fmt.Fprintf(a.stderr, "termit-uv uninstall: unexpected argument %q\n", flags.Arg(0))
 		return exitUsage
 	}
 
@@ -30,7 +30,7 @@ user. Packages are never removed and no other site on nginx is touched.`)
 		return exitOK
 	}
 	if err != nil {
-		fmt.Fprintf(a.stderr, "uv uninstall: %v\n", err)
+		fmt.Fprintf(a.stderr, "termit-uv uninstall: %v\n", err)
 		return exitFailure
 	}
 
@@ -45,7 +45,7 @@ user. Packages are never removed and no other site on nginx is touched.`)
 		DryRun: *dryRun,
 	})
 	if err != nil {
-		fmt.Fprintf(a.stderr, "uv uninstall: %v\n", err)
+		fmt.Fprintf(a.stderr, "termit-uv uninstall: %v\n", err)
 		return exitFailure
 	}
 

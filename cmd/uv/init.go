@@ -39,11 +39,11 @@ credential is ever regenerated.`)
 		return a.flagError(err)
 	}
 	if flags.NArg() > 0 {
-		fmt.Fprintf(a.stderr, "uv init: unexpected argument %q\n", flags.Arg(0))
+		fmt.Fprintf(a.stderr, "termit-uv init: unexpected argument %q\n", flags.Arg(0))
 		return exitUsage
 	}
 	if *relocate != (*agentKeyFile != "") {
-		fmt.Fprintln(a.stderr, "uv init: --relocate and --agent-key-file are used together")
+		fmt.Fprintln(a.stderr, "termit-uv init: --relocate and --agent-key-file are used together")
 		return exitUsage
 	}
 
@@ -55,7 +55,7 @@ credential is ever regenerated.`)
 	case errors.Is(err, fs.ErrNotExist):
 		cfg = config.Default()
 	case err != nil:
-		fmt.Fprintf(a.stderr, "uv init: %v\n", err)
+		fmt.Fprintf(a.stderr, "termit-uv init: %v\n", err)
 		return exitFailure
 	}
 
@@ -77,7 +77,7 @@ credential is ever regenerated.`)
 	}
 	switch {
 	case set["warp"] && set["no-warp"]:
-		fmt.Fprintln(a.stderr, "uv init: --warp and --no-warp contradict each other")
+		fmt.Fprintln(a.stderr, "termit-uv init: --warp and --no-warp contradict each other")
 		return exitUsage
 	case set["no-warp"]:
 		cfg.Warp.Mode = config.WarpOff
@@ -100,11 +100,11 @@ credential is ever regenerated.`)
 	}
 
 	if cfg.Domain == "" {
-		fmt.Fprintln(a.stderr, "uv init: --domain is required on the first run")
+		fmt.Fprintln(a.stderr, "termit-uv init: --domain is required on the first run")
 		return exitUsage
 	}
 	if err := cfg.Validate(); err != nil {
-		fmt.Fprintf(a.stderr, "uv init: %v\n", err)
+		fmt.Fprintf(a.stderr, "termit-uv init: %v\n", err)
 		return exitUsage
 	}
 
@@ -117,16 +117,16 @@ credential is ever regenerated.`)
 		case errors.Is(err, state.ErrNotInstalled):
 			// A rebuilt box: exactly the case this mode exists for.
 		case err != nil:
-			fmt.Fprintf(a.stderr, "uv init: %v\n", err)
+			fmt.Fprintf(a.stderr, "termit-uv init: %v\n", err)
 			return exitFailure
 		case node.Identity.SelfUUID != "":
 			fmt.Fprintln(a.stderr,
-				"uv init: this node already has an identity; --relocate is for a rebuilt box whose state is gone")
+				"termit-uv init: this node already has an identity; --relocate is for a rebuilt box whose state is gone")
 			return exitFailure
 		}
 		relocateKey, err = readAgentKeyFile(*agentKeyFile)
 		if err != nil {
-			fmt.Fprintf(a.stderr, "uv init: %v\n", err)
+			fmt.Fprintf(a.stderr, "termit-uv init: %v\n", err)
 			return exitFailure
 		}
 	}
@@ -146,17 +146,17 @@ credential is ever regenerated.`)
 	fmt.Fprintf(a.stdout, "\n%s\n\n", summarizeChecks(checks))
 	for _, check := range checks {
 		if check.Status == install.StatusFail {
-			fmt.Fprintf(a.stderr, "uv init: %s: %s\n", check.Name, check.Detail)
+			fmt.Fprintf(a.stderr, "termit-uv init: %s: %s\n", check.Name, check.Detail)
 		}
 	}
 	if !preflight.OK() {
-		fmt.Fprintln(a.stderr, "uv init: host checks failed; nothing was changed")
+		fmt.Fprintln(a.stderr, "termit-uv init: host checks failed; nothing was changed")
 		return exitFailure
 	}
 
 	if !*dryRun {
 		if err := cfg.Save(*configFlag); err != nil {
-			fmt.Fprintf(a.stderr, "uv init: %v\n", err)
+			fmt.Fprintf(a.stderr, "termit-uv init: %v\n", err)
 			return exitFailure
 		}
 	}
@@ -164,7 +164,7 @@ credential is ever regenerated.`)
 
 	installer, err := install.New(a.installOptions(cfg, *configFlag))
 	if err != nil {
-		fmt.Fprintf(a.stderr, "uv init: %v\n", err)
+		fmt.Fprintf(a.stderr, "termit-uv init: %v\n", err)
 		return exitFailure
 	}
 	report, err := installer.Run(ctx, install.RunOptions{
@@ -195,7 +195,7 @@ credential is ever regenerated.`)
 		// The key goes in last, after the install steps have created the state file: an interrupted
 		// init leaves either no credentials or a complete node, never a half-trusted one.
 		if err := a.storeRebuiltCredentials(cfg, relocateKey); err != nil {
-			fmt.Fprintf(a.stderr, "uv init: %v\n", err)
+			fmt.Fprintf(a.stderr, "termit-uv init: %v\n", err)
 			return exitFailure
 		}
 		fmt.Fprintln(a.stdout, "\nrelocated: a new identity is installed; the server still holds the old one.")

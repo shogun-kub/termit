@@ -25,7 +25,7 @@ type menu struct {
 	run func([]string) int
 }
 
-// runMenu is `mn` with no arguments on a terminal, and `mn menu` always.
+// runMenu is `mn` with no arguments on a terminal, and `termit-mn menu` always.
 func runMenu(stdout, stderr *os.File, in io.Reader, style termui.Style) int {
 	m := &menu{
 		ui:  termui.New(in, stdout, style),
@@ -81,7 +81,7 @@ func (m *menu) loop() int {
 func (m *menu) runPlan(plan [][]string) int {
 	for _, argv := range plan {
 		m.ui.Blank()
-		m.ui.Say("$ mn " + strings.Join(argv, " "))
+		m.ui.Say("$ termit-mn " + strings.Join(argv, " "))
 		m.ui.Blank()
 		if code := m.run(argv); code != exitOK {
 			m.ui.Blank()
@@ -99,7 +99,7 @@ func (m *menu) header() {
 	m.ui.Blank()
 	if os.Getenv(adminTokenEnv) == "" {
 		m.ui.State("warn", "no admin token in the environment: admin actions will refuse to run")
-		m.ui.Hint("export " + adminTokenEnv + "=<token printed by mn init> before starting the menu")
+		m.ui.Hint("export " + adminTokenEnv + "=<token printed by termit-mn init> before starting the menu")
 	} else {
 		m.ui.State("ok", "admin token present")
 	}

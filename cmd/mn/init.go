@@ -45,7 +45,7 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 		return exitUsage
 	}
 	if flags.NArg() > 0 {
-		fmt.Fprintf(stderr, "mn init: unexpected argument %q\n", flags.Arg(0))
+		fmt.Fprintf(stderr, "termit-mn init: unexpected argument %q\n", flags.Arg(0))
 		return exitUsage
 	}
 
@@ -56,18 +56,18 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 		// Re-running init on an installed server keeps every decision it already made.
 		cfg = existing
 	} else if !errors.Is(err, os.ErrNotExist) {
-		fmt.Fprintf(stderr, "mn init: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn init: %v\n", err)
 		return exitFailure
 	}
 	if *domain != "" {
 		if cfg.Domain != "" && cfg.Domain != *domain {
-			fmt.Fprintf(stderr, "mn init: this server is already %q; refusing to rename it to %q\n", cfg.Domain, *domain)
+			fmt.Fprintf(stderr, "termit-mn init: this server is already %q; refusing to rename it to %q\n", cfg.Domain, *domain)
 			return exitFailure
 		}
 		cfg.Domain = *domain
 	}
 	if cfg.Domain == "" {
-		fmt.Fprintln(stderr, "mn init: --domain is required on the first run")
+		fmt.Fprintln(stderr, "termit-mn init: --domain is required on the first run")
 		return exitUsage
 	}
 	if *dataDir != "" {
@@ -95,7 +95,7 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 		cfg.Enrollment.Mode = *mode
 	}
 	if err := cfg.Validate(); err != nil {
-		fmt.Fprintf(stderr, "mn init: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn init: %v\n", err)
 		return exitUsage
 	}
 
@@ -111,46 +111,46 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 		{cfg.CertDir(), 0o700},
 	} {
 		if err := os.MkdirAll(dir.path, dir.mode); err != nil {
-			fmt.Fprintf(stderr, "mn init: create %s: %v\n", dir.path, err)
+			fmt.Fprintf(stderr, "termit-mn init: create %s: %v\n", dir.path, err)
 			return exitFailure
 		}
 		if err := os.Chmod(dir.path, dir.mode); err != nil {
-			fmt.Fprintf(stderr, "mn init: chmod %s: %v\n", dir.path, err)
+			fmt.Fprintf(stderr, "termit-mn init: chmod %s: %v\n", dir.path, err)
 			return exitFailure
 		}
 	}
 
 	masterKey, created, err := ensureMasterKey(cfg.MasterKeyFile)
 	if err != nil {
-		fmt.Fprintf(stderr, "mn init: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn init: %v\n", err)
 		return exitFailure
 	}
 	if err := cfg.Save(*configPath); err != nil {
-		fmt.Fprintf(stderr, "mn init: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn init: %v\n", err)
 		return exitFailure
 	}
 
 	db, err := store.Open(ctx, store.Options{Path: cfg.DBPath})
 	if err != nil {
-		fmt.Fprintf(stderr, "mn init: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn init: %v\n", err)
 		return exitFailure
 	}
 	defer func() { _ = db.Close() }()
 
 	now := time.Now().UTC()
 	if err := recordSettings(ctx, db, cfg, now); err != nil {
-		fmt.Fprintf(stderr, "mn init: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn init: %v\n", err)
 		return exitFailure
 	}
 
 	adminToken, err := ensureAdmin(ctx, db, *adminName, now, stdout, stderr)
 	if err != nil {
-		fmt.Fprintf(stderr, "mn init: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn init: %v\n", err)
 		return exitFailure
 	}
 	inviteCode, err := ensureInvite(ctx, db, *inviteUses, now, stdout, stderr)
 	if err != nil {
-		fmt.Fprintf(stderr, "mn init: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn init: %v\n", err)
 		return exitFailure
 	}
 
@@ -254,7 +254,7 @@ func ensureInvite(ctx context.Context, db *store.Store, uses int, now time.Time,
 	if count, err := db.InviteCount(ctx); err != nil {
 		return "", err
 	} else if count > 0 {
-		fmt.Fprintln(stdout, "invite: already present, run `mn invite create` for another")
+		fmt.Fprintln(stdout, "invite: already present, run `termit-mn invite create` for another")
 		return "", nil
 	}
 	code, err := secret.Code()
@@ -267,9 +267,9 @@ func ensureInvite(ctx context.Context, db *store.Store, uses int, now time.Time,
 		ID:        id,
 		CodeHash:  hash,
 		CreatedAt: now,
-		CreatedBy: "mn init",
+		CreatedBy: "termit-mn init",
 		MaxUses:   uses,
-		Note:      "created by mn init",
+		Note:      "created by termit-mn init",
 	}); err != nil {
 		return "", err
 	}

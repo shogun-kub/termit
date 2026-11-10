@@ -37,14 +37,14 @@ func TestBareBinaryOpensTheMenuOnATerminal(t *testing.T) {
 	if !strings.Contains(rendered, "install or converge") {
 		t.Errorf("the menu does not offer installing:\n%s", rendered)
 	}
-	if !strings.Contains(rendered, "$ uv status") {
+	if !strings.Contains(rendered, "$ termit-uv status") {
 		t.Errorf("choosing status did not run the status command:\n%s", rendered)
 	}
 }
 
 func TestBareBinaryStaysUsageOffATerminal(t *testing.T) {
 	t.Parallel()
-	// A script that runs `uv` with no arguments must still get exit 2 and the usage text, never a
+	// A script that runs the bare binary with no arguments must still get exit 2 and the usage text, never a
 	// prompt waiting for input that will never come.
 	app, _, stderr := newTestApp(t)
 	app.interactiveFn = func() bool { return false }
@@ -64,13 +64,13 @@ func TestMenuSubcommandRunsTheMenuEvenOffATerminal(t *testing.T) {
 		t.Fatalf("exit = %d, want 0", code)
 	}
 	if !strings.Contains(out.String(), "Termit — node") {
-		t.Errorf("`uv menu` did not draw the menu:\n%s", out.String())
+		t.Errorf("`termit-uv menu` did not draw the menu:\n%s", out.String())
 	}
 }
 
 func TestMenuEndsOnClosedInput(t *testing.T) {
 	t.Parallel()
-	// Piped input that runs out is a finished session, not a failure: `printf '' | uv menu` exits 0.
+	// Piped input that runs out is a finished session, not a failure: an empty pipe into the menu exits 0.
 	app, _ := menuApp(t, "", false)
 	if code := app.run([]string{"menu"}); code != exitOK {
 		t.Fatalf("exit = %d, want 0", code)

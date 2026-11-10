@@ -24,7 +24,7 @@ const (
 //
 // The vhost changes shape with the node: before a certificate exists it serves the decoy over plain
 // HTTP so that ACME has somewhere to land, and afterwards it redirects :80 and terminates TLS on
-// :443. Both shapes come from the same generator, so `uv init` converges whichever state the host is
+// :443. Both shapes come from the same generator, so `termit-uv init` converges whichever state the host is
 // in.
 type webStep struct{ e *stepEnv }
 
@@ -158,7 +158,7 @@ func (s *webStep) enable(_ context.Context, content []byte) error {
 
 // disableStockSite moves Debian's welcome page out of the way. Without it a request to the bare IP
 // would answer "Welcome to nginx!" — a fingerprint louder than the decoy is quiet. The file is
-// renamed, not deleted, and `uv uninstall` puts it back.
+// renamed, not deleted, and `termit-uv uninstall` puts it back.
 func (s *webStep) disableStockSite() error {
 	link := filepath.Join(filepath.Dir(s.e.cfg.Paths.SitesEnabled), stockSite)
 	// Anything inside sites-enabled is loaded: Debian's include is a glob, so renaming in place would

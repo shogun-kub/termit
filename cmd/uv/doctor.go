@@ -28,7 +28,7 @@ installed node: state, services, certificate, decoy and proxy config. It changes
 		return a.flagError(err)
 	}
 	if flags.NArg() > 0 {
-		fmt.Fprintf(a.stderr, "uv doctor: unexpected argument %q\n", flags.Arg(0))
+		fmt.Fprintf(a.stderr, "termit-uv doctor: unexpected argument %q\n", flags.Arg(0))
 		return exitUsage
 	}
 
@@ -47,7 +47,7 @@ installed node: state, services, certificate, decoy and proxy config. It changes
 		}
 		body, err := json.MarshalIndent(out, "", "  ")
 		if err != nil {
-			fmt.Fprintf(a.stderr, "uv doctor: %v\n", err)
+			fmt.Fprintf(a.stderr, "termit-uv doctor: %v\n", err)
 			return exitFailure
 		}
 		fmt.Fprintln(a.stdout, string(body))

@@ -37,7 +37,7 @@ var requiredPackages = []string{"nginx", "ca-certificates", "curl"}
 // the declared dependency set all the same, from Cloudflare's signed apt repository.
 const warpPackage = "cloudflare-warp"
 
-// aptRefresh is how long an apt index is considered current before `uv init` updates it again.
+// aptRefresh is how long an apt index is considered current before `termit-uv init` updates it again.
 const aptRefresh = 6 * time.Hour
 
 // stepEnv is the shared state every step works with.
@@ -418,7 +418,7 @@ func (s *identityStep) Run(context.Context) error {
 		if current == "" {
 			s.e.log.Debug("decoy template recorded", "template", s.e.cfg.Decoy.Template)
 		} else {
-			s.e.log.Info("decoy template changed; run `uv renew-site` to regenerate the site",
+			s.e.log.Info("decoy template changed; run `termit-uv renew-site` to regenerate the site",
 				"from", current, "to", s.e.cfg.Decoy.Template)
 		}
 	}

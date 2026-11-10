@@ -15,7 +15,7 @@ import (
 // unitsStep installs the systemd units.
 //
 // They are written, not shipped, so the paths inside them follow the configuration; and they are
-// compared before writing so `uv init` does not reload systemd on every run.
+// compared before writing so `termit-uv init` does not reload systemd on every run.
 type unitsStep struct{ e *stepEnv }
 
 func (*unitsStep) Name() string { return "units" }

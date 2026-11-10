@@ -25,7 +25,7 @@ persisted values.`)
 		return a.flagError(err)
 	}
 	if flags.NArg() > 0 {
-		fmt.Fprintf(a.stderr, "uv renew-site: unexpected argument %q\n", flags.Arg(0))
+		fmt.Fprintf(a.stderr, "termit-uv renew-site: unexpected argument %q\n", flags.Arg(0))
 		return exitUsage
 	}
 
@@ -35,14 +35,14 @@ persisted values.`)
 		return exitFailure
 	}
 	if err != nil {
-		fmt.Fprintf(a.stderr, "uv renew-site: %v\n", err)
+		fmt.Fprintf(a.stderr, "termit-uv renew-site: %v\n", err)
 		return exitFailure
 	}
 
 	configChanged := false
 	if *template != "" {
 		if !decoy.KnownTemplate(*template) {
-			fmt.Fprintf(a.stderr, "uv renew-site: unknown template %q (known: %s)\n",
+			fmt.Fprintf(a.stderr, "termit-uv renew-site: unknown template %q (known: %s)\n",
 				*template, strings.Join(decoy.Templates(), ", "))
 			return exitUsage
 		}
@@ -52,11 +52,11 @@ persisted values.`)
 		}
 	}
 	if *seed != "" && len(*seed) < 8 {
-		fmt.Fprintln(a.stderr, "uv renew-site: --seed must be at least 8 characters")
+		fmt.Fprintln(a.stderr, "termit-uv renew-site: --seed must be at least 8 characters")
 		return exitUsage
 	}
 	if err := cfg.Validate(); err != nil {
-		fmt.Fprintf(a.stderr, "uv renew-site: %v\n", err)
+		fmt.Fprintf(a.stderr, "termit-uv renew-site: %v\n", err)
 		return exitUsage
 	}
 
@@ -65,12 +65,12 @@ persisted values.`)
 
 	installer, err := install.New(a.installOptions(cfg, *configFlag))
 	if err != nil {
-		fmt.Fprintf(a.stderr, "uv renew-site: %v\n", err)
+		fmt.Fprintf(a.stderr, "termit-uv renew-site: %v\n", err)
 		return exitFailure
 	}
 	node := installer.State()
 	if node.Decoy.Seed == "" {
-		fmt.Fprintln(a.stderr, "uv renew-site: the node has no decoy seed; run `uv init` first")
+		fmt.Fprintln(a.stderr, "termit-uv renew-site: the node has no decoy seed; run `termit-uv init` first")
 		return exitFailure
 	}
 	if *seed != "" {
@@ -79,7 +79,7 @@ persisted values.`)
 	}
 	if configChanged && !*dryRun {
 		if err := cfg.Save(*configFlag); err != nil {
-			fmt.Fprintf(a.stderr, "uv renew-site: %v\n", err)
+			fmt.Fprintf(a.stderr, "termit-uv renew-site: %v\n", err)
 			return exitFailure
 		}
 	}
@@ -121,11 +121,11 @@ func (a *application) reloadWebTier(ctx context.Context, siteConfig string) {
 		return
 	}
 	if _, err := a.exec.Run(ctx, install.Cmd{Name: "nginx", Args: []string{"-t"}}); err != nil {
-		fmt.Fprintf(a.stderr, "uv renew-site: nginx -t failed after the rewrite: %v\n", err)
+		fmt.Fprintf(a.stderr, "termit-uv renew-site: nginx -t failed after the rewrite: %v\n", err)
 		return
 	}
 	if _, err := a.exec.Run(ctx, install.Cmd{Name: "systemctl", Args: []string{"reload", "nginx"}}); err != nil {
-		fmt.Fprintf(a.stderr, "uv renew-site: reload nginx: %v\n", err)
+		fmt.Fprintf(a.stderr, "termit-uv renew-site: reload nginx: %v\n", err)
 		return
 	}
 	fmt.Fprintln(a.stdout, "\nnginx: reloaded")

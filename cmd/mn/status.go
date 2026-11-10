@@ -27,17 +27,17 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 		return exitUsage
 	}
 	if flags.NArg() > 0 {
-		fmt.Fprintf(stderr, "mn status: unexpected argument %q\n", flags.Arg(0))
+		fmt.Fprintf(stderr, "termit-mn status: unexpected argument %q\n", flags.Arg(0))
 		return exitUsage
 	}
 	cfg, err := config.Load(*configPath)
 	if err != nil {
-		fmt.Fprintf(stderr, "mn status: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn status: %v\n", err)
 		return exitFailure
 	}
 	client, err := adminClient(*configPath, *socket, *token)
 	if err != nil {
-		fmt.Fprintf(stderr, "mn status: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn status: %v\n", err)
 		return exitFailure
 	}
 	callCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -45,7 +45,7 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 
 	var nodes []admin.NodeView
 	if err := client.Call(callCtx, "uv.list", nil, &nodes); err != nil {
-		fmt.Fprintf(stderr, "mn status: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn status: %v\n", err)
 		return exitFailure
 	}
 	// The server block is best effort: an older server does not have the operation, and a status that
@@ -94,7 +94,7 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 			checkTime(node.LastCheckAt), checkTime(node.NextCheckAt), checkTime(node.LastSeenAt))
 	}
 	if err := table.Flush(); err != nil {
-		fmt.Fprintf(stderr, "mn status: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn status: %v\n", err)
 		return exitFailure
 	}
 	return exitOK
@@ -211,11 +211,11 @@ func describeQueue(server admin.ServerState) string {
 }
 
 // runServerCheck runs one cycle for every node the scheduler would probe. With a node argument it is
-// the same command as `mn uv check now <node>`; without one it is the "check the whole mesh now"
+// the same command as `termit-mn uv check now <node>`; without one it is the "check the whole mesh now"
 // operation, which is what an operator reaches for after fixing DNS or a firewall.
 func runServerCheck(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 || args[0] != "now" {
-		fmt.Fprintln(stderr, "mn check: the only subcommand in this build is now")
+		fmt.Fprintln(stderr, "termit-mn check: the only subcommand in this build is now")
 		return exitUsage
 	}
 	flags, configPath, socket, token := uvFlags("check now", stderr)
@@ -225,20 +225,20 @@ func runServerCheck(args []string, stdout, stderr io.Writer) int {
 	}
 	switch {
 	case flags.NArg() > 1:
-		fmt.Fprintln(stderr, "mn check now: at most one node id or domain")
+		fmt.Fprintln(stderr, "termit-mn check now: at most one node id or domain")
 		return exitUsage
 	case flags.NArg() == 1:
 		if *all {
-			fmt.Fprintln(stderr, "mn check now: either --all or one node, not both")
+			fmt.Fprintln(stderr, "termit-mn check now: either --all or one node, not both")
 			return exitUsage
 		}
-		// One node is exactly `mn uv check now <node>`, including its output.
+		// One node is exactly `termit-mn uv check now <node>`, including its output.
 		return runCheck(args, stdout, stderr)
 	}
 
 	client, err := adminClient(*configPath, *socket, *token)
 	if err != nil {
-		fmt.Fprintf(stderr, "mn check now: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn check now: %v\n", err)
 		return exitFailure
 	}
 	callCtx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
@@ -246,7 +246,7 @@ func runServerCheck(args []string, stdout, stderr io.Writer) int {
 
 	var nodes []admin.NodeView
 	if err := client.Call(callCtx, "uv.list", nil, &nodes); err != nil {
-		fmt.Fprintf(stderr, "mn check now: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn check now: %v\n", err)
 		return exitFailure
 	}
 
@@ -265,7 +265,7 @@ func runServerCheck(args []string, stdout, stderr io.Writer) int {
 		}
 		if err := client.Call(callCtx, "check.now", map[string]string{"id": node.ID}, &result); err != nil {
 			// A cycle the server could not run is not a node failure; keep going and report it.
-			fmt.Fprintf(stderr, "mn check now: %s (%s): %v\n", node.Domain, node.ID, err)
+			fmt.Fprintf(stderr, "termit-mn check now: %s (%s): %v\n", node.Domain, node.ID, err)
 			failed = true
 			continue
 		}
@@ -273,7 +273,7 @@ func runServerCheck(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(table, "%s\t%s\t%s\t%d\t%s\n", node.Domain, result.Event, result.State, result.Attempts, result.Reason)
 	}
 	if err := table.Flush(); err != nil {
-		fmt.Fprintf(stderr, "mn check now: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn check now: %v\n", err)
 		return exitFailure
 	}
 	if checked == 0 && !failed {

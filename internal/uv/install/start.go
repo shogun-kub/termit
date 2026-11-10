@@ -29,7 +29,7 @@ func (s *startStep) Check(ctx context.Context) (CheckResult, error) {
 	if !s.e.serviceActive(ctx, service.RenewTimerName) {
 		return CheckResult{Detail: service.RenewTimerName + " is not running"}, nil
 	}
-	// The agent is restarted even when it is running: `uv init` is also the upgrade path, and a unit
+	// The agent is restarted even when it is running: `termit-uv init` is also the upgrade path, and a unit
 	// file or the binary may have been replaced under the running process. Reporting "present" here
 	// would leave an old agent in place until the next reboot.
 	return CheckResult{Detail: "the agent is restarted so a new binary or unit takes effect"}, nil
@@ -61,7 +61,7 @@ func (s *startStep) Run(ctx context.Context) error {
 	// The agent starts last. `enable --now` leaves an already-running unit on the old binary after an
 	// upgrade, so it is restarted rather than merely started: its job changes with the build.
 	//
-	// A rebuild or an upgrade can run `uv init` several times in a few minutes, and every run restarts
+	// A rebuild or an upgrade can run `termit-uv init` several times in a few minutes, and every run restarts
 	// the agent; without clearing the start limit the fifth run would leave it failed with "started too
 	// often", which a re-runnable command must never do to its own service.
 	_, _ = s.e.exec.Run(ctx, Cmd{Name: "systemctl", Args: []string{"reset-failed", service.AgentUnitName}})

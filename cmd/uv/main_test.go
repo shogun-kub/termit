@@ -80,7 +80,7 @@ func TestDispatch(t *testing.T) {
 		{"long help", []string{"--help"}, exitOK, "Usage:"},
 		{"no command", nil, exitUsage, "Usage:"},
 		{"unknown", []string{"nope"}, exitUsage, "unknown command"},
-		{"warp without a configuration", []string{"warp", "--config", filepath.Join(t.TempDir(), "absent.yaml")}, exitFailure, "uv warp:"},
+		{"warp without a configuration", []string{"warp", "--config", filepath.Join(t.TempDir(), "absent.yaml")}, exitFailure, "termit-uv warp:"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -97,7 +97,7 @@ func TestDispatch(t *testing.T) {
 	}
 }
 
-// warpReport runs `uv warp --json` and decodes it, optionally with an application built by the caller.
+// warpReport runs `termit-uv warp --json` and decodes it, optionally with an application built by the caller.
 func warpReport(t *testing.T, app *application, path string) jsonWarp {
 	t.Helper()
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -123,7 +123,7 @@ func tunHost(t *testing.T) *warp.Host {
 	return &warp.Host{GOOS: "linux", GOARCH: "amd64", TunPath: path}
 }
 
-// WARP is on by default, so `uv warp status` has to say "off" clearly when the owner opted out and
+// WARP is on by default, so `termit-uv warp status` has to say "off" clearly when the owner opted out and
 // has to say where traffic leaves in every other case — including "nowhere yet", which is what a
 // fresh node before the package is installed looks like.
 func TestWarpStatusReportsTheMode(t *testing.T) {
@@ -167,7 +167,7 @@ func mustApp(t *testing.T) *application {
 	return app
 }
 
-// A node that has not installed the package yet is a normal state: `uv warp status` reports
+// A node that has not installed the package yet is a normal state: `termit-uv warp status` reports
 // "not-installed" rather than failing, which is what makes it useful on a fresh box.
 func TestWarpStatusSaysNotInstalled(t *testing.T) {
 	t.Parallel()
@@ -330,7 +330,7 @@ func TestJoinWords(t *testing.T) {
 	}
 }
 
-// The documentation has always shown `uv warp status`, so the command accepts it; `uv warp` alone
+// The documentation has always shown `termit-uv warp status`, so the command accepts it; `termit-uv warp` alone
 // stays the short form.
 func TestWarpAcceptsTheDocumentedStatusSubcommand(t *testing.T) {
 	t.Parallel()
