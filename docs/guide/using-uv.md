@@ -32,8 +32,12 @@ curl -fsSLO https://github.com/shogun-kub/termit/releases/download/v0.1.0/uv.sh
 
 sh uv.sh --version v0.1.0 \
   --domain node1.example.com --email you@example.com \
-  --mn https://mn.example.com --invite ABCD-EFGH-IJKL
+  --mn https://mn.example.com/6rfjdqfn5nno --invite ABCD-EFGH-IJKL
 ```
+
+`--mn` must be the URL the server printed at `termit-mn init`, **including the API prefix**:
+`https://mn.example.com/6rfjdqfn5nno`, not the bare host. The prefix is where the API lives, and a node
+given only the host reaches nothing — it will say so rather than reporting a bad invite.
 
 The script verifies the release checksum against `SHA256SUMS`, installs `termit-uv`, runs
 `termit-uv init` (which does the actual work) and then `termit-uv enroll` with your invite.

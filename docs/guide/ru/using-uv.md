@@ -32,8 +32,13 @@ curl -fsSLO https://github.com/shogun-kub/termit/releases/download/v0.1.0/uv.sh
 
 sh uv.sh --version v0.1.0 \
   --domain node1.example.com --email you@example.com \
-  --mn https://mn.example.com --invite ABCD-EFGH-IJKL
+  --mn https://mn.example.com/6rfjdqfn5nno --invite ABCD-EFGH-IJKL
 ```
+
+`--mn` — это URL, который сервер напечатал при `termit-mn init`, **вместе с префиксом API**:
+`https://mn.example.com/6rfjdqfn5nno`, а не голый домен. Префикс — это путь, по которому живёт API, и
+узел, которому дали только домен, не достучится никуда (он так и скажет, а не пожалуется на
+приглашение).
 
 Скрипт сверяет контрольную сумму релиза по `SHA256SUMS`, ставит `termit-uv`, запускает `termit-uv init`
 (он и делает всю работу) и затем `termit-uv enroll` с вашим приглашением.

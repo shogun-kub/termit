@@ -28,6 +28,7 @@ but write the finding in English and explain it back in Russian.
 | [`docs/DESCRIPTION.md`](docs/DESCRIPTION.md) | The design. Goals, protocol, credential model, state machine, invariants. |
 | [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) | Milestones and the task you are probably implementing. |
 | [`docs/QUESTIONS.md`](docs/QUESTIONS.md) | Decisions already made and still open. Do not silently re-decide them. |
+| [`docs/MN-API.md`](docs/MN-API.md) | The server's API: paths (and the configurable prefix), request/response shapes, problem codes, the admin socket's operations. |
 
 If a task contradicts these documents, stop and ask — do not "fix" the document to match the code.
 

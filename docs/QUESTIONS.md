@@ -295,6 +295,16 @@ unit tests alone.
 an MN whose API version is too new?
 **Rec** Both: `api_version` + `min_agent_version`, surfaced in `termit-uv doctor`.
 
+**Q9.8** How detectable is an installed MN from the outside, and should the API move?
+**Rec** Yes: `api_prefix`, a path segment chosen at install time (random by default), with the node API
+and `/healthz` behind it. A scanner probing `/api/v1` gets the same 404 as any other path, and DPI sees
+one more HTTPS host. It is an identifier, not a credential — every node carries it inside its `mn.url` —
+so it is only ever a barrier to probing, never to authorization. Subscriptions stay at `/sub/{token}`
+(a URL already in clients' hands) and metrics at `/metrics` (a scrape target, refused off loopback).
+**Why** The control plane is the easiest thing to fingerprint: a few well-known paths and a JSON
+health body identify the product to anyone with a port scanner. The XHTTP path already applies this
+reasoning to the data plane; leaving the control plane naked was an inconsistency, not a decision.
+
 ---
 
 ## 10. Things I will assume unless told otherwise

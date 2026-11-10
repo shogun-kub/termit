@@ -170,7 +170,7 @@ level=INFO msg="admin socket ready" path=/run/termit/mn/admin.sock
 Verify:
 
 ```bash
-curl -sS https://mn.example.com/healthz | jq .
+curl -sS https://mn.example.com/6rfjdqfn5nno/healthz | jq .   # {prefix}/healthz, see §3.1
 termit-mn status
 ```
 
@@ -195,6 +195,32 @@ node1.example.net  active  0     2026-11-10 13:29  2026-11-11 12:34  2026-11-10 
 The `prober` and `queue` lines are the two that catch a mesh that looks fine and is not: `unavailable`
 means no check can produce a verdict, and a growing `due` count means the scheduler is not keeping up.
 Neither is a node failure, and neither changes a node's state.
+
+### 3.1 The API prefix
+
+`api_prefix` is the path the node API is served under. `init` picks a random one on a fresh install
+(`--api-prefix` overrides it), so the server answers `404` to `/api/v1/enroll`, `/healthz` and every
+other name a scanner tries, while DPI sees one more HTTPS host that serves nothing recognisable. The
+prefix is an identifier, not a credential: it is in every node's configuration and in `termit-mn status`.
+
+```yaml
+api_prefix: /6rfjdqfn5nno
+```
+
+A configuration written before this option existed has no `api_prefix` and keeps serving the historical
+`/api/v1`, which is what makes an upgrade a no-op for the nodes.
+
+**Changing it on a running server is a migration, not a setting.** The prefix is half of every node's
+`mn.url`, and a node that is not told about a change cannot reach the API at all. In order:
+
+1. Edit `api_prefix` in `/etc/termit/mn/config.yaml`, then `systemctl restart termit-mn`.
+2. On **every** node: update `mn.url` under `mn:` in `/etc/termit/uv/config.yaml` to the new URL, then
+   `systemctl restart termit-uv-agent`.
+3. `termit-uv sync --check` on each node, and `termit-mn uv list` on the server, until every node is
+   `active` again.
+
+Nodes already enrolled keep working across the change as soon as step 2 lands: no credential is derived
+from the prefix. Do it with the mesh in front of you, not on a Friday.
 
 ## 4. Install a node
 
@@ -700,8 +726,9 @@ registry is not something an automated command should decide to do.
 
 ## 14. Monitoring
 
-- `GET /healthz` on the MN — liveness plus build identity, `200`/`503`. Put it behind your usual
-  external monitor.
+- `GET {prefix}/healthz` on the MN — liveness plus build identity, `200`/`503`. The prefix is
+  `api_prefix` from `/etc/termit/mn/config.yaml`, and `termit-mn status` prints it. Put it behind your
+  usual external monitor.
 - `GET /metrics` on the MN — Prometheus text, **loopback only**. Scrape it from the same host:
   enrollments, syncs and check outcomes by result, a check-duration histogram, node counts by state,
   the scheduler's backlog, whether a probe worker exists, and the server certificate's expiry.
@@ -716,7 +743,7 @@ A useful alert set, in the order that matters:
 
 | Alert | How |
 |---|---|
-| the server is down | `/healthz` fails twice in a row |
+| the server is down | `{prefix}/healthz` fails twice in a row |
 | no checks are happening | `termit_mn_prober_up == 0` for 5 minutes, or `termit_mn_check_queue_due > 0` and growing |
 | the scheduler is behind | `termit_mn_check_queue_oldest_due_seconds` above a few hours |
 | a node is blocked or unavailable | `termit_mn_nodes{state="blocked"}` above zero, or `termit-mn status` |

@@ -47,6 +47,8 @@ path to it is broken". For anything else: `journalctl -u termit-uv-agent` on the
 | a timer or script suddenly says `the admin token is not valid` | somebody rotated the token | read the new one from wherever it was written (`--token-out`), or rotate again from a shell that has it |
 | `termit-mn admin rotate` says `the admin token is not valid` | rotation needs the current token, and this one is no longer it | find the token that works; if none does, the recovery is the delete-the-row procedure in the operations guide |
 | after rotating, every node and timer still works but `termit-mn` does not | the rotation replaced the CLI credential, not the mesh: nodes use agent keys and subscriptions, not admin tokens | update only the admin token wherever it is stored |
+| a node says `the server has no API at https://…/enroll` | its `mn.url` is missing the server's `api_prefix` — the API is not at the bare host | copy the URL from `termit-mn status` (the `api:` line) or from the `init` output; `termit-uv sync --check` proves it |
+| every node lost contact at once, the server is up | the prefix was changed on the server and the nodes were not told | update `mn.url` on every node and restart the agent; `OPERATIONS.md` §3.1 has the order |
 | `termit-mn` commands say `the admin token is not valid` | wrong token, or a database restored without its `admin` table | use the token printed by `termit-mn init` |
 
 ## Enrolling a node

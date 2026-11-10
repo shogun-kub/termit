@@ -312,7 +312,7 @@ Rules (all thresholds configurable on MN, defaults in parentheses):
 1. Owner runs the UV installer with `--domain`, `--mn`, and an invite code.
 2. UV performs pre-flight (`termit-uv doctor`), issues the certificate, starts Xray and the decoy site,
    generates `self_uuid`, and self-tests locally.
-3. `POST /api/v1/enroll` with `{invite_code, domain, basic_vless_url, agent_version, profile, capabilities}`.
+3. `POST {prefix}/enroll` with `{invite_code, domain, basic_vless_url, agent_version, profile, capabilities}`.
 4. MN validates the invite, parses the URL, resolves the domain (must equal the request source IP,
    dual-confirmed by two resolvers), then probes the new node:
    - the decoy site over TLS (chain + hostname + expiry ≥ 14 d, then `GET /` → `200` + HTML), and
@@ -320,7 +320,7 @@ Rules (all thresholds configurable on MN, defaults in parentheses):
 5. On success MN creates the UV record (`active` immediately for a valid invite; `pending` if manual
    approval is required), generates `agent_key` + `sub_token` + `probe_uuid`, and returns them once.
 6. UV stores them `0600`, adds `probe_uuid` as a client, and performs its first sync.
-7. Daily cycle, per UV, at its own random time: local self-check → `POST /api/v1/agent/sync`
+7. Daily cycle, per UV, at its own random time: local self-check → `POST {prefix}/agent/sync`
    (agent key) with the check report and the leaf certificate it serves (`X-Territ-Cert-SHA256`) →
    MN runs/refreshes its own checks if due → response carries the
    desired peer list, the add/remove delta, the subscription URL, and the next due time.
@@ -346,7 +346,7 @@ Rules (all thresholds configurable on MN, defaults in parentheses):
 2. The owner runs `termit-uv unblock [--domain D] [--vless-url U]` with the agent key. Without `--vless-url`
    the box builds its own URI from the local identity — exactly what a rebuilt box must present — so a
    credential never appears on a command line or in the remote process list.
-3. `POST /api/v1/agent/unblock` with `{domain?, basic_vless_url?}`.
+3. `POST {prefix}/agent/unblock` with `{domain?, basic_vless_url?}`.
 4. MN applies the same DNS + decoy + VLESS checks as enrollment, against the supplied or stored
    domain/URL: DNS must point at the requesting box, the decoy must answer, and the tunnel must carry
    traffic for the claimed UUID at the claimed path.
@@ -365,7 +365,7 @@ the IP the domain resolves to".
 1. On the new box: `termit-uv init --domain new.example.com --relocate --agent-key-file <key>` installs it
    under the new name with the old agent key (a new `self_uuid` and path; the key file is `0600`).
 2. `termit-uv migrate --relocate` builds the endpoint from the local identity and posts
-   `POST /api/v1/agent/relocate` with `{domain, basic_vless_url}`; the agent key is the bearer.
+   `POST {prefix}/agent/relocate` with `{domain, basic_vless_url}`; the agent key is the bearer.
 3. MN verifies: the agent key names the node; the URL names the requested domain; the domain is not
    another node's; DNS for the new domain answers with the requesting address (every resolver that
    answers must agree); decoy site + certificate; VLESS end-to-end with the **claimed** self credential.
@@ -403,13 +403,19 @@ against an API it does not understand. Errors are RFC 9457-style problem objects
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| `POST` | `/api/v1/enroll` | invite code | register a new UV |
-| `POST` | `/api/v1/agent/sync` | agent key | report self-check and the leaf pin, fetch desired state + subscription URL |
-| `POST` | `/api/v1/agent/unblock` | agent key | Scenario B |
-| `POST` | `/api/v1/agent/relocate` | agent key | Scenario C |
+| `POST` | `{prefix}/enroll` | invite code | register a new UV |
+| `POST` | `{prefix}/agent/sync` | agent key | report self-check and the leaf pin, fetch desired state + subscription URL |
+| `POST` | `{prefix}/agent/unblock` | agent key | Scenario B |
+| `POST` | `{prefix}/agent/relocate` | agent key | Scenario C |
 | `GET` | `/sub/{token}` | token | base64 `vless://` list |
 | `GET` | `/sub/{token}/json` | token | sing-box profile (same peers, richer routing) |
-| `GET` | `/healthz`, `/metrics` | none / loopback | liveness, Prometheus |
+| `GET` | `{prefix}/healthz`, `/metrics` | none / loopback | liveness, Prometheus |
+
+`{prefix}` is `api_prefix`: the path the node API is served under, random on a fresh install so that a
+server is not discoverable by probing the names everyone uses. It is not a secret — every node carries
+it inside its `mn.url` — and `docs/MN-API.md` is the reference for the whole surface. Subscriptions stay
+at `/sub/…` and metrics at `/metrics`: the first is a URL already written into clients' applications,
+the second a scrape target, and both are guarded by something better than an obscure path.
 
 Admin operations are **not** HTTP endpoints: `termit-mn` talks to `/run/termit/mn/admin.sock`. This keeps the
 public attack surface to two read-only-ish endpoints and one authenticated agent API.

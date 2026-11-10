@@ -11,10 +11,17 @@ needs a new `api_version`.
 
 | Component | Role |
 |---|---|
-| UV (node) | calls `/api/v1/enroll` once, then `/api/v1/agent/*` on its daily cycle |
+| UV (node) | calls `{prefix}/enroll` once, then `{prefix}/agent/*` on its daily cycle |
 | MN (server) | implements the API, owns the registry and the probe worker |
 | Client | fetches `/sub/{token}` or `/sub/{token}/json` (a browser or a proxy app) |
-| Monitoring | reads `/healthz`, and `/metrics` from loopback |
+| Monitoring | reads `{prefix}/healthz`, and `/metrics` from loopback |
+
+`{prefix}` is `api_prefix` from the server's configuration: a path chosen at install time, random by
+default, so that a scanner probing `/api/v1` finds nothing. Every node learns it as part of its `mn.url`
+(`--mn https://mn.example.com/6rfjdqfn5nno`), and the agent appends its own paths to that URL. The
+subscription endpoints stay at `/sub/…` and metrics at `/metrics` on purpose — one is a URL already in
+clients' hands, the other a scrape target — and [MN-API.md](MN-API.md) is the reference for the whole
+surface.
 
 ---
 
@@ -36,11 +43,11 @@ needs a new `api_version`.
 
 | Surface | Credential | Where |
 |---|---|---|
-| `/api/v1/enroll` | invite code | request body, `invite_code` |
-| `/api/v1/agent/*` | agent key | `Authorization: Bearer <agent_key>` |
+| `{prefix}/enroll` | invite code | request body, `invite_code` |
+| `{prefix}/agent/*` | agent key | `Authorization: Bearer <agent_key>` |
 | `/sub/{token}`, `/sub/{token}/json` | subscription token | the URL path |
 | `/metrics` | none; loopback peer only | — |
-| `/healthz` | none | — |
+| `{prefix}/healthz` | none | — |
 
 The agent key and the subscription token are opaque strings (URL-safe base64, no whitespace). Neither
 is ever echoed in a response body after enrollment, written to a log line, or accepted on the other's
@@ -62,7 +69,7 @@ proxy's address and refuse every node.
 
 ## 3. Endpoints
 
-### 3.1 `GET /healthz`
+### 3.1 `GET {prefix}/healthz`
 
 Liveness plus enough identity to answer "which server is this". Never touches a credential.
 
@@ -113,7 +120,7 @@ A refusal `result` on the enrollment counter counts everything that produced no 
 taken domain, a failed DNS or probe check, a rate limit. The detail is in the log and in the problem
 response, not in the metric.
 
-### 3.3 `POST /api/v1/enroll`
+### 3.3 `POST {prefix}/enroll`
 
 Registers a node. This is the only unauthenticated write endpoint and therefore the only one with a
 per-source-address rate limit.
@@ -184,7 +191,7 @@ Rate limit: `enrollment.attempts` requests per `enrollment.window_seconds` per s
 (default 10 per 900 s). Exceeding it is `429 rate_limited`; the window is the address's, not the
 invite's.
 
-### 3.4 `POST /api/v1/agent/sync`
+### 3.4 `POST {prefix}/agent/sync`
 
 The node's daily call: reports what it is, receives the complete desired peer set.
 
@@ -264,7 +271,7 @@ Rules the node may rely on:
 A blocked or removed node cannot sync: `403 node_inactive`. A wrong or unknown key is `401
 unauthorized` — the same answer, so a guesser learns nothing from the difference.
 
-### 3.5 `POST /api/v1/agent/unblock`
+### 3.5 `POST {prefix}/agent/unblock`
 
 Scenario B: a blocked node asks to be let back in. This is **the only agent endpoint that admits a
 blocked node**, because a node that has no other way to ask is the whole point of it.
@@ -305,7 +312,7 @@ Response:
 }
 ```
 
-### 3.6 `POST /api/v1/agent/relocate`
+### 3.6 `POST {prefix}/agent/relocate`
 
 Scenario C: the same node at a new host. Both fields are required.
 
@@ -475,7 +482,7 @@ From a node, with the server on `mn.example.com` and a code from `termit-mn invi
 ```bash
 # 1. enroll — the answer carries the only copy of the node's agent key, and the
 #    command runs the first sync itself unless --no-sync is given
-termit-uv enroll --mn https://mn.example.com --invite ABCD-EFGH-IJKL
+termit-uv enroll --mn https://mn.example.com/6rfjdqfn5nno --invite ABCD-EFGH-IJKL
 # node:      uv_9f3c1a2b4d5e
 # domain:    node1.example.net
 # state:     pending
@@ -494,14 +501,14 @@ termit-mn sub rotate uv_9f3c1a2b4d5e --domain mn.example.com   # invalidate the 
 By hand, with `curl` (the node's own profile is what `termit-uv uri` prints):
 
 ```bash
-curl -sS https://mn.example.com/healthz | jq .
+curl -sS https://mn.example.com/6rfjdqfn5nno/healthz | jq .
 
-curl -sS -X POST https://mn.example.com/api/v1/enroll \
+curl -sS -X POST https://mn.example.com/6rfjdqfn5nno/enroll \
   -H 'Content-Type: application/json' \
   -d '{"invite_code":"ABCD-EFGH-IJKL","domain":"node1.example.net",
        "basic_vless_url":"vless://…@node1.example.net:443?…","agent_version":"0.1.0","profile":"v1"}'
 
-curl -sS -X POST https://mn.example.com/api/v1/agent/sync \
+curl -sS -X POST https://mn.example.com/6rfjdqfn5nno/agent/sync \
   -H "Authorization: Bearer $AGENT_KEY" \
   -H 'Content-Type: application/json' \
   -d '{"agent_version":"0.1.0"}'

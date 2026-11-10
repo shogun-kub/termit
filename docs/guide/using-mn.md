@@ -34,6 +34,7 @@ prints the secrets **once**:
 ```
 domain:       mn.example.com
 listen:       :443
+api prefix:   /6rfjdqfn5nno
 config:       /etc/termit/mn/config.yaml
 database:     /var/lib/termit/mn/termit.db (schema 5)
 master key:   /etc/termit/mn/master.key (generated now)
@@ -44,6 +45,12 @@ admin token (shown once, store it now):
 first invite code (shown once, 1 use(s)):
   ABCD-EFGH-IJKL
 ```
+
+Three things to note. The **api prefix** is where the node API lives: `init` picks a random path, so a
+scanner probing `/api/v1` on your server finds nothing, and every node is given the full URL —
+`https://mn.example.com/6rfjdqfn5nno` — rather than the bare host. It is not a secret, and
+[the API reference](../MN-API.md) says what is behind it. `--api-prefix /api/v1` keeps the old,
+discoverable path if you want it.
 
 Two things to keep, and keep together: the **admin token** (every `mn` command needs it) and the
 **master key** (`/etc/termit/mn/master.key`). Without the master key the database cannot derive a
@@ -117,8 +124,8 @@ level=INFO msg="admin socket ready" path=/run/termit/mn/admin.sock
 Verify:
 
 ```bash
-curl -sS https://mn.example.com/healthz        # {"status":"ok", …}
-termit-mn status
+curl -sS https://mn.example.com/6rfjdqfn5nno/healthz   # {"status":"ok", …}
+termit-mn status                                       # prints the prefix as well
 ```
 
 `termit-mn status` is the screen to open first, every time:

@@ -875,6 +875,12 @@ Two decisions worth keeping:
   setup, and a file owned by somebody else is a way for them to choose the credential. The refusal names
   the `chmod` or `chown` that fixes it.
 
+The node API then moved behind a configurable prefix (`api_prefix`): random on a fresh install, part of
+every node's `mn.url`, hidden from a scanner probing `/api/v1`, and documented as a surface in
+`docs/MN-API.md` — the first time the API has a reference of its own rather than a narrative section in
+`PROTOCOL.md`. Subscriptions stayed at `/sub` and metrics at `/metrics`: a URL in a client's hands and a
+scrape target are not paths an operator should have to keep secret for the server to be safe.
+
 Rotation followed in the next milestone (`termit-mn admin rotate`): the caller replaces its own
 credential, the id moves with the token because it is derived from it, `last_used_at` is cleared because a
 fresh token has never been presented, and the old digest stops resolving in the same write. A lost token
