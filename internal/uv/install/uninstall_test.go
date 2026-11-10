@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/shogun-kub/termit/internal/uv/service"
 )
 
 func discardLogger() *slog.Logger {
@@ -110,6 +112,52 @@ func TestUninstallDryRunChangesNothing(t *testing.T) {
 	}
 	if _, err := os.Stat(cfg.Paths.XrayBinary()); err != nil {
 		t.Errorf("dry run removed the core: %v", err)
+	}
+}
+
+func TestUninstallStopsEveryUnit(t *testing.T) {
+	t.Parallel()
+	cfg := testConfig(t)
+	sb := newSandbox()
+	ctx := context.Background()
+
+	installer := newTestInstaller(t, cfg, sb)
+	if _, err := installer.Run(ctx, RunOptions{Skip: []string{"preflight", "certificate"}}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if _, err := Uninstall(ctx, UninstallOptions{
+		Config: cfg,
+		Exec:   sb.exec,
+		Logger: discardLogger(),
+		Now:    func() time.Time { return engineNow },
+	}); err != nil {
+		t.Fatalf("Uninstall: %v", err)
+	}
+
+	// A unit left running outlives the binary it executes: the agent would keep syncing and
+	// rewriting a core whose config this command just deleted.
+	var disabled []string
+	for _, call := range sb.exec.calls {
+		if call.Name != "systemctl" || len(call.Args) == 0 || call.Args[0] != "disable" {
+			continue
+		}
+		disabled = call.Args
+	}
+	if disabled == nil {
+		t.Fatal("uninstall never disabled a unit")
+	}
+	for _, unit := range []string{service.XrayUnitName, service.AgentUnitName, service.RenewTimerName} {
+		found := false
+		for _, arg := range disabled {
+			if arg == unit {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%s was not stopped: systemctl %v", unit, disabled)
+		}
 	}
 }
 

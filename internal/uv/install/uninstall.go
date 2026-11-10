@@ -19,8 +19,14 @@ import (
 )
 
 // unitNames are the services Termit supervises. They are listed here as well as in the manifest so
-// uninstall stops them even when an older install never recorded them.
-var unitNames = []string{"termit-xray.service", service.RenewTimerName, service.RenewUnitName, "termit-uv.service"}
+// uninstall stops them even when an older install never recorded them; the constants are the ones the
+// generator wrote, so a rename cannot leave a running process behind.
+var unitNames = []string{
+	service.XrayUnitName,
+	service.AgentUnitName,
+	service.RenewTimerName,
+	service.RenewUnitName,
+}
 
 // UninstallOptions configure an uninstall.
 type UninstallOptions struct {
