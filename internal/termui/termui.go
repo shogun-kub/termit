@@ -261,8 +261,13 @@ func (u *UI) Confirm(label string, def bool) (bool, error) {
 // Pause waits for Enter, so a result stays on screen until it has been read.
 func (u *UI) Pause() error {
 	fmt.Fprintf(u.out, "\n%sEnter to continue%s ", u.sty.Dim, u.sty.Reset)
-	_, err := u.readLine()
-	return err
+	if _, err := u.readLine(); err != nil {
+		return err
+	}
+	// End the line: without colour the screen is not cleared, so the next section would otherwise
+	// start where this prompt left the cursor.
+	fmt.Fprintln(u.out)
+	return nil
 }
 
 // Say prints a plain line of output.

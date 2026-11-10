@@ -221,4 +221,7 @@ func TestPauseWaitsForALine(t *testing.T) {
 	if !strings.Contains(out.String(), "Enter") {
 		t.Errorf("Pause asked nothing:\n%s", out.String())
 	}
+	if !strings.HasSuffix(out.String(), "\n") {
+		t.Errorf("Pause left the cursor mid-line: %q", out.String())
+	}
 }
