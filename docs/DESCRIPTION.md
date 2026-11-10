@@ -407,6 +407,7 @@ against an API it does not understand. Errors are RFC 9457-style problem objects
 | `POST` | `{prefix}/agent/sync` | agent key | report self-check and the leaf pin, fetch desired state + subscription URL |
 | `POST` | `{prefix}/agent/unblock` | agent key | Scenario B |
 | `POST` | `{prefix}/agent/relocate` | agent key | Scenario C |
+| `GET` | `/` and every other path | none | the masking site: a generated page, or its own 404 |
 | `GET` | `/sub/{token}` | token | base64 `vless://` list |
 | `GET` | `/sub/{token}/json` | token | sing-box profile (same peers, richer routing) |
 | `GET` | `{prefix}/healthz`, `/metrics` | none / loopback | liveness, Prometheus |
@@ -416,6 +417,11 @@ server is not discoverable by probing the names everyone uses. It is not a secre
 it inside its `mn.url` — and `docs/MN-API.md` is the reference for the whole surface. Subscriptions stay
 at `/sub/…` and metrics at `/metrics`: the first is a URL already written into clients' applications,
 the second a scrape target, and both are guarded by something better than an obscure path.
+
+Everything else is the masking site: the same archetype the nodes serve (`decoy.template`, generated
+from the domain and a seed stored in the database), held in memory and answered at `/` and for every
+path the API does not claim. A management server that answered `404 page not found` for everything was
+a fingerprint in itself — not a website, but a machine.
 
 Admin operations are **not** HTTP endpoints: `termit-mn` talks to `/run/termit/mn/admin.sock`. This keeps the
 public attack surface to two read-only-ish endpoints and one authenticated agent API.

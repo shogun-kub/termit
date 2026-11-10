@@ -881,6 +881,12 @@ every node's `mn.url`, hidden from a scanner probing `/api/v1`, and documented a
 `PROTOCOL.md`. Subscriptions stayed at `/sub` and metrics at `/metrics`: a URL in a client's hands and a
 scrape target are not paths an operator should have to keep secret for the server to be safe.
 
+The server then got the masking site the nodes have had since M3: the same generator (`internal/decoy`,
+moved out of `internal/uv` so both binaries can use it), generated at startup from the domain and a seed
+kept in the database, and served from memory — the server is the listener, so there is no tree to write.
+That closed the last asymmetry a scanner could read: `/api/v1` was hidden behind a random prefix, but the
+host still answered every other path with Go's `404 page not found`.
+
 Rotation followed in the next milestone (`termit-mn admin rotate`): the caller replaces its own
 credential, the id moves with the token because it is derived from it, `last_used_at` is cleared because a
 fresh token has never been presented, and the old digest stops resolving in the same write. A lost token

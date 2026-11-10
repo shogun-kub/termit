@@ -305,6 +305,16 @@ so it is only ever a barrier to probing, never to authorization. Subscriptions s
 health body identify the product to anyone with a port scanner. The XHTTP path already applies this
 reasoning to the data plane; leaving the control plane naked was an inconsistency, not a decision.
 
+**Q9.9** Should the management server serve a masking site, as the nodes do?
+**Rec** Yes: the same generator and archetypes, generated at startup from the domain and a seed kept in
+the database, served from memory at `/` and for every path the API does not claim — including an HTML
+404 of its own. A host that answers `404 page not found` for everything is not a website; it is a
+machine, and that is a fingerprint by itself. The site must never shadow the API: the prefix, `/sub/…`
+and `/metrics` are matched first.
+**Why** The node already answers a prober with an ordinary page (§8); the server being the one host in
+the system that does not was an asymmetry a scanner can read, and the cheapest place to fix it is the
+generator that already exists.
+
 ---
 
 ## 10. Things I will assume unless told otherwise

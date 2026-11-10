@@ -35,6 +35,7 @@ prints the secrets **once**:
 domain:       mn.example.com
 listen:       :443
 api prefix:   /6rfjdqfn5nno
+masking site: portal (what a prober gets for every path the API does not claim)
 config:       /etc/termit/mn/config.yaml
 database:     /var/lib/termit/mn/termit.db (schema 5)
 master key:   /etc/termit/mn/master.key (generated now)
@@ -51,6 +52,12 @@ scanner probing `/api/v1` on your server finds nothing, and every node is given 
 `https://mn.example.com/6rfjdqfn5nno` — rather than the bare host. It is not a secret, and
 [the API reference](../MN-API.md) says what is behind it. `--api-prefix /api/v1` keeps the old,
 discoverable path if you want it.
+
+The **masking site** is what a visitor gets instead: an ordinary-looking page at `/`, its own 404 for
+anything else, and nothing that mentions Termit. A host that answered `404 page not found` for every
+path would be a fingerprint in itself. `--decoy-template product` picks the other archetype (the nodes
+serve the same two), and `decoy.template` in the configuration changes it later. The page is generated
+at startup and held in memory; there is nothing to edit on disk.
 
 Two things to keep, and keep together: the **admin token** (every `mn` command needs it) and the
 **master key** (`/etc/termit/mn/master.key`). Without the master key the database cannot derive a
@@ -133,6 +140,8 @@ termit-mn status                                       # prints the prefix as we
 ```
 server:   mn.example.com
 listen:   :443
+api:      /6rfjdqfn5nno
+decoy:    portal
 version:  termit-mn v0.1.0 (commit …, built …, api 1, profile v1)
 uptime:   3h12m (started 2026-11-10 11:18)
 database: /var/lib/termit/mn/termit.db (412.0 KiB, schema 5)

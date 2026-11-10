@@ -222,6 +222,30 @@ A configuration written before this option existed has no `api_prefix` and keeps
 Nodes already enrolled keep working across the change as soon as step 2 lands: no credential is derived
 from the prefix. Do it with the mesh in front of you, not on a Friday.
 
+### 3.2 The masking site
+
+The server answers a visitor with an ordinary-looking page, the same generator the nodes use, so a
+prober that finds `mn.example.com` sees a website instead of a machine answering `404 page not found`:
+
+```yaml
+decoy:
+  template: portal      # portal or product
+```
+
+```bash
+curl -sS https://mn.example.com/ | head -3         # the landing page
+curl -sS -o /dev/null -w '%{http_code}\n' https://mn.example.com/nothing   # 404, the site's own page
+```
+
+It is generated at startup from the domain, a seed stored in the database and the template, and held in
+memory: no directory, no files to keep in step. The seed is minted once by `termit-mn init` (or by the
+first start after an upgrade) and never changes, so the site is stable across restarts. To change the
+archetype, edit `decoy.template` and restart — that is the whole procedure. `termit-mn status` prints
+the template on the `decoy:` line.
+
+The site never shadows the API: the prefix, `/sub/…` and `/metrics` are matched first.
+
+
 ## 4. Install a node
 
 The bootstrap script verifies a release checksum, installs the binary and then lets `termit-uv init` do the

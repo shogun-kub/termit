@@ -104,7 +104,7 @@ internal/uv/agent/      scheduler, sync loop, state machine client side
 internal/uv/install/    install/upgrade/uninstall steps, package management
 internal/uv/xray/       config model, generator, hot API client, `xray -test` gate
 internal/uv/service/    generated systemd units and the nginx drop-in
-internal/uv/decoy/      deterministic site generator + embedded templates
+internal/decoy/         deterministic masking-site generator + embedded templates (used by the node AND the server)
 internal/uv/web/        generated nginx config (TLS, decoy root, proxy of the secret prefix)
 internal/uv/acme/       ACME (HTTP-01), certificate store, renewal
 internal/uv/warp/       warp-cli lifecycle, proxy-mode health and the SOCKS5 trace
@@ -294,9 +294,12 @@ Rules for the lab:
 - Output is deterministic from `(domain, seed, template)`; the seed is stored at install so the site
   survives restarts unchanged.
 - The generated tree is regenerable: `termit-uv renew-site` rewrites it and never leaves stale files.
-- **nginx serves the tree**; the agent must never listen on `:80`/`:443`. The page, the nginx location
-  that serves it and the nginx snippet for the fake auth endpoint are generated from the same template
-  data, and a golden test must cover both so they cannot drift apart.
+- **nginx serves the tree** on a node; the agent must never listen on `:80`/`:443`. The page, the nginx
+  location that serves it and the nginx snippet for the fake auth endpoint are generated from the same
+  template data, and a golden test must cover both so they cannot drift apart.
+- **The management server serves its own site from memory** (`internal/mn/server/decoy.go`): it is the
+  listener, so the generated tree is never written to disk there. Same generator, same determinism,
+  different transport — do not give it a file tree to keep in step.
 
 ## 6. Domain rules that tests must enforce
 

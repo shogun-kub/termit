@@ -79,8 +79,10 @@ agent: the server has no API at https://mn.example.com/enroll: does the MN URL i
 | `GET` | `/sub/{token}` | a client | Peer list, base64 VLESS URIs |
 | `GET` | `/sub/{token}/json` | a client | Peer list, sing-box JSON |
 | `GET` | `/metrics` | Prometheus, loopback only | Counters and gauges |
+| `GET` | `/` and everything else | anyone | The masking site: a generated page, or its own 404 (§5.2) |
 
-Everything else is `404`, including every path under a prefix the server is not serving.
+Everything else is the masking site, including every path under a prefix the server is not serving —
+which is also why a scan of `/api/v1/enroll` looks like a scan of a website that has no such page.
 
 Two paths are deliberately **not** behind the prefix:
 
@@ -366,7 +368,7 @@ working immediately.
 
 ---
 
-## 5. Operational endpoints
+## 5. Operational endpoints, and the site a visitor sees
 
 ### 5.1 `GET {prefix}/healthz`
 
@@ -380,7 +382,40 @@ working immediately.
 the absence of the failure field is the success signal. It carries no node data: a health endpoint that leaks the
 registry is a health endpoint an attacker polls.
 
-### 5.2 `GET /metrics`
+### 5.2 The masking site: `GET /` and every other path
+
+Everything the API does not claim is a page of an ordinary-looking website: `/` is the site's landing
+page, `/robots.txt`, `/favicon.png` and its scripts exist, and an unknown path answers `404` with the
+site's **own** HTML page rather than Go's `404 page not found`.
+
+That is the point. A host that answers every path with a plain-text 404 and nothing else is not a
+website, and a prober that sees one learns the machine is not what it claims to be. The server serves
+the same archetypes the nodes serve, so it looks like its own product rather than a different one:
+
+```yaml
+decoy:
+  template: portal      # portal or product; both exist on the nodes too
+```
+
+| Behaviour | Answer |
+|---|---|
+| `GET /` | `200`, the generated landing page |
+| `GET /robots.txt`, `/favicon.png`, `/assets/boot.js` | `200`, the generated file |
+| `GET /<unknown>` | `404`, the site's own HTML page |
+| the page's sign-in endpoint (`POST`) | the status, JSON body and cookie a portal gives a wrong password |
+| `HEAD` on any of the above | the same headers, no body |
+| `If-None-Match` with a remembered `ETag` | `304` |
+
+The site is generated at startup from `(domain, seed, template)` and held in memory: there is no
+directory to keep in step with the configuration and nothing to serve stale. The seed is minted once
+and stored in the database (`termit-mn init` does it, and a first start after an upgrade does the
+same), so the site a visitor sees today is the site they see after a restart. Changing `decoy.template`
+and restarting is the whole procedure for a different archetype.
+
+It never shadows the API: routes are matched before the catch-all, so `{prefix}/…`, `/sub/…` and
+`/metrics` answer as documented however plausible the path looks.
+
+### 5.3 `GET /metrics`
 
 Prometheus text format, refused with `403` unless the request comes from loopback — bind the listener
 to a public address and the endpoint is still unreachable from outside.

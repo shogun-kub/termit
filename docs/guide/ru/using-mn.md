@@ -34,6 +34,8 @@ termit-mn init --domain mn.example.com --email you@example.com --mode invite
 ```
 domain:       mn.example.com
 listen:       :443
+api prefix:   /6rfjdqfn5nno
+masking site: portal (what a prober gets for every path the API does not claim)
 config:       /etc/termit/mn/config.yaml
 database:     /var/lib/termit/mn/termit.db (schema 5)
 master key:   /etc/termit/mn/master.key (generated now)
@@ -44,6 +46,18 @@ admin token (shown once, store it now):
 first invite code (shown once, 1 use(s)):
   ABCD-EFGH-IJKL
 ```
+
+Три вещи, на которые стоит посмотреть. **Префикс API** — это путь, по которому живёт API узлов:
+`init` выбирает случайный, поэтому сканер, пробующий `/api/v1`, на вашем сервере не находит ничего, а
+каждый узел получает полный URL — `https://mn.example.com/6rfjdqfn5nno`, — а не голый домен. Это не
+секрет, и [справочник по API](../MN-API.md) описывает, что за ним. `--api-prefix /api/v1` оставляет
+старый, обнаруживаемый путь, если он нужен.
+
+**Маскировочный сайт** — это то, что видит посетитель: обычная на вид страница на `/`, собственная 404
+для всего остального и ни слова про Termit. Хост, который на любой путь отвечает `404 page not found`,
+сам по себе отпечаток. `--decoy-template product` выбирает другой архетип (на узлах те же два), позже
+это делает `decoy.template` в конфигурации. Страница генерируется при старте и живёт в памяти — на
+диске нет ничего, что можно было бы отредактировать.
 
 Две вещи нужно сохранить, и сохранить вместе: **админ-токен** (без него не работает ни одна команда
 `mn`) и **мастер-ключ** (`/etc/termit/mn/master.key`). Без мастер-ключа база не сможет вывести ни
@@ -127,6 +141,8 @@ termit-mn status
 ```
 server:   mn.example.com
 listen:   :443
+api:      /6rfjdqfn5nno
+decoy:    portal
 version:  termit-mn v0.1.0 (commit …, built …, api 1, profile v1)
 uptime:   3h12m (started 2026-11-10 11:18)
 database: /var/lib/termit/mn/termit.db (412.0 KiB, schema 5)
