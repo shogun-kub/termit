@@ -331,8 +331,11 @@ warp:         all, on (via 104.28.1.1 (AMS))
 
 Values you may see for the state: `on` (traffic exits through WARP), `direct` (WARP is down and
 fail-open sent traffic out from the node's address), `blocked` (`warp.fail_open: false`: traffic is
-being refused rather than exposed), `off`, `unavailable` (the host cannot run WARP at all, with the
-reason) and `unknown` (the self-check could not tell).
+being refused rather than exposed), `off`, `not-installed` (the host can run WARP but the package is
+not there yet — `uv init` installs it), `unavailable` (the host cannot run WARP at all, with the
+reason) and `unknown` (the self-check could not tell). A missing `warp-cli` is a state, not an error:
+`uv warp status` reports it and exits 0, which is what makes it usable on a node that was installed
+with `--no-warp`.
 
 Fail-open is a routing decision inside the core, not a configuration rewrite: an `observatory` probes
 WARP every 30 s through the tunnel, and a `balancer` with `fallbackTag: direct` sends new connections
@@ -697,6 +700,7 @@ A useful alert set, in the order that matters:
 | `uv doctor` → `services` failed | a unit is down | `systemctl status <unit>`; `uv init` starts them again |
 | `uv doctor` → `certificate` warn/fail | renewal is late or broken | `uv renew-cert`; the journal of `termit-uv-renew.service` says why |
 | `uv status` shows `warp: … direct` | WARP is down and fail-open is doing its job | `uv warp status`, then `journalctl -u warp-cli`; traffic still works |
+| `uv warp status` shows `not-installed` | the node was installed with `--no-warp`, or the package was removed | `uv init` (or `uv warp mode all`) installs and registers it; `uv warp status` exits 0 in this state |
 | `uv warp mode` → `start-limit-hit` | too many restarts in five minutes | `systemctl reset-failed termit-xray termit-uv-agent` |
 | `uv sync --check` exits 4 | the core's client set differs from the server's | `uv sync` |
 | `mn` commands: `cannot reach the server at …` | `termit-mn` is not running, or the socket moved | `systemctl status termit-mn`; check `admin_socket` in the config |
