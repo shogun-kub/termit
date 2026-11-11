@@ -86,6 +86,41 @@ func TestValidateCollectsProblems(t *testing.T) {
 	}
 }
 
+func TestTrustedProxies(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name    string
+		entries []string
+		want    string
+	}{
+		{name: "an address", entries: []string{"192.0.2.10"}},
+		{name: "a block", entries: []string{"10.0.0.0/8"}},
+		{name: "several", entries: []string{"192.0.2.10", "10.0.0.0/8", "2001:db8::/32"}},
+		{name: "empty means nobody is trusted", entries: nil},
+		{name: "a name is refused", entries: []string{"proxy.example"}, want: "neither an address nor a CIDR"},
+		{name: "a broken block is refused", entries: []string{"10.0.0.0/99"}, want: "not a CIDR block"},
+		{name: "an empty entry is refused", entries: []string{"  "}, want: "empty entry"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := config.Default()
+			cfg.Domain = "mn.example.com"
+			cfg.TrustedProxies = tc.entries
+			err := cfg.Validate()
+			if tc.want == "" {
+				if err != nil {
+					t.Fatalf("Validate(%v): %v", tc.entries, err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Validate(%v) = %v, want one containing %q", tc.entries, err, tc.want)
+			}
+		})
+	}
+}
+
 func TestSaveAndLoadRoundTrip(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()

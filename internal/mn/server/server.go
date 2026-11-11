@@ -234,7 +234,11 @@ func (h *Handler) enroll(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		var refused *enroll.Error
 		if errors.As(err, &refused) {
-			h.opts.Logger.Info("enrollment refused", "domain", req.Domain, "code", refused.Code, "status", refused.Status)
+			// Warn, not Info: a refused enrollment is the one line an operator hunting a node that
+			// cannot join needs, and the service runs at Warn by default.
+			h.opts.Logger.Warn("enrollment refused",
+				"domain", req.Domain, "code", refused.Code, "status", refused.Status,
+				"detail", refused.Detail, "ip", ip)
 			writeProblem(w, refused.Status, proto.NewProblem(refused.Status, refused.Code, titleFor(refused.Status), refused.Detail))
 			return
 		}

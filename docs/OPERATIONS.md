@@ -250,28 +250,36 @@ The site never shadows the API: the prefix, `/sub/…` and `/metrics` are matche
 
 The server terminates TLS itself, so a proxy in front of it must pass the connection through rather than
 terminate it: the certificate, the ACME renewal and the masking site stay the server's. nginx does that
-with the stream module, routing on the SNI before any TLS is parsed (`libnginx-mod-stream`):
+with the stream module, routing on the SNI before any TLS is parsed (`libnginx-mod-stream`), and it tells
+the server who the client was in a PROXY protocol header:
 
 ```nginx
 # /etc/nginx/stream.d/mn.conf, included from a stream{} block in nginx.conf
 map $ssl_preread_server_name $mn_backend {
-    mn.example.com       127.0.0.1:10443;
+    mn.example.com       10.0.0.5:443;
     default              127.0.0.1:8443;   # the sites nginx terminates, moved off :443
 }
 
 server {
     listen              443;
     proxy_pass          $mn_backend;
-    proxy_protocol      on;                # keeps the other sites' clients visible
+    proxy_protocol      on;                # the server reads this from trusted_proxies
     ssl_preread         on;
 }
-
-# The server does not speak the PROXY protocol, so it gets a second hop that accepts and strips it.
-server {
-    listen              127.0.0.1:10443 proxy_protocol;
-    proxy_pass          10.0.0.5:443;
-}
 ```
+
+and the server lists the proxy, using the address the proxy connects from:
+
+```yaml
+trusted_proxies: [10.0.0.5]
+```
+
+`trusted_proxies` is what makes that header believable: it is read only from an address on the list, so a
+client cannot claim an address by sending one itself. Without it the server ignores forwarded protocols
+on purpose — the enrollment DNS proof ("the domain must resolve to the address the request came from"),
+the rate-limit key and the recorded last address are all made of the peer address. A node behind a
+terminating proxy that the server does not trust fails enrollment with `dns_mismatch` while being
+perfectly healthy: it is the proxy's address that does not resolve to the node.
 
 Two things that are easy to get wrong, and both are silent:
 
@@ -293,8 +301,8 @@ Two things that are easy to get wrong, and both are silent:
   proxy_protocol;` in `http{}`. Without it every site behind the hop logs the loopback address and
   forwards it upstream.
 
-The server sees the connection as coming from the proxy: it does not read `X-Forwarded-For`, and the
-PROXY header is stripped before the server. Node addresses on the server are the proxy's.
+A trusted address that sends no header keeps its own address, so the server can be upgraded before the
+proxy is told to send one, and a proxy that is trusted for one name only still serves the rest.
 ## 4. Install a node
 
 The bootstrap script verifies a release checksum, installs the binary and then lets `termit-uv init` do the

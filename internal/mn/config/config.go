@@ -55,17 +55,25 @@ type Config struct {
 	Listen        string `yaml:"listen"`
 	// APIPrefix is the path the node API is served under. It is random on a fresh install so a
 	// scanner cannot find the API by trying the usual names; the node learns it as part of its MN URL.
-	APIPrefix     string     `yaml:"api_prefix"`
-	AdminSocket   string     `yaml:"admin_socket"`
-	DataDir       string     `yaml:"data_dir"`
-	DBPath        string     `yaml:"db_path"`
-	MasterKeyFile string     `yaml:"master_key_file"`
-	ACME          ACME       `yaml:"acme"`
-	Decoy         Decoy      `yaml:"decoy"`
-	Enrollment    Enrollment `yaml:"enrollment"`
-	Policy        Policy     `yaml:"policy"`
-	DNS           DNS        `yaml:"dns"`
-	Prober        Prober     `yaml:"prober"`
+	APIPrefix     string `yaml:"api_prefix"`
+	AdminSocket   string `yaml:"admin_socket"`
+	DataDir       string `yaml:"data_dir"`
+	DBPath        string `yaml:"db_path"`
+	MasterKeyFile string `yaml:"master_key_file"`
+	// TrustedProxies are the addresses (an IP, or a CIDR block) of reverse proxies in front of this
+	// server. A connection from one of them has its version-1 PROXY protocol header read and removed,
+	// so the recorded client address — and with it the enrollment DNS proof and the rate-limit key —
+	// is the node's own instead of the proxy's.
+	//
+	// Empty means the server is exposed directly and the peer is always the client. Listing an address
+	// that never sends the header is harmless: a trusted peer without one keeps its own address.
+	TrustedProxies []string   `yaml:"trusted_proxies,omitempty"`
+	ACME           ACME       `yaml:"acme"`
+	Decoy          Decoy      `yaml:"decoy"`
+	Enrollment     Enrollment `yaml:"enrollment"`
+	Policy         Policy     `yaml:"policy"`
+	DNS            DNS        `yaml:"dns"`
+	Prober         Prober     `yaml:"prober"`
 }
 
 // Decoy is the site the server answers a prober with: an ordinary-looking page instead of a bare 404
@@ -237,6 +245,11 @@ func (c *Config) Validate() error {
 	if err := validateAPIPrefix(c.APIPrefix); err != nil {
 		problems = append(problems, err)
 	}
+	for _, entry := range c.TrustedProxies {
+		if err := validateProxyAddress(entry); err != nil {
+			problems = append(problems, err)
+		}
+	}
 	if !decoy.KnownTemplate(c.Decoy.Template) {
 		problems = append(problems, fmt.Errorf("decoy.template %q is not one this build can generate (%s)",
 			c.Decoy.Template, strings.Join(decoy.Templates(), ", ")))
@@ -361,6 +374,26 @@ func validateAPIPrefix(prefix string) error {
 		default:
 			return fmt.Errorf("api_prefix %q contains %q, which an URL path cannot carry here", prefix, r)
 		}
+	}
+	return nil
+}
+
+// validateProxyAddress keeps http.trusted_proxies to what the listener can match: an address, or a
+// block. A name is not accepted on purpose — resolving it here would make the trust decision depend on
+// whatever DNS said at startup.
+func validateProxyAddress(entry string) error {
+	entry = strings.TrimSpace(entry)
+	if entry == "" {
+		return errors.New("http.trusted_proxies contains an empty entry")
+	}
+	if strings.Contains(entry, "/") {
+		if _, _, err := net.ParseCIDR(entry); err != nil {
+			return fmt.Errorf("http.trusted_proxies %q is not a CIDR block: %w", entry, err)
+		}
+		return nil
+	}
+	if net.ParseIP(entry) == nil {
+		return fmt.Errorf("http.trusted_proxies %q is neither an address nor a CIDR block", entry)
 	}
 	return nil
 }

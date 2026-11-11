@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os/signal"
 	"path/filepath"
@@ -153,9 +154,14 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 	}()
 
 	serveErr := make(chan error, 1)
+	ln, err := listen(cfg, logger)
+	if err != nil {
+		fmt.Fprintf(stderr, "termit-mn serve: %v\n", err)
+		return exitFailure
+	}
 	if *plainHTTP {
 		fmt.Fprintln(stderr, "termit-mn serve: --http is set; the API is not encrypted")
-		go func() { serveErr <- server.ListenAndServe() }()
+		go func() { serveErr <- server.Serve(ln) }()
 	} else {
 		// Issuing blocks startup on purpose: a management API that silently falls back to HTTP is
 		// worse than one that refuses to start.
@@ -178,7 +184,7 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 		}, logger)
 		logger.Info("serving TLS", "domain", cfg.Domain, "listen", cfg.Listen,
 			"not_after", tlsPaths.NotAfter.UTC().Format(time.RFC3339))
-		go func() { serveErr <- server.ListenAndServeTLS("", "") }()
+		go func() { serveErr <- server.ServeTLS(ln, "", "") }()
 	}
 
 	select {
@@ -199,6 +205,26 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 		return exitFailure
 	}
 	return exitOK
+}
+
+// listen binds the API listener, wrapped so that a proxy on http.trusted_proxies may name the client
+// in a PROXY protocol header. A server with no trusted proxies is exposed directly: the listener is
+// returned untouched and every peer is the client.
+func listen(cfg *config.Config, logger *slog.Logger) (net.Listener, error) {
+	bound, err := net.Listen("tcp", cfg.Listen)
+	if err != nil {
+		return nil, fmt.Errorf("listen %s: %w", cfg.Listen, err)
+	}
+	if len(cfg.TrustedProxies) == 0 {
+		return bound, nil
+	}
+	trusted, err := server.ParseTrustedProxies(cfg.TrustedProxies)
+	if err != nil {
+		_ = bound.Close()
+		return nil, err
+	}
+	logger.Info("reading the PROXY protocol", "trusted", cfg.TrustedProxies)
+	return server.NewProxyProtoListener(bound, trusted, 0), nil
 }
 
 // buildHandler wires the HTTP surface: the enrollment service needs a store, resolvers and a prober.
