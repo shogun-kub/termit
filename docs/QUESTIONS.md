@@ -135,9 +135,11 @@ URIs encode. It must be versioned (`profile: v1`) so MN can refuse incompatible 
 **Revisions, made after the profile was measured against real clients and paths** (each is a change to
 what a URI carries, so it is recorded here rather than edited into the decision above):
 
-- **XHTTP mode is `packet-up`, not `stream-one`.** Only `packet-up` survives the HTTP/1.1 hop from
-  nginx; the stream-shaped modes make Xray's client send an h2 preface and nginx answers `400`
-  (SPIKES.md S3).
+- **XHTTP mode is `packet-up`, not `stream-one`.** The stream-shaped modes make Xray's client send
+  an h2 preface at the hop, and nginx answers `400` (SPIKES.md S3). `auto` was never measured under
+  the hop: we pin `packet-up` so the client's behaviour cannot depend on which HTTP version it
+  negotiates. A client URL that uses `auto` against a server that terminates TLS itself proves
+  nothing about this hop.
 - **No ALPN in the client URI.** The transport is HTTP/1.1 on the wire for the same reason; offering
   `h2` invites a handshake the hop cannot carry.
 - **uTLS fingerprint is `firefox`, not `chrome`.** A chrome ClientHello (Chrome 133 with an

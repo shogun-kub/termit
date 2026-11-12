@@ -110,9 +110,10 @@ Consequences recorded in `DESCRIPTION.md`:
 - Profile `v1`: XHTTP `mode: packet-up` over an HTTP/1.1 hop from nginx, ALPN `h2,http/1.1` at the edge
   (to be re-verified once the real nginx config and the real client exist; `mode: auto` is retried
   then).
-- Re-verified with the real nginx config and a real Xray client (2026-11): `mode: auto` does not survive
-  the hop, `packet-up` does; the client URI therefore carries no `alpn`, and its uTLS fingerprint is
-  `firefox` — see `QUESTIONS.md` Q4.1, "Revisions".
+- Re-verified with the real nginx config and a real Xray client (2026-11): the stream-shaped modes fail
+  at the hop, `packet-up` works; `auto` was not measured through the hop, and is not shipped because it
+  leaves the client's mode to whichever HTTP version it negotiates. The client URI therefore carries no
+  `alpn`, and its uTLS fingerprint is `firefox` — see `QUESTIONS.md` Q4.1, "Revisions".
 
 Remaining unknown for M1: whether `mode: auto` behaves under nginx's HTTP/1.1 upstream proxy (the
 reference used `auto` in that position, but it is unverified here); `packet-up` is the fallback that
