@@ -146,10 +146,14 @@ what a URI carries, so it is recorded here rather than edited into the decision 
   X25519MLKEM768 key share, ~1.8 KB) is frozen by filters on Russian consumer paths when several
   connections open to one host at once; `firefox` was measured to pass (19/20 and 49/50) where `chrome`
   did not. The field owner confirmed the same result on a live node.
-- **The URI carries an `extra` object with `xPaddingBytes`.** Taken from a working link in the field:
-  padding makes each request a different size, so request size stops being a constant a filter can
-  match. Only padding is adopted — the same link also tunes `xmux` (connection reuse) and the POST
-  pacing, which change connection behaviour and are left for a measurement of their own.
+- **The URI carries an `extra` object with `xPaddingBytes` and `xmux`.** Both were taken from a working
+  link in the field and then measured here, not copied on faith. Padding makes each request a different
+  size, so request size stops being a constant a filter can match. `xmux` reuses one connection: against
+  a live node through the nginx hop, 20 proxied connections took 1 TCP connection with it and 5–8
+  without; on a lossy path every new connection is another chance to lose a handshake, and the only run
+  of that measurement without a failed request was the one with `xmux` on (suggestive, not proven — the
+  link fails in bursts). POST pacing (`scMinPostsIntervalMs`, `scMaxEachPostBytes`) was left out: it
+  changes throughput, and nothing measured calls for it.
 
 **Q4.2** Does the VPS serve *only* the decoy site, or may it also host a real web service that must
 keep working on 443?

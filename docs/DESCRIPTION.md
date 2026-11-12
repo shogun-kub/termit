@@ -252,8 +252,11 @@ and forwards HTTP/1.1 to Xray, so an `h2` offer can only reach for a handshake t
 do, and `firefox` is the measured choice — a `chrome` hello (with an X25519MLKEM768 key share, ~1.8 KB)
 is frozen by some consumer paths when several connections open to one host at once, while `firefox`
 passed in the same measurements. `extra.xPaddingBytes` makes every request a different size, so a filter
-cannot match a constant one; it costs a few hundred bytes per POST and the node ignores it. It is not in
-the sing-box profile: sing-box validates strictly and would reject a field it does not know.
+cannot match a constant one; it costs a few hundred bytes per POST and the node ignores it.
+`extra.xmux` reuses one connection for many proxied connections — 20 proxied connections took 1 TCP
+connection with it and 5–8 without, through the nginx hop, and the connection count is what a lossy path
+turns into failed handshakes; `hMaxReusableSecs` bounds how long one connection lives. Neither is in the
+sing-box profile: sing-box validates strictly and would reject a field it does not know.
 
 XHTTP is a transport, not a protocol every client implements: stock sing-box has no XHTTP, and its
 `/json` subscription form therefore only serves builds that patched it in. See

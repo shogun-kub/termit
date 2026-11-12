@@ -75,7 +75,7 @@ func TestBuildVLESSUrlShape(t *testing.T) {
 		"mode=packet-up",
 		"path=%2Fa1b2c3d4e5f60718%2F",
 		"fp=firefox",
-		"extra=%7B%22xPaddingBytes%22%3A%22100-1000%22%7D",
+		"extra=",
 		"#laptop",
 	} {
 		if !strings.Contains(uri, want) {
@@ -93,12 +93,19 @@ func TestBuildVLESSUrlShape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the built URI does not parse: %v", err)
 	}
-	var extra map[string]string
+	var extra map[string]any
 	if err := json.Unmarshal([]byte(parsed.Query().Get("extra")), &extra); err != nil {
 		t.Fatalf("extra is not a JSON object a client can read: %v", err)
 	}
-	if extra["xPaddingBytes"] == "" {
+	if extra["xPaddingBytes"] == nil {
 		t.Errorf("extra carries no padding: %v", extra)
+	}
+	xmux, ok := extra["xmux"].(map[string]any)
+	if !ok {
+		t.Fatalf("extra carries no xmux block: %v", extra)
+	}
+	if xmux["maxConcurrency"] == nil || xmux["hMaxReusableSecs"] == nil {
+		t.Errorf("xmux is missing the reuse limits: %v", xmux)
 	}
 }
 
