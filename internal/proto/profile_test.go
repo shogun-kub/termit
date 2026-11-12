@@ -1,6 +1,8 @@
 package proto_test
 
 import (
+	"encoding/json"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -73,6 +75,7 @@ func TestBuildVLESSUrlShape(t *testing.T) {
 		"mode=packet-up",
 		"path=%2Fa1b2c3d4e5f60718%2F",
 		"fp=firefox",
+		"extra=%7B%22xPaddingBytes%22%3A%22100-1000%22%7D",
 		"#laptop",
 	} {
 		if !strings.Contains(uri, want) {
@@ -83,6 +86,19 @@ func TestBuildVLESSUrlShape(t *testing.T) {
 		if strings.Contains(uri, forbidden) {
 			t.Errorf("uri %q contains %q, which the profile does not use", uri, forbidden)
 		}
+	}
+	// A client parses extra as JSON after URL-decoding the query, so the round trip through
+	// url.Query must give back an object, not a broken string.
+	parsed, err := url.Parse(uri)
+	if err != nil {
+		t.Fatalf("the built URI does not parse: %v", err)
+	}
+	var extra map[string]string
+	if err := json.Unmarshal([]byte(parsed.Query().Get("extra")), &extra); err != nil {
+		t.Fatalf("extra is not a JSON object a client can read: %v", err)
+	}
+	if extra["xPaddingBytes"] == "" {
+		t.Errorf("extra carries no padding: %v", extra)
 	}
 }
 

@@ -131,6 +131,10 @@ func TestRenderJSON(t *testing.T) {
 	if utls["enabled"] != true || utls["fingerprint"] != proto.Fingerprint {
 		t.Errorf("utls = %v, want enabled with fingerprint %q", utls, proto.Fingerprint)
 	}
+	// The padding knob is Xray-only: sing-box validates strictly and would reject the field.
+	if _, has := tlsSettings["extra"]; has {
+		t.Error("the sing-box profile carries the Xray xhttp extra block")
+	}
 	if profile.Outbounds[2]["type"] != "selector" || profile.Outbounds[3]["tag"] != "direct" {
 		t.Errorf("the profile does not end with a selector and a direct outbound: %v", profile.Outbounds)
 	}

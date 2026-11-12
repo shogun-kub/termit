@@ -37,6 +37,15 @@ const (
 	// changes per connection cannot be verified and, in stock Xray, is not guaranteed to keep its
 	// groups and key shares consistent.
 	Fingerprint = "firefox"
+
+	// Extra is the XHTTP client tuning a URI carries. Padding only, for now: it makes each request a
+	// different size, so a filter cannot match on a constant one, and it costs a few hundred bytes per
+	// POST. The value is a literal because it is an opaque JSON string to every client, and the node
+	// never reads it: Xray's inbound parses the request the same way whether or not it was padded.
+	//
+	// Not in the sing-box profile: sing-box validates its configuration strictly and rejects fields it
+	// does not know, so a knob there would break every stock client instead of being ignored.
+	Extra = `{"xPaddingBytes":"100-1000"}`
 )
 
 var (
@@ -96,6 +105,7 @@ func BuildVLESSUrl(p Profile) (string, error) {
 	query.Set("mode", Mode)
 	query.Set("path", p.Path)
 	query.Set("fp", Fingerprint)
+	query.Set("extra", Extra)
 
 	label := p.Label
 	if label == "" {

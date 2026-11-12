@@ -245,12 +245,15 @@ working, the owner sees the state. `blocked` peers are excluded.
 
 `…params(…)` is the same fixed set for every entry, and lives in one place (`internal/proto/profile.go`)
 so the URI builder and anything reading a URI back cannot drift: `type=xhttp`, `mode=packet-up`,
-`security=tls`, `sni=<domain>`, the node's secret path, and `fp=firefox`. There is no `alpn`: the
-transport is HTTP/1.1 on the wire because nginx terminates TLS and forwards HTTP/1.1 to Xray, so an
-`h2` offer can only reach for a handshake the hop cannot carry. `fp` is the uTLS ClientHello the client
-should send; the node never inspects it, but filters on the path do, and `firefox` is the measured
-choice — a `chrome` hello (with an X25519MLKEM768 key share, ~1.8 KB) is frozen by some consumer paths
-when several connections open to one host at once, while `firefox` passed in the same measurements.
+`security=tls`, `sni=<domain>`, the node's secret path, `fp=firefox`, and an `extra` object carrying
+`xPaddingBytes`. There is no `alpn`: the transport is HTTP/1.1 on the wire because nginx terminates TLS
+and forwards HTTP/1.1 to Xray, so an `h2` offer can only reach for a handshake the hop cannot carry.
+`fp` is the uTLS ClientHello the client should send; the node never inspects it, but filters on the path
+do, and `firefox` is the measured choice — a `chrome` hello (with an X25519MLKEM768 key share, ~1.8 KB)
+is frozen by some consumer paths when several connections open to one host at once, while `firefox`
+passed in the same measurements. `extra.xPaddingBytes` makes every request a different size, so a filter
+cannot match a constant one; it costs a few hundred bytes per POST and the node ignores it. It is not in
+the sing-box profile: sing-box validates strictly and would reject a field it does not know.
 
 XHTTP is a transport, not a protocol every client implements: stock sing-box has no XHTTP, and its
 `/json` subscription form therefore only serves builds that patched it in. See

@@ -576,10 +576,11 @@ not "broken node".
 The subscription's `/json` form is a sing-box profile, so it is only useful to the builds that have
 XHTTP: stock sing-box rejects the `xhttp` transport it declares.
 
-The URIs carry `fp=firefox` and no `alpn`. `fp` is a client-side uTLS fingerprint the node never
-inspects; `firefox` is the measured choice because a `chrome` ClientHello is frozen on some consumer
-paths when several connections open to one host at once. No `alpn` is offered because the transport is
-HTTP/1.1 on the wire: nginx terminates TLS and forwards HTTP/1.1 to Xray.
+The URIs carry `fp=firefox`, an `extra` block with `xPaddingBytes`, and no `alpn`. `fp` is a client-side
+uTLS fingerprint the node never inspects; `firefox` is the measured choice because a `chrome` ClientHello
+is frozen on some consumer paths when several connections open to one host at once. `xPaddingBytes` pads
+each request so its size is not a constant, at a few hundred bytes per POST. No `alpn` is offered because
+the transport is HTTP/1.1 on the wire: nginx terminates TLS and forwards HTTP/1.1 to Xray.
 
 ## 9. Node lifecycle operations
 
