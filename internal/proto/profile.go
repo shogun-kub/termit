@@ -25,6 +25,18 @@ const (
 	// Mode is the XHTTP mode. packet-up is the one that survives an HTTP/1.1 hop through nginx
 	// (SPIKES.md S3); the HTTP/2-shaped modes do not.
 	Mode = "packet-up"
+
+	// Fingerprint is the uTLS ClientHello the client should send. Server-side it changes nothing:
+	// the node terminates TLS with a real certificate and never inspects the handshake. It matters on
+	// the path, where filters read the ClientHello.
+	//
+	// firefox, not chrome: measured on a Russian consumer path in October 2026, a chrome hello
+	// (Chrome 133 with an X25519MLKEM768 key share, ~1.8 KB) is frozen when several connections open
+	// to one server at once, which is what a client does after connecting. firefox went through
+	// 19/20 and 49/50 in the same measurements. randomized also worked, but a fingerprint that
+	// changes per connection cannot be verified and, in stock Xray, is not guaranteed to keep its
+	// groups and key shares consistent.
+	Fingerprint = "firefox"
 )
 
 var (
@@ -83,6 +95,7 @@ func BuildVLESSUrl(p Profile) (string, error) {
 	query.Set("type", Network)
 	query.Set("mode", Mode)
 	query.Set("path", p.Path)
+	query.Set("fp", Fingerprint)
 
 	label := p.Label
 	if label == "" {

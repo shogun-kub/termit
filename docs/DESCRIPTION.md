@@ -243,6 +243,20 @@ Peers are ordered by label then id so that the rendered subscription is stable (
 `unavailable` peers are included but marked in the label suffix (e.g. `·degraded`) — clients keep
 working, the owner sees the state. `blocked` peers are excluded.
 
+`…params(…)` is the same fixed set for every entry, and lives in one place (`internal/proto/profile.go`)
+so the URI builder and anything reading a URI back cannot drift: `type=xhttp`, `mode=packet-up`,
+`security=tls`, `sni=<domain>`, the node's secret path, and `fp=firefox`. There is no `alpn`: the
+transport is HTTP/1.1 on the wire because nginx terminates TLS and forwards HTTP/1.1 to Xray, so an
+`h2` offer can only reach for a handshake the hop cannot carry. `fp` is the uTLS ClientHello the client
+should send; the node never inspects it, but filters on the path do, and `firefox` is the measured
+choice — a `chrome` hello (with an X25519MLKEM768 key share, ~1.8 KB) is frozen by some consumer paths
+when several connections open to one host at once, while `firefox` passed in the same measurements.
+
+XHTTP is a transport, not a protocol every client implements: stock sing-box has no XHTTP, and its
+`/json` subscription form therefore only serves builds that patched it in. See
+[`OPERATIONS.md`](OPERATIONS.md) §8.1 for the client matrix and for the `unknown version: 72` failure
+that a wrong client produces.
+
 ### 6.5 Trust boundaries
 
 - MN knows every credential except each UV's `self_uuid` private use; it is the single most valuable
@@ -323,7 +337,7 @@ Rules (all thresholds configurable on MN, defaults in parentheses):
 7. Daily cycle, per UV, at its own random time: local self-check → `POST {prefix}/agent/sync`
    (agent key) with the check report and the leaf certificate it serves (`X-Territ-Cert-SHA256`) →
    MN runs/refreshes its own checks if due → response carries the
-   desired peer list, the add/remove delta, the subscription URL, and the next due time.
+   complete desired peer set, the subscription URL, and the next due time.
 8. UV reconciles the running core with the desired set: the generated config is compared with the
    file **and** the core is asked which clients it actually serves, so an API update or a hand edit
    cannot hide behind a correct file. When the client set is the only difference, additions and
@@ -426,29 +440,26 @@ a fingerprint in itself — not a website, but a machine.
 Admin operations are **not** HTTP endpoints: `termit-mn` talks to `/run/termit/mn/admin.sock`. This keeps the
 public attack surface to two read-only-ish endpoints and one authenticated agent API.
 
-Sync response shape (abridged):
+Sync response shape (abridged; the whole set is in `internal/proto/sync.go`):
 
 ```json
 {
   "api_version": "1",
-  "uv": {"id": "uv_…", "state": "active", "label": "ams-1", "next_sync_after": "2026-11-10T07:31:00Z"},
-  "self": {"uuid": "…"},
+  "self": {"id": "uv_…", "domain": "ams.example.net", "state": "active", "probe_uuid": "…"},
   "peers": [
-    {"uv_id": "uv_…", "label": "fra-2", "domain": "fra.example.net",
-     "uuid": "pair-derived-uuid", "state": "active",
-     "profile": {"network": "xhttp", "security": "tls", "sni": "fra.example.net",
-                 "host": "fra.example.net", "path": "/k7Q…", "mode": "auto",
-                 "alpn": ["h2","http/1.1"], "fingerprint": "chrome"}}
+    {"id": "uv_…", "domain": "fra.example.net", "label": "fra-2", "uuid": "pair-derived-uuid",
+     "path": "/k7Q…/", "mode": "packet-up", "state": "active"}
   ],
-  "changes": {"added": ["uv_…"], "removed": []},
-  "subscription": {"url": "https://mn.example.com/sub/<token>", "etag": "…"},
-  "policy": {"probe_retries": 3, "warp": "on"}
+  "subscription_url": "https://mn.example.com/sub/<token>",
+  "policy": {"check_interval_seconds": 86400, "sync_interval_seconds": 86400,
+             "min_sync_delay_seconds": 300},
+  "next_sync_after": "2026-11-10T07:31:00Z"
 }
 ```
 
-The response carries the **complete desired peer set**, and `changes` is informational only
-(logging, operator display). UV reconciles idempotently; a missed or duplicated sync can never leave
-a stale client behind.
+The response carries the **complete desired peer set**; there is no delta field, because a delta is
+what breaks when one response is missed. UV reconciles idempotently and reports what it changed in its
+own log.
 
 ## 9. Health checking on MN
 

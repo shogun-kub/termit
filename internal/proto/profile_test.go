@@ -72,6 +72,7 @@ func TestBuildVLESSUrlShape(t *testing.T) {
 		"type=xhttp",
 		"mode=packet-up",
 		"path=%2Fa1b2c3d4e5f60718%2F",
+		"fp=firefox",
 		"#laptop",
 	} {
 		if !strings.Contains(uri, want) {

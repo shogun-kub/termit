@@ -132,6 +132,19 @@ page), `xtls-rprx-vision` and REALITY deliberately left out.
 **Why** This is what the UV script installs, what the MN probe must speak, and what the subscription
 URIs encode. It must be versioned (`profile: v1`) so MN can refuse incompatible UVs.
 
+**Revisions, made after the profile was measured against real clients and paths** (each is a change to
+what a URI carries, so it is recorded here rather than edited into the decision above):
+
+- **XHTTP mode is `packet-up`, not `stream-one`.** Only `packet-up` survives the HTTP/1.1 hop from
+  nginx; the stream-shaped modes make Xray's client send an h2 preface and nginx answers `400`
+  (SPIKES.md S3).
+- **No ALPN in the client URI.** The transport is HTTP/1.1 on the wire for the same reason; offering
+  `h2` invites a handshake the hop cannot carry.
+- **uTLS fingerprint is `firefox`, not `chrome`.** A chrome ClientHello (Chrome 133 with an
+  X25519MLKEM768 key share, ~1.8 KB) is frozen by filters on Russian consumer paths when several
+  connections open to one host at once; `firefox` was measured to pass (19/20 and 49/50) where `chrome`
+  did not. The field owner confirmed the same result on a live node.
+
 **Q4.2** Does the VPS serve *only* the decoy site, or may it also host a real web service that must
 keep working on 443?
 **Rec** Decoy only in v1; the nginx fallback chain is designed so a real site could be added later
