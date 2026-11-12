@@ -63,6 +63,52 @@ func healthyChecks(t *testing.T, exec *fakeExecutor, cfg *config.Config) Preflig
 	}
 }
 
+func TestPreflightPortsNamesEachPortOnce(t *testing.T) {
+	t.Parallel()
+	cfg := config.Default()
+	cfg.Domain = "vpn.example.com"
+	exec := &fakeExecutor{handler: func(cmd Cmd) (Result, error) {
+		switch cmd.Name {
+		case "timedatectl":
+			return okResult("yes\n")
+		case "ss":
+			// Two listeners per port: one per address family, as a dual-stack nginx has.
+			return okResult(
+				`LISTEN 0 511 0.0.0.0:80 0.0.0.0:* users:(("nginx",pid=1,fd=6))` + "\n" +
+					`LISTEN 0 511 [::]:80 [::]:* users:(("nginx",pid=1,fd=7))` + "\n" +
+					`LISTEN 0 511 0.0.0.0:443 0.0.0.0:* users:(("nginx",pid=1,fd=8))` + "\n" +
+					`LISTEN 0 511 [::]:443 [::]:* users:(("nginx",pid=1,fd=9))` + "\n")
+		case "apt-get":
+			return okResult("apt 3.0.16 (amd64)\n")
+		}
+		return failedResult(cmd, 127, "not found")
+	}}
+	opts := healthyChecks(t, exec, cfg)
+	site := cfg.Paths.NginxSite
+	inner := opts.Stat
+	opts.Stat = func(name string) (os.FileInfo, error) {
+		if name == site {
+			return fakeFileInfo{}, nil
+		}
+		return inner(name)
+	}
+
+	report := RunPreflight(context.Background(), opts)
+	for _, check := range report.Checks {
+		if check.Name != "ports" {
+			continue
+		}
+		if check.Status != StatusOK {
+			t.Fatalf("ports = %q: %s", check.Status, check.Detail)
+		}
+		if check.Detail != "nginx serves :80 and :443 (Termit vhost)" {
+			t.Errorf("ports detail = %q, want each port named once", check.Detail)
+		}
+		return
+	}
+	t.Fatal("the report has no ports check")
+}
+
 func statuses(report PreflightReport) map[string]CheckStatus {
 	out := make(map[string]CheckStatus, len(report.Checks))
 	for _, check := range report.Checks {

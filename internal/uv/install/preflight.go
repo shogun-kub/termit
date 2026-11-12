@@ -258,13 +258,16 @@ func (p *preflight) checkPorts(ctx context.Context) Check {
 
 	var busy, ours []string
 	for _, port := range []int{80, 443} {
+		// One port usually has two listeners, one for each address family. The report names the port
+		// once: `:80 and :80 and :443 and :443` reads like a fault.
+		served := false
 		for _, l := range listeners {
 			if l.Port != port {
 				continue
 			}
 			switch {
 			case l.Process == "nginx" && termitVhost:
-				ours = append(ours, fmt.Sprintf(":%d", port))
+				served = true
 			case l.Process == "nginx":
 				return Check{
 					Name: "ports", Status: StatusWarn,
@@ -280,6 +283,9 @@ func (p *preflight) checkPorts(ctx context.Context) Check {
 			default:
 				busy = append(busy, fmt.Sprintf(":%d by %s", port, l.Process))
 			}
+		}
+		if served {
+			ours = append(ours, fmt.Sprintf(":%d", port))
 		}
 	}
 	switch {
