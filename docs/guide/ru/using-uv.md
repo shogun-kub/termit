@@ -124,8 +124,10 @@ termit-uv status
 # subscribe:  https://mn.example.com/sub/AbCdEf...
 ```
 
-Вставьте этот URL в поле «URL подписки» клиента (v2rayN, Nekoray, sing-box, Shadowrocket, v2rayNG —
-любой, кто понимает подписку `vless://`). Для sing-box добавьте `/json` — получите готовый профиль с
+Вставьте этот URL в поле «URL подписки» клиента. Нужен клиент, чьё ядро умеет XHTTP: Happ, v2rayNG,
+v2rayN, NekoRay (на Xray) или `podkop-engine` на OpenWrt. Стоковый sing-box XHTTP не умеет — он молча
+свалится в обычный VLESS, узел ответит ему `400`, и клиент покажет `unknown version: 72` (72 — это `H`,
+первый байт `HTTP/1.1`). Для сборок sing-box с патчем XHTTP есть `/json` — тот же список профилем с
 селектором, `direct` и приватными диапазонами напрямую.
 
 Клиент сам перечитывает список; когда пир появляется или уходит, достаточно одного обновления. URL —

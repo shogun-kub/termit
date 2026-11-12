@@ -118,7 +118,7 @@ and the server checks every node on its own schedule. You only touch it when som
 
 | Feature | What it does for you |
 |---|---|
-| **Subscription URL** | one URL per node, containing every healthy node with a per-pair credential; works in any client that accepts a `vless://` subscription, plus a sing-box profile at `<url>/json` |
+| **Subscription URL** | one URL per node, containing every healthy node with a per-pair credential; needs a client whose core speaks XHTTP — Xray-based ones (Happ, v2rayNG, v2rayN, NekoRay) and OpenWrt's `podkop-engine`, but not stock sing-box. `<url>/json` is a sing-box profile for the builds that patched XHTTP in |
 | **Disguised HTTPS node** | the node serves a generated site on 443; an unauthorised request gets that site, not a proxy error |
 | **WARP egress** (default on) | proxied traffic leaves through Cloudflare's network, so the address is shared rather than yours; can be switched to direct, or restricted to selected domains |
 | **Health checks** | the server probes every node through the tunnel, checks its certificate and decoy, and moves a node out of the mesh only on a genuine failure |

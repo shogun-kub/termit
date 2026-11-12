@@ -556,6 +556,31 @@ Both are stable for a given peer set and carry an `ETag`, so a client that cache
 Rotating the token is the way to revoke a client that should no longer see the mesh; it does not
 affect the node's own devices, which never leave the box.
 
+### 8.1 Which clients can use the profile
+
+The profile is VLESS + **XHTTP** (`mode=packet-up`) + TLS, and XHTTP is not a transport every client
+has. Check the core, not the store listing:
+
+| Client | Core | Works |
+|---|---|---|
+| Happ, v2rayNG, v2rayN, NekoRay, FoXray | Xray | yes |
+| podkop + `podkop-engine` r11 or newer (OpenWrt) | sing-box with the XHTTP transport patched in | yes |
+| Hiddify, Streisand, sing-box itself | sing-box | no — no XHTTP transport upstream |
+| Husi | sing-box fork | partial; its XHTTP client is not interoperable with Xray's inbound |
+
+A client without XHTTP does not report "unsupported transport": it falls back to plain VLESS over TLS,
+the node answers its request with an HTTP `400`, and the client's VLESS reader reports the first byte
+of `HTTP/1.1` as a version — `unknown version: 72` (`72` is `H`). Treat that message as "wrong client",
+not "broken node".
+
+The subscription's `/json` form is a sing-box profile, so it is only useful to the builds that have
+XHTTP: stock sing-box rejects the `xhttp` transport it declares.
+
+The URIs carry `fp=firefox` and no `alpn`. `fp` is a client-side uTLS fingerprint the node never
+inspects; `firefox` is the measured choice because a `chrome` ClientHello is frozen on some consumer
+paths when several connections open to one host at once. No `alpn` is offered because the transport is
+HTTP/1.1 on the wire: nginx terminates TLS and forwards HTTP/1.1 to Xray.
+
 ## 9. Node lifecycle operations
 
 Every one of these is audited on the server.

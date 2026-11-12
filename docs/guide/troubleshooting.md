@@ -103,6 +103,8 @@ path to it is broken". For anything else: `journalctl -u termit-uv-agent` on the
 | subscription returns `404` | the token was rotated or mistyped | `termit-uv status` shows the current URL; `termit-mn sub rotate` issues a new one |
 | client shows old peers | it has not refreshed | force a refresh in the client; the URL carries an `ETag`, so a cached client costs one `304` |
 | client connects but no traffic | the peer's credential was rotated, or the node is `blocked` | `termit-mn uv show <node>`; a blocked node is out of every peer set |
+| client error `unknown version: 72`, and every connection fails | its core has no XHTTP and fell back to plain VLESS; the node answered `HTTP/1.1 400`, whose `H` (72) it read as a VLESS version | use a client on Xray (Happ, v2rayNG, v2rayN, NekoRay) or `podkop-engine`; stock sing-box, Hiddify and Streisand cannot speak this transport |
+| the client's own "URL test" fails but browsing works | the test URL is `cp.cloudflare.com`, which resets plain-HTTP `HEAD` requests | point the test at `https://www.gstatic.com/generate_204` |
 | a leaked subscription URL | it is a credential | `termit-mn sub rotate <node> --domain <MN>`; the old URL stops working immediately |
 
 ## Getting help

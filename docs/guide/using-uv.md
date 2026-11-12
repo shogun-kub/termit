@@ -123,9 +123,11 @@ termit-uv status
 # subscribe:  https://mn.example.com/sub/AbCdEf...
 ```
 
-Paste that URL into the client's "subscription URL" field (v2rayN, Nekoray, sing-box, Shadowrocket,
-v2rayNG — anything that understands a `vless://` subscription). For sing-box, add `/json` to the URL
-to get a complete profile with a selector, a `direct` outbound and private ranges kept direct.
+Paste that URL into the client's "subscription URL" field. The core must speak XHTTP: Happ, v2rayNG,
+v2rayN, NekoRay (all on Xray) or `podkop-engine` on OpenWrt. Stock sing-box has no XHTTP — it silently
+falls back to plain VLESS, the node answers `400`, and the client reports `unknown version: 72` (`72` is
+`H`, the first byte of `HTTP/1.1`). For sing-box builds patched with XHTTP, add `/json`: the same peer
+list as a profile with a selector, a `direct` outbound and private ranges kept direct.
 
 The client fetches the list again on its own schedule; when a peer comes or goes, one refresh is all
 it takes. The URL is a secret: it carries your credentials. If it leaks, rotate it on the server
