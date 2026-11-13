@@ -907,6 +907,45 @@ When nothing obvious is wrong, the order is: `termit-uv doctor` on the node, `te
 then the journals of both. A failing check that says `unknown` is a failure of the observer, not of
 the node — say so in the report rather than "fixing" the node.
 
+### 16.1 A node answers, but some connections time out
+
+The symptom: a client or the prober connects only part of the time; the node's logs are clean; `ss -s`
+shows `syn-recv` entries on the node. Nothing in Termit reports an error, because nothing in Termit is
+wrong — the packets are being dropped between two networks.
+
+Work through these in order; each one removes a whole class of causes.
+
+1. **Control from the same host.** Ten connections to an unrelated well-known address (a resolver, a
+   large site). If those also fail, the local uplink is the problem and the node is not implicated.
+2. **Port sweep.** Twelve attempts each to `:443`, `:80`, `:22`, and a closed port. If every port loses
+   the same fraction, the drop is keyed on the destination, not the port — no port-based filter.
+3. **Rate.** Measure after two idle minutes, then right after a burst of 40. If the loss is the same at
+   rest, it is not a rate limit or a shaper reacting to you.
+4. **The node's counters**, twice 60 s apart, while a stream of attempts runs from the other side:
+
+   ```bash
+   nstat -az | grep -E 'TcpExtListenDrops|TcpExtTCPSynRetrans|TcpExtTCPTimeouts'
+   ```
+
+   - `ListenDrops` grows → the node's listen queue dropped the SYN (backlog or a local firewall).
+   - `TCPSynRetrans` grows while `ListenDrops` stays at zero → the node received the SYN and
+     retransmitted SYN-ACKs, so it is the **answer** that is lost on the way back. A node
+     retransmits a SYN-ACK only for a SYN it received.
+   - nothing grows → the SYNs never reached the node.
+5. **Node hygiene**, which rules the host out rather than the path: `nft list ruleset` (any drop or rate
+   rule), the conntrack table if the module is loaded, `net.ipv4.tcp_syncookies` and
+   `tcp_max_syn_backlog`. An empty ruleset, no conntrack and `syncookies=1` mean the kernel is not the
+   one dropping packets.
+
+Measured once, in this order, on a node that was losing a third of all new connections (2026-11): from
+the same host, 12/12 to three unrelated destinations; on the node 8/12 to `:443`, 10/12 to `:80`, 8/12
+to `:22`, and a closed port answered `RST` 9/12 of the time; the loss was the same after two idle
+minutes; under load our side retransmitted 36 SYNs for 9 failed flows, while the node answered
+`ListenDrops +0`, `TCPSynRetrans +61`, `TCPTimeouts +42` in the same minute; idling, the node still
+completed 35 handshakes a minute and retransmitted 5 SYN-ACKs. The conclusion was the provider's path,
+in both directions — the node's kernel, its firewall and Termit were all innocent. Take those numbers to
+the provider, or move the node: no Termit setting fixes a lossy uplink.
+
 ## 17. Building and publishing a release
 
 A release is one command, and CI runs the same one on a tag:

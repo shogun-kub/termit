@@ -105,6 +105,7 @@ path to it is broken". For anything else: `journalctl -u termit-uv-agent` on the
 | client connects but no traffic | the peer's credential was rotated, or the node is `blocked` | `termit-mn uv show <node>`; a blocked node is out of every peer set |
 | client error `unknown version: 72`, and every connection fails | its core has no XHTTP and fell back to plain VLESS; the node answered `HTTP/1.1 400`, whose `H` (72) it read as a VLESS version | use a client on Xray (Happ, v2rayNG, v2rayN, NekoRay) or `podkop-engine`; stock sing-box, Hiddify and Streisand cannot speak this transport |
 | the client's own "URL test" fails but browsing works | the test URL is `cp.cloudflare.com`, which resets plain-HTTP `HEAD` requests | point the test at `https://www.gstatic.com/generate_204` |
+| connections succeed only part of the time, on every port, with a clean node | packets are dropped between the client's network and the node's provider | the node's `ss -tan state syn-recv` and `nstat` counters tell which direction; `OPERATIONS.md` §16.1 has the recipe |
 | a leaked subscription URL | it is a credential | `termit-mn sub rotate <node> --domain <MN>`; the old URL stops working immediately |
 
 ## Getting help
