@@ -101,6 +101,8 @@ func (a *application) run(args []string) int {
 		return a.runInit(rest)
 	case "doctor":
 		return a.runDoctor(rest)
+	case "net":
+		return a.runNet(rest)
 	case "status":
 		return a.runStatus(rest)
 	case "uninstall":
@@ -150,6 +152,7 @@ Usage:
 Commands:
   init         install and configure this node (idempotent)
   doctor       run pre-flight and health diagnostics
+  net          sample the TCP counters and untangle a lossy path from a broken node
   status       show node state, identity and last install
   device       list, add or remove the owner's own devices
   renew-cert   renew the TLS certificate (--force to replace it)

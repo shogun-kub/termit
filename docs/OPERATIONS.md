@@ -932,6 +932,13 @@ Work through these in order; each one removes a whole class of causes.
      retransmitted SYN-ACKs, so it is the **answer** that is lost on the way back. A node
      retransmits a SYN-ACK only for a SYN it received.
    - nothing grows → the SYNs never reached the node.
+
+   `termit-uv net` does this for you: it samples the same counters for `--seconds` (default 30) and
+   prints the verdict, with the raw deltas next to it for a provider ticket. It opens no sockets and
+   contacts no host, and it reports `skip`, never `ok`, when the sample saw no traffic — a quiet node
+   and a healthy one look identical in the counters. Note that the kernel's counters include loopback,
+   so the nginx→Xray hop is counted too; that hop never loses handshakes, which makes the reported
+   loss a conservative estimate rather than an inflated one.
 5. **Node hygiene**, which rules the host out rather than the path: `nft list ruleset` (any drop or rate
    rule), the conntrack table if the module is loaded, `net.ipv4.tcp_syncookies` and
    `tcp_max_syn_backlog`. An empty ruleset, no conntrack and `syncookies=1` mean the kernel is not the

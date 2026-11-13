@@ -140,6 +140,7 @@ v2rayN, NekoRay (на Xray) или `podkop-engine` на OpenWrt. Стоковы�
 termit-uv status               # идентичность, сертификат, пиры, последняя синхронизация, WARP
 termit-uv doctor               # здоровье машины и узла, с подсказкой на каждую неудачную проверку
 termit-uv doctor --json        # то же машинно-читаемо
+termit-uv net                  # счётчики TCP: узел теряет или путь до него?
 termit-uv sync                 # привести ядро в соответствие со списком пиров сейчас
 termit-uv sync --check         # код 4, если узел разошёлся с сервером; ничего не меняет
 termit-uv agent --once         # один полный цикл на переднем плане, для проверки
@@ -174,6 +175,7 @@ self-check:   ok 2026-11-10T11:17:04Z
 |---|---|---|
 | `termit-uv init` | установить или довести узел до нужного состояния | `--domain`, `--email`, `--no-warp`, `--warp MODE`, `--warp-selected LIST`, `--dry-run`, `--only`, `--skip`, `--acme-ca`, `--xray-version`, `--xray-download-base`, `--relocate`, `--agent-key-file` |
 | `termit-uv doctor` | диагностика машины и узла, ничего не меняет | `--json` |
+| `termit-uv net` | отличить плохой путь от больного узла по счётчикам TCP | `--seconds 60`, `--json` |
 | `termit-uv status` | идентичность, сертификат, пиры, синхронизация, WARP | `--json` |
 | `termit-uv enroll` | зарегистрировать узел на сервере | `--invite`, `--mn`, `--force`, `--no-sync` |
 | `termit-uv sync` | синхронизировать пиров сейчас | `--check`, `--dry-run`, `-v` (печатать список пиров) |

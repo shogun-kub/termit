@@ -139,6 +139,7 @@ it takes. The URL is a secret: it carries your credentials. If it leaks, rotate 
 termit-uv status               # identity, certificate, peers, last sync, WARP state
 termit-uv doctor               # host and node health, with a hint per failing check
 termit-uv doctor --json        # the same, machine-readable
+termit-uv net                  # sample the TCP counters: is the node dropping, or the path?
 termit-uv sync                 # reconcile the core with the server's peer set now
 termit-uv sync --check         # exit 4 if the node drifted from the server's set, change nothing
 termit-uv agent --once         # one full cycle in the foreground, for a drill
@@ -173,6 +174,7 @@ own; the systemd units are installed by `termit-uv init`.
 |---|---|---|
 | `termit-uv init` | install or converge this node | `--domain`, `--email`, `--no-warp`, `--warp MODE`, `--warp-selected LIST`, `--dry-run`, `--only`, `--skip`, `--acme-ca`, `--xray-version`, `--xray-download-base`, `--relocate`, `--agent-key-file` |
 | `termit-uv doctor` | diagnose the host and the node, change nothing | `--json` |
+| `termit-uv net` | tell a lossy path from a broken node, by sampling the TCP counters | `--seconds 60`, `--json` |
 | `termit-uv status` | identity, certificate, peers, sync, WARP | `--json` |
 | `termit-uv enroll` | register with the server | `--invite`, `--mn`, `--force`, `--no-sync` |
 | `termit-uv sync` | reconcile peers now | `--check`, `--dry-run`, `-v` (print the peer set) |

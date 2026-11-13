@@ -164,6 +164,11 @@ func (a *application) menuEntries() []menuEntry {
 			plan:  fixed("doctor"),
 		},
 		{
+			label: "connection diagnostics",
+			hint:  "sample the TCP counters: is the node dropping, or is the path?",
+			plan:  fixed("net"),
+		},
+		{
 			label: "install or converge",
 			hint:  "first run asks for the domain; later runs only re-check",
 			plan:  a.planInstall,
