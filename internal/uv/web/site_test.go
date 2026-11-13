@@ -112,6 +112,10 @@ func TestGenerateSiteShape(t *testing.T) {
 			"proxy_buffering         off;",
 			"client_max_body_size    0;",
 			"add_header Strict-Transport-Security",
+			"gzip_vary on;",
+			"proxy_intercept_errors on;",
+			"error_page 400 502 504 =404 /404.html;",
+			"expires 24h;",
 		} {
 			if !strings.Contains(page, want) {
 				t.Errorf("the tls vhost is missing %q", want)

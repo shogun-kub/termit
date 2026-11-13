@@ -137,7 +137,7 @@ var httpOnlyTemplate = template.Must(template.New("http").Parse(siteHeader + `se
     }
 
     location ^~ /assets/ {
-        expires 1h;
+        expires 24h;
         try_files $uri =404;
     }
 
@@ -189,11 +189,15 @@ server {
 
     add_header Strict-Transport-Security "max-age=31536000" always;
 
+    # A response that changes with Accept-Encoding must say so. Without this line nginx compresses
+    # and stays silent about it, which is a configuration tell no real site leaves behind.
+    gzip_vary on;
+
     root  {{.SiteDir}};
     index index.html;
 
     location ^~ /assets/ {
-        expires 1h;
+        expires 24h;
         try_files $uri =404;
     }
 {{if .SecretPath}}
@@ -211,6 +215,13 @@ server {
         proxy_read_timeout      1h;
         proxy_send_timeout      1h;
         client_max_body_size    0;
+
+        # A request that reaches this location without a valid credential is not a client. Xray
+        # answers it with a bare 400 and an X-Padding header that names the transport, which is
+        # more than a scanner needs. Answer with the site's own 404 instead: a real client never
+        # gets a 4xx here, so nothing legitimate changes.
+        proxy_intercept_errors on;
+        error_page 400 502 504 =404 /404.html;
     }
 {{end}}
     include {{.Fragment}};
