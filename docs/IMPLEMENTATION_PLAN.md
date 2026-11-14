@@ -835,14 +835,14 @@ constant time (they are SHA-256 digests looked up through an index, deliberately
 `termit-mn sub show`, which does not exist. `docs/PROTOCOL.md` is what the build does; the design document
 should be reconciled with it before the first tag.
 
-### M4.3 Release — done except the manual VPS pass
+### M4.3 Release — done
 
 | Task | Where | Verified |
 |---|---|---|
 | A release tool, `go run ./deploy/release --version v0.1.0`, that cross-compiles both binaries for linux/amd64 and linux/arm64 (`CGO_ENABLED=0 -trimpath`), stamps version/commit/date, copies `uv.sh` and `termit-mn.service` out of the repository, and writes `SHA256SUMS` | `deploy/release` | unit tests for the asset-name contract, the version pattern, the checksum format, digesting and both refusals; two builds with a fixed commit and date produce byte-identical `SHA256SUMS` |
 | Asset names exactly as the installer expects, with `uv.sh` published beside them; no tarballs | `deploy/release` | lab: `sha256sum -c SHA256SUMS` on all six files, then an install from the release directory — `termit-uv v0.1.0 (commit …, api 1, profile v1)`, identity and certificate intact, services active; the server binary reports the same version after a restart |
-| CI: `govulncheck` against our packages; a tag-triggered release job that builds, verifies the checksums and attaches the artifacts | `.github/workflows/ci.yaml`, `.github/workflows/release.yaml` | `govulncheck v1.9.0` locally: no vulnerabilities reachable from our code; the workflow runs the same commands the release tool documents |
-| `v0.1.0` tag | `git tag` | created locally; pushing it publishes a **pre-release** release, and flipping that flag is the act that says the production pass is done |
+| CI: `govulncheck` against our packages; a tag-triggered release job that builds, verifies the checksums and attaches the artifacts; a manual door on `release/<version>` that publishes the same artifacts as a `pre-v<version>-<run>` pre-release | `.github/workflows/ci.yaml`, `.github/workflows/release.yaml` | `govulncheck v1.9.0` locally: no vulnerabilities reachable from our code; the workflow runs the same commands the release tool documents |
+| `v0.1.0` and `v0.2.1` tags | `git tag` | `v0.1.0` was published straight away. `v0.2.1` went through the pre-release door first, and was promoted to a full release on 2026-11-15, after the production pass: two nodes on different providers, real Let's Encrypt certificates, WARP egress on both, a phone client, and an in-place Debian 12 → 13 migration of one node (0.2.1 changelog). Flipping the flag is still the act that says the pass is done |
 
 ### Interactive front end — done
 
