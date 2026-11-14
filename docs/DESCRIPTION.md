@@ -627,7 +627,7 @@ Two consequences of the target class:
 ```
 curl -fsSL https://get.termit.example/uv.sh | sudo bash -s -- \
   --mn https://mn.example.com \
-  --domain vpn.example.com \
+  --domain node.example.com \
   --invite ABCD-EFGH
 ```
 

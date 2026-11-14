@@ -19,7 +19,7 @@ var fixedTime = time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC)
 
 func specFor(template, seed string) decoy.Spec {
 	return decoy.Spec{
-		Domain:   "vpn.example.com",
+		Domain:   "node.example.com",
 		Seed:     seed,
 		Template: template,
 		Now:      fixedTime,
@@ -80,10 +80,10 @@ func TestGenerateRejectsBadSpec(t *testing.T) {
 	t.Parallel()
 	cases := map[string]decoy.Spec{
 		"no domain":         {Seed: "0011aabb", Template: decoy.TemplatePortal},
-		"no seed":           {Domain: "vpn.example.com", Template: decoy.TemplatePortal},
-		"short seed":        {Domain: "vpn.example.com", Seed: "abc", Template: decoy.TemplatePortal},
-		"unknown template":  {Domain: "vpn.example.com", Seed: "0011aabb", Template: "marketing"},
-		"domain with space": {Domain: "vpn example.com", Seed: "0011aabb", Template: decoy.TemplatePortal},
+		"no seed":           {Domain: "node.example.com", Template: decoy.TemplatePortal},
+		"short seed":        {Domain: "node.example.com", Seed: "abc", Template: decoy.TemplatePortal},
+		"unknown template":  {Domain: "node.example.com", Seed: "0011aabb", Template: "marketing"},
+		"domain with space": {Domain: "node example.com", Seed: "0011aabb", Template: decoy.TemplatePortal},
 	}
 	for name, spec := range cases {
 		if _, err := decoy.Generate(spec); err == nil {

@@ -66,7 +66,7 @@ func healthyChecks(t *testing.T, exec *fakeExecutor, cfg *config.Config) Preflig
 func TestPreflightPortsNamesEachPortOnce(t *testing.T) {
 	t.Parallel()
 	cfg := config.Default()
-	cfg.Domain = "vpn.example.com"
+	cfg.Domain = "node.example.com"
 	exec := &fakeExecutor{handler: func(cmd Cmd) (Result, error) {
 		switch cmd.Name {
 		case "timedatectl":
@@ -120,7 +120,7 @@ func statuses(report PreflightReport) map[string]CheckStatus {
 func TestPreflightHealthyHost(t *testing.T) {
 	t.Parallel()
 	cfg := config.Default()
-	cfg.Domain = "vpn.example.com"
+	cfg.Domain = "node.example.com"
 	exec := &fakeExecutor{handler: func(cmd Cmd) (Result, error) {
 		switch cmd.Name {
 		case "timedatectl":
@@ -163,7 +163,7 @@ func TestPreflightHealthyHost(t *testing.T) {
 func TestPreflightRejectsNonDebian(t *testing.T) {
 	t.Parallel()
 	cfg := config.Default()
-	cfg.Domain = "vpn.example.com"
+	cfg.Domain = "node.example.com"
 	opts := healthyChecks(t, &fakeExecutor{handler: func(cmd Cmd) (Result, error) { return okResult("") }}, cfg)
 	opts.ReadFile = func(name string) ([]byte, error) {
 		if name == "/etc/os-release" {
@@ -184,7 +184,7 @@ func TestPreflightRejectsNonDebian(t *testing.T) {
 func TestPreflightWarnsOnDebian12(t *testing.T) {
 	t.Parallel()
 	cfg := config.Default()
-	cfg.Domain = "vpn.example.com"
+	cfg.Domain = "node.example.com"
 	opts := healthyChecks(t, &fakeExecutor{handler: func(cmd Cmd) (Result, error) { return okResult("yes") }}, cfg)
 	opts.ReadFile = func(name string) ([]byte, error) {
 		switch name {
@@ -208,7 +208,7 @@ func TestPreflightWarnsOnDebian12(t *testing.T) {
 func TestPreflightFailsOnPortConflict(t *testing.T) {
 	t.Parallel()
 	cfg := config.Default()
-	cfg.Domain = "vpn.example.com"
+	cfg.Domain = "node.example.com"
 	exec := &fakeExecutor{handler: func(cmd Cmd) (Result, error) {
 		switch cmd.Name {
 		case "ss":
@@ -237,7 +237,7 @@ func TestPreflightFailsOnPortConflict(t *testing.T) {
 func TestPreflightWarnsWhenWarpCannotRun(t *testing.T) {
 	t.Parallel()
 	cfg := config.Default()
-	cfg.Domain = "vpn.example.com"
+	cfg.Domain = "node.example.com"
 	cfg.Warp.Mode = config.WarpAll
 	opts := healthyChecks(t, &fakeExecutor{handler: func(cmd Cmd) (Result, error) { return okResult("yes") }}, cfg)
 	opts.Stat = func(name string) (os.FileInfo, error) {

@@ -83,8 +83,8 @@ The installer verifies the release against its `SHA256SUMS` and refuses anything
 service: each node is owned by one person, credentials are per pair, and a blocked address costs one
 path rather than the network.
 
-**It is not** a VPN provider, a reseller panel, or a mesh of strangers. Membership is by invite, every
-node belongs to somebody the operator knows, and nothing is metered.
+**It is not** a commercial tunnel service, a reseller panel, or a mesh of strangers. Membership is
+by invite, every node belongs to somebody the operator knows, and nothing is metered.
 
 Deliberate design choices worth knowing before you deploy it:
 

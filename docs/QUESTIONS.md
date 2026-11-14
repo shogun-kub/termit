@@ -68,7 +68,7 @@ prototype, needs a Python runtime and packaging discipline); TypeScript/Node for
 test harness, CI.
 
 **Q2.2** How is UV installed on a fresh Debian box?
-**Rec** One-line bootstrap: `curl -fsSL https://…/install.sh | bash -s -- --mn https://mn.example.com --domain vpn.example.com`
+**Rec** One-line bootstrap: `curl -fsSL https://…/install.sh | bash -s -- --mn https://mn.example.com --domain node.example.com`
 that verifies and installs a released binary + systemd units, then hands off to `termit-uv init`.
 **Why** `curl | bash` is expected in this niche but needs signature/checksum verification to be
 defensible.

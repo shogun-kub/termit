@@ -4,18 +4,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>Sign in to Rivet</title>
+<title>Sign in to Northgate</title>
 <link rel="icon" type="image/png" href="/favicon.png">
 <style>:root{
-  --bg:#f8f6f4;
+  --bg:#f6f8f7;
   --panel:#ffffff;
-  --ink:#1a1614;
-  --muted:#6f645c;
-  --accent:#9a3412;
+  --ink:#101917;
+  --muted:#5f6f6a;
+  --accent:#0f766e;
   --accent-ink:#ffffff;
-  --line:#e9e1da;
-  --w:400px;
-  --r:9px;
+  --line:#dfe7e4;
+  --w:460px;
+  --r:10px;
 }
 *{box-sizing:border-box}
 html{height:100%}
@@ -91,10 +91,10 @@ input[type=text]:focus,input[type=password]:focus,input[type=email]:focus{
 <body>
 <main class="wrap">
   <section class="panel">
-    <div class="brand"><svg viewBox="0 0 28 28" width="28" height="28" fill="none" aria-hidden="true"><path d="M4 20 L14 6 L24 20" stroke="#9a3412" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><circle cx="14" cy="20" r="2.4" fill="#9a3412"/></svg><span>Rivet</span></div>
-    <h1>Sign in to Rivet</h1>
-    <p class="sub">Continue to your Rivet workspace.</p>
-    <form class="form" id="auth-form" method="post" action="/access/verify" novalidate>
+    <div class="brand"><svg viewBox="0 0 28 28" width="28" height="28" fill="none" aria-hidden="true"><path d="M4 20 L14 6 L24 20" stroke="#0f766e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><circle cx="14" cy="20" r="2.4" fill="#0f766e"/></svg><span>Northgate</span></div>
+    <h1>Sign in to Northgate</h1>
+    <p class="sub">Sign in to manage your Northgate projects.</p>
+    <form class="form" id="access-form" method="post" action="/identity/verify" novalidate>
       <div class="field">
         <label for="email">Email</label>
         <input id="email" name="email" type="email" autocomplete="username" spellcheck="false" required>
@@ -111,8 +111,8 @@ input[type=text]:focus,input[type=password]:focus,input[type=email]:focus{
     <p class="alt"><a href="/signup">Create account</a></p>
   </section>
   <footer class="shellfoot">
-    <span>Rivet Workspace</span>
-    <nav><a href="/terms">Terms</a><a href="/help">Help</a><a href="/privacy">Privacy</a></nav>
+    <span>Northgate Cloud</span>
+    <nav><a href="/privacy">Privacy</a><a href="/help">Help</a><a href="/terms">Terms</a></nav>
   </footer>
 </main>
 </body>

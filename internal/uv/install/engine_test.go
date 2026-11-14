@@ -114,7 +114,7 @@ func testConfig(t *testing.T) *config.Config {
 	t.Helper()
 	dir := t.TempDir()
 	cfg := config.Default()
-	cfg.Domain = "vpn.example.com"
+	cfg.Domain = "node.example.com"
 	cfg.Paths.ConfigDir = filepath.Join(dir, "etc")
 	cfg.Paths.StateDir = filepath.Join(dir, "var")
 	cfg.Paths.CertDir = filepath.Join(cfg.Paths.StateDir, "certs")

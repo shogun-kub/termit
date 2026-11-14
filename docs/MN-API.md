@@ -40,7 +40,7 @@ recognisable. It is the same reasoning as the node's XHTTP path, applied to the 
 
 ```bash
 termit-mn init                               # random: what a real install does
-termit-mn init --api-prefix /vpn-control     # a chosen, guessable-but-not-standard path
+termit-mn init --api-prefix /edge-7c21      # a path of one's own choosing
 termit-mn init --api-prefix /api/v1          # keep the discoverable path (tests, compatibility)
 ```
 

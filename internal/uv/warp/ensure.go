@@ -120,9 +120,9 @@ func (c Client) waitConnected(ctx context.Context) error {
 	return fmt.Errorf("the client did not connect within %s: %s", time.Duration(attempts)*interval, last)
 }
 
-// Remove stops the client and removes the package. It is what `termit-uv uninstall --purge` needs: the
-// tunnel's only purpose was this node's proxy, and leaving a connected VPN behind after the node is
-// gone would be a surprise.
+// Remove stops the client and removes the package. It is what `termit-uv uninstall --purge` needs:
+// the tunnel's only purpose was this node's proxy, and a WARP tunnel left connected after the node
+// is gone would be a surprise.
 func (c Client) Remove(ctx context.Context) error {
 	if !c.Installed(ctx) {
 		return nil

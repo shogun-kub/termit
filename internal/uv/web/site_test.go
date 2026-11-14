@@ -12,7 +12,7 @@ import (
 
 func baseSpec() web.SiteSpec {
 	return web.SiteSpec{
-		Domain:      "vpn.example.com",
+		Domain:      "node.example.com",
 		SiteDir:     "/var/www/termit/site",
 		SecretPath:  "/a1b2c3d4e5f60718/",
 		XrayAddr:    "127.0.0.1:8443",
@@ -74,7 +74,7 @@ func TestGenerateSiteShape(t *testing.T) {
 		page := string(data)
 		for _, want := range []string{
 			"listen       80;",
-			"server_name  vpn.example.com;",
+			"server_name  node.example.com;",
 			"root  /var/www/termit/site;",
 			"location ^~ /.well-known/acme-challenge/",
 			"include /var/lib/termit/uv/nginx/decoy.conf;",
