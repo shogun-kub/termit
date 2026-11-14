@@ -45,6 +45,10 @@ that were measured on real networks, and the node can now say which side drops t
 - **Enrollment behind a TLS-passthrough proxy** saw the proxy's address and refused the node with
   `dns_mismatch`. With `trusted_proxies` set, the node's own address is used: the DNS proof passes, the
   rate limits are per client, and `termit-mn uv show` prints the real IP.
+- **The toolchain pin moves to Go 1.27.4.** Go 1.27.3 carries `GO-2026-6859`, a race in how `net/http`
+  answers a request rejected by `MaxBytesReader`; every HTTP server in this tree reaches it. Reaching the
+  fix is a patch-level toolchain change, so no code of ours moved — but the published binaries are built
+  with it, and `govulncheck` gates on the toolchain that built them.
 
 ### Compatibility
 

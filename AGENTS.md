@@ -105,7 +105,7 @@ is genuinely meant to be imported by another module.
 
 ### 4.1 This development host
 
-Portable **Go 1.27.3** under `.spike-out/tools/go` (gitignored, not on `PATH`). Start every shell with:
+Portable **Go 1.27.4** under `.spike-out/tools/go` (gitignored, not on `PATH`). Start every shell with:
 
 ```powershell
 $env:Path = "$(Get-Location)\.spike-out\tools\go\bin;" + $env:Path
@@ -121,7 +121,7 @@ Build `golangci-lint` from source with the module's own toolchain — a prebuilt
 version it was compiled with and refuses a newer module (`v1.64` cannot read this go 1.27 module at
 all). `.golangci.yml` explains why `fmt.Fprint*` is excluded from `errcheck`. `puttygen` here rejects
 `-O`, so PPK conversion does not work — see §4.3. Go is pinned by the `go` directive in `go.mod`,
-patch level included (`go 1.27.3`, not `go 1.27.0`): stdlib security fixes land in patch releases and
+patch level included (`go 1.27.4`, not `go 1.27.0`): stdlib security fixes land in patch releases and
 `govulncheck` gates on the toolchain that built the binary. Do not add a `toolchain` line requiring
 more than CI uses. **CGO is off** (`CGO_ENABLED=0`, pure-Go SQLite); never add a cgo dependency.
 

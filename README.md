@@ -112,7 +112,7 @@ see [what is not here yet](#what-is-not-here-yet).
 | Ports | 80 and 443 reachable from the internet on every box |
 | DNS | one name per node and one for the server, pointed at the right box |
 | Certificate | issued automatically over ACME (Let's Encrypt by default) |
-| Build | Go 1.27.3 or newer; `CGO_ENABLED=0`, no cgo dependencies |
+| Build | Go 1.27.4 or newer; `CGO_ENABLED=0`, no cgo dependencies |
 
 ## Building and testing
 
