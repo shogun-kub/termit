@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/shogun-kub/termit/internal/uv/state"
 	"github.com/shogun-kub/termit/internal/uv/web"
@@ -30,7 +31,7 @@ type webStep struct{ e *stepEnv }
 
 func (*webStep) Name() string { return "web" }
 
-func (s *webStep) spec() (web.SiteSpec, error) {
+func (s *webStep) spec(ctx context.Context) (web.SiteSpec, error) {
 	spec := web.SiteSpec{
 		Domain:      s.e.cfg.Domain,
 		SiteDir:     s.e.cfg.Paths.SiteDir,
@@ -44,6 +45,7 @@ func (s *webStep) spec() (web.SiteSpec, error) {
 	}
 	spec.SecretPath = "/" + s.e.st.Identity.XHTTPPath + "/"
 	spec.XrayAddr = xrayAddress()
+	spec.HTTP2Directive = s.nginxHTTP2Directive(ctx)
 
 	// TLS is decided by what is on disk, not by a state flag: a half-written certificate must not
 	// produce a vhost nginx refuses to load.
@@ -59,8 +61,24 @@ func readable(path string) bool {
 	return err == nil && info.Mode().IsRegular()
 }
 
-func (s *webStep) render() ([]byte, web.SiteSpec, error) {
-	spec, err := s.spec()
+// nginxHTTP2Directive asks the host's own nginx which version it is. Debian 13 ships 1.26 and takes
+// the standalone `http2` directive; Debian 12 ships 1.22 and rejects it, so the vhost has to match
+// the binary that will read it. A binary we cannot interrogate gets the older form, which both
+// understand.
+func (s *webStep) nginxHTTP2Directive(ctx context.Context) bool {
+	res, err := s.e.exec.Run(ctx, Cmd{Name: "nginx", Args: []string{"-v"}})
+	if err != nil {
+		return false
+	}
+	banner := res.Stderr
+	if strings.TrimSpace(banner) == "" {
+		banner = res.Stdout
+	}
+	return web.SupportsHTTP2Directive(banner)
+}
+
+func (s *webStep) render(ctx context.Context) ([]byte, web.SiteSpec, error) {
+	spec, err := s.spec(ctx)
 	if err != nil {
 		return nil, spec, err
 	}
@@ -68,8 +86,8 @@ func (s *webStep) render() ([]byte, web.SiteSpec, error) {
 	return data, spec, err
 }
 
-func (s *webStep) Check(context.Context) (CheckResult, error) {
-	want, spec, err := s.render()
+func (s *webStep) Check(ctx context.Context) (CheckResult, error) {
+	want, spec, err := s.render(ctx)
 	if err != nil {
 		return CheckResult{Detail: err.Error()}, nil
 	}
@@ -94,7 +112,7 @@ func (s *webStep) Check(context.Context) (CheckResult, error) {
 }
 
 func (s *webStep) Run(ctx context.Context) error {
-	data, spec, err := s.render()
+	data, spec, err := s.render(ctx)
 	if err != nil {
 		return err
 	}

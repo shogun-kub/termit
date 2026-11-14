@@ -18,9 +18,9 @@ This page explains the idea and the order of installation. Then:
 
 ## The idea
 
-A commercial VPN asks you to believe that its operator does not log, cannot be blocked, and will
-still be there next year. A self-hosted proxy fixes the trust problem and inherits a worse one: one
-address, one server, easy to fingerprint as a proxy and easy to block.
+A commercial tunnel service asks you to believe that its operator does not log, cannot be blocked,
+and will still be there next year. A self-hosted proxy fixes the trust problem and inherits a worse
+one: one address, one server, easy to fingerprint as a proxy and easy to block.
 
 Termit spreads that risk over a small group. Each owner runs a node; every node is a plain-looking
 HTTPS site to anyone who probes it; the nodes share one membership list, so each owner's client ends
@@ -75,8 +75,8 @@ You are a small group of people who already run, or are willing to run, a Debian
 is enough. You want a proxy that is not a commercial service and not a single point of failure, and
 you are comfortable with a terminal.
 
-It is **not** a commercial VPN product, not a control panel for reselling, and not a mesh of strangers:
-membership is by invite, and every node is owned by a person the operator knows.
+It is **not** a commercial tunnel service, not a control panel for reselling, and not a mesh of
+strangers: membership is by invite, and every node is owned by a person the operator knows.
 
 ## What you need before you start
 

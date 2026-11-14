@@ -130,7 +130,7 @@ func TestWarpStatusReportsTheMode(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	cfg := config.Default()
-	cfg.Domain = "vpn.example.com"
+	cfg.Domain = "node.example.com"
 	cfg.Warp.Mode = config.WarpOff
 	if err := cfg.Save(path); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -173,7 +173,7 @@ func TestWarpStatusSaysNotInstalled(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	cfg := config.Default()
-	cfg.Domain = "vpn.example.com"
+	cfg.Domain = "node.example.com"
 	cfg.Warp.Mode = config.WarpAll
 	if err := cfg.Save(path); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -201,7 +201,7 @@ func TestWarpStatusReportsAFailedProbe(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	cfg := config.Default()
-	cfg.Domain = "vpn.example.com"
+	cfg.Domain = "node.example.com"
 	cfg.Warp.Mode = config.WarpAll
 	if err := cfg.Save(path); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -249,7 +249,7 @@ func TestInitWritesNothingWhenChecksFail(t *testing.T) {
 	app, stdout, _ := newTestApp(t)
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
 
-	if got := app.run([]string{"init", "--domain", "vpn.example.com", "--config", configPath}); got != exitFailure {
+	if got := app.run([]string{"init", "--domain", "node.example.com", "--config", configPath}); got != exitFailure {
 		t.Fatalf("exit = %d, want %d\n%s", got, exitFailure, stdout.String())
 	}
 	if _, err := os.Stat(configPath); !os.IsNotExist(err) {
@@ -336,7 +336,7 @@ func TestWarpAcceptsTheDocumentedStatusSubcommand(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	cfg := config.Default()
-	cfg.Domain = "vpn.example.com"
+	cfg.Domain = "node.example.com"
 	cfg.Warp.Mode = config.WarpAll
 	if err := cfg.Save(path); err != nil {
 		t.Fatalf("Save: %v", err)

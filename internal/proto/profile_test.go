@@ -19,11 +19,11 @@ func TestProfileRoundTrip(t *testing.T) {
 	}{
 		{
 			name:    "minimal",
-			profile: proto.Profile{Domain: "vpn.example.com", UUID: testUUID, Path: "/a1b2c3d4e5f60718/"},
+			profile: proto.Profile{Domain: "node.example.com", UUID: testUUID, Path: "/a1b2c3d4e5f60718/"},
 		},
 		{
 			name:    "with a label",
-			profile: proto.Profile{Domain: "vpn.example.com", UUID: testUUID, Path: "/x/", Label: "home router"},
+			profile: proto.Profile{Domain: "node.example.com", UUID: testUUID, Path: "/x/", Label: "home router"},
 		},
 		{
 			name:    "punycode and a two-letter tld",
@@ -58,7 +58,7 @@ func TestProfileRoundTrip(t *testing.T) {
 func TestBuildVLESSUrlShape(t *testing.T) {
 	t.Parallel()
 	uri, err := proto.BuildVLESSUrl(proto.Profile{
-		Domain: "vpn.example.com",
+		Domain: "node.example.com",
 		UUID:   testUUID,
 		Path:   "/a1b2c3d4e5f60718/",
 		Label:  "laptop",
@@ -67,10 +67,10 @@ func TestBuildVLESSUrlShape(t *testing.T) {
 		t.Fatalf("BuildVLESSUrl: %v", err)
 	}
 	for _, want := range []string{
-		"vless://" + testUUID + "@vpn.example.com:443",
+		"vless://" + testUUID + "@node.example.com:443",
 		"encryption=none",
 		"security=tls",
-		"sni=vpn.example.com",
+		"sni=node.example.com",
 		"type=xhttp",
 		"mode=packet-up",
 		"path=%2Fa1b2c3d4e5f60718%2F",
@@ -111,17 +111,17 @@ func TestBuildVLESSUrlShape(t *testing.T) {
 
 func TestParseVLESSUrlRejects(t *testing.T) {
 	t.Parallel()
-	valid := "vless://" + testUUID + "@vpn.example.com:443?encryption=none&security=tls&type=xhttp&path=%2Fp%2F"
+	valid := "vless://" + testUUID + "@node.example.com:443?encryption=none&security=tls&type=xhttp&path=%2Fp%2F"
 	cases := []struct{ name, uri, want string }{
-		{"scheme", "trojan://" + testUUID + "@vpn.example.com:443", "scheme"},
-		{"no user", "vless://vpn.example.com:443", "no user id"},
-		{"no port", "vless://" + testUUID + "@vpn.example.com?security=tls&type=xhttp", "no port"},
-		{"wrong port", "vless://" + testUUID + "@vpn.example.com:8443?security=tls&type=xhttp", "port"},
+		{"scheme", "trojan://" + testUUID + "@node.example.com:443", "scheme"},
+		{"no user", "vless://node.example.com:443", "no user id"},
+		{"no port", "vless://" + testUUID + "@node.example.com?security=tls&type=xhttp", "no port"},
+		{"wrong port", "vless://" + testUUID + "@node.example.com:8443?security=tls&type=xhttp", "port"},
 		{"allowInsecure", valid + "&allowInsecure=1", "allowInsecure"},
 		{"insecure", valid + "&insecure=1", "allowInsecure"},
-		{"plaintext", "vless://" + testUUID + "@vpn.example.com:443?security=none&type=xhttp", "security"},
-		{"ws transport", "vless://" + testUUID + "@vpn.example.com:443?security=tls&type=ws", "type"},
-		{"bad uuid", "vless://not-a-uuid@vpn.example.com:443?security=tls&type=xhttp", "uuid"},
+		{"plaintext", "vless://" + testUUID + "@node.example.com:443?security=none&type=xhttp", "security"},
+		{"ws transport", "vless://" + testUUID + "@node.example.com:443?security=tls&type=ws", "type"},
+		{"bad uuid", "vless://not-a-uuid@node.example.com:443?security=tls&type=xhttp", "uuid"},
 	}
 	for _, tc := range cases {
 		tc := tc

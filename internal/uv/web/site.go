@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"text/template"
 )
@@ -43,10 +44,65 @@ type SiteSpec struct {
 
 	HTTPPort  int
 	HTTPSPort int
+
+	// HTTP2Directive says the host's nginx understands the standalone `http2` directive, which
+	// arrived in 1.25.1. Older nginx treats `http2` as a parameter of `listen` and refuses the
+	// directive outright — and a vhost nginx refuses takes the whole web tier down with it, ACME
+	// included. The caller asks the binary that will parse the file; the generator does not guess.
+	HTTP2Directive bool
 }
 
 // TLS reports whether the spec produces a TLS vhost.
 func (s SiteSpec) TLS() bool { return s.CertPath != "" && s.KeyPath != "" }
+
+// SupportsHTTP2Directive reports whether the nginx that printed version is 1.25.1 or newer, the
+// release that split HTTP/2 out of the `listen` parameter into a directive of its own.
+//
+// A version that cannot be parsed answers false: the listen parameter is understood by every nginx
+// this project targets — 1.22 on Debian 12, 1.26 on Debian 13 — while the directive is a hard error
+// everywhere older. Guessing wrong in that direction costs a warning on stderr; guessing the other
+// way costs the web tier.
+func SupportsHTTP2Directive(version string) bool {
+	major, minor, patch, ok := parseNginxVersion(version)
+	if !ok {
+		return false
+	}
+	switch {
+	case major != 1:
+		return major > 1
+	case minor != 25:
+		return minor > 25
+	default:
+		return patch >= 1
+	}
+}
+
+// parseNginxVersion reads "nginx/1.22.1" out of what `nginx -v` prints ("nginx version: nginx/1.26.3").
+func parseNginxVersion(version string) (major, minor, patch int, ok bool) {
+	if i := strings.LastIndexByte(version, '/'); i >= 0 {
+		version = version[i+1:]
+	}
+	end := 0
+	for end < len(version) && (version[end] >= '0' && version[end] <= '9' || version[end] == '.') {
+		end++
+	}
+	parts := strings.Split(strings.Trim(version[:end], "."), ".")
+	if len(parts) < 2 {
+		return 0, 0, 0, false
+	}
+	numbers := [3]int{}
+	for i, part := range parts {
+		if i > 2 {
+			break
+		}
+		n, err := strconv.Atoi(part)
+		if err != nil {
+			return 0, 0, 0, false
+		}
+		numbers[i] = n
+	}
+	return numbers[0], numbers[1], numbers[2], true
+}
 
 func (s SiteSpec) validate() error {
 	var problems []error
@@ -171,11 +227,14 @@ var tlsTemplate = template.Must(template.New("tls").Parse(siteHeader + `server {
 }
 
 server {
-    listen               {{.HTTPSPort}} ssl;
+{{if .HTTP2Directive}}    listen               {{.HTTPSPort}} ssl;
     listen               [::]:{{.HTTPSPort}} ssl;
     # nginx 1.25+ needs this line; without it a client that offers h2 gets its preface refused.
     http2                on;
-    server_name          {{.Domain}};
+{{else}}    # Before 1.25 there is no http2 directive, and h2 is a parameter of listen instead.
+    listen               {{.HTTPSPort}} ssl http2;
+    listen               [::]:{{.HTTPSPort}} ssl http2;
+{{end}}    server_name          {{.Domain}};
     server_tokens        off;
     charset              utf-8;
 

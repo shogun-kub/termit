@@ -67,7 +67,7 @@ func TestLoadMissingState(t *testing.T) {
 func TestSaveLoadRoundTrip(t *testing.T) {
 	t.Parallel()
 	filename := filepath.Join(t.TempDir(), "state.json")
-	st := state.New("vpn.example.com", fixedTime)
+	st := state.New("node.example.com", fixedTime)
 	st.Identity = state.Identity{SelfUUID: "11111111-2222-4333-8444-555555555555", XHTTPPath: "deadbeef"}
 	st.Decoy = state.Decoy{Template: "portal", Seed: "00112233"}
 	st.Xray = state.Xray{Version: "26.11.9", SHA256: strings.Repeat("a", 64), Path: "/usr/lib/termit/bin/xray"}
@@ -101,7 +101,7 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 func TestLoadRejectsNewerSchema(t *testing.T) {
 	t.Parallel()
 	filename := filepath.Join(t.TempDir(), "state.json")
-	body := `{"schema_version": 99, "domain": "vpn.example.com"}`
+	body := `{"schema_version": 99, "domain": "node.example.com"}`
 	if err := os.WriteFile(filename, []byte(body), 0o600); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
@@ -113,7 +113,7 @@ func TestLoadRejectsNewerSchema(t *testing.T) {
 
 func TestManifestDeduplicates(t *testing.T) {
 	t.Parallel()
-	st := state.New("vpn.example.com", fixedTime)
+	st := state.New("node.example.com", fixedTime)
 	st.AddPath("/var/lib/termit/uv", state.KindDir, "dirs", fixedTime)
 	st.AddPath("/var/lib/termit/uv/", state.KindDir, "dirs", fixedTime)
 	st.AddPath("/var/lib/termit/uv/state.json", state.KindFile, "xray-binary", fixedTime)

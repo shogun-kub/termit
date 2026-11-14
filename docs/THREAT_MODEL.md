@@ -57,9 +57,9 @@ traffic across the mesh by matching credential values.
 | S12 | Global passive adversary | traffic correlation across many vantage points and time | associate client and node despite the proxy |
 | S13 | Legal compulsion of a node operator | demands logs and keys | the operator's own view |
 
-Out of scope by non-goal (DESCRIPTION §3): this is not a censorship circumvention network for
-strangers, not an anonymity system, and not a hiding place from a determined state-level adversary
-with global visibility.
+Out of scope by non-goal (DESCRIPTION §3): this is not a public proxy service for strangers, not an
+anonymity system, and not a hiding place from a determined state-level adversary with global
+visibility.
 
 ## 4. Trust boundaries
 

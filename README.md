@@ -53,6 +53,7 @@ The reference documents go deeper, and assume you are comfortable with TLS, ACME
 | [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) | adversaries, mitigations, residual risk, and what is deliberately not defended |
 | [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) | milestones, acceptance criteria, risks |
 | [`docs/QUESTIONS.md`](docs/QUESTIONS.md) | decisions taken and questions still open |
+| [`CHANGELOG.md`](CHANGELOG.md) | what each release changed — [`CHANGELOG.ru.md`](CHANGELOG.ru.md) is the same in Russian |
 | [`AGENTS.md`](AGENTS.md) | rules for anyone — human or agent — changing this repository |
 
 ## Quick start
@@ -82,8 +83,8 @@ The installer verifies the release against its `SHA256SUMS` and refuses anything
 service: each node is owned by one person, credentials are per pair, and a blocked address costs one
 path rather than the network.
 
-**It is not** a VPN provider, a reseller panel, or a mesh of strangers. Membership is by invite, every
-node belongs to somebody the operator knows, and nothing is metered.
+**It is not** a commercial tunnel service, a reseller panel, or a mesh of strangers. Membership is
+by invite, every node belongs to somebody the operator knows, and nothing is metered.
 
 Deliberate design choices worth knowing before you deploy it:
 
@@ -111,7 +112,7 @@ see [what is not here yet](#what-is-not-here-yet).
 | Ports | 80 and 443 reachable from the internet on every box |
 | DNS | one name per node and one for the server, pointed at the right box |
 | Certificate | issued automatically over ACME (Let's Encrypt by default) |
-| Build | Go 1.27.3 or newer; `CGO_ENABLED=0`, no cgo dependencies |
+| Build | Go 1.27.4 or newer; `CGO_ENABLED=0`, no cgo dependencies |
 
 ## Building and testing
 
