@@ -22,6 +22,13 @@ list=/etc/apt/sources.list.d/cloudflare-client.list
 install -d -m 0755 /usr/share/keyrings
 curl -fsSL --retry 3 --connect-timeout 15 https://pkg.cloudflareclient.com/pubkey.gpg -o "$keyring"
 chmod 0644 "$keyring"
+# Cloudflare publishes that key ASCII-armored. apt before 3.0 — Debian 12 ships 2.6 — reads the
+# signed-by file as a binary keyring, finds no key in it, and refuses the repository with NO_PUBKEY,
+# which no amount of retrying fixes. Convert to the binary form here; apt 3.x takes either.
+if head -n 1 "$keyring" | grep -q -- "-----BEGIN PGP PUBLIC KEY BLOCK-----"; then
+  sed -e '1,/^$/d' -e '/^-----END/,$d' -e '/^=/d' "$keyring" | base64 -d > "$keyring.bin"
+  mv "$keyring.bin" "$keyring"
+fi
 . /etc/os-release
 suite="${VERSION_CODENAME:-bookworm}"
 write_list() {

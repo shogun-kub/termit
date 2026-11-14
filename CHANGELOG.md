@@ -49,6 +49,10 @@ that were measured on real networks, and the node can now say which side drops t
   answers a request rejected by `MaxBytesReader`; every HTTP server in this tree reaches it. Reaching the
   fix is a patch-level toolchain change, so no code of ours moved — but the published binaries are built
   with it, and `govulncheck` gates on the toolchain that built them.
+- **Debian 12 installs.** apt 2.6 cannot read the ASCII-armored Cloudflare key that `signed-by` points at
+  and answers `NO_PUBKEY`; nginx 1.22 has no `http2` directive and refuses the vhost outright. Both are
+  handled now — the key is converted to the binary form, and the vhost takes whichever dialect the
+  host's nginx speaks. The preflight still reports Debian 12 as older than the supported release.
 
 ### Compatibility
 

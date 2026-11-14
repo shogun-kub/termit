@@ -23,12 +23,17 @@ func baseSpec() web.SiteSpec {
 	}
 }
 
-// TestGoldenSites pins both shapes of the vhost: before a certificate exists and after it does.
+// TestGoldenSites pins both shapes of the vhost: before a certificate exists and after it does. The
+// TLS shape comes in two dialects, because the `http2` directive only exists from nginx 1.25.1.
 func TestGoldenSites(t *testing.T) {
 	t.Parallel()
 	tls := baseSpec()
 	tls.CertPath = "/var/lib/termit/uv/certs/fullchain.pem"
 	tls.KeyPath = "/var/lib/termit/uv/certs/privkey.pem"
+	tls.HTTP2Directive = true
+
+	legacy := tls
+	legacy.HTTP2Directive = false
 
 	cases := []struct {
 		golden string
@@ -36,6 +41,7 @@ func TestGoldenSites(t *testing.T) {
 	}{
 		{"site-http.conf", baseSpec()},
 		{"site-tls.conf", tls},
+		{"site-tls-legacy.conf", legacy},
 	}
 	for _, tc := range cases {
 		tc := tc
@@ -96,6 +102,7 @@ func TestGenerateSiteShape(t *testing.T) {
 		spec := baseSpec()
 		spec.CertPath = "/certs/fullchain.pem"
 		spec.KeyPath = "/certs/privkey.pem"
+		spec.HTTP2Directive = true
 		data, err := web.GenerateSite(spec)
 		if err != nil {
 			t.Fatalf("GenerateSite: %v", err)
@@ -140,6 +147,58 @@ func TestGenerateSiteShape(t *testing.T) {
 			t.Error("a vhost without a secret path still proxies")
 		}
 	})
+}
+
+// TestTLSLegacyDialect pins the other nginx dialect: Debian 12 runs 1.22, which has no `http2`
+// directive and takes h2 as a parameter of `listen`.
+func TestTLSLegacyDialect(t *testing.T) {
+	t.Parallel()
+	spec := baseSpec()
+	spec.CertPath = "/certs/fullchain.pem"
+	spec.KeyPath = "/certs/privkey.pem"
+	data, err := web.GenerateSite(spec)
+	if err != nil {
+		t.Fatalf("GenerateSite: %v", err)
+	}
+	page := string(data)
+	for _, want := range []string{
+		"listen               443 ssl http2;",
+		"listen               [::]:443 ssl http2;",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the legacy tls vhost is missing %q", want)
+		}
+	}
+	if strings.Contains(page, "http2                on;") {
+		t.Error("the legacy vhost carries the http2 directive that nginx 1.22 does not know")
+	}
+}
+
+func TestSupportsHTTP2Directive(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		version string
+		want    bool
+	}{
+		{"nginx version: nginx/1.22.1", false},
+		{"nginx version: nginx/1.25.0", false},
+		{"nginx version: nginx/1.25.1", true},
+		{"nginx version: nginx/1.26.3", true},
+		{"nginx version: nginx/2.0.0", true},
+		{"nginx/1.24.0 (Ubuntu)", false},
+		{"1.25.1", true},
+		{"nginx version: nginx/", false},
+		{"no version here", false},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.version, func(t *testing.T) {
+			t.Parallel()
+			if got := web.SupportsHTTP2Directive(tc.version); got != tc.want {
+				t.Errorf("SupportsHTTP2Directive(%q) = %v, want %v", tc.version, got, tc.want)
+			}
+		})
+	}
 }
 
 func TestGenerateSiteRefuses(t *testing.T) {
