@@ -3,6 +3,57 @@
 What each release changed, written for the people who run Termit. Newest first;
 `0.1.1` was prepared but never released — its work is part of `0.2.0`.
 
+## 0.2.1 — 2026-11-14
+
+The release that lets a node live behind a proxy and tells an operator when the path, not the node, is
+to blame: the server learns the client address from a PROXY header, the client profile gets the settings
+that were measured on real networks, and the node can now say which side drops the packets.
+
+### Added
+
+- **`termit-uv net`** — samples the kernel's TCP counters and separates "this node dropped the
+  connection" from "the answer never reached the peer". It reads `/proc` only: no sockets, no host
+  contacted. `--seconds` sets the sample, `--json` prints the report, and a sample that saw no traffic
+  reports `skip` instead of claiming `ok`.
+- **`trusted_proxies` on the server, with the PROXY protocol.** When the peer address is in the list the
+  server takes the client address from the header and ignores it otherwise, so the list is the whole
+  security argument. This is what lets the server run behind a TLS-passthrough proxy: enrollment keeps
+  its DNS proof and the rate limits keep their per-client key.
+- **The client matrix** in `docs/OPERATIONS.md` §8.1: the profile is XHTTP, so Xray-based clients and
+  OpenWrt's `podkop-engine` work, stock sing-box does not, and `unknown version: 72` means "wrong
+  client", not "broken node".
+- **A diagnosis recipe for a lossy path** in `docs/OPERATIONS.md` §16.1, which `termit-uv net` automates.
+- **`go run ./deploy/clean`** — drops the release artifacts and the scratch directory, with the caches
+  split by what losing them costs.
+
+### Changed
+
+- **Client URIs carry `fp=firefox` and an XHTTP `extra` block** (`xPaddingBytes` and `xmux`). Measured,
+  not assumed: padding makes request sizes vary, and connection reuse collapsed 20 proxied connections
+  into one TCP connection where the previous profile used 5–8. No `alpn` is offered any more — the
+  transport is HTTP/1.1 on the wire through nginx.
+- **The sing-box profile (`/json`)** sends a uTLS fingerprint and no longer asks for `h2`.
+- **The decoy site's responses** carry `Vary: Accept-Encoding`, cache assets for 24 hours, and answer a
+  request on the proxy path without a valid credential with the site's own 404 page instead of Xray's
+  `400` with a header that named the transport.
+- **`termit-uv doctor`** names each listening port once (`:80 and :443`, not `:80 and :80 and :443 and
+  :443`).
+- **The sync response example** in `docs/DESCRIPTION.md` now matches what the API returns.
+
+### Fixed
+
+- **Enrollment behind a TLS-passthrough proxy** saw the proxy's address and refused the node with
+  `dns_mismatch`. With `trusted_proxies` set, the node's own address is used: the DNS proof passes, the
+  rate limits are per client, and `termit-mn uv show` prints the real IP.
+
+### Compatibility
+
+- API version 1 and profile v1 are unchanged: a 0.2.0 server and a 0.2.1 node interoperate, and so do the
+  reverse. An existing URI keeps working — it simply has no padding and no connection reuse.
+- A server behind a proxy must list the proxy in `trusted_proxies`; without it the header is ignored,
+  exactly as before. A trusted peer that sends no header keeps its own address, so the server can be
+  upgraded before the proxy is reconfigured.
+
 ## 0.2.0 — 2026-11-10
 
 The release that makes the management server harder to find and the interactive menus usable: an API
