@@ -14,6 +14,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/shogun-kub/termit/internal/proto"
 )
 
 const (
@@ -199,9 +201,12 @@ func Generate(spec Spec) ([]byte, error) {
 				Protocol: "vless",
 				Settings: vlessSettings{Clients: clients, Decryption: "none"},
 				Stream: &stream{
-					Network:  "xhttp",
+					// The transport and its mode are the client's profile, so both come from proto. The
+					// core's security is "none" because nginx terminates TLS: Xray only ever sees loopback
+					// plaintext.
+					Network:  proto.Network,
 					Security: "none",
-					XHTTP:    &xhttpSettings{Path: spec.Path, Mode: "packet-up"},
+					XHTTP:    &xhttpSettings{Path: spec.Path, Mode: proto.Mode},
 				},
 				Sniffing: &sniffing{Enabled: true, DestOverride: []string{"http", "tls", "quic"}},
 			},
