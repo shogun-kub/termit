@@ -8,21 +8,21 @@ import (
 	"time"
 )
 
-// runPolicy is `mn policy show` and `mn policy set <key> <value>`. The knobs it changes are the ones
+// runPolicy is `termit-mn policy show` and `termit-mn policy set <key> <value>`. The knobs it changes are the ones
 // worth turning while watching a mesh; everything else is in the configuration file and needs a
 // restart, on purpose.
 func runPolicy(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "mn policy: show or set is required")
+		fmt.Fprintln(stderr, "termit-mn policy: show or set is required")
 		return exitUsage
 	}
-	flags, configPath, socket, token := uvFlags("policy "+args[0], stderr)
+	flags, configPath, socket, token, tokenFile := uvFlags("termit-mn policy "+args[0], stderr)
 	if err := flags.Parse(flagsFirst(args[1:], map[string]bool{})); err != nil {
-		return exitUsage
+		return flagExit(err)
 	}
-	client, err := adminClient(*configPath, *socket, *token)
+	client, err := adminClient(*configPath, *socket, *token, *tokenFile)
 	if err != nil {
-		fmt.Fprintf(stderr, "mn policy: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn policy: %v\n", err)
 		return exitFailure
 	}
 	callCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -35,7 +35,7 @@ func runPolicy(args []string, stdout, stderr io.Writer) int {
 			Keys   map[string]string `json:"keys"`
 		}
 		if err := client.Call(callCtx, "policy.show", nil, &result); err != nil {
-			fmt.Fprintf(stderr, "mn policy show: %v\n", err)
+			fmt.Fprintf(stderr, "termit-mn policy show: %v\n", err)
 			return exitFailure
 		}
 		keys := make([]string, 0, len(result.Policy))
@@ -57,7 +57,7 @@ func runPolicy(args []string, stdout, stderr io.Writer) int {
 
 	case "set":
 		if flags.NArg() != 2 {
-			fmt.Fprintln(stderr, "mn policy set: a key and a value are required; an empty value clears the override")
+			fmt.Fprintln(stderr, "termit-mn policy set: a key and a value are required; an empty value clears the override")
 			return exitUsage
 		}
 		var result struct {
@@ -67,7 +67,7 @@ func runPolicy(args []string, stdout, stderr io.Writer) int {
 		}
 		if err := client.Call(callCtx, "policy.set",
 			map[string]string{"key": flags.Arg(0), "value": flags.Arg(1)}, &result); err != nil {
-			fmt.Fprintf(stderr, "mn policy set: %v\n", err)
+			fmt.Fprintf(stderr, "termit-mn policy set: %v\n", err)
 			return exitFailure
 		}
 		if result.Cleared {
@@ -78,7 +78,7 @@ func runPolicy(args []string, stdout, stderr io.Writer) int {
 		return exitOK
 
 	default:
-		fmt.Fprintf(stderr, "mn policy: unknown subcommand %q\n", args[0])
+		fmt.Fprintf(stderr, "termit-mn policy: unknown subcommand %q\n", args[0])
 		return exitUsage
 	}
 }

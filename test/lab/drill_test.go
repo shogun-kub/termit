@@ -130,13 +130,12 @@ func TestDrillMNUnavailable(t *testing.T) {
 	domain = nodeDomain(t, ctx, victim)
 	makeActive(t, ctx, l, victim, domain)
 
-	exe, args := mnCommand(t, ctx, l)
 	stopMN(t, ctx, l)
 	t.Cleanup(func() {
 		if len(mnPIDs(t, context.Background(), l)) > 0 {
 			return
 		}
-		startMN(t, context.Background(), l, exe, args)
+		startMN(t, context.Background(), l)
 	})
 
 	// Nothing on the node talks to the server any more, and everything that serves traffic keeps
@@ -165,7 +164,7 @@ func TestDrillMNUnavailable(t *testing.T) {
 	}
 	t.Logf("the node serves %s while the management server is down", domain)
 
-	startMN(t, ctx, l, exe, args)
+	startMN(t, ctx, l)
 	waitMN(t, ctx, l)
 
 	// Convergence is the node's own doing: one sync, then a check from the far side.
@@ -269,7 +268,29 @@ func TestDrillDNSFlipped(t *testing.T) {
 	restoreHosts(t, ctx, l)
 	// Recovery is explicit: the node has to ask to be let back in, and the question is verified
 	// against the restored address.
-	victim.MustRun(t, ctx, "termit-uv unblock")
+	//
+	// The verification is a single probe with a hard budget, and the first attempt after the hosts file
+	// changed can lose that budget to a cold TLS handshake on a loaded box — which surfaces as
+	// `check_failed: … i/o timeout`, not as a verdict about the node. An operator retries in that case,
+	// so the drill retries too. The retry covers the call only: the assertions below stay strict, and a
+	// node that really cannot come back still fails the test after the last attempt.
+	var failure string
+	for attempt := 1; attempt <= 3; attempt++ {
+		out, err := victim.Run(ctx, "termit-uv unblock")
+		if err == nil {
+			failure = ""
+			break
+		}
+		failure = out
+		t.Logf("unblock attempt %d did not go through: %v\n%s", attempt, err, out)
+		select {
+		case <-ctx.Done():
+		case <-time.After(5 * time.Second):
+		}
+	}
+	if failure != "" {
+		t.Fatalf("the node never got let back in:\n%s", failure)
+	}
 	victim.MustRun(t, ctx, "termit-uv sync")
 	if state := showState(t, ctx, l, domain); state != "active" {
 		t.Fatalf("the node is %s after the unblock", state)
@@ -575,16 +596,13 @@ func TestDrillClockSkew(t *testing.T) {
 	t.Skipf("an unprivileged LXC cannot move the clock: %s", strings.TrimSpace(out))
 }
 
-// mnCommand reads how the management server was started, so a restart uses the same command. The
-// first line is the executable, the second argv[0]; the rest is what to pass to it.
-func mnCommand(t *testing.T, ctx context.Context, l *lab.Lab) (string, []string) {
+// unitInstalled reports whether the lab has a systemd unit for the server. The drill drives the server
+// the way an operator does: `systemctl stop` and `systemctl start` when the unit is there, and a raw
+// process only on a machine that has none.
+func unitInstalled(t *testing.T, ctx context.Context, l *lab.Lab) bool {
 	t.Helper()
-	out := l.MN.MustRun(t, ctx, `pid=$(pgrep -x termit-mn | head -1); test -n "$pid" || exit 1; readlink -f /proc/$pid/exe; tr '\0' '\n' < /proc/$pid/cmdline`)
-	lines := strings.Split(strings.TrimSpace(out), "\n")
-	if len(lines) < 3 {
-		t.Fatalf("cannot read how the management server is running:\n%s", out)
-	}
-	return lines[0], lines[2:]
+	_, err := l.MN.Run(ctx, "systemctl cat termit-mn.service")
+	return err == nil
 }
 
 func mnPIDs(t *testing.T, ctx context.Context, l *lab.Lab) []string {
@@ -596,8 +614,16 @@ func mnPIDs(t *testing.T, ctx context.Context, l *lab.Lab) []string {
 	return strings.Fields(out)
 }
 
+// stopMN stops the server. With a unit installed that is `systemctl stop`, because a drill that kills
+// the process instead leaves systemd believing the service is gone while a stray copy keeps serving —
+// which is exactly the state a previous run of this suite left the lab in.
 func stopMN(t *testing.T, ctx context.Context, l *lab.Lab) {
 	t.Helper()
+	if active, err := l.MN.Run(ctx, "systemctl is-active termit-mn"); err == nil && strings.TrimSpace(active) == "active" {
+		l.MN.MustRun(t, ctx, "systemctl stop termit-mn")
+		waitGone(t, ctx, l, "termit-mn")
+		return
+	}
 	pids := mnPIDs(t, ctx, l)
 	if len(pids) == 0 {
 		return
@@ -606,13 +632,21 @@ func stopMN(t *testing.T, ctx context.Context, l *lab.Lab) {
 	waitGone(t, ctx, l, "termit-mn")
 }
 
-func startMN(t *testing.T, ctx context.Context, l *lab.Lab, exe string, args []string) {
+// startMN brings the server back through the same door it was stopped with, and leaves the machine in
+// a state the next operator expects: the unit active, nothing running loose.
+func startMN(t *testing.T, ctx context.Context, l *lab.Lab) {
 	t.Helper()
 	if len(mnPIDs(t, ctx, l)) > 0 {
 		return
 	}
-	command := "setsid nohup " + exe + " " + strings.Join(args, " ") + " >>/tmp/mn-serving.log 2>&1 < /dev/null &"
-	l.MN.MustRun(t, ctx, command)
+	if unitInstalled(t, ctx, l) {
+		l.MN.MustRun(t, ctx, "systemctl start termit-mn")
+		waitMN(t, ctx, l)
+		return
+	}
+	// No unit: start the binary the way the release documents it, and let the drill own the process.
+	l.MN.MustRun(t, ctx, "setsid nohup /usr/bin/termit-mn serve --config /etc/termit/mn/config.yaml "+
+		">>/tmp/mn-serving.log 2>&1 < /dev/null &")
 	waitMN(t, ctx, l)
 }
 

@@ -1,4 +1,4 @@
-// Command uv is the installer, agent and CLI for one Termit node.
+// Command termit-uv is the installer, agent and CLI for one Termit node.
 package main
 
 import (
@@ -27,7 +27,7 @@ const (
 	exitFailure = 1
 	// exitUsage means the command line was wrong.
 	exitUsage = 2
-	// exitDrift is what `uv sync --check` returns when the node differs from the server's set.
+	// exitDrift is what `termit-uv sync --check` returns when the node differs from the server's set.
 	exitDrift = 4
 )
 
@@ -76,9 +76,21 @@ type application struct {
 	// euid answers "is this process root"; nil means os.Geteuid. Tests set it so a suite run as root
 	// and a suite run as a normal user assert the same thing.
 	euid func() int
+	// in is the interactive menu's input; nil means os.Stdin.
+	in io.Reader
+	// configPath overrides the default configuration path; tests point it at a temporary directory so
+	// the menu does not inspect the machine it runs on.
+	configPath string
+	// interactiveFn answers "may the menu open"; nil means "ask the terminal".
+	interactiveFn func() bool
 }
 
 func (a *application) run(args []string) int {
+	// On a terminal the bare binary is the menu; anywhere else it stays the usage text, so a script
+	// that runs `uv` by mistake gets exit 2 and a short page, not a prompt waiting for input.
+	if len(args) == 0 && a.interactive() {
+		return a.runMenu(nil)
+	}
 	if len(args) == 0 {
 		a.usage(a.stderr)
 		return exitUsage
@@ -89,6 +101,8 @@ func (a *application) run(args []string) int {
 		return a.runInit(rest)
 	case "doctor":
 		return a.runDoctor(rest)
+	case "net":
+		return a.runNet(rest)
 	case "status":
 		return a.runStatus(rest)
 	case "uninstall":
@@ -119,8 +133,11 @@ func (a *application) run(args []string) int {
 		return exitOK
 	case "warp":
 		return a.runWarp(rest)
+	case "menu":
+		// `menu --config <path>` inspects and acts on that node, like every other command.
+		return a.runMenu(rest)
 	default:
-		fmt.Fprintf(a.stderr, "uv: unknown command %q\n\n", command)
+		fmt.Fprintf(a.stderr, "termit-uv: unknown command %q\n\n", command)
 		a.usage(a.stderr)
 		return exitUsage
 	}
@@ -130,11 +147,12 @@ func (a *application) usage(w io.Writer) {
 	fmt.Fprint(w, `termit-uv — Termit node installer, agent and CLI
 
 Usage:
-  uv <command> [flags]
+  termit-uv <command> [flags]
 
 Commands:
   init         install and configure this node (idempotent)
   doctor       run pre-flight and health diagnostics
+  net          sample the TCP counters and untangle a lossy path from a broken node
   status       show node state, identity and last install
   device       list, add or remove the owner's own devices
   renew-cert   renew the TLS certificate (--force to replace it)
@@ -148,6 +166,8 @@ Commands:
   warp         show the egress, or change its mode (all, selected, off)
   uninstall    remove Termit from this node
   version      print build and protocol version
+  menu         the interactive menu (what the bare command does on a terminal); --config given
+               here is the node it inspects and acts on
   help         show this help
 
 Exit status: 0 success, 1 failure, 2 usage error, 4 sync --check found drift.
@@ -165,7 +185,7 @@ func (a *application) newFlagSet(name, summary string) *flag.FlagSet {
 	fs.Var(verboseFlag{}, "v", "log every step at info level")
 	fs.Var(verboseFlag{}, "verbose", "log every step at info level")
 	fs.Usage = func() {
-		fmt.Fprintf(a.stderr, "Usage: uv %s [flags]\n\n%s\n\nFlags:\n", name, summary)
+		fmt.Fprintf(a.stderr, "Usage: termit-uv %s [flags]\n\n%s\n\nFlags:\n", name, summary)
 		fs.PrintDefaults()
 	}
 	return fs

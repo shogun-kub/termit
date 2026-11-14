@@ -53,6 +53,9 @@ func newTestApp(t *testing.T) (*application, *bytes.Buffer, *bytes.Buffer) {
 		now:      func() time.Time { return time.Unix(0, 0).UTC() },
 		exec:     stubExecutor{},
 		warpHost: &warp.Host{GOOS: "windows", GOARCH: "amd64"},
+		// Tests declare the host: without this, "no arguments" would open the menu when the suite
+		// happens to run on a terminal and print usage when it does not.
+		interactiveFn: func() bool { return false },
 		http: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusOK,
@@ -77,7 +80,7 @@ func TestDispatch(t *testing.T) {
 		{"long help", []string{"--help"}, exitOK, "Usage:"},
 		{"no command", nil, exitUsage, "Usage:"},
 		{"unknown", []string{"nope"}, exitUsage, "unknown command"},
-		{"warp without a configuration", []string{"warp", "--config", filepath.Join(t.TempDir(), "absent.yaml")}, exitFailure, "uv warp:"},
+		{"warp without a configuration", []string{"warp", "--config", filepath.Join(t.TempDir(), "absent.yaml")}, exitFailure, "termit-uv warp:"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -94,7 +97,7 @@ func TestDispatch(t *testing.T) {
 	}
 }
 
-// warpReport runs `uv warp --json` and decodes it, optionally with an application built by the caller.
+// warpReport runs `termit-uv warp --json` and decodes it, optionally with an application built by the caller.
 func warpReport(t *testing.T, app *application, path string) jsonWarp {
 	t.Helper()
 	stdout, stderr := &bytes.Buffer{}, &bytes.Buffer{}
@@ -120,14 +123,14 @@ func tunHost(t *testing.T) *warp.Host {
 	return &warp.Host{GOOS: "linux", GOARCH: "amd64", TunPath: path}
 }
 
-// WARP is on by default, so `uv warp status` has to say "off" clearly when the owner opted out and
+// WARP is on by default, so `termit-uv warp status` has to say "off" clearly when the owner opted out and
 // has to say where traffic leaves in every other case — including "nowhere yet", which is what a
 // fresh node before the package is installed looks like.
 func TestWarpStatusReportsTheMode(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	cfg := config.Default()
-	cfg.Domain = "vpn.example.com"
+	cfg.Domain = "node.example.com"
 	cfg.Warp.Mode = config.WarpOff
 	if err := cfg.Save(path); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -164,13 +167,13 @@ func mustApp(t *testing.T) *application {
 	return app
 }
 
-// A node that has not installed the package yet is a normal state: `uv warp status` reports
+// A node that has not installed the package yet is a normal state: `termit-uv warp status` reports
 // "not-installed" rather than failing, which is what makes it useful on a fresh box.
 func TestWarpStatusSaysNotInstalled(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	cfg := config.Default()
-	cfg.Domain = "vpn.example.com"
+	cfg.Domain = "node.example.com"
 	cfg.Warp.Mode = config.WarpAll
 	if err := cfg.Save(path); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -198,7 +201,7 @@ func TestWarpStatusReportsAFailedProbe(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	cfg := config.Default()
-	cfg.Domain = "vpn.example.com"
+	cfg.Domain = "node.example.com"
 	cfg.Warp.Mode = config.WarpAll
 	if err := cfg.Save(path); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -246,7 +249,7 @@ func TestInitWritesNothingWhenChecksFail(t *testing.T) {
 	app, stdout, _ := newTestApp(t)
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
 
-	if got := app.run([]string{"init", "--domain", "vpn.example.com", "--config", configPath}); got != exitFailure {
+	if got := app.run([]string{"init", "--domain", "node.example.com", "--config", configPath}); got != exitFailure {
 		t.Fatalf("exit = %d, want %d\n%s", got, exitFailure, stdout.String())
 	}
 	if _, err := os.Stat(configPath); !os.IsNotExist(err) {
@@ -327,13 +330,13 @@ func TestJoinWords(t *testing.T) {
 	}
 }
 
-// The documentation has always shown `uv warp status`, so the command accepts it; `uv warp` alone
+// The documentation has always shown `termit-uv warp status`, so the command accepts it; `termit-uv warp` alone
 // stays the short form.
 func TestWarpAcceptsTheDocumentedStatusSubcommand(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	cfg := config.Default()
-	cfg.Domain = "vpn.example.com"
+	cfg.Domain = "node.example.com"
 	cfg.Warp.Mode = config.WarpAll
 	if err := cfg.Save(path); err != nil {
 		t.Fatalf("Save: %v", err)

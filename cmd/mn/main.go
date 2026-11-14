@@ -1,10 +1,13 @@
-// Command mn is the Termit management server and admin CLI.
+// Command termit-mn is the Termit management server and admin CLI.
 package main
 
 import (
+	"errors"
+	"flag"
 	"fmt"
 	"os"
 
+	"github.com/shogun-kub/termit/internal/termui"
 	"github.com/shogun-kub/termit/internal/version"
 )
 
@@ -19,7 +22,21 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
+// flagExit maps a flag parse failure to an exit code. Asking for help is a successful request, not a
+// usage error, so `--help` exits 0 the way it does in termit-uv.
+func flagExit(err error) int {
+	if errors.Is(err, flag.ErrHelp) {
+		return exitOK
+	}
+	return exitUsage
+}
+
 func run(args []string, stdout, stderr *os.File) int {
+	// On a terminal the bare binary is the menu; anywhere else it stays the usage text, so a script
+	// that runs `mn` by mistake gets exit 2 and a short page, not a prompt waiting for input.
+	if len(args) == 0 && termui.Interactive(os.Stdin, os.Stdout) {
+		return runMenu(stdout, stderr, os.Stdin, termui.PlainColour(stdout), nil)
+	}
 	if len(args) == 0 {
 		usage(stderr)
 		return exitUsage
@@ -52,8 +69,14 @@ func run(args []string, stdout, stderr *os.File) int {
 		return runServerCheck(args[1:], stdout, stderr)
 	case "status":
 		return runStatus(args[1:], stdout, stderr)
+	case "admin":
+		return runAdmin(args[1:], stdout, stderr)
+	case "menu":
+		// Flags after `menu` are the admin credential and the socket every admin action needs; they are
+		// parsed there and handed to each command the menu runs.
+		return runMenu(stdout, stderr, os.Stdin, termui.PlainColour(stdout), args[1:])
 	default:
-		fmt.Fprintf(stderr, "mn: unknown command %q\n\n", args[0])
+		fmt.Fprintf(stderr, "termit-mn: unknown command %q\n\n", args[0])
 		usage(stderr)
 		return exitUsage
 	}
@@ -63,7 +86,7 @@ func usage(w *os.File) {
 	fmt.Fprint(w, `termit-mn — Termit management server and admin CLI
 
 Usage:
-  mn <command> [flags]
+  termit-mn <command> [flags]
 
 Server:
   init         create config, database, master key and the first invite
@@ -76,10 +99,13 @@ Admin:
   uv           list, show, approve, block, unblock and remove nodes
   check        run health checks now (one node, or the whole mesh with --all)
   policy       read and change scheduler thresholds
+  admin        rotate the admin token (the credential every admin command uses)
   sub          show and rotate subscription tokens
   status       show server, nodes and the check schedule
 
   version      print build and protocol version
+  menu         the interactive menu (what the bare command does on a terminal); admin flags
+               given here reach every command it runs, e.g. --token-file <path>
   help         show this help
 
 Admin commands talk to the running server over a unix socket; they never open the

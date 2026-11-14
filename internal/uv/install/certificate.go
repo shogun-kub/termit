@@ -16,7 +16,7 @@ import (
 // The ACME challenge is published as a file in the webroot nginx already serves, not on a listener of
 // our own: nginx owns :80 on this host, and a second process on that port would break direct traffic.
 // Once the certificate exists the vhost changes shape (plain HTTP → TLS), so the step runs the web
-// step afterwards rather than leaving the node half-configured until the next `uv init`.
+// step afterwards rather than leaving the node half-configured until the next `termit-uv init`.
 type certificateStep struct{ e *stepEnv }
 
 func (*certificateStep) Name() string { return "certificate" }

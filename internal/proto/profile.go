@@ -25,6 +25,36 @@ const (
 	// Mode is the XHTTP mode. packet-up is the one that survives an HTTP/1.1 hop through nginx
 	// (SPIKES.md S3); the HTTP/2-shaped modes do not.
 	Mode = "packet-up"
+
+	// Fingerprint is the uTLS ClientHello the client should send. Server-side it changes nothing:
+	// the node terminates TLS with a real certificate and never inspects the handshake. It matters on
+	// the path, where filters read the ClientHello.
+	//
+	// firefox, not chrome: measured on a Russian consumer path in October 2026, a chrome hello
+	// (Chrome 133 with an X25519MLKEM768 key share, ~1.8 KB) is frozen when several connections open
+	// to one server at once, which is what a client does after connecting. firefox went through
+	// 19/20 and 49/50 in the same measurements. randomized also worked, but a fingerprint that
+	// changes per connection cannot be verified and, in stock Xray, is not guaranteed to keep its
+	// groups and key shares consistent.
+	Fingerprint = "firefox"
+
+	// Extra is the XHTTP client tuning a URI carries, in one literal because it is an opaque JSON
+	// string to every client and the node never reads it: Xray's inbound parses the request the same
+	// way either way.
+	//
+	//   - xPaddingBytes makes each request a different size, so a filter cannot match a constant one.
+	//   - xmux reuses one connection for many proxied connections. Measured against a live node
+	//     through the nginx hop: 20 proxied connections took 1 TCP connection with xmux and 5-8
+	//     without. On a lossy path that is also fewer chances to lose a handshake, which is why the
+	//     only run without a failed request in that measurement was the one with xmux on — suggestive,
+	//     not proven, since the link fails in bursts. The cap on reuse (reusable seconds) bounds how
+	//     long one connection lives.
+	//
+	// Not in the sing-box profile: sing-box validates its configuration strictly and rejects fields it
+	// does not know, so a knob there would break every stock client instead of being ignored.
+	Extra = `{"xmux":{"cMaxReuseTimes":"1000-3000","maxConcurrency":"3-5","maxConnections":0,` +
+		`"hKeepAlivePeriod":0,"hMaxRequestTimes":"400-700","hMaxReusableSecs":"1200-1800"},` +
+		`"xPaddingBytes":"100-1000"}`
 )
 
 var (
@@ -83,6 +113,8 @@ func BuildVLESSUrl(p Profile) (string, error) {
 	query.Set("type", Network)
 	query.Set("mode", Mode)
 	query.Set("path", p.Path)
+	query.Set("fp", Fingerprint)
+	query.Set("extra", Extra)
 
 	label := p.Label
 	if label == "" {

@@ -33,13 +33,13 @@ func (a *application) runAgent(args []string) int {
 		return exitUsage
 	}
 	if flags.NArg() > 0 {
-		fmt.Fprintf(a.stderr, "uv agent: unexpected argument %q\n", flags.Arg(0))
+		fmt.Fprintf(a.stderr, "termit-uv agent: unexpected argument %q\n", flags.Arg(0))
 		return exitUsage
 	}
 
 	cfg, err := config.Load(*configPath)
 	if err != nil {
-		fmt.Fprintf(a.stderr, "uv agent: %v\n", err)
+		fmt.Fprintf(a.stderr, "termit-uv agent: %v\n", err)
 		return exitFailure
 	}
 
@@ -51,7 +51,7 @@ func (a *application) runAgent(args []string) int {
 		report, err := loop.Once(ctx)
 		a.printCycle(cfg, report)
 		if err != nil {
-			fmt.Fprintf(a.stderr, "uv agent: %v\n", err)
+			fmt.Fprintf(a.stderr, "termit-uv agent: %v\n", err)
 			return exitFailure
 		}
 		return exitOK
@@ -59,13 +59,13 @@ func (a *application) runAgent(args []string) int {
 
 	slog.Default().Info("agent started", "domain", cfg.Domain, "state", cfg.Paths.StatePath())
 	if err := loop.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
-		fmt.Fprintf(a.stderr, "uv agent: %v\n", err)
+		fmt.Fprintf(a.stderr, "termit-uv agent: %v\n", err)
 		return exitFailure
 	}
 	return exitOK
 }
 
-// newLoop wires the loop the service and `uv agent --once` share.
+// newLoop wires the loop the service and `termit-uv agent --once` share.
 func (a *application) newLoop(cfg *config.Config) *agent.Loop {
 	return &agent.Loop{
 		Remote:    agent.Remote{BaseURL: cfg.MN.URL, CAFile: cfg.MN.CAFile},
@@ -142,7 +142,7 @@ func (a *application) applier(cfg *config.Config, st *state.State) agent.Applier
 	}
 }
 
-// printCycle renders one loop iteration for `uv agent --once`.
+// printCycle renders one loop iteration for `termit-uv agent --once`.
 func (a *application) printCycle(cfg *config.Config, report agent.CycleReport) {
 	fmt.Fprintf(a.stdout, "cycle:    %s at %s\n", orDefault(report.Result, "unknown"), report.At.Format(time.RFC3339))
 	for _, item := range report.Check.Items {

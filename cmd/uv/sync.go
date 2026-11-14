@@ -14,6 +14,7 @@ import (
 	"github.com/shogun-kub/termit/internal/uv/config"
 	"github.com/shogun-kub/termit/internal/uv/install"
 	"github.com/shogun-kub/termit/internal/uv/state"
+	"github.com/shogun-kub/termit/internal/version"
 )
 
 // execRunner runs one command and returns its combined output.
@@ -43,16 +44,16 @@ func (a *application) runSync(args []string) int {
 
 	cfg, err := config.Load(*configPath)
 	if err != nil {
-		fmt.Fprintf(stderr, "uv sync: %v\n", err)
+		fmt.Fprintf(stderr, "termit-uv sync: %v\n", err)
 		return exitFailure
 	}
 	st, err := state.LoadInstalled(filepath.Join(cfg.Paths.StateDir, "state.json"))
 	if err != nil {
-		fmt.Fprintf(stderr, "uv sync: %v\n", err)
+		fmt.Fprintf(stderr, "termit-uv sync: %v\n", err)
 		return exitFailure
 	}
 	if st.Credentials == nil || st.Credentials.AgentKey == "" {
-		fmt.Fprintln(stderr, "uv sync: this node is not enrolled; run `uv enroll` first")
+		fmt.Fprintln(stderr, "termit-uv sync: this node is not enrolled; run `termit-uv enroll` first")
 		return exitFailure
 	}
 
@@ -63,15 +64,15 @@ func (a *application) runSync(args []string) int {
 	// interleave a staged config with the other's rename.
 	unlock, err := state.Lock(cfg.Paths.StatePath() + ".lock")
 	if err != nil {
-		fmt.Fprintf(stderr, "uv sync: %v\n", err)
+		fmt.Fprintf(stderr, "termit-uv sync: %v\n", err)
 		return exitFailure
 	}
 	defer unlock()
 
 	remote := agent.Remote{BaseURL: cfg.MN.URL, CAFile: cfg.MN.CAFile, CertPin: agent.CertFingerprint(install.LeafCertPath(cfg))}
-	answer, err := remote.Fetch(ctx, st.Credentials.AgentKey, proto.SyncRequest{AgentVersion: proto.APIVersion})
+	answer, err := remote.Fetch(ctx, st.Credentials.AgentKey, proto.SyncRequest{AgentVersion: version.Agent("termit-uv")})
 	if err != nil {
-		fmt.Fprintf(stderr, "uv sync: %v\n", err)
+		fmt.Fprintf(stderr, "termit-uv sync: %v\n", err)
 		return exitFailure
 	}
 
@@ -92,7 +93,7 @@ func (a *application) runSync(args []string) int {
 		// alone.
 		result, err := a.applier(cfg, st).Preview(ctx, answer, st.LocalUsers)
 		if err != nil {
-			fmt.Fprintf(stderr, "uv sync: %v\n", err)
+			fmt.Fprintf(stderr, "termit-uv sync: %v\n", err)
 			return exitFailure
 		}
 		if result.Unchanged {
@@ -119,7 +120,7 @@ func (a *application) runSync(args []string) int {
 	applier := a.applier(cfg, st)
 	result, err := applier.Apply(ctx, answer, st.LocalUsers)
 	if err != nil {
-		fmt.Fprintf(stderr, "uv sync: %v\n", err)
+		fmt.Fprintf(stderr, "termit-uv sync: %v\n", err)
 		return exitFailure
 	}
 
@@ -136,7 +137,7 @@ func (a *application) runSync(args []string) int {
 	st.Schedule.NextSyncAt = agent.NextDue(now, answer, enrolledAt, st.Identity.SelfUUID)
 	st.Touch()
 	if err := st.Save(filepath.Join(cfg.Paths.StateDir, "state.json")); err != nil {
-		fmt.Fprintf(stderr, "uv sync: %v\n", err)
+		fmt.Fprintf(stderr, "termit-uv sync: %v\n", err)
 		return exitFailure
 	}
 

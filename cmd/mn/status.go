@@ -22,22 +22,22 @@ var scheduledStates = map[string]bool{
 // runStatus is the one screen an operator opens first: what the server is, how the mesh is doing and
 // when each node is looked at again. It reads only through the admin socket, like every other command.
 func runStatus(args []string, stdout, stderr io.Writer) int {
-	flags, configPath, socket, token := uvFlags("status", stderr)
+	flags, configPath, socket, token, tokenFile := uvFlags("termit-mn status", stderr)
 	if err := flags.Parse(args); err != nil {
-		return exitUsage
+		return flagExit(err)
 	}
 	if flags.NArg() > 0 {
-		fmt.Fprintf(stderr, "mn status: unexpected argument %q\n", flags.Arg(0))
+		fmt.Fprintf(stderr, "termit-mn status: unexpected argument %q\n", flags.Arg(0))
 		return exitUsage
 	}
 	cfg, err := config.Load(*configPath)
 	if err != nil {
-		fmt.Fprintf(stderr, "mn status: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn status: %v\n", err)
 		return exitFailure
 	}
-	client, err := adminClient(*configPath, *socket, *token)
+	client, err := adminClient(*configPath, *socket, *token, *tokenFile)
 	if err != nil {
-		fmt.Fprintf(stderr, "mn status: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn status: %v\n", err)
 		return exitFailure
 	}
 	callCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -45,7 +45,7 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 
 	var nodes []admin.NodeView
 	if err := client.Call(callCtx, "uv.list", nil, &nodes); err != nil {
-		fmt.Fprintf(stderr, "mn status: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn status: %v\n", err)
 		return exitFailure
 	}
 	// The server block is best effort: an older server does not have the operation, and a status that
@@ -58,15 +58,15 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 	}
 	interval, note := cfg.Policy.CheckInterval, ""
 	if err := client.Call(callCtx, "policy.show", nil, &policy); err == nil {
-		if value := policy.Policy["check_interval"]; value != "" {
-			if parsed, parseErr := time.ParseDuration(value); parseErr == nil {
-				interval, note = parsed, " (runtime override)"
-			}
+		if parsed, ok := runtimeInterval(cfg.Policy.CheckInterval, policy.Policy["check_interval"]); ok {
+			interval, note = parsed, " (runtime override)"
 		}
 	}
 
 	fmt.Fprintf(stdout, "server:   %s\n", cfg.Domain)
 	fmt.Fprintf(stdout, "listen:   %s\n", cfg.Listen)
+	fmt.Fprintf(stdout, "api:      %s\n", cfg.APIPrefix)
+	fmt.Fprintf(stdout, "decoy:    %s\n", cfg.Decoy.Template)
 	fmt.Fprintf(stdout, "version:  %s\n", version.String("termit-mn"))
 	if hasServer {
 		if !server.StartedAt.IsZero() {
@@ -94,7 +94,7 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 			checkTime(node.LastCheckAt), checkTime(node.NextCheckAt), checkTime(node.LastSeenAt))
 	}
 	if err := table.Flush(); err != nil {
-		fmt.Fprintf(stderr, "mn status: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn status: %v\n", err)
 		return exitFailure
 	}
 	return exitOK
@@ -211,34 +211,34 @@ func describeQueue(server admin.ServerState) string {
 }
 
 // runServerCheck runs one cycle for every node the scheduler would probe. With a node argument it is
-// the same command as `mn uv check now <node>`; without one it is the "check the whole mesh now"
+// the same command as `termit-mn uv check now <node>`; without one it is the "check the whole mesh now"
 // operation, which is what an operator reaches for after fixing DNS or a firewall.
 func runServerCheck(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 || args[0] != "now" {
-		fmt.Fprintln(stderr, "mn check: the only subcommand in this build is now")
+		fmt.Fprintln(stderr, "termit-mn check: the only subcommand in this build is now")
 		return exitUsage
 	}
-	flags, configPath, socket, token := uvFlags("check now", stderr)
+	flags, configPath, socket, token, tokenFile := uvFlags("termit-mn check now", stderr)
 	all := flags.Bool("all", false, "check every node the scheduler probes")
 	if err := flags.Parse(flagsFirst(args[1:], map[string]bool{"-all": true, "--all": true})); err != nil {
-		return exitUsage
+		return flagExit(err)
 	}
 	switch {
 	case flags.NArg() > 1:
-		fmt.Fprintln(stderr, "mn check now: at most one node id or domain")
+		fmt.Fprintln(stderr, "termit-mn check now: at most one node id or domain")
 		return exitUsage
 	case flags.NArg() == 1:
 		if *all {
-			fmt.Fprintln(stderr, "mn check now: either --all or one node, not both")
+			fmt.Fprintln(stderr, "termit-mn check now: either --all or one node, not both")
 			return exitUsage
 		}
-		// One node is exactly `mn uv check now <node>`, including its output.
+		// One node is exactly `termit-mn uv check now <node>`, including its output.
 		return runCheck(args, stdout, stderr)
 	}
 
-	client, err := adminClient(*configPath, *socket, *token)
+	client, err := adminClient(*configPath, *socket, *token, *tokenFile)
 	if err != nil {
-		fmt.Fprintf(stderr, "mn check now: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn check now: %v\n", err)
 		return exitFailure
 	}
 	callCtx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
@@ -246,7 +246,7 @@ func runServerCheck(args []string, stdout, stderr io.Writer) int {
 
 	var nodes []admin.NodeView
 	if err := client.Call(callCtx, "uv.list", nil, &nodes); err != nil {
-		fmt.Fprintf(stderr, "mn check now: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn check now: %v\n", err)
 		return exitFailure
 	}
 
@@ -265,7 +265,7 @@ func runServerCheck(args []string, stdout, stderr io.Writer) int {
 		}
 		if err := client.Call(callCtx, "check.now", map[string]string{"id": node.ID}, &result); err != nil {
 			// A cycle the server could not run is not a node failure; keep going and report it.
-			fmt.Fprintf(stderr, "mn check now: %s (%s): %v\n", node.Domain, node.ID, err)
+			fmt.Fprintf(stderr, "termit-mn check now: %s (%s): %v\n", node.Domain, node.ID, err)
 			failed = true
 			continue
 		}
@@ -273,7 +273,7 @@ func runServerCheck(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(table, "%s\t%s\t%s\t%d\t%s\n", node.Domain, result.Event, result.State, result.Attempts, result.Reason)
 	}
 	if err := table.Flush(); err != nil {
-		fmt.Fprintf(stderr, "mn check now: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn check now: %v\n", err)
 		return exitFailure
 	}
 	if checked == 0 && !failed {
@@ -283,4 +283,23 @@ func runServerCheck(args []string, stdout, stderr io.Writer) int {
 		return exitFailure
 	}
 	return exitOK
+}
+
+// runtimeInterval reports the interval the scheduler actually uses, and whether it is a runtime override.
+//
+// An override is a value that differs from the configuration, not merely a stored one: `init` seeds the
+// settings table with the configured values, so treating "stored" as "overridden" would print the note
+// on every server that never changed anything.
+func runtimeInterval(configured time.Duration, stored string) (time.Duration, bool) {
+	if stored == "" {
+		return configured, false
+	}
+	parsed, err := time.ParseDuration(stored)
+	if err != nil {
+		return configured, false
+	}
+	if parsed == configured {
+		return parsed, false
+	}
+	return parsed, true
 }

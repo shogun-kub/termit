@@ -433,3 +433,39 @@ func TestRetentionPrunesOldRows(t *testing.T) {
 		t.Errorf("audit count = %d, want the two records inside the year", count)
 	}
 }
+
+// Rotation has to be a single write: a half-rotated row would either keep the old credential alive or
+// leave the operator with no working one.
+func TestRotateAdminMovesTheCredential(t *testing.T) {
+	t.Parallel()
+	db := openTestStore(t)
+	ctx := context.Background()
+	if err := db.CreateAdmin(ctx, store.Admin{
+		ID: "admin_old", Name: "operator", TokenHash: "sha256:old", CreatedAt: testNow,
+		LastUsedAt: &testNow,
+	}); err != nil {
+		t.Fatalf("CreateAdmin: %v", err)
+	}
+	if err := db.RotateAdmin(ctx, "admin_old", "admin_new", "sha256:new"); err != nil {
+		t.Fatalf("RotateAdmin: %v", err)
+	}
+	if _, err := db.AdminByTokenHash(ctx, "sha256:old"); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("the old digest still resolves: %v", err)
+	}
+	rotated, err := db.AdminByTokenHash(ctx, "sha256:new")
+	if err != nil {
+		t.Fatalf("AdminByTokenHash: %v", err)
+	}
+	if rotated.ID != "admin_new" {
+		t.Errorf("id = %q, want admin_new", rotated.ID)
+	}
+	if rotated.LastUsedAt != nil {
+		t.Errorf("a fresh credential inherited last_used_at = %v", rotated.LastUsedAt)
+	}
+	if rotated.CreatedAt != testNow {
+		t.Errorf("created_at moved to %v: the credential is new, the admin is not", rotated.CreatedAt)
+	}
+	if err := db.RotateAdmin(ctx, "admin_missing", "admin_x", "sha256:x"); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("rotating an unknown admin = %v, want ErrNotFound", err)
+	}
+}

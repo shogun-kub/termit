@@ -2,7 +2,7 @@ package main
 
 import "strings"
 
-// flagsFirst moves positional arguments behind the flags, so `mn restore archive.tar.gz --config x`
+// flagsFirst moves positional arguments behind the flags, so `termit-mn restore archive.tar.gz --config x`
 // parses the way it was typed. Go's flag package stops at the first positional argument, and silently
 // treating "--config x" as two more positionals is a bug the operator cannot see.
 //

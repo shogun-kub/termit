@@ -23,8 +23,8 @@ type jsonWarp struct {
 }
 
 func (a *application) runWarp(args []string) int {
-	// `uv warp` is the status. `uv warp status` is accepted because the documentation has always
-	// shown it that way — the same shape as `uv warp mode`.
+	// `termit-uv warp` is the status. `termit-uv warp status` is accepted because the documentation has always
+	// shown it that way — the same shape as `termit-uv warp mode`.
 	if len(args) > 0 {
 		switch args[0] {
 		case "mode":
@@ -40,20 +40,20 @@ func (a *application) runWarp(args []string) int {
 // this machine could run it: the whole point of the check is the address Cloudflare sees.
 func (a *application) runWarpStatus(args []string) int {
 	flags := a.newFlagSet("warp [status]", `Reports the egress: the configured mode, what warp-cli says, and what a fetch
-through the tunnel says Cloudflare sees. WARP is on by default; `+"`uv warp mode off`"+` exits directly.`)
+through the tunnel says Cloudflare sees. WARP is on by default; `+"`termit-uv warp mode off`"+` exits directly.`)
 	configFlag := flags.String("config", configPathDefault(), "path to config.yaml")
 	jsonOut := flags.Bool("json", false, "print the report as JSON")
 	if err := flags.Parse(args); err != nil {
 		return a.flagError(err)
 	}
 	if flags.NArg() > 0 {
-		fmt.Fprintf(a.stderr, "uv warp: unexpected argument %q\n", flags.Arg(0))
+		fmt.Fprintf(a.stderr, "termit-uv warp: unexpected argument %q\n", flags.Arg(0))
 		return exitUsage
 	}
 
 	cfg, err := a.loadConfig(*configFlag)
 	if err != nil {
-		fmt.Fprintf(a.stderr, "uv warp: %v\n", err)
+		fmt.Fprintf(a.stderr, "termit-uv warp: %v\n", err)
 		return exitFailure
 	}
 	report := jsonWarp{Mode: cfg.Warp.Mode, Socks: warp.SocksAddress, Selected: cfg.Warp.Selected}
@@ -69,7 +69,7 @@ through the tunnel says Cloudflare sees. WARP is on by default; `+"`uv warp mode
 	default:
 		status, err := client.Status(context.Background())
 		if err != nil {
-			fmt.Fprintf(a.stderr, "uv warp: %v\n", err)
+			fmt.Fprintf(a.stderr, "termit-uv warp: %v\n", err)
 			return exitFailure
 		}
 		report.Detail = status.Detail
@@ -90,7 +90,7 @@ through the tunnel says Cloudflare sees. WARP is on by default; `+"`uv warp mode
 	if *jsonOut {
 		body, err := json.MarshalIndent(report, "", "  ")
 		if err != nil {
-			fmt.Fprintf(a.stderr, "uv warp: %v\n", err)
+			fmt.Fprintf(a.stderr, "termit-uv warp: %v\n", err)
 			return exitFailure
 		}
 		fmt.Fprintln(a.stdout, string(body))
@@ -124,20 +124,20 @@ removes the route, and direct traffic is never affected.`)
 		return a.flagError(err)
 	}
 	if flags.NArg() != 1 {
-		fmt.Fprintln(a.stderr, "uv warp mode: one mode is required: all, selected or off")
+		fmt.Fprintln(a.stderr, "termit-uv warp mode: one mode is required: all, selected or off")
 		return exitUsage
 	}
 	mode := strings.ToLower(strings.TrimSpace(flags.Arg(0)))
 	switch mode {
 	case config.WarpAll, config.WarpSelected, config.WarpOff:
 	default:
-		fmt.Fprintf(a.stderr, "uv warp mode: %q is not off, all or selected\n", flags.Arg(0))
+		fmt.Fprintf(a.stderr, "termit-uv warp mode: %q is not off, all or selected\n", flags.Arg(0))
 		return exitUsage
 	}
 
 	cfg, err := a.loadConfig(*configFlag)
 	if err != nil {
-		fmt.Fprintf(a.stderr, "uv warp: %v\n", err)
+		fmt.Fprintf(a.stderr, "termit-uv warp: %v\n", err)
 		return exitFailure
 	}
 	if *selected != "" {
@@ -146,7 +146,7 @@ removes the route, and direct traffic is never affected.`)
 	}
 	cfg.Warp.Mode = mode
 	if err := cfg.Validate(); err != nil {
-		fmt.Fprintf(a.stderr, "uv warp mode: %v\n", err)
+		fmt.Fprintf(a.stderr, "termit-uv warp mode: %v\n", err)
 		return exitUsage
 	}
 	sort.Strings(cfg.Warp.Selected)
@@ -155,22 +155,22 @@ removes the route, and direct traffic is never affected.`)
 	if mode != config.WarpOff {
 		if err := client.Host.Check(); err != nil {
 			// The intent is still worth recording: the node keeps its route and exits directly, and
-			// the moment the host gains a tun device a re-run of `uv init` turns WARP on.
+			// the moment the host gains a tun device a re-run of `termit-uv init` turns WARP on.
 			fmt.Fprintf(a.stdout, "WARP cannot run on this host: %v\n", err)
 			fmt.Fprintln(a.stdout, "the mode is recorded and traffic exits directly")
 		} else if err := client.Ensure(context.Background()); err != nil {
-			fmt.Fprintf(a.stderr, "uv warp mode: %v\n", err)
+			fmt.Fprintf(a.stderr, "termit-uv warp mode: %v\n", err)
 			return exitFailure
 		}
 	} else if client.Installed(context.Background()) {
 		if err := client.Disconnect(context.Background()); err != nil {
-			fmt.Fprintf(a.stderr, "uv warp mode: %v\n", err)
+			fmt.Fprintf(a.stderr, "termit-uv warp mode: %v\n", err)
 			return exitFailure
 		}
 	}
 
 	if err := cfg.Save(*configFlag); err != nil {
-		fmt.Fprintf(a.stderr, "uv warp mode: %v\n", err)
+		fmt.Fprintf(a.stderr, "termit-uv warp mode: %v\n", err)
 		return exitFailure
 	}
 	if code := a.applyWarpRoute(cfg, *configFlag); code != exitOK {
@@ -192,7 +192,7 @@ removes the route, and direct traffic is never affected.`)
 func (a *application) applyWarpRoute(cfg *config.Config, configPath string) int {
 	installer, err := install.New(a.installOptions(cfg, configPath))
 	if err != nil {
-		fmt.Fprintf(a.stderr, "uv warp mode: %v\n", err)
+		fmt.Fprintf(a.stderr, "termit-uv warp mode: %v\n", err)
 		return exitFailure
 	}
 	report, err := installer.Run(context.Background(), install.RunOptions{
@@ -202,7 +202,7 @@ func (a *application) applyWarpRoute(cfg *config.Config, configPath string) int 
 	})
 	if err != nil {
 		a.printSteps(report)
-		fmt.Fprintf(a.stderr, "uv warp mode: %v\n", err)
+		fmt.Fprintf(a.stderr, "termit-uv warp mode: %v\n", err)
 		return exitFailure
 	}
 	if _, err := a.exec.Run(context.Background(), install.Cmd{Name: "systemctl", Args: []string{"is-active", "--quiet", "termit-uv-agent"}}); err == nil {
@@ -210,7 +210,7 @@ func (a *application) applyWarpRoute(cfg *config.Config, configPath string) int 
 		// because an earlier one was too recent.
 		_, _ = a.exec.Run(context.Background(), install.Cmd{Name: "systemctl", Args: []string{"reset-failed", "termit-uv-agent"}})
 		if _, err := a.exec.Run(context.Background(), install.Cmd{Name: "systemctl", Args: []string{"restart", "termit-uv-agent"}}); err != nil {
-			fmt.Fprintf(a.stderr, "uv warp mode: restart the agent: %v\n", err)
+			fmt.Fprintf(a.stderr, "termit-uv warp mode: restart the agent: %v\n", err)
 			return exitFailure
 		}
 	}

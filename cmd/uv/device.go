@@ -19,9 +19,9 @@ const deviceUsage = `Manages the devices the owner connects with: a phone, a lap
 These are local users. They exist only on this node, they are never shared with the mesh, and their
 UUIDs never leave this machine.
 
-  uv device list
-  uv device add --label phone [--uuid 8f1c2d3e-...]
-  uv device remove phone
+  termit-uv device list
+  termit-uv device add --label phone [--uuid 8f1c2d3e-...]
+  termit-uv device remove phone
 
 Adding or removing a device rewrites the proxy configuration and restarts the core, which drops
 connections for a moment.`
@@ -43,7 +43,7 @@ func (a *application) runDevice(args []string) int {
 	case "remove", "rm":
 		return a.deviceRemove(args[1:])
 	default:
-		fmt.Fprintf(a.stderr, "uv device: unknown subcommand %q\n", args[0])
+		fmt.Fprintf(a.stderr, "termit-uv device: unknown subcommand %q\n", args[0])
 		return exitUsage
 	}
 }
@@ -56,7 +56,7 @@ func (a *application) deviceList(args []string) int {
 	if err := flags.Parse(args); err != nil {
 		return exitUsage
 	}
-	cfg, node, code := a.loadInstalled(*configPath, "uv device list")
+	cfg, node, code := a.loadInstalled(*configPath, "termit-uv device list")
 	if code != exitOK {
 		return code
 	}
@@ -68,7 +68,7 @@ func (a *application) deviceList(args []string) int {
 	for _, user := range node.LocalUsers {
 		uri, err := a.deviceURI(cfg, node, user.ID, user.Label)
 		if err != nil {
-			fmt.Fprintf(a.stderr, "uv device list: %v\n", err)
+			fmt.Fprintf(a.stderr, "termit-uv device list: %v\n", err)
 			return exitFailure
 		}
 		fmt.Fprintf(a.stdout, "%-16s %s\n", user.Label, state.Fingerprint(user.ID))
@@ -88,10 +88,10 @@ func (a *application) deviceAdd(args []string) int {
 		return exitUsage
 	}
 	if strings.TrimSpace(*label) == "" {
-		fmt.Fprintln(a.stderr, "uv device add: --label is required")
+		fmt.Fprintln(a.stderr, "termit-uv device add: --label is required")
 		return exitUsage
 	}
-	cfg, node, code := a.loadInstalled(*configPath, "uv device add")
+	cfg, node, code := a.loadInstalled(*configPath, "termit-uv device add")
 	if code != exitOK {
 		return code
 	}
@@ -100,25 +100,25 @@ func (a *application) deviceAdd(args []string) int {
 	if id == "" {
 		generated, err := install.NewUUID()
 		if err != nil {
-			fmt.Fprintf(a.stderr, "uv device add: %v\n", err)
+			fmt.Fprintf(a.stderr, "termit-uv device add: %v\n", err)
 			return exitFailure
 		}
 		id = generated
 	}
 	if err := node.AddLocalUser(id, *label, a.now()); err != nil {
-		fmt.Fprintf(a.stderr, "uv device add: %v\n", err)
+		fmt.Fprintf(a.stderr, "termit-uv device add: %v\n", err)
 		return exitFailure
 	}
 	if err := node.SaveAt(cfg.Paths.StatePath(), a.now()); err != nil {
-		fmt.Fprintf(a.stderr, "uv device add: %v\n", err)
+		fmt.Fprintf(a.stderr, "termit-uv device add: %v\n", err)
 		return exitFailure
 	}
-	if code := a.applyXrayConfig(cfg, *configPath, "uv device add"); code != exitOK {
+	if code := a.applyXrayConfig(cfg, *configPath, "termit-uv device add"); code != exitOK {
 		return code
 	}
 	uri, err := a.deviceURI(cfg, node, id, *label)
 	if err != nil {
-		fmt.Fprintf(a.stderr, "uv device add: %v\n", err)
+		fmt.Fprintf(a.stderr, "termit-uv device add: %v\n", err)
 		return exitFailure
 	}
 	fmt.Fprintf(a.stdout, "added %s\n%s\n", *label, uri)
@@ -134,22 +134,22 @@ func (a *application) deviceRemove(args []string) int {
 		return exitUsage
 	}
 	if flags.NArg() != 1 {
-		fmt.Fprintln(a.stderr, "uv device remove: give one device label or UUID")
+		fmt.Fprintln(a.stderr, "termit-uv device remove: give one device label or UUID")
 		return exitUsage
 	}
-	cfg, node, code := a.loadInstalled(*configPath, "uv device remove")
+	cfg, node, code := a.loadInstalled(*configPath, "termit-uv device remove")
 	if code != exitOK {
 		return code
 	}
 	if err := node.RemoveLocalUser(flags.Arg(0)); err != nil {
-		fmt.Fprintf(a.stderr, "uv device remove: %v\n", err)
+		fmt.Fprintf(a.stderr, "termit-uv device remove: %v\n", err)
 		return exitFailure
 	}
 	if err := node.SaveAt(cfg.Paths.StatePath(), a.now()); err != nil {
-		fmt.Fprintf(a.stderr, "uv device remove: %v\n", err)
+		fmt.Fprintf(a.stderr, "termit-uv device remove: %v\n", err)
 		return exitFailure
 	}
-	if code := a.applyXrayConfig(cfg, *configPath, "uv device remove"); code != exitOK {
+	if code := a.applyXrayConfig(cfg, *configPath, "termit-uv device remove"); code != exitOK {
 		return code
 	}
 	fmt.Fprintf(a.stdout, "removed %s\n", flags.Arg(0))

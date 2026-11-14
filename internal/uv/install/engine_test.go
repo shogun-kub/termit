@@ -114,7 +114,7 @@ func testConfig(t *testing.T) *config.Config {
 	t.Helper()
 	dir := t.TempDir()
 	cfg := config.Default()
-	cfg.Domain = "vpn.example.com"
+	cfg.Domain = "node.example.com"
 	cfg.Paths.ConfigDir = filepath.Join(dir, "etc")
 	cfg.Paths.StateDir = filepath.Join(dir, "var")
 	cfg.Paths.CertDir = filepath.Join(cfg.Paths.StateDir, "certs")
@@ -347,7 +347,7 @@ func TestNewRejectsDomainChange(t *testing.T) {
 		Now:    func() time.Time { return engineNow },
 		Arch:   "amd64",
 	})
-	if err == nil || !strings.Contains(err.Error(), "uv migrate") {
+	if err == nil || !strings.Contains(err.Error(), "termit-uv migrate") {
 		t.Fatalf("New error = %v, want a migrate hint", err)
 	}
 }

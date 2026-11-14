@@ -1,5 +1,5 @@
-// Package server is the management server's HTTP surface: the agent API, the subscription endpoint
-// and the two operational endpoints.
+// Package server is the management server's HTTP surface: the agent API, the subscription endpoint,
+// the two operational endpoints, and the masking site that answers everything else.
 //
 // Admin operations are deliberately absent. They live on a unix socket (M2.6) so that the public
 // surface stays small enough to reason about: enrollment needs an invite, everything else needs an
@@ -18,6 +18,8 @@ import (
 	"time"
 
 	"github.com/shogun-kub/termit/internal/acme"
+	"github.com/shogun-kub/termit/internal/decoy"
+	"github.com/shogun-kub/termit/internal/mn/config"
 	"github.com/shogun-kub/termit/internal/mn/enroll"
 	"github.com/shogun-kub/termit/internal/mn/metrics"
 	"github.com/shogun-kub/termit/internal/mn/store"
@@ -33,7 +35,11 @@ type Options struct {
 	Store      *store.Store
 	Enrollment *enroll.Service
 	Domain     string
-	Logger     *slog.Logger
+	// APIPrefix is the path the node API lives under, so a scanner cannot find it by trying /api/v1.
+	// Empty means the built-in default, which is what tests and a configuration written before the
+	// option existed expect.
+	APIPrefix string
+	Logger    *slog.Logger
 	// Attempts is how many enrollments one address may try inside Window.
 	Attempts int
 	Window   time.Duration
@@ -54,6 +60,9 @@ type Options struct {
 	// CertPath is the server's own certificate; its expiry is a gauge, because a management server
 	// that renews only on restart is a failure an alert should catch.
 	CertPath string
+	// Decoy is the masking site served at / and for every path the API does not claim. Nil means none:
+	// a test, or an operator who turned it off, gets the bare 404.
+	Decoy *decoy.Site
 }
 
 // Handler is the router plus its state.
@@ -96,16 +105,32 @@ func New(opts Options) (*Handler, error) {
 	}
 	h := &Handler{opts: opts, limiter: newLimiter(opts.Attempts, opts.Window, opts.Now),
 		subs: newLimiter(subscriptionAttempts, subscriptionWindow, opts.Now)}
+	if h.opts.APIPrefix == "" {
+		h.opts.APIPrefix = config.DefaultAPIPrefix
+	}
+	prefix := strings.TrimRight(h.opts.APIPrefix, "/")
 	h.mux = http.NewServeMux()
-	h.mux.HandleFunc("GET /healthz", h.health)
+	// Health and the node API live under the prefix: a probe looking for /healthz or /api/v1 must find
+	// nothing, or the prefix would only hide the endpoints from somebody who did not read the source.
+	h.mux.HandleFunc("GET "+prefix+"/healthz", h.health)
+	h.mux.HandleFunc("POST "+prefix+"/enroll", h.enroll)
+	h.mux.HandleFunc("POST "+prefix+"/agent/sync", h.sync)
+	h.mux.HandleFunc("POST "+prefix+"/agent/unblock", h.unblock)
+	h.mux.HandleFunc("POST "+prefix+"/agent/relocate", h.relocate)
+	// Metrics stay where a scrape configuration expects them, and are refused off loopback: the path is
+	// not a secret, the access is.
 	h.mux.HandleFunc("GET /metrics", h.metrics)
-	h.mux.HandleFunc("POST /api/v1/enroll", h.enroll)
-	h.mux.HandleFunc("POST /api/v1/agent/sync", h.sync)
-	h.mux.HandleFunc("POST /api/v1/agent/unblock", h.unblock)
-	h.mux.HandleFunc("POST /api/v1/agent/relocate", h.relocate)
+	// Subscriptions stay at /sub: the URL is handed to a client and has to survive, and the token in it
+	// is a 256-bit secret, not a path a scanner can enumerate.
 	h.mux.HandleFunc("GET /sub/{token}", h.subscription)
 	h.mux.HandleFunc("GET /sub/{token}/json", h.subscription)
-	h.mux.HandleFunc("/", h.notFound)
+	if h.opts.Decoy != nil {
+		// The catch-all is the site: every path the API does not claim is a page of an ordinary-looking
+		// website, and a path that does not exist is that site's own 404 rather than Go's plain text.
+		h.mux.Handle("/", newDecoyHandler(h.opts.Decoy))
+	} else {
+		h.mux.HandleFunc("/", h.notFound)
+	}
 	return h, nil
 }
 
@@ -136,7 +161,7 @@ func (h *Handler) health(w http.ResponseWriter, r *http.Request) {
 // it runs on the same host.
 //
 // The counters are aggregates and the gauges are read here rather than cached, because a number that
-// disagrees with `mn status` would cost more to explain than one small query costs to run.
+// disagrees with `termit-mn status` would cost more to explain than one small query costs to run.
 func (h *Handler) metrics(w http.ResponseWriter, r *http.Request) {
 	if !isLoopback(r.RemoteAddr) {
 		http.Error(w, "metrics are available on loopback only", http.StatusForbidden)
@@ -209,7 +234,11 @@ func (h *Handler) enroll(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		var refused *enroll.Error
 		if errors.As(err, &refused) {
-			h.opts.Logger.Info("enrollment refused", "domain", req.Domain, "code", refused.Code, "status", refused.Status)
+			// Warn, not Info: a refused enrollment is the one line an operator hunting a node that
+			// cannot join needs, and the service runs at Warn by default.
+			h.opts.Logger.Warn("enrollment refused",
+				"domain", req.Domain, "code", refused.Code, "status", refused.Status,
+				"detail", refused.Detail, "ip", ip)
 			writeProblem(w, refused.Status, proto.NewProblem(refused.Status, refused.Code, titleFor(refused.Status), refused.Detail))
 			return
 		}

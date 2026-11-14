@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/shogun-kub/termit/internal/uv/decoy"
+	"github.com/shogun-kub/termit/internal/decoy"
 	"github.com/shogun-kub/termit/internal/uv/web"
 )
 
@@ -18,7 +18,7 @@ var update = flag.Bool("update", false, "rewrite the golden file")
 func testSite(t *testing.T) *decoy.Site {
 	t.Helper()
 	site, err := decoy.Generate(decoy.Spec{
-		Domain:   "vpn.example.com",
+		Domain:   "node.example.com",
 		Seed:     "0011aabbccddeeff",
 		Template: decoy.TemplatePortal,
 		Now:      time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC),

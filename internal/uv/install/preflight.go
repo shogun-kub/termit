@@ -156,7 +156,7 @@ func (p *preflight) checkRoot(context.Context) Check {
 	}
 	return Check{
 		Name: "root", Status: StatusFail, Detail: "not running as root",
-		Hint: "run as root (sudo uv init …); the installer writes to /etc and /var/lib",
+		Hint: "run as root (sudo termit-uv init …); the installer writes to /etc and /var/lib",
 	}
 }
 
@@ -258,13 +258,16 @@ func (p *preflight) checkPorts(ctx context.Context) Check {
 
 	var busy, ours []string
 	for _, port := range []int{80, 443} {
+		// One port usually has two listeners, one for each address family. The report names the port
+		// once: `:80 and :80 and :443 and :443` reads like a fault.
+		served := false
 		for _, l := range listeners {
 			if l.Port != port {
 				continue
 			}
 			switch {
 			case l.Process == "nginx" && termitVhost:
-				ours = append(ours, fmt.Sprintf(":%d", port))
+				served = true
 			case l.Process == "nginx":
 				return Check{
 					Name: "ports", Status: StatusWarn,
@@ -275,11 +278,14 @@ func (p *preflight) checkPorts(ctx context.Context) Check {
 				return Check{
 					Name: "ports", Status: StatusWarn,
 					Detail: fmt.Sprintf(":%d is in use by a process this user cannot inspect", port),
-					Hint:   "run uv doctor as root to see which process holds the port",
+					Hint:   "run termit-uv doctor as root to see which process holds the port",
 				}
 			default:
 				busy = append(busy, fmt.Sprintf(":%d by %s", port, l.Process))
 			}
+		}
+		if served {
+			ours = append(ours, fmt.Sprintf(":%d", port))
 		}
 	}
 	switch {
@@ -370,7 +376,7 @@ func (p *preflight) checkTun(context.Context) Check {
 		// operator sees the warning here rather than a failed install.
 		return Check{
 			Name: "tun", Status: StatusWarn, Detail: "/dev/net/tun is missing, so WARP cannot run on this host",
-			Hint: "traffic exits directly and uv status says so; set warp.mode: off to silence this warning",
+			Hint: "traffic exits directly and termit-uv status says so; set warp.mode: off to silence this warning",
 		}
 	default:
 		return Check{Name: "tun", Status: StatusSkip,

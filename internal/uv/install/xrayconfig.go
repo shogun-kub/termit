@@ -15,7 +15,7 @@ import (
 )
 
 // ownerEmail is the address the node's own device is known by. The API and the logs use it, and the
-// owner sees it in `uv status`, so it is a fixed word rather than a random string.
+// owner sees it in `termit-uv status`, so it is a fixed word rather than a random string.
 const ownerEmail = "owner"
 
 // xrayConfigStep writes the proxy core's configuration.
@@ -45,7 +45,7 @@ func (s *xrayConfigStep) spec() (xray.Spec, error) {
 	}
 	// An enrolled node has two more kinds of client that must survive any local regeneration: the
 	// server's probe credential, without which the next remote check fails, and every peer's pair
-	// credential, without which the mesh loses this node. `uv device add` used to write a config that
+	// credential, without which the mesh loses this node. `termit-uv device add` used to write a config that
 	// dropped both, and the node looked broken minutes later.
 	if s.e.st.Credentials != nil && s.e.st.Credentials.ProbeUUID != "" {
 		spec.Clients = append(spec.Clients, xray.Client{ID: s.e.st.Credentials.ProbeUUID, Email: "probe@termit"})

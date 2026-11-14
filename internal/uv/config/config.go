@@ -3,7 +3,7 @@
 //
 // The split between this file and the state file is deliberate. The configuration holds what the
 // owner decides (domain, ACME account, pinned Xray release); the state holds what the agent
-// generates once (identity, decoy seed, certificate). Re-running `uv init` or editing the config
+// generates once (identity, decoy seed, certificate). Re-running `termit-uv init` or editing the config
 // never regenerates a credential, and no secret is ever written here.
 package config
 
@@ -131,7 +131,7 @@ type Warp struct {
 	// subdomains; everything else exits directly.
 	Selected []string `yaml:"selected,omitempty"`
 	// FailOpen falls back to direct egress when WARP is unhealthy. The default is true: a node whose
-	// WARP is down keeps carrying traffic, and uv status says that the exit is direct. An owner who
+	// WARP is down keeps carrying traffic, and termit-uv status says that the exit is direct. An owner who
 	// would rather lose connectivity than reveal the address sets it to false.
 	FailOpen *bool `yaml:"fail_open,omitempty"`
 	// Enabled is the switch this setting had before modes existed. It is read so an existing
@@ -176,7 +176,7 @@ type Paths struct {
 	ErrorLog     string `yaml:"error_log"`
 }
 
-// Default returns a configuration with every default applied and no domain. It is what `uv doctor`
+// Default returns a configuration with every default applied and no domain. It is what `termit-uv doctor`
 // uses on a host that has not been installed yet.
 func Default() *Config {
 	c := &Config{SchemaVersion: SchemaVersion}
@@ -237,7 +237,7 @@ func (c *Config) Save(filename string) error {
 // Marshal renders the configuration as the bytes stored on disk.
 func (c *Config) Marshal() ([]byte, error) {
 	var b bytes.Buffer
-	b.WriteString("# Termit node configuration, written by `uv init`.\n")
+	b.WriteString("# Termit node configuration, written by `termit-uv init`.\n")
 	b.WriteString("# The node's identity, certificate and decoy seed live in the state file, never here.\n")
 	enc := yaml.NewEncoder(&b)
 	enc.SetIndent(2)
@@ -256,6 +256,9 @@ func (c *Config) Validate() error {
 	var problems []error
 
 	if err := validateDomain(c.Domain); err != nil {
+		problems = append(problems, err)
+	}
+	if err := validateMNURL(c.MN.URL); err != nil {
 		problems = append(problems, err)
 	}
 	if c.Email != "" && (strings.ContainsAny(c.Email, " \t") || !strings.Contains(c.Email, "@") || len(c.Email) > emailLocalMaxLen) {
@@ -462,6 +465,27 @@ func (p Paths) validate() []error {
 		}
 	}
 	return problems
+}
+
+// validateMNURL keeps mn.url an absolute http(s) URL. The path matters: it carries the management
+// server's API prefix, and a URL without it is a node that enrolls and then cannot sync.
+func validateMNURL(raw string) error {
+	if raw == "" {
+		return nil // a node may be installed before it is given a server
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("mn.url %q is not a URL: %w", raw, err)
+	}
+	switch {
+	case parsed.Scheme != "https" && parsed.Scheme != "http":
+		return fmt.Errorf("mn.url %q must start with https:// or http://", raw)
+	case parsed.Host == "":
+		return fmt.Errorf("mn.url %q has no host", raw)
+	case parsed.RawQuery != "" || parsed.Fragment != "":
+		return fmt.Errorf("mn.url %q must not carry a query or a fragment", raw)
+	}
+	return nil
 }
 
 func validateDomain(domain string) error {

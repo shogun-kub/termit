@@ -14,6 +14,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/shogun-kub/termit/internal/proto"
 )
 
 const (
@@ -71,7 +73,7 @@ type WarpSpec struct {
 func (w WarpSpec) Enabled() bool { return w.Mode == "all" || w.Mode == "selected" }
 
 // Constants for the WARP sidecar. They are exported because the agent, the installer and the
-// `uv warp` command all have to agree on the same address and probe.
+// `termit-uv warp` command all have to agree on the same address and probe.
 const (
 	// DefaultWarpSocks is warp-cli's proxy-mode SOCKS5 listener on loopback.
 	DefaultWarpSocks = "127.0.0.1:40000"
@@ -199,9 +201,12 @@ func Generate(spec Spec) ([]byte, error) {
 				Protocol: "vless",
 				Settings: vlessSettings{Clients: clients, Decryption: "none"},
 				Stream: &stream{
-					Network:  "xhttp",
+					// The transport and its mode are the client's profile, so both come from proto. The
+					// core's security is "none" because nginx terminates TLS: Xray only ever sees loopback
+					// plaintext.
+					Network:  proto.Network,
 					Security: "none",
-					XHTTP:    &xhttpSettings{Path: spec.Path, Mode: "packet-up"},
+					XHTTP:    &xhttpSettings{Path: spec.Path, Mode: proto.Mode},
 				},
 				Sniffing: &sniffing{Enabled: true, DestOverride: []string{"http", "tls", "quic"}},
 			},

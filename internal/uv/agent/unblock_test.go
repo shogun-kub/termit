@@ -51,7 +51,7 @@ func TestUnblockReportsARefusal(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusConflict)
 		_ = json.NewEncoder(w).Encode(proto.NewProblem(http.StatusConflict,
-			proto.CodeRelocateRequired, "Conflict", "use uv migrate"))
+			proto.CodeRelocateRequired, "Conflict", "use termit-uv migrate"))
 	}))
 	defer server.Close()
 

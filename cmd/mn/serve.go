@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os/signal"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/shogun-kub/termit/internal/decoy"
 	"github.com/shogun-kub/termit/internal/mn/admin"
 	"github.com/shogun-kub/termit/internal/mn/cert"
 	"github.com/shogun-kub/termit/internal/mn/config"
@@ -42,7 +44,7 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 	verbose := flags.Bool("v", false, "log at info level")
 	plainHTTP := flags.Bool("http", false, "serve plain HTTP; development only, never on a public address")
 	if err := flags.Parse(args); err != nil {
-		return exitUsage
+		return flagExit(err)
 	}
 
 	level := slog.LevelWarn
@@ -53,7 +55,7 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 
 	cfg, err := config.Load(*configPath)
 	if err != nil {
-		fmt.Fprintf(stderr, "mn serve: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn serve: %v\n", err)
 		return exitFailure
 	}
 
@@ -65,7 +67,7 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 
 	db, err := store.Open(ctx, store.Options{Path: cfg.DBPath})
 	if err != nil {
-		fmt.Fprintf(stderr, "mn serve: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn serve: %v\n", err)
 		return exitFailure
 	}
 	defer func() { _ = db.Close() }()
@@ -83,9 +85,16 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 	scheduler.PolicyFn = policyFromSettings(cfg, db)
 	scheduler.Metrics = registry
 
-	handler, err := buildHandler(cfg, db, logger, registry, proberInfo)
+	mask, err := decoySite(ctx, cfg, db)
 	if err != nil {
-		fmt.Fprintf(stderr, "mn serve: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn serve: %v\n", err)
+		return exitFailure
+	}
+	logger.Info("masking site ready", "template", mask.Template, "digest", mask.Digest[:12])
+
+	handler, err := buildHandler(cfg, db, logger, registry, proberInfo, mask)
+	if err != nil {
+		fmt.Fprintf(stderr, "termit-mn serve: %v\n", err)
 		return exitFailure
 	}
 	server := &http.Server{
@@ -113,6 +122,7 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 				Domain:        cfg.Domain,
 				Version:       version.Version,
 				Listen:        cfg.Listen,
+				APIPrefix:     cfg.APIPrefix,
 				Started:       start,
 				SchemaVersion: store.SchemaVersion,
 				ProberUp:      proberInfo.Up,
@@ -120,7 +130,7 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 			}
 		}
 		if err != nil {
-			fmt.Fprintf(stderr, "mn serve: %v\n", err)
+			fmt.Fprintf(stderr, "termit-mn serve: %v\n", err)
 			return exitFailure
 		}
 		logger.Info("admin socket ready", "path", cfg.AdminSocket)
@@ -144,15 +154,20 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 	}()
 
 	serveErr := make(chan error, 1)
+	ln, err := listen(cfg, logger)
+	if err != nil {
+		fmt.Fprintf(stderr, "termit-mn serve: %v\n", err)
+		return exitFailure
+	}
 	if *plainHTTP {
-		fmt.Fprintln(stderr, "mn serve: --http is set; the API is not encrypted")
-		go func() { serveErr <- server.ListenAndServe() }()
+		fmt.Fprintln(stderr, "termit-mn serve: --http is set; the API is not encrypted")
+		go func() { serveErr <- server.Serve(ln) }()
 	} else {
 		// Issuing blocks startup on purpose: a management API that silently falls back to HTTP is
 		// worse than one that refuses to start.
 		tlsPaths, err := cert.Ensure(ctx, cert.Options{Config: cfg, Logger: logger})
 		if err != nil {
-			fmt.Fprintf(stderr, "mn serve: %v\n", err)
+			fmt.Fprintf(stderr, "termit-mn serve: %v\n", err)
 			return exitFailure
 		}
 		if adminService != nil {
@@ -169,13 +184,13 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 		}, logger)
 		logger.Info("serving TLS", "domain", cfg.Domain, "listen", cfg.Listen,
 			"not_after", tlsPaths.NotAfter.UTC().Format(time.RFC3339))
-		go func() { serveErr <- server.ListenAndServeTLS("", "") }()
+		go func() { serveErr <- server.ServeTLS(ln, "", "") }()
 	}
 
 	select {
 	case err := <-serveErr:
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			fmt.Fprintf(stderr, "mn serve: %v\n", err)
+			fmt.Fprintf(stderr, "termit-mn serve: %v\n", err)
 			return exitFailure
 		}
 		return exitOK
@@ -186,15 +201,35 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownGrace)
 	defer cancel()
 	if err := server.Shutdown(shutdownCtx); err != nil {
-		fmt.Fprintf(stderr, "mn serve: shutdown: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn serve: shutdown: %v\n", err)
 		return exitFailure
 	}
 	return exitOK
 }
 
+// listen binds the API listener, wrapped so that a proxy on http.trusted_proxies may name the client
+// in a PROXY protocol header. A server with no trusted proxies is exposed directly: the listener is
+// returned untouched and every peer is the client.
+func listen(cfg *config.Config, logger *slog.Logger) (net.Listener, error) {
+	bound, err := net.Listen("tcp", cfg.Listen)
+	if err != nil {
+		return nil, fmt.Errorf("listen %s: %w", cfg.Listen, err)
+	}
+	if len(cfg.TrustedProxies) == 0 {
+		return bound, nil
+	}
+	trusted, err := server.ParseTrustedProxies(cfg.TrustedProxies)
+	if err != nil {
+		_ = bound.Close()
+		return nil, err
+	}
+	logger.Info("reading the PROXY protocol", "trusted", cfg.TrustedProxies)
+	return server.NewProxyProtoListener(bound, trusted, 0), nil
+}
+
 // buildHandler wires the HTTP surface: the enrollment service needs a store, resolvers and a prober.
 func buildHandler(cfg *config.Config, db *store.Store, logger *slog.Logger,
-	registry *metrics.Registry, proberInfo proberState) (http.Handler, error) {
+	registry *metrics.Registry, proberInfo proberState, mask *decoy.Site) (http.Handler, error) {
 	resolvers := []enroll.Resolver{dns.System{}}
 	if cfg.DNS.Secondary != "" {
 		resolvers = append(resolvers, dns.Server{Addr: cfg.DNS.Secondary})
@@ -223,6 +258,7 @@ func buildHandler(cfg *config.Config, db *store.Store, logger *slog.Logger,
 		Store:         db,
 		Enrollment:    service,
 		Domain:        cfg.Domain,
+		APIPrefix:     cfg.APIPrefix,
 		Logger:        logger,
 		Attempts:      cfg.Enrollment.Attempts,
 		Window:        time.Duration(cfg.Enrollment.WindowSeconds) * time.Second,
@@ -233,6 +269,7 @@ func buildHandler(cfg *config.Config, db *store.Store, logger *slog.Logger,
 		Metrics:       registry,
 		ProberUp:      proberInfo.Up,
 		CertPath:      filepath.Join(cfg.CertDir(), "fullchain.pem"),
+		Decoy:         mask,
 	})
 }
 
@@ -286,7 +323,7 @@ func retention(ctx context.Context, db *store.Store, logger *slog.Logger) {
 	}
 }
 
-// policyFromSettings lets `mn policy set` take effect on the next pass without a restart. An empty
+// policyFromSettings lets `termit-mn policy set` take effect on the next pass without a restart. An empty
 // setting means "use the configuration", which is what an unconfigured install gets anyway.
 func policyFromSettings(cfg *config.Config, db *store.Store) func(ctx context.Context) sched.Policy {
 	return func(ctx context.Context) sched.Policy {

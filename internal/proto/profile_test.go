@@ -1,6 +1,8 @@
 package proto_test
 
 import (
+	"encoding/json"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -17,11 +19,11 @@ func TestProfileRoundTrip(t *testing.T) {
 	}{
 		{
 			name:    "minimal",
-			profile: proto.Profile{Domain: "vpn.example.com", UUID: testUUID, Path: "/a1b2c3d4e5f60718/"},
+			profile: proto.Profile{Domain: "node.example.com", UUID: testUUID, Path: "/a1b2c3d4e5f60718/"},
 		},
 		{
 			name:    "with a label",
-			profile: proto.Profile{Domain: "vpn.example.com", UUID: testUUID, Path: "/x/", Label: "home router"},
+			profile: proto.Profile{Domain: "node.example.com", UUID: testUUID, Path: "/x/", Label: "home router"},
 		},
 		{
 			name:    "punycode and a two-letter tld",
@@ -56,7 +58,7 @@ func TestProfileRoundTrip(t *testing.T) {
 func TestBuildVLESSUrlShape(t *testing.T) {
 	t.Parallel()
 	uri, err := proto.BuildVLESSUrl(proto.Profile{
-		Domain: "vpn.example.com",
+		Domain: "node.example.com",
 		UUID:   testUUID,
 		Path:   "/a1b2c3d4e5f60718/",
 		Label:  "laptop",
@@ -65,13 +67,15 @@ func TestBuildVLESSUrlShape(t *testing.T) {
 		t.Fatalf("BuildVLESSUrl: %v", err)
 	}
 	for _, want := range []string{
-		"vless://" + testUUID + "@vpn.example.com:443",
+		"vless://" + testUUID + "@node.example.com:443",
 		"encryption=none",
 		"security=tls",
-		"sni=vpn.example.com",
+		"sni=node.example.com",
 		"type=xhttp",
 		"mode=packet-up",
 		"path=%2Fa1b2c3d4e5f60718%2F",
+		"fp=firefox",
+		"extra=",
 		"#laptop",
 	} {
 		if !strings.Contains(uri, want) {
@@ -83,21 +87,41 @@ func TestBuildVLESSUrlShape(t *testing.T) {
 			t.Errorf("uri %q contains %q, which the profile does not use", uri, forbidden)
 		}
 	}
+	// A client parses extra as JSON after URL-decoding the query, so the round trip through
+	// url.Query must give back an object, not a broken string.
+	parsed, err := url.Parse(uri)
+	if err != nil {
+		t.Fatalf("the built URI does not parse: %v", err)
+	}
+	var extra map[string]any
+	if err := json.Unmarshal([]byte(parsed.Query().Get("extra")), &extra); err != nil {
+		t.Fatalf("extra is not a JSON object a client can read: %v", err)
+	}
+	if extra["xPaddingBytes"] == nil {
+		t.Errorf("extra carries no padding: %v", extra)
+	}
+	xmux, ok := extra["xmux"].(map[string]any)
+	if !ok {
+		t.Fatalf("extra carries no xmux block: %v", extra)
+	}
+	if xmux["maxConcurrency"] == nil || xmux["hMaxReusableSecs"] == nil {
+		t.Errorf("xmux is missing the reuse limits: %v", xmux)
+	}
 }
 
 func TestParseVLESSUrlRejects(t *testing.T) {
 	t.Parallel()
-	valid := "vless://" + testUUID + "@vpn.example.com:443?encryption=none&security=tls&type=xhttp&path=%2Fp%2F"
+	valid := "vless://" + testUUID + "@node.example.com:443?encryption=none&security=tls&type=xhttp&path=%2Fp%2F"
 	cases := []struct{ name, uri, want string }{
-		{"scheme", "trojan://" + testUUID + "@vpn.example.com:443", "scheme"},
-		{"no user", "vless://vpn.example.com:443", "no user id"},
-		{"no port", "vless://" + testUUID + "@vpn.example.com?security=tls&type=xhttp", "no port"},
-		{"wrong port", "vless://" + testUUID + "@vpn.example.com:8443?security=tls&type=xhttp", "port"},
+		{"scheme", "trojan://" + testUUID + "@node.example.com:443", "scheme"},
+		{"no user", "vless://node.example.com:443", "no user id"},
+		{"no port", "vless://" + testUUID + "@node.example.com?security=tls&type=xhttp", "no port"},
+		{"wrong port", "vless://" + testUUID + "@node.example.com:8443?security=tls&type=xhttp", "port"},
 		{"allowInsecure", valid + "&allowInsecure=1", "allowInsecure"},
 		{"insecure", valid + "&insecure=1", "allowInsecure"},
-		{"plaintext", "vless://" + testUUID + "@vpn.example.com:443?security=none&type=xhttp", "security"},
-		{"ws transport", "vless://" + testUUID + "@vpn.example.com:443?security=tls&type=ws", "type"},
-		{"bad uuid", "vless://not-a-uuid@vpn.example.com:443?security=tls&type=xhttp", "uuid"},
+		{"plaintext", "vless://" + testUUID + "@node.example.com:443?security=none&type=xhttp", "security"},
+		{"ws transport", "vless://" + testUUID + "@node.example.com:443?security=tls&type=ws", "type"},
+		{"bad uuid", "vless://not-a-uuid@node.example.com:443?security=tls&type=xhttp", "uuid"},
 	}
 	for _, tc := range cases {
 		tc := tc

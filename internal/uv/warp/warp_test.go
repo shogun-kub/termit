@@ -404,7 +404,7 @@ func TestEnsureWaitsForTheConnection(t *testing.T) {
 }
 
 // A host without the package is a normal state, not an error: the installer's executor wraps the
-// launch failure, so `uv warp status` has to recognise a wrapped exec.Error and report "not
+// launch failure, so `termit-uv warp status` has to recognise a wrapped exec.Error and report "not
 // installed". Missing this is what made the status command fail on a fresh node.
 func TestLocalStatusTreatsAMissingBinaryAsNotInstalled(t *testing.T) {
 	t.Parallel()
@@ -453,7 +453,7 @@ func (execRunner) Run(ctx context.Context, name string, args ...string) (string,
 
 // The stub above shows the expected shape; this one shows the real one. A binary that does not exist
 // produces *exec.Error from the launcher, wrapped by the caller — the path that used to surface as a
-// failure of `uv warp status` on a node that simply had not installed the package yet.
+// failure of `termit-uv warp status` on a node that simply had not installed the package yet.
 func TestLocalStatusOnAHostWithoutWarpCLI(t *testing.T) {
 	t.Parallel()
 	client := warp.New(execRunner{})

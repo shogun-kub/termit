@@ -1,8 +1,10 @@
 name: ci
 
+# Every branch that the release process uses (AGENTS.md §9) is checked: `dev` and `release/<version>`
+# are where work actually happens, `main` is only ever a merge of a stabilised branch.
 on:
   push:
-    branches: [main]
+    branches: [main, dev, 'release/**']
   pull_request:
 
 permissions:

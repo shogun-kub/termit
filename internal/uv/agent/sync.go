@@ -59,7 +59,7 @@ func (r Remote) Fetch(ctx context.Context, agentKey string, request proto.SyncRe
 	if err != nil {
 		return proto.SyncResponse{}, fmt.Errorf("agent: encode the sync request: %w", err)
 	}
-	endpoint := strings.TrimRight(r.BaseURL, "/") + "/api/v1/agent/sync"
+	endpoint := strings.TrimRight(r.BaseURL, "/") + "/agent/sync"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return proto.SyncResponse{}, fmt.Errorf("agent: build the request: %w", err)
@@ -81,7 +81,7 @@ func (r Remote) Fetch(ctx context.Context, agentKey string, request proto.SyncRe
 		if err := json.NewDecoder(resp.Body).Decode(&problem); err == nil && problem.Code != "" {
 			return proto.SyncResponse{}, &Refusal{Status: resp.StatusCode, Problem: problem}
 		}
-		return proto.SyncResponse{}, fmt.Errorf("agent: the server answered %s", resp.Status)
+		return proto.SyncResponse{}, statusError(resp)
 	}
 
 	var answer proto.SyncResponse
@@ -562,7 +562,7 @@ func stripClients(document any) {
 
 // RememberSubscription stores the subscription URL the server hands out. A node enrolled by an older
 // build, or one whose token was rotated on the server, has no URL in its state; the next sync repairs
-// it, and `uv status` can show it again. It reports whether the stored value changed.
+// it, and `termit-uv status` can show it again. It reports whether the stored value changed.
 func RememberSubscription(st *state.State, answer proto.SyncResponse) bool {
 	if st.Credentials == nil || answer.SubscriptionURL == "" {
 		return false

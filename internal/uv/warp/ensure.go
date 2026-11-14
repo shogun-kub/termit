@@ -22,6 +22,13 @@ list=/etc/apt/sources.list.d/cloudflare-client.list
 install -d -m 0755 /usr/share/keyrings
 curl -fsSL --retry 3 --connect-timeout 15 https://pkg.cloudflareclient.com/pubkey.gpg -o "$keyring"
 chmod 0644 "$keyring"
+# Cloudflare publishes that key ASCII-armored. apt before 3.0 — Debian 12 ships 2.6 — reads the
+# signed-by file as a binary keyring, finds no key in it, and refuses the repository with NO_PUBKEY,
+# which no amount of retrying fixes. Convert to the binary form here; apt 3.x takes either.
+if head -n 1 "$keyring" | grep -q -- "-----BEGIN PGP PUBLIC KEY BLOCK-----"; then
+  sed -e '1,/^$/d' -e '/^-----END/,$d' -e '/^=/d' "$keyring" | base64 -d > "$keyring.bin"
+  mv "$keyring.bin" "$keyring"
+fi
 . /etc/os-release
 suite="${VERSION_CODENAME:-bookworm}"
 write_list() {
@@ -49,7 +56,7 @@ func (c Client) Registered(ctx context.Context) bool {
 }
 
 // Ensure converges the sidecar: the package is installed, the device is registered, the client is in
-// proxy mode and connected. Every step first asks whether its effect is already there, so `uv init`
+// proxy mode and connected. Every step first asks whether its effect is already there, so `termit-uv init`
 // can run it on a fresh host and on a converged one.
 func (c Client) Ensure(ctx context.Context) error {
 	if err := c.Host.Check(); err != nil {
@@ -120,9 +127,9 @@ func (c Client) waitConnected(ctx context.Context) error {
 	return fmt.Errorf("the client did not connect within %s: %s", time.Duration(attempts)*interval, last)
 }
 
-// Remove stops the client and removes the package. It is what `uv uninstall --purge` needs: the
-// tunnel's only purpose was this node's proxy, and leaving a connected VPN behind after the node is
-// gone would be a surprise.
+// Remove stops the client and removes the package. It is what `termit-uv uninstall --purge` needs:
+// the tunnel's only purpose was this node's proxy, and a WARP tunnel left connected after the node
+// is gone would be a surprise.
 func (c Client) Remove(ctx context.Context) error {
 	if !c.Installed(ctx) {
 		return nil

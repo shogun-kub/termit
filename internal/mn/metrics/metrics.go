@@ -4,7 +4,7 @@
 // The registry holds aggregates only. No node id, domain, token or key ever becomes a label: the
 // endpoint is scraped by a monitoring agent, and a metric is the wrong place for an inventory. That is
 // also why every gauge here is a count or a timestamp — the question "which node" belongs to
-// `mn status`, not to Prometheus.
+// `termit-mn status`, not to Prometheus.
 package metrics
 
 import (

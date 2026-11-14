@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-// Checks returns a node's check rows, newest first. It is what `mn uv show` prints and what the
+// Checks returns a node's check rows, newest first. It is what `termit-mn uv show` prints and what the
 // scheduler's tests assert on.
 func (s *Store) Checks(ctx context.Context, uvID string, limit int) ([]Check, error) {
 	if limit <= 0 {

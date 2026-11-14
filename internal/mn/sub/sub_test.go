@@ -115,6 +115,26 @@ func TestRenderJSON(t *testing.T) {
 	if profile.Outbounds[0]["tag"] != "alpha" {
 		t.Errorf("the first outbound is %v, want alpha", profile.Outbounds[0]["tag"])
 	}
+	// The client must send the profile's ClientHello, and must not offer h2: the node's nginx
+	// terminates TLS and forwards HTTP/1.1, so an h2 offer only gets in the way.
+	tlsSettings, ok := profile.Outbounds[0]["tls"].(map[string]any)
+	if !ok {
+		t.Fatalf("the first outbound has no tls settings: %v", profile.Outbounds[0])
+	}
+	if _, has := tlsSettings["alpn"]; has {
+		t.Error("the tls settings carry alpn, which this transport cannot use")
+	}
+	utls, ok := tlsSettings["utls"].(map[string]any)
+	if !ok {
+		t.Fatalf("the tls settings carry no utls block: %v", tlsSettings)
+	}
+	if utls["enabled"] != true || utls["fingerprint"] != proto.Fingerprint {
+		t.Errorf("utls = %v, want enabled with fingerprint %q", utls, proto.Fingerprint)
+	}
+	// The padding knob is Xray-only: sing-box validates strictly and would reject the field.
+	if _, has := tlsSettings["extra"]; has {
+		t.Error("the sing-box profile carries the Xray xhttp extra block")
+	}
 	if profile.Outbounds[2]["type"] != "selector" || profile.Outbounds[3]["tag"] != "direct" {
 		t.Errorf("the profile does not end with a selector and a direct outbound: %v", profile.Outbounds)
 	}

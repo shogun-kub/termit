@@ -79,7 +79,7 @@ func Uninstall(ctx context.Context, opts UninstallOptions) (*UninstallReport, er
 	}
 
 	// 0. The tunnel exists only to carry this node's traffic. Leaving it connected after the node is
-	// gone would be a VPN nobody asked for; the package itself stays, like every other package.
+	// gone would be a WARP client nobody asked for; the package itself stays, like every other package.
 	client := warp.New(warpRunner{exec: opts.Exec})
 	if client.Installed(ctx) {
 		if opts.DryRun {

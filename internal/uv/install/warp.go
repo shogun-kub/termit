@@ -12,7 +12,7 @@ import (
 // /dev/net/tun, and Cloudflare has no package for every architecture. In that case the step records
 // the refusal and reports the converged state instead of failing the node — a node without WARP is
 // still a working node, and its xray route fails open to direct. The operator sees the reason in the
-// install summary and in `uv doctor`; nothing is hidden.
+// install summary and in `termit-uv doctor`; nothing is hidden.
 type warpStep struct{ e *stepEnv }
 
 func (*warpStep) Name() string { return "warp" }
@@ -25,7 +25,7 @@ func (s *warpStep) client() warp.Client {
 	return client
 }
 
-// Check is offline on purpose: it runs on every `uv init`, including the ones in tests and on a
+// Check is offline on purpose: it runs on every `termit-uv init`, including the ones in tests and on a
 // machine with no route to Cloudflare.
 func (s *warpStep) Check(ctx context.Context) (CheckResult, error) {
 	if !s.e.cfg.Warp.UsesWarp() {

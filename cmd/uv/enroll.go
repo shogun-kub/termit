@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"time"
@@ -16,15 +17,27 @@ import (
 )
 
 // enrollAgentVersion is what the server records for this node. It is the binary's identity, not a
-// hand-written string, so `mn uv list` shows what actually runs.
-func enrollAgentVersion() string { return version.String("termit-uv") }
+// hand-written string, so `termit-mn uv list` shows what actually runs.
+func enrollAgentVersion() string { return version.Agent("termit-uv") }
 
 // absoluteSubscriptionURL completes a relative subscription path with the server it belongs to.
+//
+// The path is resolved against the base's origin, not appended to the base: the base carries the API
+// prefix, and a subscription lives outside it (`/sub/<token>` at the server root). Appending would
+// produce .../prefix/sub/token, a URL that answers 404 in a client nobody would think to debug.
 func absoluteSubscriptionURL(base, path string) string {
 	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
 		return path
 	}
-	return strings.TrimRight(base, "/") + path
+	baseURL, err := url.Parse(base)
+	if err != nil || baseURL.Host == "" {
+		return strings.TrimRight(base, "/") + path
+	}
+	ref, err := url.Parse(path)
+	if err != nil {
+		return strings.TrimRight(base, "/") + path
+	}
+	return baseURL.ResolveReference(ref).String()
 }
 
 // runEnroll registers this node with its management server and stores the credentials.
@@ -42,21 +55,21 @@ func (a *application) runEnroll(args []string) int {
 
 	cfg, err := config.Load(*configPath)
 	if err != nil {
-		fmt.Fprintf(a.stderr, "uv enroll: %v\n", err)
+		fmt.Fprintf(a.stderr, "termit-uv enroll: %v\n", err)
 		return exitFailure
 	}
 	st, err := state.LoadInstalled(filepath.Join(cfg.Paths.StateDir, "state.json"))
 	if err != nil {
-		fmt.Fprintf(a.stderr, "uv enroll: %v\n", err)
+		fmt.Fprintf(a.stderr, "termit-uv enroll: %v\n", err)
 		return exitFailure
 	}
 	if st.Credentials != nil && st.Credentials.AgentKey != "" && !*force {
-		fmt.Fprintln(a.stderr, "uv enroll: this node already has credentials; pass --force only if the server forgot it")
+		fmt.Fprintln(a.stderr, "termit-uv enroll: this node already has credentials; pass --force only if the server forgot it")
 		fmt.Fprintln(a.stderr, "  (an enrollment that duplicates a registered domain is refused, and the invite is not spent)")
 		return exitFailure
 	}
 	if st.Identity.SelfUUID == "" || st.Identity.XHTTPPath == "" {
-		fmt.Fprintln(a.stderr, "uv enroll: the node identity is missing; run `uv init` first")
+		fmt.Fprintln(a.stderr, "termit-uv enroll: the node identity is missing; run `termit-uv init` first")
 		return exitFailure
 	}
 
@@ -65,7 +78,7 @@ func (a *application) runEnroll(args []string) int {
 		url = cfg.MN.URL
 	}
 	if url == "" {
-		fmt.Fprintln(a.stderr, "uv enroll: no management server: pass --mn or set mn.url in the configuration")
+		fmt.Fprintln(a.stderr, "termit-uv enroll: no management server: pass --mn or set mn.url in the configuration")
 		return exitUsage
 	}
 
@@ -76,7 +89,7 @@ func (a *application) runEnroll(args []string) int {
 		Label:  cfg.Domain,
 	})
 	if err != nil {
-		fmt.Fprintf(a.stderr, "uv enroll: %v\n", err)
+		fmt.Fprintf(a.stderr, "termit-uv enroll: %v\n", err)
 		return exitFailure
 	}
 
@@ -91,20 +104,34 @@ func (a *application) runEnroll(args []string) int {
 		AgentVersion:  enrollAgentVersion(),
 	})
 	if err != nil {
-		fmt.Fprintf(a.stderr, "uv enroll: %v\n", err)
+		fmt.Fprintf(a.stderr, "termit-uv enroll: %v\n", err)
 		return exitFailure
 	}
 
+	// The URL the enrollment just used becomes the node's own: a node that enrolls and then cannot sync
+	// because nobody wrote mn.url is the gap this closes. An existing value is left alone — `--mn` is an
+	// override for one call unless the configuration was empty.
+	if cfg.MN.URL == "" {
+		cfg.MN.URL = strings.TrimRight(url, "/")
+		if err := cfg.Save(*configPath); err != nil {
+			fmt.Fprintf(a.stderr, "termit-uv enroll: %v\n", err)
+			return exitFailure
+		}
+		fmt.Fprintf(a.stdout, "mn.url:    %s (saved to %s)\n", cfg.MN.URL, *configPath)
+	}
+
 	st.Credentials = &state.Credentials{
-		AgentKey:        answer.AgentKey,
-		SubToken:        answer.SubToken,
-		ProbeUUID:       answer.ProbeUUID,
-		SubscriptionURL: answer.SubscriptionURL,
+		AgentKey:  answer.AgentKey,
+		SubToken:  answer.SubToken,
+		ProbeUUID: answer.ProbeUUID,
+		// Stored absolute: the answer carries a path, and "where this node's subscription is" is a
+		// question the state should be able to answer without knowing which server answered.
+		SubscriptionURL: absoluteSubscriptionURL(url, answer.SubscriptionURL),
 		EnrolledAt:      a.now().UTC(),
 	}
 	st.Touch()
 	if err := st.Save(filepath.Join(cfg.Paths.StateDir, "state.json")); err != nil {
-		fmt.Fprintf(a.stderr, "uv enroll: %v\n", err)
+		fmt.Fprintf(a.stderr, "termit-uv enroll: %v\n", err)
 		return exitFailure
 	}
 
@@ -115,7 +142,7 @@ func (a *application) runEnroll(args []string) int {
 		fmt.Fprintf(a.stdout, "notice:    %s\n", answer.Notice)
 	}
 	if answer.SubscriptionURL != "" {
-		fmt.Fprintf(a.stdout, "subscribe: %s\n", absoluteSubscriptionURL(url, answer.SubscriptionURL))
+		fmt.Fprintf(a.stdout, "subscribe: %s\n", st.Credentials.SubscriptionURL)
 	}
 	fmt.Fprintln(a.stdout, "credentials are stored in the state file (0600); they are never printed again")
 

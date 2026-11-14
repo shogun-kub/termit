@@ -167,6 +167,6 @@ func (h *Handler) writeUnblocked(w http.ResponseWriter, node store.UV, notice st
 func returnRelocateRequired(w http.ResponseWriter, storedDomain, requestedDomain string) {
 	writeProblem(w, http.StatusConflict, proto.NewProblem(http.StatusConflict,
 		proto.CodeRelocateRequired, "Conflict",
-		fmt.Sprintf("this node is registered as %s, the request names %s; use `uv migrate --relocate`",
+		fmt.Sprintf("this node is registered as %s, the request names %s; use `termit-uv migrate --relocate`",
 			storedDomain, requestedDomain)))
 }

@@ -23,6 +23,7 @@ import (
 
 	"github.com/shogun-kub/termit/internal/acme"
 	"github.com/shogun-kub/termit/internal/atomicfile"
+	"github.com/shogun-kub/termit/internal/decoy"
 )
 
 // SchemaVersion is the configuration schema this build understands.
@@ -38,20 +39,48 @@ const (
 	ModeOpen = "open"
 )
 
+// DefaultDecoyTemplate is the masking site a management server serves unless the operator picks another
+// archetype. It is the same generator the nodes use, so the server does not look like a different
+// product from its own nodes.
+const DefaultDecoyTemplate = "portal"
+
+// DefaultAPIPrefix is what a configuration written before the prefix existed, and every test, expects.
+// `termit-mn init` replaces it with a random one unless the operator passes --api-prefix.
+const DefaultAPIPrefix = "/api/v1"
+
 // Config is the whole file.
 type Config struct {
-	SchemaVersion int        `yaml:"schema_version"`
-	Domain        string     `yaml:"domain"`
-	Listen        string     `yaml:"listen"`
-	AdminSocket   string     `yaml:"admin_socket"`
-	DataDir       string     `yaml:"data_dir"`
-	DBPath        string     `yaml:"db_path"`
-	MasterKeyFile string     `yaml:"master_key_file"`
-	ACME          ACME       `yaml:"acme"`
-	Enrollment    Enrollment `yaml:"enrollment"`
-	Policy        Policy     `yaml:"policy"`
-	DNS           DNS        `yaml:"dns"`
-	Prober        Prober     `yaml:"prober"`
+	SchemaVersion int    `yaml:"schema_version"`
+	Domain        string `yaml:"domain"`
+	Listen        string `yaml:"listen"`
+	// APIPrefix is the path the node API is served under. It is random on a fresh install so a
+	// scanner cannot find the API by trying the usual names; the node learns it as part of its MN URL.
+	APIPrefix     string `yaml:"api_prefix"`
+	AdminSocket   string `yaml:"admin_socket"`
+	DataDir       string `yaml:"data_dir"`
+	DBPath        string `yaml:"db_path"`
+	MasterKeyFile string `yaml:"master_key_file"`
+	// TrustedProxies are the addresses (an IP, or a CIDR block) of reverse proxies in front of this
+	// server. A connection from one of them has its version-1 PROXY protocol header read and removed,
+	// so the recorded client address — and with it the enrollment DNS proof and the rate-limit key —
+	// is the node's own instead of the proxy's.
+	//
+	// Empty means the server is exposed directly and the peer is always the client. Listing an address
+	// that never sends the header is harmless: a trusted peer without one keeps its own address.
+	TrustedProxies []string   `yaml:"trusted_proxies,omitempty"`
+	ACME           ACME       `yaml:"acme"`
+	Decoy          Decoy      `yaml:"decoy"`
+	Enrollment     Enrollment `yaml:"enrollment"`
+	Policy         Policy     `yaml:"policy"`
+	DNS            DNS        `yaml:"dns"`
+	Prober         Prober     `yaml:"prober"`
+}
+
+// Decoy is the site the server answers a prober with: an ordinary-looking page instead of a bare 404
+// that announces a machine nobody intended to be found.
+type Decoy struct {
+	// Template selects the archetype. Empty means DefaultDecoyTemplate.
+	Template string `yaml:"template"`
 }
 
 // DNS is the second resolver enrollment asks beside the system one. Empty means the system resolver
@@ -213,6 +242,18 @@ func (c *Config) Validate() error {
 			problems = append(problems, fmt.Errorf("prober.url %q is not an http(s) URL with a host", c.Prober.URL))
 		}
 	}
+	if err := validateAPIPrefix(c.APIPrefix); err != nil {
+		problems = append(problems, err)
+	}
+	for _, entry := range c.TrustedProxies {
+		if err := validateProxyAddress(entry); err != nil {
+			problems = append(problems, err)
+		}
+	}
+	if !decoy.KnownTemplate(c.Decoy.Template) {
+		problems = append(problems, fmt.Errorf("decoy.template %q is not one this build can generate (%s)",
+			c.Decoy.Template, strings.Join(decoy.Templates(), ", ")))
+	}
 	if c.ACME.Directory == "" {
 		problems = append(problems, errors.New("acme.directory is required"))
 	}
@@ -241,6 +282,12 @@ func (c *Config) Validate() error {
 func (c *Config) applyDefaults() {
 	if c.Listen == "" {
 		c.Listen = ":443"
+	}
+	if c.APIPrefix == "" {
+		c.APIPrefix = DefaultAPIPrefix
+	}
+	if c.Decoy.Template == "" {
+		c.Decoy.Template = DefaultDecoyTemplate
 	}
 	if c.DataDir == "" {
 		c.DataDir = "/var/lib/termit/mn"
@@ -303,6 +350,52 @@ func (c *Config) ListenPort() int {
 		return 0
 	}
 	return number
+}
+
+// validateAPIPrefix keeps the prefix to what an URL path segment may contain, because it is pasted into
+// every node's configuration and every documented example.
+func validateAPIPrefix(prefix string) error {
+	switch {
+	case prefix == "":
+		return errors.New("api_prefix cannot be empty")
+	case !strings.HasPrefix(prefix, "/"):
+		return fmt.Errorf("api_prefix %q must start with /", prefix)
+	case len(prefix) < 2:
+		return fmt.Errorf("api_prefix %q is too short to be a path", prefix)
+	case strings.HasSuffix(prefix, "/"):
+		return fmt.Errorf("api_prefix %q must not end with /", prefix)
+	case len(prefix) > 128:
+		return fmt.Errorf("api_prefix %q is longer than 128 characters", prefix)
+	}
+	for _, r := range prefix[1:] {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		case r == '-' || r == '_' || r == '.' || r == '~' || r == '/':
+		default:
+			return fmt.Errorf("api_prefix %q contains %q, which an URL path cannot carry here", prefix, r)
+		}
+	}
+	return nil
+}
+
+// validateProxyAddress keeps http.trusted_proxies to what the listener can match: an address, or a
+// block. A name is not accepted on purpose — resolving it here would make the trust decision depend on
+// whatever DNS said at startup.
+func validateProxyAddress(entry string) error {
+	entry = strings.TrimSpace(entry)
+	if entry == "" {
+		return errors.New("http.trusted_proxies contains an empty entry")
+	}
+	if strings.Contains(entry, "/") {
+		if _, _, err := net.ParseCIDR(entry); err != nil {
+			return fmt.Errorf("http.trusted_proxies %q is not a CIDR block: %w", entry, err)
+		}
+		return nil
+	}
+	if net.ParseIP(entry) == nil {
+		return fmt.Errorf("http.trusted_proxies %q is neither an address nor a CIDR block", entry)
+	}
+	return nil
 }
 
 func validateDomain(domain string) error {

@@ -11,17 +11,24 @@ needs a new `api_version`.
 
 | Component | Role |
 |---|---|
-| UV (node) | calls `/api/v1/enroll` once, then `/api/v1/agent/*` on its daily cycle |
+| UV (node) | calls `{prefix}/enroll` once, then `{prefix}/agent/*` on its daily cycle |
 | MN (server) | implements the API, owns the registry and the probe worker |
 | Client | fetches `/sub/{token}` or `/sub/{token}/json` (a browser or a proxy app) |
-| Monitoring | reads `/healthz`, and `/metrics` from loopback |
+| Monitoring | reads `{prefix}/healthz`, and `/metrics` from loopback |
+
+`{prefix}` is `api_prefix` from the server's configuration: a path chosen at install time, random by
+default, so that a scanner probing `/api/v1` finds nothing. Every node learns it as part of its `mn.url`
+(`--mn https://mn.example.com/6rfjdqfn5nno`), and the agent appends its own paths to that URL. The
+subscription endpoints stay at `/sub/…` and metrics at `/metrics` on purpose — one is a URL already in
+clients' hands, the other a scrape target — and [MN-API.md](MN-API.md) is the reference for the whole
+surface.
 
 ---
 
 ## 1. Transport
 
 - **HTTPS only**, HTTP/1.1. The server terminates TLS itself with the certificate it issued through
-  ACME for its own domain, and refuses to start without one. `mn serve --http` exists for development
+  ACME for its own domain, and refuses to start without one. `termit-mn serve --http` exists for development
   and says so on stderr on every start.
 - Requests and responses are JSON (`application/json; charset=utf-8`), errors are
   `application/problem+json; charset=utf-8`.
@@ -36,11 +43,11 @@ needs a new `api_version`.
 
 | Surface | Credential | Where |
 |---|---|---|
-| `/api/v1/enroll` | invite code | request body, `invite_code` |
-| `/api/v1/agent/*` | agent key | `Authorization: Bearer <agent_key>` |
+| `{prefix}/enroll` | invite code | request body, `invite_code` |
+| `{prefix}/agent/*` | agent key | `Authorization: Bearer <agent_key>` |
 | `/sub/{token}`, `/sub/{token}/json` | subscription token | the URL path |
 | `/metrics` | none; loopback peer only | — |
-| `/healthz` | none | — |
+| `{prefix}/healthz` | none | — |
 
 The agent key and the subscription token are opaque strings (URL-safe base64, no whitespace). Neither
 is ever echoed in a response body after enrollment, written to a log line, or accepted on the other's
@@ -62,7 +69,7 @@ proxy's address and refuse every node.
 
 ## 3. Endpoints
 
-### 3.1 `GET /healthz`
+### 3.1 `GET {prefix}/healthz`
 
 Liveness plus enough identity to answer "which server is this". Never touches a credential.
 
@@ -106,14 +113,14 @@ reads; it is not exposed to the mesh.
 
 The counters are process-lifetime and reset on restart; the gauges are read from the database at scrape
 time. **No label carries a node id, a domain or a token**: the endpoint is scraped by a monitoring
-agent, and an inventory does not belong in a metrics store. Ask `mn status` or `mn uv show` for the
+agent, and an inventory does not belong in a metrics store. Ask `termit-mn status` or `termit-mn uv show` for the
 per-node view.
 
 A refusal `result` on the enrollment counter counts everything that produced no node — a bad invite, a
 taken domain, a failed DNS or probe check, a rate limit. The detail is in the log and in the problem
 response, not in the metric.
 
-### 3.3 `POST /api/v1/enroll`
+### 3.3 `POST {prefix}/enroll`
 
 Registers a node. This is the only unauthenticated write endpoint and therefore the only one with a
 per-source-address rate limit.
@@ -133,9 +140,9 @@ Request:
 
 | Field | Required | Meaning |
 |---|---|---|
-| `invite_code` | unless the server is in `open` mode | the code an operator created with `mn invite create` |
+| `invite_code` | unless the server is in `open` mode | the code an operator created with `termit-mn invite create` |
 | `domain` | yes | the node's name; the server keys the record on it |
-| `basic_vless_url` | yes | the node's own profile, as `uv uri` prints it |
+| `basic_vless_url` | yes | the node's own profile, as `termit-uv uri` prints it |
 | `agent_version` | no, ≤ 64 chars | recorded for the operator |
 | `profile` | no, `"v1"` or empty | empty means "the current profile", which is what an older agent sends |
 | `capabilities` | no | advisory only; this build does not branch on it |
@@ -184,7 +191,7 @@ Rate limit: `enrollment.attempts` requests per `enrollment.window_seconds` per s
 (default 10 per 900 s). Exceeding it is `429 rate_limited`; the window is the address's, not the
 invite's.
 
-### 3.4 `POST /api/v1/agent/sync`
+### 3.4 `POST {prefix}/agent/sync`
 
 The node's daily call: reports what it is, receives the complete desired peer set.
 
@@ -264,7 +271,7 @@ Rules the node may rely on:
 A blocked or removed node cannot sync: `403 node_inactive`. A wrong or unknown key is `401
 unauthorized` — the same answer, so a guesser learns nothing from the difference.
 
-### 3.5 `POST /api/v1/agent/unblock`
+### 3.5 `POST {prefix}/agent/unblock`
 
 Scenario B: a blocked node asks to be let back in. This is **the only agent endpoint that admits a
 blocked node**, because a node that has no other way to ask is the whole point of it.
@@ -305,7 +312,7 @@ Response:
 }
 ```
 
-### 3.6 `POST /api/v1/agent/relocate`
+### 3.6 `POST {prefix}/agent/relocate`
 
 Scenario C: the same node at a new host. Both fields are required.
 
@@ -317,7 +324,7 @@ Preconditions, in order:
 
 1. the URL's domain equals the request's `domain` (`url_invalid`);
 2. the domain differs from the one on record (`conflict`: a rebuild on the same host is
-   `uv unblock`);
+   `termit-uv unblock`);
 3. the new domain belongs to no other node (`conflict`);
 4. the node's state admits a move — `active`, `unavailable` and `blocked` do; `pending` does not
    (`conflict`: admission is a decision, not a probe), and a removed node never gets here;
@@ -442,7 +449,7 @@ The full table, including every path that changes nothing, is in [`DESCRIPTION.m
 
 ## 7. The admin interface is not part of this protocol
 
-`mn` does not use HTTP. It talks to the running server over a unix socket (`/run/termit/mn/admin.sock`
+`termit-mn` does not use HTTP. It talks to the running server over a unix socket (`/run/termit/mn/admin.sock`
 by default), created `0600`, one JSON request per connection with a 30 s deadline:
 
 ```json
@@ -454,7 +461,7 @@ by default), created `0600`, one JSON request per connection with a 30 s deadlin
 ```
 
 or `{"error": {"code": "not_found", "detail": "no such node"}}`. Operations are `invite.*`, `uv.*`,
-`check.now`, `policy.*`, `sub.rotate` and `server.state`; `mn help` lists the commands, and every
+`check.now`, `policy.*`, `sub.rotate`, `admin.rotate` and `server.state`; `termit-mn help` lists the commands, and every
 mutation is audited. Two answers are worth knowing:
 
 - `uv.show` carries the node's recent history (`checks`, newest first: the server's probes and the
@@ -470,12 +477,12 @@ compatibility promise — the CLI in front of it is.
 
 ## 8. Worked example
 
-From a node, with the server on `mn.example.com` and a code from `mn invite create`:
+From a node, with the server on `mn.example.com` and a code from `termit-mn invite create`:
 
 ```bash
 # 1. enroll — the answer carries the only copy of the node's agent key, and the
 #    command runs the first sync itself unless --no-sync is given
-uv enroll --mn https://mn.example.com --invite ABCD-EFGH-IJKL
+termit-uv enroll --mn https://mn.example.com/6rfjdqfn5nno --invite ABCD-EFGH-IJKL
 # node:      uv_9f3c1a2b4d5e
 # domain:    node1.example.net
 # state:     pending
@@ -483,25 +490,25 @@ uv enroll --mn https://mn.example.com --invite ABCD-EFGH-IJKL
 # subscribe: https://mn.example.com/sub/<token>
 # credentials are stored in the state file (0600); they are never printed again
 
-# 2. after `mn uv approve uv_9f3c1a2b4d5e`, the daily cycle does the rest
-uv sync -v             # -v prints the peer set as well
+# 2. after `termit-mn uv approve uv_9f3c1a2b4d5e`, the daily cycle does the rest
+termit-uv sync -v             # -v prints the peer set as well
 
 # 3. what the clients use
-uv uri                 # this node's own vless:// URI
-mn sub rotate uv_9f3c1a2b4d5e --domain mn.example.com   # invalidate the old token
+termit-uv uri                 # this node's own vless:// URI
+termit-mn sub rotate uv_9f3c1a2b4d5e --domain mn.example.com   # invalidate the old token
 ```
 
-By hand, with `curl` (the node's own profile is what `uv uri` prints):
+By hand, with `curl` (the node's own profile is what `termit-uv uri` prints):
 
 ```bash
-curl -sS https://mn.example.com/healthz | jq .
+curl -sS https://mn.example.com/6rfjdqfn5nno/healthz | jq .
 
-curl -sS -X POST https://mn.example.com/api/v1/enroll \
+curl -sS -X POST https://mn.example.com/6rfjdqfn5nno/enroll \
   -H 'Content-Type: application/json' \
   -d '{"invite_code":"ABCD-EFGH-IJKL","domain":"node1.example.net",
        "basic_vless_url":"vless://…@node1.example.net:443?…","agent_version":"0.1.0","profile":"v1"}'
 
-curl -sS -X POST https://mn.example.com/api/v1/agent/sync \
+curl -sS -X POST https://mn.example.com/6rfjdqfn5nno/agent/sync \
   -H "Authorization: Bearer $AGENT_KEY" \
   -H 'Content-Type: application/json' \
   -d '{"agent_version":"0.1.0"}'
@@ -512,7 +519,7 @@ curl -sS -D - -o /dev/null https://mn.example.com/sub/$SUB_TOKEN
 ## 9. What this protocol deliberately does not carry
 
 - **No secret in a URL except the subscription token**, which is a read-only capability for one
-  node's list and can be rotated with `mn sub rotate`.
+  node's list and can be rotated with `termit-mn sub rotate`.
 - **No credentials in a query string, ever.** The agent key travels in a header; the invite code in a
   JSON body. Nothing here ends up in a proxy's access log.
 - **No topology the server does not already know.** A sync answer names peers and pair credentials; it

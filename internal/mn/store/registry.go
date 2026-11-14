@@ -200,6 +200,28 @@ func (s *Store) TouchAdmin(ctx context.Context, id string, now time.Time) error 
 	return nil
 }
 
+// RotateAdmin replaces one operator's credential. The id is derived from the token (its first bytes), so
+// it moves with it: an id that no longer names the token it belongs to would be a footnote nobody reads,
+// and the row has no other references to protect.
+//
+// last_used_at is cleared because it described the old credential: a fresh token that has never been
+// presented must not look used.
+func (s *Store) RotateAdmin(ctx context.Context, oldID, newID, newHash string) error {
+	result, err := s.db.ExecContext(ctx,
+		`UPDATE admin SET id = ?, token_hash = ?, last_used_at = NULL WHERE id = ?`, newID, newHash, oldID)
+	if err != nil {
+		return fmt.Errorf("store: rotate admin: %w", err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("store: rotate admin: %w", err)
+	}
+	if changed == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // --- settings ----------------------------------------------------------------
 
 // Setting is one key of the mutable server configuration.

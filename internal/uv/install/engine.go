@@ -100,7 +100,7 @@ func New(opts Options) (*Installer, error) {
 	}
 	if st.Domain != "" && st.Domain != cfg.Domain {
 		return nil, fmt.Errorf(
-			"state at %s belongs to domain %q, configuration says %q; run `uv migrate` instead of reinstalling",
+			"state at %s belongs to domain %q, configuration says %q; run `termit-uv migrate` instead of reinstalling",
 			cfg.Paths.StatePath(), st.Domain, cfg.Domain)
 	}
 	if st.Domain == "" {
@@ -174,7 +174,7 @@ type RunOptions struct {
 	// Skip excludes the named steps.
 	Skip []string
 	// Force re-runs the named steps even when their Check reports the effect as present. It is what
-	// `uv renew-site` needs: the site is complete and must still be regenerated.
+	// `termit-uv renew-site` needs: the site is complete and must still be regenerated.
 	Force []string
 	// DryRun reports what would happen without touching the host and without journaling.
 	DryRun bool

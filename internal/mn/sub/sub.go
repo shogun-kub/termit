@@ -117,7 +117,13 @@ func RenderJSON(peers []Peer, opts Options) ([]byte, error) {
 			"tls": map[string]any{
 				"enabled":     true,
 				"server_name": peer.Domain,
-				"alpn":        []string{"h2"},
+				// No alpn: the transport is xhttp in packet-up mode, which is HTTP/1.1 on the
+				// wire (the node's nginx terminates TLS and forwards HTTP/1.1 to Xray). Asking for
+				// h2 made the client offer a protocol the hop cannot carry.
+				"utls": map[string]any{
+					"enabled":     true,
+					"fingerprint": proto.Fingerprint,
+				},
 			},
 			"transport": map[string]any{
 				"type": "xhttp",

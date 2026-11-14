@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shogun-kub/termit/internal/decoy"
 	"github.com/shogun-kub/termit/internal/mn/config"
 	"github.com/shogun-kub/termit/internal/mn/secret"
 	"github.com/shogun-kub/termit/internal/mn/store"
@@ -41,11 +42,18 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 	mode := flags.String("mode", "", "enrollment mode: invite, invite+approval or open")
 	inviteUses := flags.Int("invite-uses", 1, "how many nodes the first invite code may register")
 	adminName := flags.String("admin", "operator", "name of the first admin token")
+	adminTokenOut := flags.String("admin-token-out", "",
+		"write the new admin token to this file (0600) instead of printing it")
+	apiPrefix := flags.String("api-prefix", "",
+		"path the node API is served under (default: a random one; /api/v1 for the old shape)")
+	decoyTemplate := flags.String("decoy-template", "",
+		"masking site to serve: "+strings.Join(decoy.Templates(), ", ")+
+			" (default: "+config.DefaultDecoyTemplate+")")
 	if err := flags.Parse(args); err != nil {
-		return exitUsage
+		return flagExit(err)
 	}
 	if flags.NArg() > 0 {
-		fmt.Fprintf(stderr, "mn init: unexpected argument %q\n", flags.Arg(0))
+		fmt.Fprintf(stderr, "termit-mn init: unexpected argument %q\n", flags.Arg(0))
 		return exitUsage
 	}
 
@@ -56,18 +64,46 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 		// Re-running init on an installed server keeps every decision it already made.
 		cfg = existing
 	} else if !errors.Is(err, os.ErrNotExist) {
-		fmt.Fprintf(stderr, "mn init: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn init: %v\n", err)
 		return exitFailure
 	}
 	if *domain != "" {
 		if cfg.Domain != "" && cfg.Domain != *domain {
-			fmt.Fprintf(stderr, "mn init: this server is already %q; refusing to rename it to %q\n", cfg.Domain, *domain)
+			fmt.Fprintf(stderr, "termit-mn init: this server is already %q; refusing to rename it to %q\n", cfg.Domain, *domain)
 			return exitFailure
 		}
 		cfg.Domain = *domain
 	}
+	if freshConfig {
+		// A fresh install gets a prefix nobody can guess, unless the operator named one: /api/v1 is the
+		// first thing a scanner tries, so it is never the default for a new server.
+		if *apiPrefix != "" {
+			cfg.APIPrefix = *apiPrefix
+		} else {
+			prefix, err := randomAPIPrefix()
+			if err != nil {
+				fmt.Fprintf(stderr, "termit-mn init: %v\n", err)
+				return exitFailure
+			}
+			cfg.APIPrefix = prefix
+		}
+	} else if *apiPrefix != "" && *apiPrefix != cfg.APIPrefix {
+		// Moving the prefix on an installed server would cut every node off, and the nodes only learn it
+		// from the URL they were given: this is a migration, not a re-run.
+		fmt.Fprintf(stderr, "termit-mn init: the API prefix is already %q; moving it to %q needs every node "+
+			"re-enrolled, so it is not done from init\n", cfg.APIPrefix, *apiPrefix)
+		return exitFailure
+	}
+	if *decoyTemplate != "" {
+		if !decoy.KnownTemplate(*decoyTemplate) {
+			fmt.Fprintf(stderr, "termit-mn init: --decoy-template %q is not one this build can generate (%s)\n",
+				*decoyTemplate, strings.Join(decoy.Templates(), ", "))
+			return exitUsage
+		}
+		cfg.Decoy.Template = *decoyTemplate
+	}
 	if cfg.Domain == "" {
-		fmt.Fprintln(stderr, "mn init: --domain is required on the first run")
+		fmt.Fprintln(stderr, "termit-mn init: --domain is required on the first run")
 		return exitUsage
 	}
 	if *dataDir != "" {
@@ -95,7 +131,7 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 		cfg.Enrollment.Mode = *mode
 	}
 	if err := cfg.Validate(); err != nil {
-		fmt.Fprintf(stderr, "mn init: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn init: %v\n", err)
 		return exitUsage
 	}
 
@@ -111,64 +147,111 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 		{cfg.CertDir(), 0o700},
 	} {
 		if err := os.MkdirAll(dir.path, dir.mode); err != nil {
-			fmt.Fprintf(stderr, "mn init: create %s: %v\n", dir.path, err)
+			fmt.Fprintf(stderr, "termit-mn init: create %s: %v\n", dir.path, err)
 			return exitFailure
 		}
 		if err := os.Chmod(dir.path, dir.mode); err != nil {
-			fmt.Fprintf(stderr, "mn init: chmod %s: %v\n", dir.path, err)
+			fmt.Fprintf(stderr, "termit-mn init: chmod %s: %v\n", dir.path, err)
 			return exitFailure
 		}
 	}
 
 	masterKey, created, err := ensureMasterKey(cfg.MasterKeyFile)
 	if err != nil {
-		fmt.Fprintf(stderr, "mn init: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn init: %v\n", err)
 		return exitFailure
 	}
 	if err := cfg.Save(*configPath); err != nil {
-		fmt.Fprintf(stderr, "mn init: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn init: %v\n", err)
 		return exitFailure
 	}
 
 	db, err := store.Open(ctx, store.Options{Path: cfg.DBPath})
 	if err != nil {
-		fmt.Fprintf(stderr, "mn init: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn init: %v\n", err)
 		return exitFailure
 	}
 	defer func() { _ = db.Close() }()
 
 	now := time.Now().UTC()
 	if err := recordSettings(ctx, db, cfg, now); err != nil {
-		fmt.Fprintf(stderr, "mn init: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn init: %v\n", err)
 		return exitFailure
 	}
 
 	adminToken, err := ensureAdmin(ctx, db, *adminName, now, stdout, stderr)
 	if err != nil {
-		fmt.Fprintf(stderr, "mn init: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn init: %v\n", err)
 		return exitFailure
 	}
 	inviteCode, err := ensureInvite(ctx, db, *inviteUses, now, stdout, stderr)
 	if err != nil {
-		fmt.Fprintf(stderr, "mn init: %v\n", err)
+		fmt.Fprintf(stderr, "termit-mn init: %v\n", err)
+		return exitFailure
+	}
+	// The masking site is generated from this seed on every start: minting it here means the site a
+	// prober sees today is the site it sees after the next restart.
+	if _, err := decoySeed(ctx, db); err != nil {
+		fmt.Fprintf(stderr, "termit-mn init: %v\n", err)
 		return exitFailure
 	}
 
 	fmt.Fprintf(stdout, "domain:       %s\n", cfg.Domain)
 	fmt.Fprintf(stdout, "listen:       %s\n", cfg.Listen)
+	fmt.Fprintf(stdout, "api prefix:   %s\n", cfg.APIPrefix)
+	fmt.Fprintf(stdout, "masking site: %s (what a prober gets for every path the API does not claim)\n",
+		cfg.Decoy.Template)
 	fmt.Fprintf(stdout, "config:       %s\n", *configPath)
 	fmt.Fprintf(stdout, "database:     %s (schema %d)\n", cfg.DBPath, store.SchemaVersion)
 	fmt.Fprintf(stdout, "master key:   %s%s\n", cfg.MasterKeyFile, map[bool]string{true: " (generated now)", false: " (kept)"}[created])
 	fmt.Fprintf(stdout, "master key id: %s\n", secret.Fingerprint(hex.EncodeToString(sha256Of(masterKey))))
 	if adminToken != "" {
-		fmt.Fprintf(stdout, "\nadmin token (shown once, store it now):\n  %s\n", adminToken)
+		if err := writeAdminToken(stdout, *adminTokenOut, adminToken); err != nil {
+			fmt.Fprintf(stderr, "termit-mn init: %v\n", err)
+			return exitFailure
+		}
 	}
 	if inviteCode != "" {
 		fmt.Fprintf(stdout, "\nfirst invite code (shown once, %d use(s)):\n  %s\n", *inviteUses, inviteCode)
 	}
+	fmt.Fprintf(stdout, "\nshow a node the way in (the prefix is part of the URL; without it the node cannot reach the API):\n")
+	fmt.Fprintf(stdout, "  termit-uv enroll --mn https://%s%s --invite <code>\n", cfg.Domain, cfg.APIPrefix)
 	fmt.Fprintf(stdout, "\nback up %s together with the database: without it no pair credential can be derived.\n",
 		cfg.MasterKeyFile)
 	return exitOK
+}
+
+// randomAPIPrefix is one path segment of random characters: long enough that a scanner walking a word
+// list will not find it, and unambiguous when read aloud or copied by hand.
+func randomAPIPrefix() (string, error) {
+	const alphabet = "abcdefghijkmnopqrstuvwxyz23456789" // no l, no 0 or 1: these get misread
+	buf := make([]byte, 12)
+	if _, err := rand.Read(buf); err != nil {
+		return "", fmt.Errorf("random API prefix: %w", err)
+	}
+	var b strings.Builder
+	b.WriteString("/")
+	for _, value := range buf {
+		b.WriteByte(alphabet[int(value)%len(alphabet)])
+	}
+	return b.String(), nil
+}
+
+// writeAdminToken puts the token where the operator asked for it. Printing it is the fallback, not the
+// default, when a file was requested: the token exists in the database now, so a failed write that
+// swallowed it would leave a server nobody can administer.
+func writeAdminToken(stdout io.Writer, path, token string) error {
+	if path == "" {
+		fmt.Fprintf(stdout, "\nadmin token (shown once, store it now):\n  %s\n", token)
+		return nil
+	}
+	if err := writeTokenFile(path, token); err != nil {
+		fmt.Fprintf(stdout, "\nadmin token (the file could not be written, so it is printed instead):\n  %s\n", token)
+		return fmt.Errorf("admin token file: %w", err)
+	}
+	fmt.Fprintf(stdout, "\nadmin token written to %s (mode 0600)\n"+
+		"the file is a credential: keep it out of backups and out of version control\n", path)
+	return nil
 }
 
 // ensureMasterKey returns the master key, generating it on the first run. An existing key is never
@@ -254,7 +337,7 @@ func ensureInvite(ctx context.Context, db *store.Store, uses int, now time.Time,
 	if count, err := db.InviteCount(ctx); err != nil {
 		return "", err
 	} else if count > 0 {
-		fmt.Fprintln(stdout, "invite: already present, run `mn invite create` for another")
+		fmt.Fprintln(stdout, "invite: already present, run `termit-mn invite create` for another")
 		return "", nil
 	}
 	code, err := secret.Code()
@@ -267,9 +350,9 @@ func ensureInvite(ctx context.Context, db *store.Store, uses int, now time.Time,
 		ID:        id,
 		CodeHash:  hash,
 		CreatedAt: now,
-		CreatedBy: "mn init",
+		CreatedBy: "termit-mn init",
 		MaxUses:   uses,
-		Note:      "created by mn init",
+		Note:      "created by termit-mn init",
 	}); err != nil {
 		return "", err
 	}

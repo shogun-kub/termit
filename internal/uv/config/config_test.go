@@ -11,7 +11,7 @@ import (
 	"github.com/shogun-kub/termit/internal/uv/config"
 )
 
-const minimal = "schema_version: 1\ndomain: vpn.example.com\n"
+const minimal = "schema_version: 1\ndomain: node.example.com\n"
 
 func TestParseAppliesDefaults(t *testing.T) {
 	t.Parallel()
@@ -50,7 +50,7 @@ func TestParseAppliesDefaults(t *testing.T) {
 
 func TestParseDefaultsSchemaVersion(t *testing.T) {
 	t.Parallel()
-	cfg, err := config.Parse(strings.NewReader("domain: vpn.example.com\n"))
+	cfg, err := config.Parse(strings.NewReader("domain: node.example.com\n"))
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
@@ -61,12 +61,12 @@ func TestParseDefaultsSchemaVersion(t *testing.T) {
 
 func TestParseNormalisesDomain(t *testing.T) {
 	t.Parallel()
-	cfg, err := config.Parse(strings.NewReader("domain: \"  VPN.Example.COM. \"\n"))
+	cfg, err := config.Parse(strings.NewReader("domain: \"  NODE.Example.COM. \"\n"))
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
-	if cfg.Domain != "vpn.example.com" {
-		t.Errorf("Domain = %q, want vpn.example.com", cfg.Domain)
+	if cfg.Domain != "node.example.com" {
+		t.Errorf("Domain = %q, want node.example.com", cfg.Domain)
 	}
 }
 
@@ -91,7 +91,7 @@ func TestParseRejectsSecondDocument(t *testing.T) {
 
 func TestParseRejectsNewerSchema(t *testing.T) {
 	t.Parallel()
-	_, err := config.Parse(strings.NewReader("schema_version: 99\ndomain: vpn.example.com\n"))
+	_, err := config.Parse(strings.NewReader("schema_version: 99\ndomain: node.example.com\n"))
 	if err == nil || !strings.Contains(err.Error(), "newer than this build") {
 		t.Fatalf("Parse error = %v, want a schema version rejection", err)
 	}
@@ -99,7 +99,7 @@ func TestParseRejectsNewerSchema(t *testing.T) {
 
 func TestValidateDomain(t *testing.T) {
 	t.Parallel()
-	valid := []string{"vpn.example.com", "a.b", "x1.example", "termit-uv1.lan"}
+	valid := []string{"node.example.com", "a.b", "x1.example", "termit-uv1.lan"}
 	for _, domain := range valid {
 		cfg := config.Default()
 		cfg.Domain = domain
@@ -158,7 +158,7 @@ func TestValidateDownloadBase(t *testing.T) {
 	}
 	for _, base := range valid {
 		cfg := config.Default()
-		cfg.Domain = "vpn.example.com"
+		cfg.Domain = "node.example.com"
 		cfg.Xray.DownloadBase = base
 		if err := cfg.Validate(); err != nil {
 			t.Errorf("download_base %q rejected: %v", base, err)
@@ -166,7 +166,7 @@ func TestValidateDownloadBase(t *testing.T) {
 	}
 	for _, base := range []string{"ftp://mirror/x", "relative/dir", "https://"} {
 		cfg := config.Default()
-		cfg.Domain = "vpn.example.com"
+		cfg.Domain = "node.example.com"
 		cfg.Xray.DownloadBase = base
 		if err := cfg.Validate(); err == nil {
 			t.Errorf("download_base %q accepted", base)
@@ -213,7 +213,7 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	filename := filepath.Join(dir, "config.yaml")
 
 	cfg := config.Default()
-	cfg.Domain = "vpn.example.com"
+	cfg.Domain = "node.example.com"
 	cfg.Email = "owner@example.com"
 	cfg.ACME.SkipTLSVerify = true
 	cfg.Xray.SHA256 = map[string]string{"amd64": strings.Repeat("b", 64)}
@@ -246,7 +246,7 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 func TestMarshalIsDeterministic(t *testing.T) {
 	t.Parallel()
 	cfg := config.Default()
-	cfg.Domain = "vpn.example.com"
+	cfg.Domain = "node.example.com"
 	first, err := cfg.Marshal()
 	if err != nil {
 		t.Fatalf("Marshal: %v", err)
@@ -334,5 +334,39 @@ func TestWarpSelectedMode(t *testing.T) {
 	}
 	if _, err := config.Parse(strings.NewReader(minimal + "warp:\n  mode: somewhere\n")); err == nil {
 		t.Error("an unknown mode was accepted")
+	}
+}
+
+func TestValidateMNURL(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		url  string
+		ok   bool
+	}{
+		{"empty", "", true},
+		{"plain", "https://mn.example.com", true},
+		{"with prefix", "https://mn.example.com/6rfjdqfn5nno", true},
+		{"port", "https://mn.example.com:8443/api", true},
+		{"http", "http://127.0.0.1:8181/p", true},
+		{"no scheme", "mn.example.com", false},
+		{"wrong scheme", "ftp://mn.example.com", false},
+		{"no host", "https://", false},
+		{"query", "https://mn.example.com/x?a=1", false},
+		{"fragment", "https://mn.example.com/x#f", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := config.Default()
+			c.Domain = "node.example.com"
+			c.MN.URL = tc.url
+			err := c.Validate()
+			if tc.ok && err != nil {
+				t.Fatalf("Validate(%q) = %v", tc.url, err)
+			}
+			if !tc.ok && err == nil {
+				t.Fatalf("Validate(%q) accepted an unusable URL", tc.url)
+			}
+		})
 	}
 }

@@ -57,9 +57,9 @@ traffic across the mesh by matching credential values.
 | S12 | Global passive adversary | traffic correlation across many vantage points and time | associate client and node despite the proxy |
 | S13 | Legal compulsion of a node operator | demands logs and keys | the operator's own view |
 
-Out of scope by non-goal (DESCRIPTION §3): this is not a censorship circumvention network for
-strangers, not an anonymity system, and not a hiding place from a determined state-level adversary
-with global visibility.
+Out of scope by non-goal (DESCRIPTION §3): this is not a public proxy service for strangers, not an
+anonymity system, and not a hiding place from a determined state-level adversary with global
+visibility.
 
 ## 4. Trust boundaries
 
@@ -125,10 +125,10 @@ against a global observer.
 |---|---|---|
 | A stolen database yields credentials | agent keys, subscription tokens, invite codes and admin tokens are stored only as SHA-256 digests (`secret.Digest`), and the values are 256-bit random, so there is nothing to brute-force; the token that must be readable again (the subscription URL) is AES-GCM sealed under a key derived from the master key | if the master key is stolen **with** the database, everything sealed or derivable is exposed — that is the same as S9 |
 | An invite code is guessed | 20 random bytes in base32, single-use by default, optional expiry, revocable, and the only unauthenticated endpoint is rate-limited per source address | an operator who hands out a code with 100 uses has effectively published it |
-| A subscription URL leaks | it names one node's list and nothing else; `mn sub rotate` replaces it and the old URL stops working | until rotated, whoever holds it can use the mesh as that owner |
-| An agent key leaks | it authenticates one node; `mn uv reissue` replaces it, `mn uv block` stops it from syncing | a leaked key gives the holder the node's peer set **and the pair credentials in it**, i.e. working access to the mesh as that owner. Treat an agent key like a password |
+| A subscription URL leaks | it names one node's list and nothing else; `termit-mn sub rotate` replaces it and the old URL stops working | until rotated, whoever holds it can use the mesh as that owner |
+| An agent key leaks | it authenticates one node; `termit-mn uv reissue` replaces it, `termit-mn uv block` stops it from syncing | a leaked key gives the holder the node's peer set **and the pair credentials in it**, i.e. working access to the mesh as that owner. Treat an agent key like a password |
 | Credentials are compared in a way that leaks timing | lookup is by digest through a database index, so there is no byte-by-byte comparison to observe; matching a digest requires the full 256-bit value | — |
-| Credentials appear in logs or errors | log lines carry node ids, domains and state — never keys, tokens, UUIDs or certificate contents; error texts say "the agent key is not valid", not what was wrong with it; `uv status --json` prints fingerprints | a crash dump or a debugging session that prints memory can still contain them; root on the box is game over (§5.5) |
+| Credentials appear in logs or errors | log lines carry node ids, domains and state — never keys, tokens, UUIDs or certificate contents; error texts say "the agent key is not valid", not what was wrong with it; `termit-uv status --json` prints fingerprints | a crash dump or a debugging session that prints memory can still contain them; root on the box is game over (§5.5) |
 
 Pairwise derivation (DESCRIPTION §6.2) is the reason a leaked client credential does not become a
 mesh-wide credential: it is valid on one pair, and it is derived from ids the holder cannot choose.
@@ -140,11 +140,11 @@ pair credential without touching a database.
 | Threat | Mitigation | Residual |
 |---|---|---|
 | An attacker reaches the admin interface over the network | there is no network admin interface: admin operations are a JSON protocol on a unix socket, `0600`, directory `0750`, for a process on the same host | anything that can run as root on the server is inside |
-| A stolen admin token | tokens are 256-bit random, hashed, and every mutation is audited with the actor and the target | there is no rotation command: a leaked admin token is removed by hand (`OPERATIONS.md` §12) |
+| A stolen admin token | tokens are 256-bit random, hashed, and every mutation is audited with the actor and the target; `termit-mn admin rotate` replaces it in one write and the old digest stops resolving | a lost (not leaked) token has no online recovery: the database holds only a digest, so it takes the delete-the-row procedure in `OPERATIONS.md` |
 | The prober is used as a weapon | a prober failure is `unknown`, never `failed`; a DNS resolver that cannot answer is skipped, not counted against the node; only a genuine negative result moves a state, and only after the configured number of retries | a compromised server can of course lie in the other direction — the admission policy is cooperative |
 | A node's own report is believed | the sync body's `check` is stored beside the probe and never moves a state; the server's verdict comes from its own probe, from its own address, pinned to the leaf it read | a node that also controls the network path to the server could satisfy both; that is a compromised node, not a protocol flaw |
 | An attacker forces re-enrollment of a domain | the domain is unique, the invite is consumed transactionally, and a change of identity requires either an unblock/relocate that passes the same checks or an operator command | an operator can always be socially engineered |
-| SQLite is the single point of failure | the database is opened read-only for backups (`VACUUM INTO`), migrations are forward-only, and `mn backup` captures database, configuration, certificate and master key | a corrupt database without a backup loses the mesh's credentials (§5.6) |
+| SQLite is the single point of failure | the database is opened read-only for backups (`VACUUM INTO`), migrations are forward-only, and `termit-mn backup` captures database, configuration, certificate and master key | a corrupt database without a backup loses the mesh's credentials (§5.6) |
 
 ### 5.5 The endpoints (S5, S9, S10)
 
@@ -152,7 +152,7 @@ pair credential without touching a database.
 |---|---|---|
 | A node owner reads another participant's credentials | the node's config contains only the pair credentials other owners use **towards it**, plus its own; it cannot derive anybody else's | the node sees that a given pair credential is in use, and it sees the traffic that credential carries |
 | A node owner abuses peers' traffic | the client's traffic goes where the client asked; the mesh is not a monitoring system | an operator sees destinations of traffic that traverses their node. Stated here so nobody is surprised |
-| A node owner stays in the mesh after being removed | the server refuses to sync or admit a removed node (`403 node_inactive`) and stops issuing its pair credentials into other nodes' sets | a removed node that still knows the exit's IP can keep using the proxy until the exit's config changes; `uv sync` on the exit removes the credential, but blocking is cooperative (§6) |
+| A node owner stays in the mesh after being removed | the server refuses to sync or admit a removed node (`403 node_inactive`) and stops issuing its pair credentials into other nodes' sets | a removed node that still knows the exit's IP can keep using the proxy until the exit's config changes; `termit-uv sync` on the exit removes the credential, but blocking is cooperative (§6) |
 | The agent runs as root | it needs root for two narrow things: replacing the core's config (`0640 root:termit`) and asking systemd to restart the core. Its unit confines writes to the config and state directories, drops `ProtectHome` only when a configured CA file demands it, and sets `NoNewPrivileges` and `ProtectSystem=strict` | root in the process can still rewrite what it is allowed to write; a compromise of the agent is a compromise of the node |
 | The core is exploited | it runs as `termit` with an empty capability set, `ProtectSystem=strict`, `SystemCallFilter=@system-service`, `MemoryDenyWriteExecute`, on loopback only | a memory-safety bug in Xray-core would still be remote code execution as an unprivileged user |
 
@@ -161,9 +161,9 @@ pair credential without touching a database.
 | Scenario | Consequence | Mitigation |
 |---|---|---|
 | The MN's database is lost, the master key survives | the registry is gone, credentials can be re-derived, but the records (ids) are not | restore from backup; re-enroll if there is none |
-| The MN's master key is lost | every pair credential is unrecoverable — the mesh can only be rebuilt by re-enrolling every node | the key is in the backup; `mn init` prints its fingerprint so a restore can be checked |
-| A node's state file is lost | the node cannot authenticate; it is a rebuilt box | `uv init --relocate --agent-key-file` + `uv migrate --relocate` (Scenario C) |
-| A node's certificate key leaks | impersonation of that node's decoy | `uv renew-cert --force` with a new key; the server follows the new pin at the next sync |
+| The MN's master key is lost | every pair credential is unrecoverable — the mesh can only be rebuilt by re-enrolling every node | the key is in the backup; `termit-mn init` prints its fingerprint so a restore can be checked |
+| A node's state file is lost | the node cannot authenticate; it is a rebuilt box | `termit-uv init --relocate --agent-key-file` + `termit-uv migrate --relocate` (Scenario C) |
+| A node's certificate key leaks | impersonation of that node's decoy | `termit-uv renew-cert --force` with a new key; the server follows the new pin at the next sync |
 | An operator deletes the audit log | evidence is gone | retention is a year; the log lives in the same database as the registry, so an attacker with write access can remove it |
 
 ## 6. Residual risk and known limitations
@@ -211,7 +211,7 @@ These are decisions, not bugs, and each one is a sentence an operator should be 
 | the core config is validated before it is applied | `xray -test` gate in the install step and in the agent's reconciliation; golden tests; lab |
 | direct traffic is never captured | lab: an SSH session stays open through install, sync, WARP toggle and certificate renewal; no routing or firewall code exists to run |
 | WARP fail-open keeps traffic flowing with a dead sidecar | `test/lab/warp_test.go`: a real client fetches the Cloudflare trace through the node with nothing listening on the sidecar port and gets `warp=off` |
-| the admin surface is a `0600` unix socket | `cmd/mn/socket_linux.go` creates the socket `0600` in a `0750` directory; `mn` is the only client |
+| the admin surface is a `0600` unix socket | `cmd/mn/socket_linux.go` creates the socket `0600` in a `0750` directory; `termit-mn` is the only client |
 | the decoy is self-contained | decoy golden tests: no external hosts in the generated tree |
 
 Not verified yet, and therefore not claimed: the WARP tunnel itself (needs `/dev/net/tun`), a real

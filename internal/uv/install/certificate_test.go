@@ -105,8 +105,8 @@ func writeSelfSigned(t *testing.T, certPath, keyPath string, notAfter time.Time)
 	}
 	tmpl := &x509.Certificate{
 		SerialNumber: big.NewInt(1),
-		Subject:      pkix.Name{CommonName: "vpn.example.com"},
-		DNSNames:     []string{"vpn.example.com"},
+		Subject:      pkix.Name{CommonName: "node.example.com"},
+		DNSNames:     []string{"node.example.com"},
 		NotBefore:    engineNow.Add(-time.Hour),
 		NotAfter:     notAfter,
 	}

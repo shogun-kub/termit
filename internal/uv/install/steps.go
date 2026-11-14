@@ -32,12 +32,12 @@ var aptEnv = []string{
 // fetched with it, and a minimal Debian image does not ship curl.
 var requiredPackages = []string{"nginx", "ca-certificates", "curl"}
 
-// warpPackage is installed by the warp step, not by the packages step: only a host that can run WARP
-// and is asked to should get a VPN client, and the packages step runs on every host. It is part of
-// the declared dependency set all the same, from Cloudflare's signed apt repository.
+// warpPackage is installed by the warp step, not by the packages step: only a host that can run
+// WARP and is asked to should get the WARP client, while the packages step runs on every host.
+// It is part of the declared dependency set all the same, from Cloudflare's signed apt repository.
 const warpPackage = "cloudflare-warp"
 
-// aptRefresh is how long an apt index is considered current before `uv init` updates it again.
+// aptRefresh is how long an apt index is considered current before `termit-uv init` updates it again.
 const aptRefresh = 6 * time.Hour
 
 // stepEnv is the shared state every step works with.
@@ -418,7 +418,7 @@ func (s *identityStep) Run(context.Context) error {
 		if current == "" {
 			s.e.log.Debug("decoy template recorded", "template", s.e.cfg.Decoy.Template)
 		} else {
-			s.e.log.Info("decoy template changed; run `uv renew-site` to regenerate the site",
+			s.e.log.Info("decoy template changed; run `termit-uv renew-site` to regenerate the site",
 				"from", current, "to", s.e.cfg.Decoy.Template)
 		}
 	}

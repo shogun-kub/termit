@@ -10,7 +10,7 @@ import (
 )
 
 // Lock takes an exclusive advisory lock on filename without waiting. It returns ErrLocked when
-// another process holds it, so a manual `uv sync` and the agent loop cannot rewrite the same core
+// another process holds it, so a manual `termit-uv sync` and the agent loop cannot rewrite the same core
 // config at once. The returned function releases the lock; it is safe to call more than once.
 func Lock(filename string) (func(), error) {
 	file, err := os.OpenFile(filename, os.O_CREATE|os.O_RDWR, 0o600) // #nosec G304 -- a path from our own state dir.
