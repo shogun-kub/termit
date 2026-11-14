@@ -14,7 +14,7 @@ Related documents:
 ## 1. One paragraph
 
 Termit is a cooperative proxy mesh for people who own a small VPS. Each participant installs **UV**
-on their own Debian box; UV turns it into a censorship-resistant VLESS over XHTTP+TLS endpoint with
+on their own Debian box; UV turns it into a plain-looking VLESS over XHTTP+TLS endpoint with
 a convincing decoy website, applies traffic rules, and can route its proxied traffic through
 Cloudflare WARP. All participants are coordinated by **MN**, a small self-hosted management server:
 it verifies that every node is really reachable and really presents a valid certificate, keeps the
