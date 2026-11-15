@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shogun-kub/termit/internal/uv/service"
 	"github.com/shogun-kub/termit/test/lab"
 )
 
@@ -25,10 +26,13 @@ func TestLabOwnerSurface(t *testing.T) {
 	uv := l.UV2
 	domain := statusDomain(t, ctx, uv)
 
-	// The lab nodes were installed by an older build, so the first thing this binary says about them is
-	// that converging would change something — the honest answer — and only after `init` does the
-	// wizard call the node installed. That is also the upgrade path in miniature.
+	// The lab nodes were installed by this build, so the first thing to test is made here: one unit the
+	// pipeline writes is removed, which is the smallest difference a dry run of the install notices. The
+	// converge in the second case puts it back — the same measurement from the other side, and the reason
+	// this test can be re-run on a converged node.
+	bootUnit := "/etc/systemd/system/" + service.FirewallBootUnitName
 	t.Run("the wizard names an outdated node and what to run", func(t *testing.T) {
+		uv.MustRun(t, ctx, "rm -f "+bootUnit)
 		out := uv.MustRun(t, ctx, "LANG=ru_RU.UTF-8 termit-uv wizard --config /etc/termit/uv/config.yaml < /dev/null")
 		t.Logf("wizard on a node behind this build:\n%s", out)
 		if !strings.Contains(out, "termit-uv init") {
