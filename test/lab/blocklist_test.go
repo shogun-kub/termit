@@ -49,8 +49,12 @@ func TestLabBlocklist(t *testing.T) {
 
 	uv.MustRun(t, ctx, "printf '198.18.0.0/15\\n203.0.113.0/24\\n2001:db8::/32\\n' > "+source)
 	// The timer needs a URL in the configuration. The node keeps it after the test on purpose.
-	if out := uv.MustRun(t, ctx, "grep -c blocklist_url "+configPath+" || true"); strings.TrimSpace(out) == "0" {
+	// The key is written by every build that has the feature, so replacing its value is enough; the
+	// insert covers a configuration older than the key.
+	if out := uv.MustRun(t, ctx, "grep -c '^    blocklist_url:' "+configPath+" || true"); strings.TrimSpace(out) == "0" {
 		uv.MustRun(t, ctx, `sed -i 's|^  firewall:$|  firewall:\n    blocklist_url: file://`+source+`|' `+configPath)
+	} else {
+		uv.MustRun(t, ctx, `sed -i 's|^    blocklist_url: .*|    blocklist_url: file://`+source+`|' `+configPath)
 	}
 	if out, err := uv.Run(ctx, "termit-uv init --config "+configPath); err != nil {
 		t.Fatalf("init with a blocklist URL: %v\n%s", err, oneLine(out))
