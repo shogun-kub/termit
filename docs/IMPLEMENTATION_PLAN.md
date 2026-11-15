@@ -910,95 +910,230 @@ pass. The Docker Compose harness remains a developer convenience (QUESTIONS Q9.4
 
 ---
 
-## M5 — Security hardening (planned, not started)
+## M5 — Security hardening (planned; decisions taken 2026-11-15)
 
-Recorded on 2026-11-15 from the operator's requirements; nothing here is implemented, and nothing here
-runs by itself. The milestone needs one deliberate decision before any code: `docs/DESCRIPTION.md` §11
-forbids the agent from touching host firewall state, and that invariant stays true — a firewall is a
-feature the **operator** turns on with a command, never something `init`, `sync` or the timer does
-behind their back. Amending §11 is part of this milestone, not a side effect of it.
+Nothing here is implemented yet. The decisions below were made by the operator on 2026-11-15; the
+milestones in §5.9 are the implementation plan, and each one ends in something the lab can check.
 
-### 5.1 Firewall: blacklist first, then the services we need
+### 5.1 Decisions
 
-The operator already runs a script of this shape on their own boxes, and it is the right base:
+| Question | Decision |
+|---|---|
+| Backend | **Our own code on nftables**, inside `termit-uv` / `termit-mn`. No ufw, no fail2ban: the lab boxes have neither, `nftables 1.1.3` is already installed and its service enabled, and one backend means one place where bans live. |
+| Firewall model | **Whitelist after a blocklist**: a public CIDR list is denied, then `22/tcp`, `80/tcp`, `443/tcp` are allowed for everyone else; with `default_deny` (on by default) the rest of the inbound traffic is dropped. |
+| Who turns it on | **The operator, explicitly.** `init`, `sync`, the agent loop and the timers never touch firewall state; `DESCRIPTION.md` §11 keeps its promise and gains the one exception this needs, in the same commit. |
+| Scan threshold | **Configurable, 5 attempts per 10 minutes by default**; a repeat scan within the ladder window → 24 hours. |
+| Permanent block | **A separate persisted list** the operator owns (`blocked.txt`), plus the ban ladder for everything automatic. Nothing becomes permanent without the operator. |
+| `ssh_from` | **Opt-in flag / config list**, not a default: a static address is the exception, not the rule. |
+| Lockout safety | **Apply with a five-minute rollback timer**: `termit-uv firewall confirm` keeps the rules, anything else reverts them. |
+| Persistence | **Bans live on disk with their TTL** and survive a reboot; the nftables sets are rebuilt from that file on start. |
+| BitTorrent | **Opt-in Xray sniffer + routing rule**; off by default, a spike verifies the sniffer actually recognises it before we ship it. |
+| Scope | **Nodes and the server, one mechanism**: same code, different allowed ports. |
+| Defaults | **Everything off.** The wizard offers "harden this node" as a checkbox that is unchecked, and `init --harden` does the same without a wizard. |
 
-- A **blacklist** of CIDRs, refreshed from a public list
-  (`https://github.com/tread-lightly/CyberOK_Skipa_ips`, `lists/skipa_cidr.txt`), is denied outright.
-- **Whitelisted services** are then allowed for everyone who is not blacklisted: SSH, `80/tcp` and
-  `443/tcp`. Those are the only ports a Termit node needs — ACME and the redirect on 80, the node and
-  its decoy on 443, SSH for the operator.
-- Loopback and established connections stay allowed; nothing about the proxy's own traffic changes.
-- The existing script's "SSH always available for one specific IP" is **not** a general feature: it
-  assumes a static address, which most operators do not have. Keep it as a documented manual step, or
-  as an optional `--ssh-from` flag, not as a default.
+### 5.2 What owns what
 
-Constraints this milestone has to respect:
+```
+                 ┌───────────────────────── termit-uv / termit-mn ────────┐
+ nftables table  │ firewall apply/off/confirm   bans list/unban/block    │  state files
+ inet termit_*   │        │                            │                 │
+                 │        └──────┬─────────────────────┘                 │
+                 │               ▼                                       │
+                 │         guard loop (unit) ── reads ── nginx access log│
+                 │               │              and the ban sets        │
+                 │               └── writes ── /var/lib/termit/*/bans.json
+                 └───────────────────────────────────────────────────────┘
+```
 
-- It changes host firewall state, so it is an explicit command with a confirmation, `--dry-run`, and a
-  way back (`off` puts the host where it was). It must never overlap with a running `init`/`sync`.
-- It must not break ACME (`:80`), the decoy (`:443`), SSH, or the daily sync. WARP stays in proxy mode;
-  no routing changes, no `ip rule`, no tunnel.
-- A blocklist refresh is a network fetch from a third party: it needs a timer, a pinned source, a
-  checksum or at least a size sanity check, and the ability to run without it if the list is
-  unreachable (last known good list stays in force).
+- **The firewall is the table.** One table per component (`inet termit_uv`, `inet termit_mn`), one
+  input chain hooked at a negative priority so it runs before the distribution's rules. Everything
+  Termit adds lives in that table and nowhere else: `termit-uv firewall off` deletes the table and the
+  host is exactly as it was.
+- **The guard is the ban engine.** A long-running unit (same shape as the agent) that reads the nginx
+  access log, watches the ban sets, escalates repeats and writes the state file. It never parses
+  free-form text it did not produce itself.
+- **The blocklist is a file refresh.** A timer fetches one URL, validates it, and replaces
+  `blocklist.txt` atomically; the last good copy stays in force when the fetch fails.
 
-### 5.2 Rate limiting: deliberately not implemented
+### 5.3 The table
 
-- Throttling proxied traffic is the operator's responsibility: the node is not a public service, the
-  credentials are per pair, and a limiter would add latency to the one thing the node exists for, plus
-  its own fingerprint in timing.
-- One opt-in exception, because it catches an accident rather than abuse: **BitTorrent blocking**.
-  A client that proxies a torrent by mistake turns a VPS into a complaint magnet, so a routing rule
-  that drops bittorrent-shaped traffic should exist — off by default, on with a flag, and documented
-  as "your client should not do this at all".
+Rendered from a typed model, like the Xray config, with a golden file per component and per option
+combination. Sketch (v4 shown, v6 is the same with `ip6 saddr`):
 
-### 5.3 fail2ban, or the same job without Python
+```
+table inet termit_uv {
+    set blocked4  { type ipv4_addr; flags interval; auto-merge; }        # the downloaded list
+    set banned4   { type ipv4_addr; flags timeout; }                      # dynamic, TTL per element
+    set ssh4      { type ipv4_addr; flags interval; }                     # only with ssh_from
+    set scan4     { type ipv4_addr; flags timeout; }                      # to recognise repeats
 
-Defaults the operator asked for:
+    chain input {
+        type filter hook input priority -5; policy accept;
+        iif lo accept
+        ct state established,related accept
+        ct state invalid drop
+        ip saddr @blocked4 drop
+        ip saddr @banned4  drop
 
-| Signal | Threshold (to settle) | First ban | Repeat |
+        # ICMPv6 is not optional for IPv6: without NDP and PMTU messages the family dies.
+        icmpv6 type { nd-router-solicit, nd-router-advert, nd-neighbor-solicit,
+                      nd-neighbor-advert, packet-too-big, destination-unreachable,
+                      time-exceeded } accept
+
+        tcp dport 22 accept            # or: tcp dport 22 ip saddr @ssh4 accept
+        tcp dport { 80, 443 } accept
+
+        # Everything else: count per source, remember who tried, drop when default_deny is on.
+        meter scan4 { ip saddr limit rate over 5/minute } add @scan4 { ip saddr timeout 15m }
+        drop
+    }
+}
+```
+
+Two details are deliberately not left to the implementation:
+
+- **A scan is counted in the kernel, banned by the guard.** `meter … limit rate over N/minute` needs no
+  userspace, and the guard sees the resulting element in `@scan4` and applies the ban with the ladder's
+  TTL. That keeps one ban path for both signals and avoids a second, kernel-only ladder that the state
+  file would not know about. **Spike first:** `add @set { … timeout … }` inside a metered rule is the
+  nftables feature this rests on; if 1.1.3 refuses it, the fallback is the same rule with `log prefix
+  "termit-scan "` and the guard reading those events from the journal — slower, still native.
+- **`default_deny` is configurable and on.** A node publishes exactly three ports; anything else
+  inbound is a scan or a leftover service the operator forgot, and both are worth refusing. Off is for
+  an operator who runs something else on the box and knows it.
+
+### 5.4 Signals and the ban ladder
+
+| Signal | Evidence | First ban | Escalation |
 |---|---|---|---|
-| Port scanning — many failed connections to closed ports | 5 or 10 within a short window | 1 hour | 24 hours on the next attempt |
-| Failed requests to `443` for paths that do not exist | a handful within minutes | 5 minutes | escalating up to 1 hour |
-| Repeating offenders | every N bans, or a ban ladder that reaches the top | — | listed for permanent blocking |
+| Port scan | `@scan4` / `@scan6` elements (kernel meter, N attempts per window) | 1 hour | second within 24 h → 24 hours; then the offender is listed |
+| Failed `443` request | nginx access log: 4xx on any path, counted per source in a sliding window | 5 minutes | doubling: 5 → 10 → 20 → 40 → 60 minutes cap |
+| Operator | `termit-uv bans block <ip>` | permanent | stays until `unblock` |
 
-- Repeats are **logged and reviewable**, with a command to promote one to a permanent block — a
-  persisted list the operator can read, edit and clear, not a rule buried in a jail.local.
-- The signal for "failed 443 request" already exists: the node answers a wrong path with the decoy's
-  own `404`, and Xray's secret path answers `400` for bad credentials, which nginx turns into that
-  same `404`. So both are visible in the nginx access log without new instrumentation.
-- Thresholds must tolerate a real client: a phone that reconnects, a router that re-syncs. A single
-  failure cannot ban anybody, and the operator needs a one-command unban.
+- The guard holds the counters in memory, writes every decision to `bans.json` (`ip`, `signal`, `until`,
+  `count`), and re-applies unexpired bans when the table is rebuilt. A reboot does not clean a slate.
+- Repeated offenders are never blocked automatically: they appear in `termit-uv bans offenders` with
+  the count and the last signal, and the operator decides.
+- **Never ban**: loopback, RFC1918/ULA sources, the management server's address (taken from `mn.url`),
+  and the operator's own `ssh_from` list. A ban on those would be self-inflicted, and the guard checks
+  before it writes anything.
 
-Open decisions before implementation:
+### 5.5 Commands
 
-1. **fail2ban or our own.** Debian 13 ships `fail2ban` (Python) and it is well understood, but the node
-   is a 1 GB box and we already run one Go binary that could share nftables sets with the firewall.
-   A native implementation is less code on the host and one fewer package; fail2ban is more familiar to
-   operators and does log parsing better out of the box. Decide with the firewall choice (ufw vs
-   nftables directly) — they should use one backend.
-2. **Where the evidence comes from**: nginx access log for `443` 4xx, kernel conntrack or nginx error
-   log for scans. A scan that never completes a handshake leaves nothing in nginx; it needs conntrack
-   or nftables counters, which is one more reason to own the nftables backend.
-3. **Never-ban set**: the MN, the prober, private ranges, the operator's own current session.
-4. **Persistence and retention**: bans survive restart? How long are the repeat-offender records kept?
-5. **IPv6**: same rules, separately, because a single-family implementation silently opens the other.
+```
+termit-uv firewall status|on|off|confirm|refresh   --dry-run, --ssh-from CIDR, --default-deny=false
+termit-uv bans list|unban IP|block IP|unblock IP|offenders
+termit-uv guard status|run --once                  (the unit runs `guard run`)
+termit-mn  firewall … / bans …                     same code, ports from the server's config
+```
 
-### 5.4 Deliverables (sketch)
+- `on` renders the table, prints the diff, applies it, and starts the five-minute rollback timer; the
+  timer's unit deletes the table unless `confirm` ran. `off` deletes the table and stops the guard.
+- `--dry-run` prints the rendered rules and changes nothing, which is also what the lab asserts.
+- Every command refuses to run while an install is in flight (`/run/termit/uv/install.lock`).
 
-- `termit-uv firewall` — `status`, `on`, `off`, `refresh`; `--dry-run`; refuses to run while an install
-  is in flight; writes nothing outside its own nftables table.
-- `termit-uv bans` — `list`, `unban <ip>`, `block <ip>`, `unblock <ip>`; the permanent list lives under
-  `/var/lib/termit/uv/`.
-- A timer for the blocklist refresh, in the same shape as the existing renew timer.
-- Config under `security:` with everything off by default: `firewall.enabled`, `firewall.blocklist_url`,
-  `firewall.ssh_from`, `fail2ban.enabled`, thresholds, `bittorrent_block`.
-- Docs: `docs/OPERATIONS.md` gains a section with the exact rules, the way back, and what a false
-  positive looks like; `docs/DESCRIPTION.md` §11 gets the amended invariant; the lab gets a scenario
-  that turns it on, scans the node, and checks the ban — and one that proves the proxy still works
-  through it.
----
+### 5.6 Configuration
 
+```yaml
+security:                       # everything here is off unless the operator says otherwise
+  firewall:
+    enabled: false
+    default_deny: true
+    ssh_from: []                # CIDRs allowed to reach 22; empty means "from anywhere"
+    blocklist_url: "https://raw.githubusercontent.com/tread-lightly/CyberOK_Skipa_ips/main/lists/skipa_cidr.txt"
+    blocklist_refresh: 24h
+  guard:
+    enabled: false
+    scan:    { attempts: 5, window: 10m, ban: 1h, repeat: 24h }
+    path404: { attempts: 10, window: 5m, ban: 5m, max: 1h }
+    ladder_window: 24h
+  bittorrent_block: false
+```
+
+The keys are validated at load: durations positive and ordered (`window < ladder_window`), thresholds
+≥ 2 (a single failure must never ban), CIDRs parsed and normalised. `termit-mn` gets the same block
+with its own ports (`22`, `80`, `443`, plus `listen`).
+
+### 5.7 BitTorrent
+
+`security.bittorrent_block: true` adds to the generated Xray config, not to the firewall:
+
+```json
+"sniffing": { "enabled": true, "destOverride": ["http", "tls", "quic"], "routeOnly": false },
+"routing":  { "rules": [ { "type": "field", "protocol": [ "bittorrent" ], "outboundTag": "block" } ] }
+```
+
+**Spike M5.0 proves the sniffer actually classifies it**; if Xray's build cannot, the feature is
+dropped and documented as such rather than shipped as a placebo. Sniffing costs a little CPU on the
+first packets, which is why it is off by default and not implied by the firewall.
+
+### 5.8 Blocklist refresh
+
+- One `GET` of a pinned URL, no `git` dependency; `If-Modified-Since` and a size cap.
+- Parsed as CIDRs (`iproute2`-style lines, `#` comments), normalised, deduplicated, sorted, and
+  rendered deterministically so the file's digest means something.
+- Replaced atomically; the old file stays until the new one parses. A refresh that finds nothing
+  usable is a warning, never an empty list.
+- `termit-uv firewall refresh` runs it once; the timer runs it daily with a randomised delay.
+
+### 5.9 Milestones
+
+**M5.0 — Spike (half a day).** On `termit-uv2.lan`: does nftables 1.1.3 accept `add @set { ip saddr
+timeout … }` inside a `meter` rule, and what does `nft -c -f` say about the whole table? Does the
+pinned Xray recognise `protocol: bittorrent` with `destOverride`? Both answers go in the plan before
+code exists.
+
+**M5.1 — Table and commands (1–2 d).** `security/firewall.go` renders the table from a typed model;
+`firewall status|on|off|confirm|refresh`; the five-minute rollback timer unit; `--dry-run`. Tests:
+golden files for both components and both `default_deny` values, IPv6 included; a unit test for the
+renderer refusing an invalid CIDR or a port of 0. Lab: `on` with the timer, an SSH session that stays
+alive, `confirm`, then `off` leaving `nft list ruleset` unchanged from before.
+
+**M5.2 — Guard and bans (2–3 d).** The guard loop, the ladder with an injectable clock, `bans.json`,
+`bans list|unban|block|unblock|offenders`, the never-ban set, log-rotation handling (inode changes).
+Tests: ladder arithmetic and the cap, a repeated scan reaching 24 h, a reboot rebuilding the sets from
+the file, an element expiring on its own. Lab: scan `termit-uv2` from `termit-mn` with `nc`, watch the
+ban appear, check that uv1 still works from its own address, unban, and repeat the scan to see 24 h.
+
+**M5.3 — Blocklist refresh (half a day).** Fetch, validate, atomic replace, the timer, the "keep the
+last good list" path. Lab: a `file://` URL in the config as the source, a truncated file that must be
+refused, an unreachable URL that must keep the previous list.
+
+**M5.4 — BitTorrent, if M5.0 allows (half a day).** Config generation plus a golden test; the manual
+check is documented because a real torrent client is not lab-shaped.
+
+**M5.5 — MN parity (half a day).** Same commands in `termit-mn`, ports from its config, table named
+`inet termit_mn`; a lab run where the firewall is on while a node syncs and enrolls.
+
+**M5.6 — Wiring (half a day).** `init --harden`, the wizard's unchecked "harden this node" question,
+`status` lines (`firewall: on, 3 bans`, `blocklist: 1234 CIDRs, refreshed 2h ago`), `uninstall`
+removing the table and the units, the `security:` block in both configs and the `--help` text.
+
+**M5.7 — Docs and the §11 amendment (half a day).** `DESCRIPTION.md` §11 invariant 1 becomes: never
+touch routing; a firewall is only ever changed by the explicit `firewall` command, never by a timer,
+`init`, `sync` or the agent. `OPERATIONS.md` gains a section with the exact rules, the way back, and
+what a false positive looks like; `docs/guide/` gets the operator-facing page in both languages;
+`THREAT_MODEL.md` says what this does and does not defend against (it stops scans and probing, it does
+not hide the node from a targeted observer).
+
+**M5.8 — Rollout.** Lab first, all of it; then the production MN (`firewall on` with the rollback
+timer, then `confirm` from a second session), then the two nodes one at a time, checking after each
+step: SSH alive, 443 serving, a client request through the tunnel, the MN's prober green, `status`
+clean. Any step that fails: `firewall off`, and the host is where it started.
+
+Total: 5–7 days of work, of which the first half-day decides two syntax questions that could re-shape
+the rest.
+
+### 5.10 Explicitly out of scope
+
+- **Rate limiting of proxied traffic.** The operator owns their node; a limiter adds latency to the one
+  thing it exists for and is a timing fingerprint. The BitTorrent rule stays, because it catches an
+  accident rather than abuse.
+- **Any routing, NAT or `ip rule` change.** WARP stays a loopback proxy; nothing in this milestone sees
+  a packet of host traffic other than inbound.
+- **A GUI, a threat feed, or a second blocklist.** One list, one URL, one file, operator-editable.
+- **Banning on the client's own protocol errors.** A wrong key answers `404`, which is a 4xx and
+  therefore counts — that is intended and documented, with `bans unban` as the way out.
 ## 2. Cross-cutting workstreams
 
 These are not separate milestones; they must be updated in the milestone that touches them.

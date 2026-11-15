@@ -36,10 +36,21 @@ The remaining questions below are still open; the ones that matter before M1 are
 
 ---
 
-## 0a. Security hardening (2026-11-15, decisions for M5)
+## 0a. Security hardening (2026-11-15, decided; plan in `IMPLEMENTATION_PLAN.md` M5)
 
 | Question | Decision |
 |---|---|
+| Backend | **Our own code on nftables**, one backend for the firewall and the bans. No ufw and no fail2ban: the lab boxes have neither, `nftables 1.1.3` is installed and its service enabled, and a ban lives in one place instead of two. |
+| Firewall model | **Blacklist first, then a service whitelist** — `22/tcp`, `80/tcp`, `443/tcp` — with `default_deny` on by default; anything else inbound is dropped. |
+| Who turns it on | **The operator, explicitly.** `init`, `sync`, the agent and the timers never change firewall state; a five-minute rollback timer protects the first apply. |
+| Scan threshold | **Configurable, 5 attempts per 10 minutes by default**; a repeat within 24 hours → 24-hour ban. |
+| Permanent block | **A separate persisted list the operator owns**, plus an automatic ban ladder that never becomes permanent by itself. |
+| `ssh_from` | **Opt-in** flag and config list, not a default: a static address is the exception. |
+| Persistence | **Bans on disk with their TTL**, re-applied after a reboot. |
+| BitTorrent | **Opt-in Xray sniffer + routing rule**, and only if the spike proves the sniffer classifies it. |
+| Scope and defaults | **Nodes and the server, one mechanism**; everything off until the operator asks, with the wizard offering an unchecked "harden this node". |
+| Rate limiting of proxied traffic | **Not implemented**: the operator owns their traffic, and a limiter costs latency and adds a timing fingerprint. |
+---|---|
 | Rate limiting of proxied traffic | **Not implemented.** The operator is responsible for not abusing their own node; a limiter adds latency to the one thing the node exists for and is a timing fingerprint. The single exception is an opt-in BitTorrent block, because a misconfigured client proxying torrents turns a VPS into a complaint magnet. |
 | Firewall model | **Blacklist first, then a service whitelist**: a public CIDR list is denied outright, and `22/tcp`, `80/tcp`, `443/tcp` are allowed for everyone else. The operator's existing ufw script is the base. |
 | Who turns the firewall on | **The operator, explicitly.** `init`, `sync` and the timers never touch host firewall state; `docs/DESCRIPTION.md` §11 says so and stays true. A one-command `off` puts the host back. |
