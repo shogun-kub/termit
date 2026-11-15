@@ -25,6 +25,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/shogun-kub/termit/internal/acme"
+	"github.com/shogun-kub/termit/internal/harden"
 	"github.com/shogun-kub/termit/internal/i18n"
 	"github.com/shogun-kub/termit/internal/proto"
 	"github.com/shogun-kub/termit/internal/uv/state"
@@ -58,37 +59,22 @@ const (
 
 	// DefaultRenewBeforeDays renews a 90-day certificate around day 60.
 	DefaultRenewBeforeDays = 30
+)
 
-	// DefaultScanAttempts is how many attempts to a closed port in one window make a scan. It is
-	// deliberately above one: a client that probes a port once is not an attacker.
-	DefaultScanAttempts = 5
-
-	// DefaultScanWindow is the rate's time unit. nftables can only write "N per <unit>", so the
-	// window has to be exactly one of second, minute, hour, day or week.
-	DefaultScanWindow = time.Minute
-
-	// DefaultScanRemember is how long the kernel remembers a scanning source for the guard to read.
-	// It is longer than the window so a burst is not forgotten before the guard's next pass.
-	DefaultScanRemember = 15 * time.Minute
-
-	// DefaultScanBan is the first ban a scan earns, and DefaultScanRepeat what a scan inside the
-	// ladder window earns. The plan's one hour and twenty-four hours.
-	DefaultScanBan    = time.Hour
-	DefaultScanRepeat = 24 * time.Hour
-
-	// DefaultLadderWindow is how long a repeat still counts as one.
-	DefaultLadderWindow = 24 * time.Hour
-
-	// The failed-request ladder: ten 4xx answers in five minutes earn five minutes, doubling to an
-	// hour. A wrong key answers 404 by design, so this catches a client that is being tried, not one
-	// that mistyped its URL once.
-	DefaultPath404Attempts = 10
-	DefaultPath404Window   = 5 * time.Minute
-	DefaultPath404Ban      = 5 * time.Minute
-	DefaultPath404Max      = time.Hour
-
-	// DefaultBlocklistRefresh fetches the network list once a day: that is how often such lists change.
-	DefaultBlocklistRefresh = 24 * time.Hour
+// The security block's defaults live in internal/harden, because the server's configuration has the
+// same block. These aliases keep the node's own vocabulary where it was.
+const (
+	DefaultScanAttempts     = harden.DefaultScanAttempts
+	DefaultScanWindow       = harden.DefaultScanWindow
+	DefaultScanRemember     = harden.DefaultScanRemember
+	DefaultScanBan          = harden.DefaultScanBan
+	DefaultScanRepeat       = harden.DefaultScanRepeat
+	DefaultLadderWindow     = harden.DefaultLadderWindow
+	DefaultPath404Attempts  = harden.DefaultPath404Attempts
+	DefaultPath404Window    = harden.DefaultPath404Window
+	DefaultPath404Ban       = harden.DefaultPath404Ban
+	DefaultPath404Max       = harden.DefaultPath404Max
+	DefaultBlocklistRefresh = harden.DefaultBlocklistRefresh
 )
 
 var (

@@ -10,6 +10,10 @@ import (
 	"github.com/shogun-kub/termit/internal/atomicfile"
 )
 
+// ConfirmWindow is how long an applied table waits for irewall confirm before the rollback timer removes
+// it. It is long enough to open a second session and short enough that a lockout is measured in minutes.
+const ConfirmWindow = 5 * time.Minute
+
 // Applied is what the last `firewall on` put in place. It lives next to the component's other state
 // because three things need to agree on it: `status` (is the table the configuration's?), the rollback
 // timer (has it been confirmed?) and `off` (what to describe afterwards).

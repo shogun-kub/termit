@@ -24,6 +24,7 @@ import (
 	"github.com/shogun-kub/termit/internal/acme"
 	"github.com/shogun-kub/termit/internal/atomicfile"
 	"github.com/shogun-kub/termit/internal/decoy"
+	"github.com/shogun-kub/termit/internal/harden"
 	"github.com/shogun-kub/termit/internal/i18n"
 	"github.com/shogun-kub/termit/internal/proto"
 )
@@ -83,6 +84,9 @@ type Config struct {
 	DNS            DNS          `yaml:"dns"`
 	Prober         Prober       `yaml:"prober"`
 	Subscription   Subscription `yaml:"subscription"`
+	// Security is the opt-in host table, the ban engine and the blocklist: the same block a node has,
+	// minus the options that are about a proxy core. The server has its own table name and ports.
+	Security harden.Config `yaml:"security"`
 }
 
 // Subscription is what the sing-box profile at /sub/<token>/json asks of the client beyond the peer
@@ -317,6 +321,7 @@ func (c *Config) Validate() error {
 			problems = append(problems, fmt.Errorf("%s must be an absolute path, got %q", name, value))
 		}
 	}
+	problems = append(problems, c.Security.Validate()...)
 	if len(problems) > 0 {
 		return fmt.Errorf("invalid configuration: %w", errors.Join(problems...))
 	}
@@ -324,6 +329,7 @@ func (c *Config) Validate() error {
 }
 
 func (c *Config) applyDefaults() {
+	c.Security.ApplyDefaults()
 	if c.Listen == "" {
 		c.Listen = ":443"
 	}
@@ -470,3 +476,9 @@ func validateDomain(domain string) error {
 	}
 	return nil
 }
+
+// The three state files the security commands keep. They live beside the database, in the data
+// directory the operator already backs up.
+func (c *Config) FirewallPath() string  { return path.Join(c.DataDir, "firewall.json") }
+func (c *Config) BansPath() string      { return path.Join(c.DataDir, "bans.json") }
+func (c *Config) BlocklistPath() string { return path.Join(c.DataDir, "blocklist.txt") }

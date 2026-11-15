@@ -912,7 +912,7 @@ pass. The Docker Compose harness remains a developer convenience (QUESTIONS Q9.4
 
 ## M5 — Security hardening (planned; decisions taken 2026-11-15)
 
-Nothing here is implemented yet except M5.0 (§5.0), M5.1 and M5.2 (§5.9). The decisions below were made
+Nothing here is implemented yet except M5.0 (§5.0) and M5.1–M5.5 (§5.9). The decisions below were made
 by the operator on 2026-11-15; the milestones in §5.9 are the implementation plan, and each one ends in
 something the lab can check.
 
@@ -1099,7 +1099,7 @@ termit-uv firewall status|on|off|confirm|rollback    --dry-run, --ssh-from CIDR,
 termit-uv firewall refresh                          --url, --dry-run: the blocklist
 termit-uv bans list|unban IP|block IP|unblock IP|offenders
 termit-uv guard status|run --once                  (the unit runs `guard run`)
-termit-mn  firewall … / bans …                     same code, ports from the server's config
+termit-mn  firewall … / bans … / guard …           the same code, the server's table and ports
 ```
 
 - `on` renders the table, arms the rollback timer, applies it, and records what it applied in
@@ -1278,8 +1278,36 @@ The golden was fed to the pinned core on the lab node: `xray -test` says `Config
 A real torrent client is still not lab-shaped, so that half stays manual and `OPERATIONS.md` §6.1 says
 what to watch: the handshake dies, an HTTPS request through the same client does not.
 
-**M5.5 — MN parity (half a day).** Same commands in `termit-mn`, ports from its config, table named
-`inet termit_mn`; a lab run where the firewall is on while a node syncs and enrolls.
+**M5.5 — MN parity (done).** The commands are one implementation, not two: `internal/harden` holds the
+`security:` block both configurations embed, and `internal/hardencmd` holds the six firewall, five
+bans and two guard commands. Each binary supplies a `Target` (table name, ports, units, paths, access
+log, whether a unit directory exists) and the seams a test replaces; `cmd/uv`'s three command files
+became one-liners, and `termit-mn` gained the same three.
+
+Two decisions the server forced:
+
+- **Ports 22, 80 and 443.** Port 80 has to stay open for *every* node's renewal, not only while this
+  server's own ACME order is in flight, so it is not conditional. `firewall.ServerPorts` says so.
+- **The server's units are files, not rendered ones.** The node writes its units because every path in
+  them is configurable; the server has one layout, so `deploy/systemd` carries the guard, the blocklist
+  pair and the rollback pair, and `firewall on` **refuses to run until the rollback timer is installed**.
+  An apply with no way back is worse than a refused command, and the refusal is the first thing an
+  operator sees. That is also why the blocklist interval on the server is the timer file rather than
+  `security.firewall.blocklist_refresh`: the server's units are edited, not generated.
+
+The server's guard counts scans only: the server writes its log to the journal, and its admin API is
+rate-limited instead of banned. `guard status` says `log: none: this component keeps no access log`
+rather than pretending a signal exists.
+
+One bug fixed on the way: `bans block` built the never-ban set from `ssh_from` alone, so the
+management server's address — which the guard refuses to ban itself — could be blocked by hand and cut
+the node off from the mesh. Both now use the same set.
+
+Lab (`TestLabMNFirewall`, 6.9 s): the units are installed from `deploy/systemd` the way the
+documentation says, `on` applies `inet termit_mn` with `default deny` on 22/80/443, the admin socket
+still answers, a node syncs through :443 while the table is up, `check --all` passes, `bans
+block`/`unblock` work against the server's sets, `off` returns `nft list ruleset` to its previous
+digest, and the ban record survives the table.
 
 **M5.6 — Wiring (half a day).** `init --harden`, the wizard's unchecked "harden this node" question,
 `status` lines (`firewall: on, 3 bans`, `blocklist: 1234 CIDRs, refreshed 2h ago`), `uninstall`

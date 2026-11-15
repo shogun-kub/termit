@@ -1,0 +1,41 @@
+# Refreshes the management server's network blocklist once a day.
+#
+#   install -m 0644 deploy/systemd/termit-mn-blocklist.service /etc/systemd/system/
+#   install -m 0644 deploy/systemd/termit-mn-blocklist.timer   /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now termit-mn-blocklist.timer
+#
+# It runs `termit-mn firewall refresh`, which fetches security.firewall.blocklist_url, validates it,
+# replaces the file in force and loads it into the table. With no table applied it only updates the file.
+
+[Unit]
+Description=Refresh the Termit network blocklist (management server)
+Documentation=https://github.com/shogun-kub/termit
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/termit-mn firewall refresh --config /etc/termit/mn/config.yaml
+Nice=10
+TimeoutStartSec=5min
+
+# Root for nft. Same confinement as the guard, and the same AF_NETLINK requirement.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/termit/mn
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM

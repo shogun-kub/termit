@@ -29,7 +29,13 @@ Conventions used below:
 | UV | `termit-xray.service` | `127.0.0.1:8443`, API on `127.0.0.1:10085` | the proxy core |
 | UV | `termit-uv-agent.service` | outbound only | the daily cycle: self-check, sync, core reconciliation |
 | UV | `termit-uv-renew.timer` | — | the daily certificate check |
+| UV | `termit-uv-guard.service` | — | the ban engine, when `security.guard.enabled` (§18.4) |
+| UV | `termit-uv-blocklist.timer` | — | the network blocklist refresh, when a URL is configured (§18.5) |
 | UV | `warp-cli` (Cloudflare's unit) | `127.0.0.1:40000` | the WARP SOCKS5 sidecar, when WARP is on |
+| MN | `termit-mn-guard.service`, `termit-mn-blocklist.timer` | — | the same two, from `deploy/systemd` (§18.6) |
+
+The firewall itself is not a unit on either side: it is a table someone applied with `firewall on`, and
+nothing re-applies it at boot (§15).
 
 Termit never touches host routing or the firewall, so every other service on the box (SSH included)
 keeps working through every code path. That is a contract, not a default.
@@ -1312,7 +1318,50 @@ outdated one, because it silently unblocks everything.
 `firewall on` loads the file too, so a table applied after a reboot comes back with its networks. With no
 table applied, a refresh writes the file and leaves the kernel alone.
 
-### 18.6 What it does not do
+### 18.6 The management server
+
+The server can carry the same table, with its own name and its own ports. It is the same commands with a
+different binary, so everything above is true of it except the two things a server does not have: no access
+log to count 4xx answers (the server logs to the journal, and its admin API is rate-limited instead), and
+no proxy core to sniff.
+
+```bash
+termit-mn firewall status|on|off|confirm|rollback|refresh
+termit-mn bans list|offenders|block IP|unban IP|unblock IP
+termit-mn guard status|run [--once]
+```
+
+The table is `inet termit_mn` and it publishes **22, 80 and 443**: 80 stays open for every node's
+certificate renewal, not only while this server's own order is in flight, which is why it is not opened
+conditionally.
+
+One difference matters before the first `on`: the server's units are plain files in `deploy/systemd`, not
+rendered by the binary, so `firewall on` **refuses to run until the rollback timer is installed**. That is
+deliberate — an apply with no way back is worse than a refused command — and it is the first thing to
+check when `on` says the timer is not installed:
+
+```bash
+install -m 0644 deploy/systemd/termit-mn-firewall-rollback.service \
+                   deploy/systemd/termit-mn-firewall-rollback.timer \
+                   deploy/systemd/termit-mn-guard.service \
+                   deploy/systemd/termit-mn-blocklist.service \
+                   deploy/systemd/termit-mn-blocklist.timer /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now termit-mn-guard termit-mn-blocklist.timer
+```
+
+Do not enable the rollback timer: the command starts it, and it exists to fire once. The blocklist timer
+runs `termit-mn firewall refresh` daily; its interval is the timer file, not
+`security.firewall.blocklist_refresh` — the server's units are edited, not generated.
+
+The guard and the refresh run as root because nft does, and both are confined the same way as the node's:
+`ProtectSystem=strict`, writes only to `/var/lib/termit/mn`, and `RestrictAddressFamilies` **including
+`AF_NETLINK`** — without it every cycle fails with "Unable to initialize Netlink socket".
+
+The ban record and the blocklist live beside the database in `/var/lib/termit/mn/`, so the backup in §10
+carries them.
+
+### 18.7 What it does not do
 
 - It does not rate-limit proxied traffic. Your node's clients are not throttled — that would add latency
   to the one thing the node exists for.

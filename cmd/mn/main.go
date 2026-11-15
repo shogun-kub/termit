@@ -69,6 +69,12 @@ func run(args []string, stdout, stderr *os.File) int {
 		return runServerCheck(args[1:], stdout, stderr)
 	case "status":
 		return runStatus(args[1:], stdout, stderr)
+	case "firewall":
+		return runFirewall(args[1:], stdout, stderr)
+	case "bans":
+		return runBans(args[1:], stdout, stderr)
+	case "guard":
+		return runGuard(args[1:], stdout, stderr)
 	case "admin":
 		return runAdmin(args[1:], stdout, stderr)
 	case "menu":
@@ -102,6 +108,12 @@ Admin:
   admin        rotate the admin token (the credential every admin command uses)
   sub          show and rotate subscription tokens
   status       show server, nodes and the check schedule
+
+Hardening:
+  firewall     the host table: status, on, off, confirm, rollback, refresh
+  bans         what the guard banned, and the operator's own block list
+  guard        the ban engine: status, or run the loop the unit runs
+
 
   version      print build and protocol version
   menu         the interactive menu (what the bare command does on a terminal); admin flags

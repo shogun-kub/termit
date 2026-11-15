@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/shogun-kub/termit/internal/firewall"
 )
 
 // The rollback pair is what makes `firewall on` safe to run over the connection it might cut: the
@@ -17,7 +19,7 @@ const (
 )
 
 // ConfirmWindow is how long an applied firewall waits for `termit-uv firewall confirm`.
-const ConfirmWindow = 5 * time.Minute
+const ConfirmWindow = firewall.ConfirmWindow
 
 // FirewallRollback renders the oneshot that takes the table down unless it was confirmed.
 func FirewallRollback(binary, config string) ([]byte, error) {

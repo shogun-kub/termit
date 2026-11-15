@@ -1,14 +1,13 @@
-package main
+package hardencmd
 
 import "strings"
 
-// flagsFirst moves positional arguments behind the flags, so `termit-uv bans block 203.0.113.7 --config x`
+// FlagsFirst moves positional arguments behind the flags, so `termit-uv bans block 203.0.113.7 --config x`
 // parses the way it was typed. Go's flag package stops at the first positional argument, and silently
-// treating "--config x" as two more positionals is a bug the operator cannot see. It mirrors the helper
-// in cmd/mn: the two binaries are separate main packages, so neither can import the other's.
+// treating "--config x" as two more positionals is a bug the operator cannot see.
 //
 // boolean names the flags that take no value. A flag written as --name=value is left alone.
-func flagsFirst(args []string, boolean map[string]bool) []string {
+func FlagsFirst(args []string, boolean map[string]bool) []string {
 	flags := make([]string, 0, len(args))
 	positional := make([]string, 0, len(args))
 	for i := 0; i < len(args); i++ {
@@ -30,4 +29,9 @@ func flagsFirst(args []string, boolean map[string]bool) []string {
 		}
 	}
 	return append(flags, positional...)
+}
+
+// flagsFirst is the package-local spelling of FlagsFirst.
+func flagsFirst(args []string, boolean map[string]bool) []string {
+	return FlagsFirst(args, boolean)
 }

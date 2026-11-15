@@ -42,6 +42,11 @@ const (
 // on. The proxy core itself listens on loopback only.
 var NodePorts = []int{SSHPort, 80, 443}
 
+// ServerPorts is what the management server publishes: SSH, TLS, and plain HTTP while an ACME order is
+// in flight. Port 80 has to stay open for every node's renewal, not only during this server's own order,
+// which is why it is not opened conditionally.
+var ServerPorts = []int{SSHPort, 80, 443}
+
 // Scan is the kernel-side scan detector: a meter that counts attempts per source and remembers an
 // offender in a set with a TTL, which the guard then reads to apply its ban ladder.
 type Scan struct {
