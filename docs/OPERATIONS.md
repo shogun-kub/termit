@@ -1336,7 +1336,7 @@ log to count 4xx answers (the server logs to the journal, and its admin API is r
 no proxy core to sniff.
 
 ```bash
-termit-mn firewall status|on|off|confirm|rollback|refresh
+termit-mn firewall status|on|off|confirm|rollback|refresh|restore
 termit-mn bans list|offenders|block IP|unban IP|unblock IP
 termit-mn guard status|run [--once]
 ```
@@ -1353,10 +1353,12 @@ check when `on` says the timer is not installed:
 ```bash
 install -m 0644 deploy/systemd/termit-mn-firewall-rollback.service \
                    deploy/systemd/termit-mn-firewall-rollback.timer \
+                   deploy/systemd/termit-mn-firewall.service \
                    deploy/systemd/termit-mn-guard.service \
                    deploy/systemd/termit-mn-blocklist.service \
                    deploy/systemd/termit-mn-blocklist.timer /etc/systemd/system/
 systemctl daemon-reload
+systemctl enable termit-mn-firewall
 systemctl enable --now termit-mn-guard termit-mn-blocklist.timer
 ```
 

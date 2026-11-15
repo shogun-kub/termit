@@ -102,10 +102,12 @@ Deliberate design choices worth knowing before you deploy it:
 
 ## Status
 
-`v0.2.1` is cut. M1–M5 are implemented and verified on a three-machine acceptance lab (Debian 13 in
-unprivileged containers), and the release pipeline builds verified artifacts for linux/amd64 and
-linux/arm64. Releases are published as **pre-release** until the first production pass is recorded —
-see [what is not here yet](#what-is-not-here-yet).
+`v0.2.1` is the newest release. M1–M5 are implemented and verified on a three-machine acceptance lab
+(Debian 13 in unprivileged containers), and the release pipeline builds verified artifacts for
+linux/amd64 and linux/arm64. M5's firewall, ban engine and blocklist are in `dev` and have not been
+rolled out to the production boxes yet, so the newest tag predates them. Releases are published as
+**pre-release** until the first production pass is recorded — see
+[what is not here yet](#what-is-not-here-yet).
 
 ## Requirements
 

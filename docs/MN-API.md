@@ -516,7 +516,8 @@ target.
 its own access is never entitled to re-issue somebody else's.
 
 The CLI (`termit-mn invite|uv|check|policy|sub|status|admin`) is a thin client of this table; use the
-CLI unless you are writing an integration.
+CLI unless you are writing an integration. `termit-mn firewall`, `bans` and `guard` are the exception:
+they act on the machine they run on and never reach the socket ([`OPERATIONS.md`](OPERATIONS.md) §18.6).
 
 ---
 
