@@ -24,7 +24,13 @@ import (
 	"github.com/shogun-kub/termit/internal/acme"
 	"github.com/shogun-kub/termit/internal/atomicfile"
 	"github.com/shogun-kub/termit/internal/decoy"
+	"github.com/shogun-kub/termit/internal/harden"
+	"github.com/shogun-kub/termit/internal/i18n"
+	"github.com/shogun-kub/termit/internal/proto"
 )
+
+// DefaultHappFragment is what a fresh server writes into subscription.happ_fragment.
+const DefaultHappFragment = proto.DefaultHappFragment
 
 // SchemaVersion is the configuration schema this build understands.
 const SchemaVersion = 1
@@ -52,7 +58,10 @@ const DefaultAPIPrefix = "/api/v1"
 type Config struct {
 	SchemaVersion int    `yaml:"schema_version"`
 	Domain        string `yaml:"domain"`
-	Listen        string `yaml:"listen"`
+	// Locale is the language of the interactive menu: the CLI output itself stays English, because it
+	// is read by scripts and quoted in bug reports.
+	Locale string `yaml:"locale"`
+	Listen string `yaml:"listen"`
 	// APIPrefix is the path the node API is served under. It is random on a fresh install so a
 	// scanner cannot find the API by trying the usual names; the node learns it as part of its MN URL.
 	APIPrefix     string `yaml:"api_prefix"`
@@ -67,13 +76,38 @@ type Config struct {
 	//
 	// Empty means the server is exposed directly and the peer is always the client. Listing an address
 	// that never sends the header is harmless: a trusted peer without one keeps its own address.
-	TrustedProxies []string   `yaml:"trusted_proxies,omitempty"`
-	ACME           ACME       `yaml:"acme"`
-	Decoy          Decoy      `yaml:"decoy"`
-	Enrollment     Enrollment `yaml:"enrollment"`
-	Policy         Policy     `yaml:"policy"`
-	DNS            DNS        `yaml:"dns"`
-	Prober         Prober     `yaml:"prober"`
+	TrustedProxies []string     `yaml:"trusted_proxies,omitempty"`
+	ACME           ACME         `yaml:"acme"`
+	Decoy          Decoy        `yaml:"decoy"`
+	Enrollment     Enrollment   `yaml:"enrollment"`
+	Policy         Policy       `yaml:"policy"`
+	DNS            DNS          `yaml:"dns"`
+	Prober         Prober       `yaml:"prober"`
+	Subscription   Subscription `yaml:"subscription"`
+	// Security is the opt-in host table, the ban engine and the blocklist: the same block a node has,
+	// minus the options that are about a proxy core. The server has its own table name and ports.
+	Security harden.Config `yaml:"security"`
+}
+
+// Subscription is what the sing-box profile at /sub/<token>/json asks of the client beyond the peer
+// list. Both options are client-side defences against a middlebox that decides by the first packet:
+// the server does nothing with them, and the plain base64 URI list cannot carry them at all.
+//
+// Off by default. A client that does not know the fields — stock sing-box before 1.12, or any client
+// reading something other than the /json form — never sees them, because only that document changes.
+type Subscription struct {
+	// Fragment splits the TLS ClientHello across TCP segments, so a filter that matches the first
+	// packet whole no longer sees it whole.
+	Fragment bool `yaml:"fragment"`
+	// RecordFragment splits the ClientHello across TLS records instead, which also defeats a filter
+	// that reassembles segments but expects one record. Measured on a path that froze every Chrome
+	// ClientHello: 0 of 15 connections without it, 15 of 15 with it.
+	RecordFragment bool `yaml:"record_fragment"`
+	// HappFragment is the "length,interval,packets[,maxSplit]" value Happ reads from the link itself
+	// (fragment=…), so the base64 list can carry fragmentation to a phone without the user finding a
+	// setting. Empty leaves the links alone. Keep maxSplit: it is what bounds the handshake delay,
+	// and an unbounded small length turns a 40 ms handshake into five seconds.
+	HappFragment string `yaml:"happ_fragment"`
 }
 
 // Decoy is the site the server answers a prober with: an ordinary-looking page instead of a bare 404
@@ -135,6 +169,14 @@ type Policy struct {
 func Default() *Config {
 	c := &Config{SchemaVersion: SchemaVersion}
 	c.applyDefaults()
+	// Fragmentation is on for a fresh server: the paths this project is deployed against freeze a
+	// plain ClientHello often enough that the defence should not depend on somebody remembering a
+	// switch. It is written into the file rather than applied on load, so an existing server that
+	// never had these keys keeps behaving exactly as before until its operator asks for the change.
+	c.Subscription = Subscription{
+		RecordFragment: true,
+		HappFragment:   DefaultHappFragment,
+	}
 	return c
 }
 
@@ -263,6 +305,12 @@ func (c *Config) Validate() error {
 	if c.ACME.Email != "" && !strings.Contains(c.ACME.Email, "@") {
 		problems = append(problems, fmt.Errorf("acme.email %q is not an address", c.ACME.Email))
 	}
+	if _, ok := i18n.Parse(c.Locale); !ok {
+		problems = append(problems, fmt.Errorf("locale %q is not one this build speaks (ru, en)", c.Locale))
+	}
+	if c.Subscription.HappFragment != "" && !proto.ValidHappFragment(c.Subscription.HappFragment) {
+		problems = append(problems, fmt.Errorf("subscription.happ_fragment %q must look like length,interval,packets[,maxSplit]", c.Subscription.HappFragment))
+	}
 	for name, value := range map[string]string{
 		"data_dir":        c.DataDir,
 		"db_path":         c.DBPath,
@@ -273,6 +321,7 @@ func (c *Config) Validate() error {
 			problems = append(problems, fmt.Errorf("%s must be an absolute path, got %q", name, value))
 		}
 	}
+	problems = append(problems, c.Security.Validate()...)
 	if len(problems) > 0 {
 		return fmt.Errorf("invalid configuration: %w", errors.Join(problems...))
 	}
@@ -280,6 +329,7 @@ func (c *Config) Validate() error {
 }
 
 func (c *Config) applyDefaults() {
+	c.Security.ApplyDefaults()
 	if c.Listen == "" {
 		c.Listen = ":443"
 	}
@@ -288,6 +338,9 @@ func (c *Config) applyDefaults() {
 	}
 	if c.Decoy.Template == "" {
 		c.Decoy.Template = DefaultDecoyTemplate
+	}
+	if c.Locale == "" {
+		c.Locale = i18n.Default.String()
 	}
 	if c.DataDir == "" {
 		c.DataDir = "/var/lib/termit/mn"
@@ -334,6 +387,16 @@ func (c *Config) applyDefaults() {
 	if c.Policy.SyncInterval == 0 {
 		c.Policy.SyncInterval = 24 * time.Hour
 	}
+}
+
+// Lang is the configured menu language. An unusable value falls back to the default; Validate catches
+// it on load, so this only matters for a value that got in another way.
+func (c *Config) Lang() i18n.Lang {
+	lang, ok := i18n.Parse(c.Locale)
+	if !ok {
+		return i18n.Default
+	}
+	return lang
 }
 
 // CertDir is where the server's own certificate lives.
@@ -413,3 +476,9 @@ func validateDomain(domain string) error {
 	}
 	return nil
 }
+
+// The three state files the security commands keep. They live beside the database, in the data
+// directory the operator already backs up.
+func (c *Config) FirewallPath() string  { return path.Join(c.DataDir, "firewall.json") }
+func (c *Config) BansPath() string      { return path.Join(c.DataDir, "bans.json") }
+func (c *Config) BlocklistPath() string { return path.Join(c.DataDir, "blocklist.txt") }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shogun-kub/termit/internal/firewall"
+	"github.com/shogun-kub/termit/internal/hardencmd"
 	"github.com/shogun-kub/termit/internal/uv/config"
 	"github.com/shogun-kub/termit/internal/uv/state"
 	"github.com/shogun-kub/termit/internal/uv/warp"
@@ -30,9 +33,11 @@ type jsonStatus struct {
 	LastRunAt    *time.Time   `json:"last_run_at,omitempty"`
 	LastRunSteps []stepStatus `json:"last_run_steps,omitempty"`
 
-	Enrolled      bool           `json:"enrolled"`
-	EnrolledAt    *time.Time     `json:"enrolled_at,omitempty"`
-	Subscription  string         `json:"subscription_url,omitempty"`
+	Enrolled     bool       `json:"enrolled"`
+	EnrolledAt   *time.Time `json:"enrolled_at,omitempty"`
+	Subscription string     `json:"subscription_url,omitempty"`
+	// OptionsPage is the owner's private page of client links, when one has been rendered.
+	OptionsPage   string         `json:"options_page,omitempty"`
 	Peers         []jsonPeer     `json:"peers,omitempty"`
 	LastSyncAt    *time.Time     `json:"last_sync_at,omitempty"`
 	NextSyncAt    *time.Time     `json:"next_sync_at,omitempty"`
@@ -130,6 +135,9 @@ the last install run. Secrets are shown as sha256 prefixes only.`)
 	}
 	if node.Certificate != nil {
 		out.Certificate = describeCertificate(node.Certificate.NotAfter, a.now())
+	}
+	if node.Options.Token != "" {
+		out.OptionsPage = "https://" + cfg.Domain + "/" + node.Options.Token + "/"
 	}
 	if node.Credentials != nil && node.Credentials.AgentKey != "" {
 		out.Enrolled = true
@@ -233,6 +241,9 @@ the last install run. Secrets are shown as sha256 prefixes only.`)
 	} else if out.Enrolled {
 		fmt.Fprintln(a.stdout, "peers:        none")
 	}
+	if out.OptionsPage != "" {
+		fmt.Fprintf(a.stdout, "options:      %s\n", out.OptionsPage)
+	}
 	if out.LastSyncAt != nil {
 		fmt.Fprintf(a.stdout, "last sync:    %s %s\n", orDefault(out.LastSyncState, "unknown"),
 			out.LastSyncAt.UTC().Format(time.RFC3339))
@@ -257,6 +268,16 @@ the last install run. Secrets are shown as sha256 prefixes only.`)
 			state = "failed (" + out.SelfCheck.ErrorClass + ")"
 		}
 		fmt.Fprintf(a.stdout, "self-check:   %s %s\n", state, out.SelfCheck.At.UTC().Format(time.RFC3339))
+	}
+	if bans, err := firewall.LoadBans(cfg.Paths.BansPath()); err == nil {
+		// The guard's record, not the kernel's: it is what survives a reboot, and the guard refills the
+		// kernel from it.
+		fmt.Fprintf(a.stdout, "bans:         %s\n", hardencmd.DescribeBans(bans, a.now()))
+	}
+	// The firewall line appears only when it is the operator's business: the configuration asks for it,
+	// or someone applied a table once. A node nobody hardened says nothing about it.
+	if line := a.describeFirewallLine(cfg); line != "" {
+		fmt.Fprintf(a.stdout, "firewall:     %s\n", line)
 	}
 	if last := journal.Last(); last != nil {
 		fmt.Fprintf(a.stdout, "last run:     %s, %s\n", last.Result, last.StartedAt.Format(time.RFC3339))
@@ -336,4 +357,53 @@ func orMissing(value string) string {
 		return "not generated"
 	}
 	return value
+}
+
+// describeFirewallLine is the `status` view of the host firewall: the record in writing, checked against
+// the kernel. It says nothing at all on a node whose configuration never asked for a table and where none
+// was ever applied — that is the common case and it does not need a line.
+func (a *application) describeFirewallLine(cfg *config.Config) string {
+	applied, err := firewall.LoadApplied(cfg.Paths.FirewallPath())
+	if err != nil {
+		return "the record is unreadable: " + err.Error()
+	}
+	if !cfg.Security.Firewall.Enabled && applied == nil {
+		return ""
+	}
+	present, err := a.nftApplier().Present(context.Background(), firewall.NodeTable)
+	if err != nil {
+		// Not root, or no nft: the record is still worth reporting, and "unknown" is honest about what
+		// could not be checked.
+		if applied != nil && applied.Confirmed() {
+			return "unknown (the kernel cannot be asked: " + err.Error() + ")"
+		}
+		return "unknown (the kernel cannot be asked: " + err.Error() + ")"
+	}
+	now := a.now()
+	switch {
+	case present && applied != nil && applied.Pending(now) && now.Before(applied.Deadline):
+		return fmt.Sprintf("on, not confirmed — run `termit-uv firewall confirm` within %s",
+			applied.Deadline.Sub(now).Round(time.Second))
+	case present && applied != nil && applied.Confirmed():
+		return "on, confirmed"
+	case present:
+		return "unknown (a table is applied but nothing recorded it; `termit-uv firewall off` then `on` puts it back in writing)"
+	case cfg.Security.Firewall.Enabled:
+		return "off (the configuration asks for it: run `termit-uv firewall on`)"
+	case applied != nil && !applied.RemovedAt.IsZero():
+		return "off since " + humanAge(now, applied.RemovedAt)
+	}
+	return "off (it was applied once and the kernel has no table: `termit-uv firewall on` puts it back)"
+}
+
+// humanAge renders an age the way a person reads it.
+func humanAge(now, then time.Time) string {
+	delta := now.Sub(then).Round(time.Second)
+	if delta < 0 {
+		return "in " + (-delta).String()
+	}
+	if delta < time.Minute {
+		return delta.String() + " ago"
+	}
+	return delta.Round(time.Minute).String() + " ago"
 }

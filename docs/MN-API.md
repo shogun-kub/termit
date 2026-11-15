@@ -351,6 +351,17 @@ from the address that sent it, serve the decoy, and answer as a proxy.
 the format v2rayNG, NekoBox and friends import.
 
 `GET /sub/{token}/json` returns the same list as a sing-box configuration fragment, `application/json`.
+Its outbounds carry `tls.utls` with the profile's fingerprint and no `alpn`. A fresh server is created
+with `subscription.record_fragment` on, so they also carry `tls.record_fragment`, which splits the TLS
+ClientHello across records on the client side; `subscription.fragment` (the segment-level variant,
+off by default) adds `tls.fragment` instead, and a configuration that predates the keys gets neither.
+
+Fragmentation reaches the plain list by a different route, because it has to: Happ reads a
+`fragment=length,interval,packets[,maxSplit]` query parameter from the link itself, so
+`subscription.happ_fragment` appends it to every URI before the `#label`. The parameter is not part of
+the profile — a client that does not know it ignores it, and the server never validates anything about
+it beyond its shape. Neither form leaks into the other: `/json` never carries the parameter, the list
+never carries the TLS fields.
 
 Both:
 
@@ -505,7 +516,8 @@ target.
 its own access is never entitled to re-issue somebody else's.
 
 The CLI (`termit-mn invite|uv|check|policy|sub|status|admin`) is a thin client of this table; use the
-CLI unless you are writing an integration.
+CLI unless you are writing an integration. `termit-mn firewall`, `bans` and `guard` are the exception:
+they act on the machine they run on and never reach the socket ([`OPERATIONS.md`](OPERATIONS.md) §18.6).
 
 ---
 

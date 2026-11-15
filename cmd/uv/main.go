@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shogun-kub/termit/internal/i18n"
 	"github.com/shogun-kub/termit/internal/uv/config"
 	"github.com/shogun-kub/termit/internal/uv/install"
 	"github.com/shogun-kub/termit/internal/uv/warp"
@@ -78,11 +79,38 @@ type application struct {
 	euid func() int
 	// in is the interactive menu's input; nil means os.Stdin.
 	in io.Reader
+	// executable is the binary the generated units run; empty means the running executable.
+	executable string
 	// configPath overrides the default configuration path; tests point it at a temporary directory so
 	// the menu does not inspect the machine it runs on.
 	configPath string
 	// interactiveFn answers "may the menu open"; nil means "ask the terminal".
 	interactiveFn func() bool
+	// completeFn answers "is this node fully installed" for the wizard; nil means run the pipeline in
+	// dry-run mode. Tests set it, because a complete node needs units and a certificate.
+	completeFn func(*config.Config, string) (bool, error)
+	// tr is the language the owner is spoken to in, once a command that speaks has resolved it.
+	tr i18n.Translator
+	// getenv reads the environment for the locale check; nil means os.Getenv. Tests set it, so the
+	// language of a menu never depends on the machine that runs the suite.
+	getenv func(string) string
+}
+
+// translator is the language of the current session. A command that never resolves one gets the
+// default rather than an empty screen.
+func (a *application) translator() i18n.Translator {
+	if a.tr.Lang() == "" {
+		return i18n.New(i18n.Console(i18n.Default, a.env))
+	}
+	return a.tr
+}
+
+// env reads one environment variable, through the seam tests use.
+func (a *application) env(name string) string {
+	if a.getenv != nil {
+		return a.getenv(name)
+	}
+	return os.Getenv(name)
 }
 
 func (a *application) run(args []string) int {
@@ -125,6 +153,10 @@ func (a *application) run(args []string) int {
 		return a.runMigrate(rest)
 	case "uri":
 		return a.runURI(rest)
+	case "options":
+		return a.runOptions(rest)
+	case "wizard":
+		return a.runWizard(rest)
 	case "version":
 		fmt.Fprintln(a.stdout, version.String("termit-uv"))
 		return exitOK
@@ -133,6 +165,12 @@ func (a *application) run(args []string) int {
 		return exitOK
 	case "warp":
 		return a.runWarp(rest)
+	case "firewall":
+		return a.runFirewall(rest)
+	case "bans":
+		return a.runBans(rest)
+	case "guard":
+		return a.runGuard(rest)
 	case "menu":
 		// `menu --config <path>` inspects and acts on that node, like every other command.
 		return a.runMenu(rest)
@@ -157,6 +195,8 @@ Commands:
   device       list, add or remove the owner's own devices
   renew-cert   renew the TLS certificate (--force to replace it)
   uri          print the vless:// URI for this node's own device
+  options      render the owner's private page of client links and print its address
+  wizard       walk through a first installation, remembering each answer
   renew-site   regenerate the decoy site and its nginx fragment
   enroll       register this node with the management server
   sync         reconcile the core with the server's peer set; --check reports drift
@@ -164,6 +204,9 @@ Commands:
   unblock      ask the server to verify this node and lift a block
   migrate      move this node to a new domain (--relocate)
   warp         show the egress, or change its mode (all, selected, off)
+  firewall     the host firewall: status, on, off, confirm — off until you say otherwise
+  bans         what the guard banned, and your own permanent blocks
+  guard        the ban engine: status, or run it in the foreground
   uninstall    remove Termit from this node
   version      print build and protocol version
   menu         the interactive menu (what the bare command does on a terminal); --config given

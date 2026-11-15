@@ -60,6 +60,14 @@ type Credentials struct {
 	EnrolledAt time.Time `json:"enrolled_at,omitempty"`
 }
 
+// Options is the owner's private options page: the random path segment it lives under and when it was
+// last rendered. An empty Token means the owner never asked for the page, and nothing creates one
+// behind their back.
+type Options struct {
+	Token      string    `json:"token,omitempty"`
+	RenderedAt time.Time `json:"rendered_at,omitempty"`
+}
+
 // Schedule is the agent loop's persisted timing. It lives in the state file so a restart of the
 // service does not re-run a cycle the node already did, and so `termit-uv status` can say when the next one
 // is due without asking the network.
@@ -193,6 +201,9 @@ type State struct {
 	Certificate   *Certificate `json:"certificate,omitempty"`
 	// Credentials are nil until the node enrolls with a management server.
 	Credentials *Credentials `json:"credentials,omitempty"`
+	// Options is the owner's private page of client links. It is stated here rather than in the
+	// configuration because the token is a capability, and capabilities live with the other secrets.
+	Options Options `json:"options,omitempty"`
 	// Peers is the set the server last handed out; it is what the core was configured with.
 	Peers    []Peer   `json:"peers,omitempty"`
 	Schedule Schedule `json:"schedule,omitempty"`

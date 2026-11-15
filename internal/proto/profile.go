@@ -182,3 +182,31 @@ func ParseVLESSUrl(raw string) (Profile, error) {
 	}
 	return profile, nil
 }
+
+// DefaultHappFragment is the fragmentation this project writes when nobody chose: pieces small enough
+// not to look like one ClientHello, with a bound on their number so the handshake cannot stretch into
+// seconds. Measured in Happ at 446-464 ms of ping against 769 ms without fragmentation.
+const DefaultHappFragment = "100-200,1-3,tlshello,6"
+
+// HappFragmentPattern is the shape of Happ's per-link fragmentation parameter:
+// "length,interval,packets[,maxSplit]". It is a whitelist rather than an escape, because the value goes
+// into a query string: an ampersand in it would add a parameter and a hash would end the URL.
+var HappFragmentPattern = regexp.MustCompile(`^[0-9]{1,4}(-[0-9]{1,4})?,[0-9]{1,4}(-[0-9]{1,4})?,([0-9]{1,2}-[0-9]{1,2}|tlshello)(,[0-9]{1,4}(-[0-9]{1,4})?)?$`)
+
+// ValidHappFragment reports whether value is a fragmentation parameter this project will write into a
+// URI.
+func ValidHappFragment(value string) bool {
+	return value != "" && HappFragmentPattern.MatchString(value)
+}
+
+// AddHappFragment appends Happ's fragmentation parameter to a finished URI. It goes before the #label,
+// where a query parameter belongs.
+func AddHappFragment(uri, value string) string {
+	if value == "" {
+		return uri
+	}
+	if hash := strings.IndexByte(uri, '#'); hash >= 0 {
+		return uri[:hash] + "&fragment=" + value + uri[hash:]
+	}
+	return uri + "&fragment=" + value
+}

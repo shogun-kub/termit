@@ -1,0 +1,51 @@
+# Puts the management server's firewall table back after a reboot.
+#
+#   install -m 0644 deploy/systemd/termit-mn-firewall.service /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable termit-mn-firewall
+#
+# It runs `termit-mn firewall restore`, which reads the record the last `firewall on` wrote: a confirmed
+# apply comes back on its own, an apply that was still waiting comes back with the rollback timer armed,
+# and a host that never applied a table — or one whose operator took it down — does nothing at all.
+#
+# Ordered before network-pre.target so the table is up before anything listens. It never fails the boot:
+# a missing record is a line in the journal, not a broken host.
+
+[Unit]
+Description=Restore the Termit firewall table a confirmed apply left behind (management server)
+Documentation=https://github.com/shogun-kub/termit
+DefaultDependencies=no
+Wants=network-pre.target
+Before=network-pre.target
+After=local-fs.target
+
+[Service]
+# No RemainAfterExit: this is an action, not a state. A unit that stays "active (exited)" makes a later
+# `systemctl start` a no-op — and an operator who deleted the table by hand would get nothing back.
+Type=oneshot
+ExecStart=/usr/bin/termit-mn firewall restore --config /etc/termit/mn/config.yaml
+TimeoutStartSec=60s
+
+# Root for nft, nothing else. AF_NETLINK is required: nft talks to the kernel over it.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/termit/mn
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+[Install]
+WantedBy=multi-user.target

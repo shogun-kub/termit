@@ -1,0 +1,39 @@
+# Removes the management server's table if `termit-mn firewall on` was never confirmed.
+#
+# This is the safety net that makes `firewall on` safe to run over the very connection it might cut: the
+# command restarts the timer before it touches nft, and if nobody runs `termit-mn firewall confirm`
+# within five minutes this oneshot removes the table again.
+#
+#   install -m 0644 deploy/systemd/termit-mn-firewall-rollback.service /etc/systemd/system/
+#   install -m 0644 deploy/systemd/termit-mn-firewall-rollback.timer   /etc/systemd/system/
+#   systemctl daemon-reload
+#
+# Do not enable the timer: it is started and stopped by the command, and it exists to fire once.
+
+[Unit]
+Description=Remove an unconfirmed Termit firewall table (management server)
+Documentation=https://github.com/shogun-kub/termit
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/termit-mn firewall rollback --config /etc/termit/mn/config.yaml
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/termit/mn
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM

@@ -118,6 +118,10 @@ systemctl enable --now termit-mn
 journalctl -u termit-mn -n 30 --no-pager
 ```
 
+The same release carries the server's hardening units (`termit-mn-firewall*`, `termit-mn-guard`,
+`termit-mn-blocklist*`). They are installed only if you decide to harden the server, and the firewall
+refuses to run without them: [Hardening a node](hardening.md) has the rest.
+
 The first start **issues the certificate before it serves TLS**, and refuses to start if that fails:
 a management API that silently falls back to HTTP is worse than one that does not come up. Expect
 a minute or two, then:
@@ -267,7 +271,7 @@ journalctl -u termit-mn -f
 
 | Command | What it does |
 |---|---|
-| `termit-mn init` | create config, database, master key, admin token and the first invite; `--admin-token-out FILE` writes the token to a file instead of printing it |
+| `termit-mn init` | create config, database, master key, admin token and the first invite; `--admin-token-out FILE` writes the token to a file instead of printing it; `--locale ru\|en` picks the menu language |
 | `termit-mn serve` | run the server (`--http` for development only, never on a public address) |
 | `termit-mn invite create\|list\|revoke` | manage invite codes |
 | `termit-mn uv list\|show\|approve\|reject\|block\|unblock\|rm\|forget\|reissue\|agentkey` | manage nodes |
@@ -277,11 +281,16 @@ journalctl -u termit-mn -f
 | `termit-mn admin rotate` | replace the admin token you authenticated with; `--token-out FILE` writes it |
 | `termit-mn status` | server, nodes and schedule |
 | `termit-mn backup`, `termit-mn restore` | snapshot and restore |
+| `termit-mn firewall` | the server's own table: `status`, `on`, `off`, `confirm`, `refresh` |
+| `termit-mn bans`, `termit-mn guard` | the ban engine on the server |
 | `termit-mn version` | build and protocol version |
 
 Admin commands talk to the running server over a unix socket (`/run/termit/mn/admin.sock`) and
 authenticate with `TERMIT_MN_ADMIN_TOKEN`, `TERMIT_MN_ADMIN_TOKEN_FILE`, `--token` or `--token-file`.
 They never open the database behind the server's back.
+
+The firewall, bans and guard are the same opt-in machinery the nodes have, with the server's own table
+name and ports: [Hardening a node](hardening.md) is the page for it.
 
 ## Rules worth keeping
 

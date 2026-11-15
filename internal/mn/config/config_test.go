@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shogun-kub/termit/internal/i18n"
 	"github.com/shogun-kub/termit/internal/mn/config"
 )
 
@@ -250,5 +251,85 @@ func TestDecoyTemplate(t *testing.T) {
 	}
 	if old.Decoy.Template != config.DefaultDecoyTemplate {
 		t.Errorf("decoy.template = %q, want %q", old.Decoy.Template, config.DefaultDecoyTemplate)
+	}
+}
+
+// TestSubscriptionFragmentationRoundTrips pins the two client-side switches: off by default, carried
+// through a save/load cycle when set, and unknown keys under the section are still refused.
+func TestHappFragmentIsValidatedBeforeItReachesALink(t *testing.T) {
+	t.Parallel()
+	for _, value := range []string{"100-200,1-3,tlshello,6", "300-500,1-5,tlshello", "1-3,1-3,1-2"} {
+		cfg, err := config.Parse(strings.NewReader("domain: mn.example.com\nsubscription:\n  happ_fragment: \"" + value + "\"\n"))
+		if err != nil {
+			t.Fatalf("Parse rejected %q: %v", value, err)
+		}
+		if cfg.Subscription.HappFragment != value {
+			t.Errorf("happ_fragment came back as %q", cfg.Subscription.HappFragment)
+		}
+	}
+	// An ampersand or a hash would end the parameter and start something else in the URI, so the
+	// value is matched against the shape Happ documents rather than escaped and hoped for.
+	for _, value := range []string{"100-200&fragment=1", "tlshello", "100-200,1-3,", "100-200,1-3,tlshello#x"} {
+		_, err := config.Parse(strings.NewReader("domain: mn.example.com\nsubscription:\n  happ_fragment: \"" + value + "\"\n"))
+		if err == nil {
+			t.Errorf("Parse accepted happ_fragment %q", value)
+		}
+	}
+}
+
+func TestSubscriptionFragmentationRoundTrips(t *testing.T) {
+	t.Parallel()
+	// A fresh server starts with fragmentation on, and says so in the file it writes: the defaults
+	// live there, not in the loader, so a configuration that predates the keys keeps its behaviour.
+	fresh := config.Default()
+	if !fresh.Subscription.RecordFragment || fresh.Subscription.HappFragment != config.DefaultHappFragment {
+		t.Errorf("a fresh server does not default to fragmentation: %+v", fresh.Subscription)
+	}
+	if fresh.Subscription.Fragment {
+		t.Errorf("the segment-splitting option is on by default: %+v", fresh.Subscription)
+	}
+	// A file without the keys is a file that decided nothing: it stays off rather than acquiring a
+	// behaviour on upgrade.
+	cfg, err := config.Parse(strings.NewReader("domain: mn.example.com\n"))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if cfg.Subscription.Fragment || cfg.Subscription.RecordFragment || cfg.Subscription.HappFragment != "" {
+		t.Errorf("a file without the keys gained fragmentation: %+v", cfg.Subscription)
+	}
+
+	cfg.Subscription = config.Subscription{Fragment: true, RecordFragment: true, HappFragment: "300-500,1-5,tlshello"}
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := cfg.Save(path); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	reloaded, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !reloaded.Subscription.Fragment || !reloaded.Subscription.RecordFragment ||
+		reloaded.Subscription.HappFragment != "300-500,1-5,tlshello" {
+		t.Errorf("subscription options did not survive the round trip: %+v", reloaded.Subscription)
+	}
+
+	if _, err := config.Parse(strings.NewReader("domain: mn.example.com\nsubscription:\n  nonsense: 1\n")); err == nil {
+		t.Error("Parse accepted an unknown key under subscription")
+	}
+}
+
+func TestLocaleIsRussianByDefaultAndValidated(t *testing.T) {
+	t.Parallel()
+	if cfg := config.Default(); cfg.Locale != "ru" || cfg.Lang() != i18n.RU {
+		t.Errorf("a fresh server speaks %q", cfg.Locale)
+	}
+	cfg, err := config.Parse(strings.NewReader("domain: mn.example.com\nlocale: en\n"))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if cfg.Lang() != i18n.EN {
+		t.Errorf("locale en parsed as %q", cfg.Lang())
+	}
+	if _, err := config.Parse(strings.NewReader("domain: mn.example.com\nlocale: de\n")); err == nil {
+		t.Error("Parse accepted an unknown language")
 	}
 }

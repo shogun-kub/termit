@@ -53,6 +53,9 @@ type Spec struct {
 	LogLevel string
 	// Warp routes proxied traffic through the WARP sidecar. The zero value keeps direct egress.
 	Warp WarpSpec
+	// BlockBitTorrent sniffs the first bytes of every connection and blackholes the ones the core
+	// recognises as BitTorrent. It is off by default: sniffing costs a little CPU on every connection.
+	BlockBitTorrent bool
 }
 
 // WarpSpec is the WARP egress the generator must wire in. It is a plain description of the intent;
@@ -233,6 +236,16 @@ func Generate(spec Spec) ([]byte, error) {
 		},
 	}
 
+	if spec.BlockBitTorrent {
+		// The sniffer classifies BitTorrent without a protocol list, and routeOnly keeps the client's
+		// destination: with it off, a sniffed HTTP Host replaces the address the client asked for and
+		// the tunnel dials a name this node resolves instead.
+		config.Inbounds[1].Sniffing = &sniffing{Enabled: true, DestOverride: []string{}, RouteOnly: true}
+		config.Routing.Rules = append([]rule{
+			{Type: "field", Protocol: []string{"bittorrent"}, OutboundTag: "block"},
+		}, config.Routing.Rules...)
+	}
+
 	if spec.Warp.Enabled() {
 		config.Outbounds = append(config.Outbounds, warpOutbound(spec.Warp))
 		// The canary fetches the node's own decoy through the tunnel, and any owner-side tool may
@@ -369,6 +382,9 @@ type xhttpSettings struct {
 type sniffing struct {
 	Enabled      bool     `json:"enabled"`
 	DestOverride []string `json:"destOverride"`
+	// RouteOnly is omitted when false so the default document keeps its shape: only the BitTorrent
+	// rule has an opinion about it, and every other config would carry a line nobody chose.
+	RouteOnly bool `json:"routeOnly,omitempty"`
 }
 
 type outbound struct {
@@ -410,6 +426,7 @@ type routing struct {
 type rule struct {
 	Type        string   `json:"type"`
 	InboundTag  []string `json:"inboundTag,omitempty"`
+	Protocol    []string `json:"protocol,omitempty"`
 	Domain      []string `json:"domain,omitempty"`
 	IP          []string `json:"ip,omitempty"`
 	Network     string   `json:"network,omitempty"`

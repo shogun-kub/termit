@@ -74,6 +74,37 @@ func (s *startStep) Run(ctx context.Context) error {
 	if !s.e.serviceActive(ctx, service.AgentUnitName) {
 		return fmt.Errorf("%s did not stay running", service.AgentUnitName)
 	}
+
+	// The guard exists only when the operator asked for it. Restarting it is what makes a new binary or
+	// a changed ladder take effect, exactly like the agent.
+	if s.e.cfg.Security.Guard.Enabled {
+		_, _ = s.e.exec.Run(ctx, Cmd{Name: "systemctl", Args: []string{"reset-failed", service.GuardUnitName}})
+		if _, err := s.e.exec.Run(ctx, Cmd{Name: "systemctl", Args: []string{"enable", "--now", service.GuardUnitName}}); err != nil {
+			return fmt.Errorf("enable %s: %w", service.GuardUnitName, err)
+		}
+		if _, err := s.e.exec.Run(ctx, Cmd{Name: "systemctl", Args: []string{"restart", service.GuardUnitName}}); err != nil {
+			return fmt.Errorf("restart %s: %w", service.GuardUnitName, err)
+		}
+		if !s.e.serviceActive(ctx, service.GuardUnitName) {
+			return fmt.Errorf("%s did not stay running", service.GuardUnitName)
+		}
+	}
+
+	// The blocklist timer fetches the list a minute after it starts and then once per interval. It is a
+	// timer, so `enable --now` only schedules it; the first fetch is the oneshot the operator can also
+	// run by hand.
+	if s.e.cfg.Security.Firewall.BlocklistURL != "" {
+		if _, err := s.e.exec.Run(ctx, Cmd{Name: "systemctl", Args: []string{"enable", "--now", service.BlocklistTimerName}}); err != nil {
+			return fmt.Errorf("enable %s: %w", service.BlocklistTimerName, err)
+		}
+	}
+
+	// The boot unit is enabled so a confirmed table comes back by itself. Enabling it does not apply
+	// anything: `firewall restore` reads the record and does nothing when there is none.
+	if _, err := s.e.exec.Run(ctx, Cmd{Name: "systemctl", Args: []string{"enable", service.FirewallBootUnitName}}); err != nil {
+		return fmt.Errorf("enable %s: %w", service.FirewallBootUnitName, err)
+	}
+
 	s.e.log.Info("services are up", "units", service.XrayUnitName+", "+nginxUnit+", "+service.AgentUnitName)
 	return nil
 }

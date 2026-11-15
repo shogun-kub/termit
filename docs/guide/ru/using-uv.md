@@ -173,7 +173,7 @@ self-check:   ok 2026-11-10T11:17:04Z
 
 | Команда | Что делает | Основные флаги |
 |---|---|---|
-| `termit-uv init` | установить или довести узел до нужного состояния | `--domain`, `--email`, `--no-warp`, `--warp MODE`, `--warp-selected LIST`, `--dry-run`, `--only`, `--skip`, `--acme-ca`, `--xray-version`, `--xray-download-base`, `--relocate`, `--agent-key-file` |
+| `termit-uv init` | установить или довести узел до нужного состояния | `--domain`, `--email`, `--locale ru\|en`, `--happ-fragment VALUE`, `--no-warp`, `--warp MODE`, `--warp-selected LIST`, `--dry-run`, `--only`, `--skip`, `--acme-ca`, `--xray-version`, `--xray-download-base`, `--relocate`, `--agent-key-file` |
 | `termit-uv doctor` | диагностика машины и узла, ничего не меняет | `--json` |
 | `termit-uv net` | отличить плохой путь от больного узла по счётчикам TCP | `--seconds 60`, `--json` |
 | `termit-uv status` | идентичность, сертификат, пиры, синхронизация, WARP | `--json` |
@@ -182,6 +182,8 @@ self-check:   ok 2026-11-10T11:17:04Z
 | `termit-uv agent` | цикл агента на переднем плане | `--once` |
 | `termit-uv device` | локальные устройства на этом узле | `list`, `add --label NAME [--uuid ...]`, `remove NAME` |
 | `termit-uv uri` | напечатать `vless://` для этого узла | `--label` |
+| `termit-uv options` | собрать закрытую страницу со ссылками для клиентов и напечатать её адрес | `--rotate`, `--quiet` |
+| `termit-uv wizard` | провести через первую установку, запоминая ответы; первым делом спросит язык | `--fresh` |
 | `termit-uv warp` / `termit-uv warp status` | показать выход | `--json` |
 | `termit-uv warp mode` | сменить выход | `off`, `all`, `selected --selected a.example,b.example` |
 | `termit-uv unblock` | попросить сервер перепроверить и разблокировать | `--domain`, `--vless-url`, `--no-sync` |
@@ -189,9 +191,13 @@ self-check:   ok 2026-11-10T11:17:04Z
 | `termit-uv renew-cert` | продлить сертификат сейчас | `--force` (перевыпустить, даже если не пора) |
 | `termit-uv renew-site` | перегенерировать сайт-приманку | `--template product\|portal`, `--seed`, `--dry-run` |
 | `termit-uv uninstall` | убрать то, что создал Termit | `--purge` (ещё конфигурация, состояние, сертификаты, пользователь), `--dry-run` |
+| `termit-uv firewall` | фаервол на хосте: `status`, `on`, `off`, `confirm`, `refresh` | `--ssh-from`, `--default-deny`, `--dry-run` |
+| `termit-uv bans` | что решил движок банов: `list`, `offenders`, `block IP`, `unban IP`, `unblock IP` | |
+| `termit-uv guard` | движок банов: `status`, `run --once` | |
 | `termit-uv version` | версия сборки и протокола | |
 
-Любая команда принимает `--config <path>` и `-v`/`--verbose`.
+Любая команда принимает `--config <path>` и `-v`/`--verbose`. Последние три — необязательная половина
+защиты, выключенная, пока не попросите: ей посвящена страница [Защита узла](hardening.md).
 
 ## Рецепты
 

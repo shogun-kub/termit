@@ -32,7 +32,7 @@ func decodeList(t *testing.T, body string) []string {
 
 func TestRenderListIsOrderedAndStable(t *testing.T) {
 	t.Parallel()
-	body, err := sub.RenderList(peers())
+	body, err := sub.RenderList(peers(), sub.Options{})
 	if err != nil {
 		t.Fatalf("RenderList: %v", err)
 	}
@@ -56,7 +56,7 @@ func TestRenderListIsOrderedAndStable(t *testing.T) {
 
 	// The same peers in another order produce the same bytes.
 	reversed := []sub.Peer{peers()[1], peers()[0]}
-	again, err := sub.RenderList(reversed)
+	again, err := sub.RenderList(reversed, sub.Options{})
 	if err != nil {
 		t.Fatalf("RenderList: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestRenderListMarksDegradedPeers(t *testing.T) {
 	t.Parallel()
 	list := peers()
 	list[0].Degraded = true
-	body, err := sub.RenderList(list)
+	body, err := sub.RenderList(list, sub.Options{})
 	if err != nil {
 		t.Fatalf("RenderList: %v", err)
 	}
@@ -80,9 +80,51 @@ func TestRenderListMarksDegradedPeers(t *testing.T) {
 	}
 }
 
+func TestRenderListCarriesHappsFragmentParameter(t *testing.T) {
+	t.Parallel()
+	const param = "100-200,1-3,tlshello,6"
+	body, err := sub.RenderList(peers(), sub.Options{FragmentParam: param})
+	if err != nil {
+		t.Fatalf("RenderList: %v", err)
+	}
+	lines := decodeList(t, body)
+	if len(lines) != 2 {
+		t.Fatalf("the list has %d lines, want 2", len(lines))
+	}
+	for _, line := range lines {
+		// It has to sit in the query and leave the label alone: Happ reads the parameter from the
+		// link, everything else (including our own parser) must still see a valid URI.
+		hash := strings.IndexByte(line, '#')
+		if hash < 0 {
+			t.Fatalf("a rendered URI lost its label: %s", line)
+		}
+		if !strings.Contains(line[:hash], "&fragment="+param) {
+			t.Errorf("the fragmentation parameter is missing from %s", line)
+		}
+		if strings.Contains(line[hash:], "fragment") {
+			t.Errorf("the parameter leaked into the label: %s", line)
+		}
+		if _, err := proto.ParseVLESSUrl(line); err != nil {
+			t.Errorf("a URI with the parameter does not parse: %v", err)
+		}
+	}
+
+	// Without it the links stay byte-identical, so an operator who never sets the option is not
+	// silently changed by this feature.
+	plain, err := sub.RenderList(peers(), sub.Options{})
+	if err != nil {
+		t.Fatalf("RenderList: %v", err)
+	}
+	for _, line := range decodeList(t, plain) {
+		if strings.Contains(line, "fragment=") {
+			t.Errorf("a plain list carries the parameter: %s", line)
+		}
+	}
+}
+
 func TestRenderListOfNothing(t *testing.T) {
 	t.Parallel()
-	body, err := sub.RenderList(nil)
+	body, err := sub.RenderList(nil, sub.Options{})
 	if err != nil {
 		t.Fatalf("RenderList: %v", err)
 	}
@@ -145,6 +187,59 @@ func TestRenderJSON(t *testing.T) {
 	}
 	if profile.Route["final"] != "proxy" {
 		t.Errorf("route.final = %v, want proxy", profile.Route["final"])
+	}
+}
+
+// TestRenderJSONCarriesTheFragmentationSwitches pins the only client-side defence the profile can
+// offer: the fields appear when the operator asks for them and are absent otherwise, because a
+// client that does not know them must not receive them.
+func TestRenderJSONCarriesTheFragmentationSwitches(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name           string
+		opts           sub.Options
+		wantFragment   bool
+		wantRecordFrag bool
+	}{
+		{"off", sub.Options{}, false, false},
+		{"plain fragment", sub.Options{Fragment: true}, true, false},
+		{"record only", sub.Options{RecordFragment: true}, false, true},
+		{"both", sub.Options{Fragment: true, RecordFragment: true}, true, true},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			body, err := sub.RenderJSON(peers(), tc.opts)
+			if err != nil {
+				t.Fatalf("RenderJSON: %v", err)
+			}
+			var profile struct {
+				Outbounds []map[string]any `json:"outbounds"`
+			}
+			if err := json.Unmarshal(body, &profile); err != nil {
+				t.Fatalf("the profile is not JSON: %v", err)
+			}
+			tlsSettings, ok := profile.Outbounds[0]["tls"].(map[string]any)
+			if !ok {
+				t.Fatalf("the first outbound has no tls settings: %v", profile.Outbounds[0])
+			}
+			for key, want := range map[string]bool{
+				"fragment":        tc.wantFragment,
+				"record_fragment": tc.wantRecordFrag,
+			} {
+				got, has := tlsSettings[key]
+				if !want {
+					if has {
+						t.Errorf("%s is present with %v, but the option is off", key, got)
+					}
+					continue
+				}
+				if got != true {
+					t.Errorf("%s = %v, want true", key, got)
+				}
+			}
+		})
 	}
 }
 

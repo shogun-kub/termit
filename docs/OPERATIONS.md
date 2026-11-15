@@ -29,10 +29,18 @@ Conventions used below:
 | UV | `termit-xray.service` | `127.0.0.1:8443`, API on `127.0.0.1:10085` | the proxy core |
 | UV | `termit-uv-agent.service` | outbound only | the daily cycle: self-check, sync, core reconciliation |
 | UV | `termit-uv-renew.timer` | — | the daily certificate check |
+| UV | `termit-uv-guard.service` | — | the ban engine, when `security.guard.enabled` (§18.4) |
+| UV | `termit-uv-blocklist.timer` | — | the network blocklist refresh, when a URL is configured (§18.5) |
+| UV | `termit-uv-firewall.service` | — | puts a confirmed table back at boot (§18.7) |
 | UV | `warp-cli` (Cloudflare's unit) | `127.0.0.1:40000` | the WARP SOCKS5 sidecar, when WARP is on |
+| MN | `termit-mn-guard.service`, `termit-mn-blocklist.timer`, `termit-mn-firewall.service` | — | the same three, shipped with the release (§18.6) |
 
-Termit never touches host routing or the firewall, so every other service on the box (SSH included)
-keeps working through every code path. That is a contract, not a default.
+The table itself is applied by `firewall on` and never by a timer; the boot unit only puts back what was
+applied and confirmed, and does nothing when there is no record (§18.7).
+
+Termit never touches host routing, and the one firewall it can create is a single opt-in table that exists
+only after `termit-uv firewall on` — so every other service on the box (SSH included) keeps working through
+every code path. That is a contract, not a default.
 
 ### 1.1 Paths
 
@@ -336,6 +344,24 @@ converges the rest, keeping the identity, the Xray path and the certificate. The
 on the command line and is visible in `ps` for the duration of the run; revoke it afterwards if that
 matters (`termit-mn invite revoke`).
 
+If you would rather be asked than remember flags, the wizard is the same installation with questions:
+
+```bash
+termit-uv wizard
+```
+
+Its first question is the language — `ru` or `en`, Russian by default — because the menu and the page
+of client links are written in it. Then it asks for the domain, the contact address, the masking site,
+the egress mode, whether to harden the node (unchecked: see below) and the invite code,
+then runs the same `init` with the same flags. Each answer is kept in `wizard.yaml` beside the
+configuration, so an interrupted run continues where it stopped and Enter accepts what is already
+there (`--fresh` forgets them). On a node that is already installed it asks nothing: it runs the
+pipeline in dry-run mode, and when every step reports its effect present it prints the status and
+exits. A node that is installed but behind this build is a third case: the wizard names it, prints the
+status and tells the operator to run `termit-uv init` — converging is init's job, and doing it from a
+questionnaire would hide the upgrade. The last thing it prints on a fresh install is the address of the
+[page with every link](#80-one-page-with-every-link).
+
 Without the script, the two commands it wraps are:
 
 ```bash
@@ -366,7 +392,13 @@ termit-uv enroll --invite ABCD-EFGH-IJKL
 Useful flags: `--dry-run` (report, change nothing), `--only <steps>` / `--skip <steps>`,
 `--no-warp` (opt out of WARP), `--warp selected --warp-selected a.example,b.example`,
 `--xray-download-base` (a mirror, a `file://` URL or a local path), `--acme-ca` (a non-production
-directory, for a lab).
+directory, for a lab), `--harden` (turn on the host firewall and the ban engine in the configuration).
+
+`--harden` configures; it does not apply. It sets `security.firewall.enabled` and
+`security.guard.enabled`, which installs the guard's unit and makes `status` say what is left to do, and
+the table is still your `termit-uv firewall on` — the one command that undoes a mistake five minutes
+later (§18.2). The wizard asks the same question, unchecked, and passes the same flag; no install puts a
+table on a host while nobody is watching. To undo the configuration: `termit-uv init --harden=false`.
 
 Preflight is the place to read when something is wrong; it prints one line per check with a hint:
 
@@ -487,6 +519,32 @@ If the host cannot run WARP (no `/dev/net/tun`, unsupported architecture), `term
 say so with the exact reason and the node keeps working with direct egress. Nothing is silently
 degraded, and `termit-uv uninstall` disconnects the tunnel it left behind.
 
+### 6.1 Refusing BitTorrent
+
+`security.bittorrent_block: true` makes the core look at the first bytes of every connection and
+blackhole the ones it recognises as BitTorrent. It is off by default and it is not part of the firewall:
+it lives in the generated core configuration, and sniffing costs a little CPU on every connection.
+
+```yaml
+security:
+  bittorrent_block: true
+```
+
+Re-run `termit-uv init` (or wait for the daily cycle) and the rule is regenerated into the config; the
+core is reloaded the same way any config change is — hot update first, validated restart second. To
+undo it, set the key back to `false` and re-run.
+
+Two properties are deliberate and easy to "improve" by accident: `routeOnly: true` keeps the
+destination the client asked for (without it a sniffed HTTP `Host` replaces the address and the tunnel
+dials a name the node resolves), and `destOverride` stays empty (BitTorrent is classified whether or not
+a protocol is listed, so listing `http`/`tls`/`quic` buys nothing and parses every connection).
+
+The block sits on `protocol: bittorrent` in the routing table, before the egress rules, so it applies
+whatever the WARP mode is. It cannot be checked from a script: the way to verify it is to run a real
+torrent client through the node and watch the handshake die while a normal HTTPS request through the
+same client still works. The generated document itself is covered by
+`internal/uv/xray/testdata/xray-bittorrent.json` and accepted by the pinned core (`xray -test`).
+
 ## 7. Certificates
 
 Both sides use ACME HTTP-01. A node answers the challenge through the nginx webroot it already
@@ -539,6 +597,41 @@ termit-uv device remove phone
 termit-uv uri                             # this node's own URI, for the default device
 ```
 
+### 8.0 One page with every link
+
+Handing out links one `termit-uv uri` at a time is fine for a shell and awkward on a phone. The page
+collects them:
+
+```bash
+termit-uv options            # renders it and prints the address
+termit-uv options --rotate   # new address; the old one answers 404
+```
+
+`https://<node-domain>/<32 hex characters>/` shows this node's own device, every mesh peer the
+subscription describes, and the two subscription forms, each with a copy button. It is a **static file
+in the decoy site's tree**, so nginx needs no new location for it: the vhost already serves that
+directory. The consequences are worth knowing:
+
+- The path is generated once and lives in the state file (`options.token`), not in the configuration;
+  `termit-uv status` prints the address, so it can be found again months later.
+- Anyone with the address sees the same links. That is the model — the same as the subscription token —
+  so the page carries `noindex`, is served with the site's own headers, and is only as safe as the
+  browser history it ends up in.
+- `init`, `renew-site` and `sync` re-render the page when it exists, because the decoy step rewrites its
+  whole tree and the peer set changes under it. None of them *creates* one: a node whose owner never
+  asked for a page stays without one.
+- The page is built from what the node can see. If the management server is unreachable it says so and
+  shows the local device only, which is exactly when a link is worth having.
+- The node's own entries carry the fragmentation it configured itself (`happ_fragment`), while the mesh
+  entries carry the server's: set both to the same value and the page speaks with one voice. A fresh
+  node writes `proto.DefaultHappFragment`; a configuration that predates the key keeps its links plain,
+  and `termit-uv init --happ-fragment ""` turns it off deliberately.
+- The page is written in the configured language (`locale: ru` or `en`, Russian by default). The menu
+  follows the same setting, and so does the server's menu (`locale` in `/etc/termit/mn/config.yaml`),
+  but only where the console can show Cyrillic: on a C or latin-1 locale both fall back to English, because a menu of question marks is worse than English. The page never falls
+  back — a browser always has the glyphs — and this node's own device appears once, under “this node”,
+  not again in the mesh list it also belongs to.
+
 The subscription is the mesh view: one URL per node, containing that node's own profile plus every
 healthy peer, with a **pair credential** for each peer — valid on that pair and nowhere else.
 
@@ -556,6 +649,50 @@ Both are stable for a given peer set and carry an `ETag`, so a client that cache
 Rotating the token is the way to revoke a client that should no longer see the mesh; it does not
 affect the node's own devices, which never leave the box.
 
+Fragmentation is the one client-side defence that costs nothing on a path where it is not needed: the
+same handshake, in more pieces. It is stated three ways because clients differ in where they can be
+told about it:
+
+```yaml
+subscription:
+  fragment: false                            # sing-box profile: split across TCP segments
+  record_fragment: true                      # sing-box profile: split across TLS records
+  happ_fragment: "100-200,1-3,tlshello,6"    # Happ: the per-link fragment= parameter
+```
+
+That is what a fresh `termit-mn init` writes: fragmentation on, because the paths this project is
+deployed against freeze a plain ClientHello often enough that it should not depend on somebody
+remembering a switch. A configuration written before these keys existed keeps whatever it says — the
+loader never adds them — so an installed server changes only when its operator asks:
+
+```bash
+termit-mn init --record-fragment --happ-fragment 100-200,1-3,tlshello,6   # on
+termit-mn init --no-fragmentation                                        # off, all three
+```
+
+The two booleans change only the `/json` document, and only by adding the field — never by writing
+`false`. sing-box validates strictly and refuses a profile with a field it does not know, so the
+default has to leave the document untouched and a client that reads the plain list never sees the
+fields at all. `podkop-engine` from r13 knows both. Enable `record_fragment` when connections hang
+right after the handshake starts, or when the same profile works from one network and not another: on
+a path recorded in `podkop-engine`'s notes that froze every Chrome ClientHello, 0 of 15 connections
+got through without it and 15 of 15 with it.
+
+`happ_fragment` is a different mechanism: Happ reads the value from the link itself, so the plain
+base64 list carries it and a phone needs no setting at all. The value is Happ's
+`length,interval,packets[,maxSplit]`, and the custom parameter is appended before the label, where a
+client that does not know it ignores it and `ParseVLESSUrl` still round-trips. The fourth field is the
+one that matters: it bounds the number of pieces and therefore the delay. Measured with Happ's own
+ping against these two nodes — 769 ms without fragmentation, 446 ms with `300-500,1-5,tlshello`,
+464 ms with `100-200,1-3,tlshello,6`. The fragmented handshake came out *faster* than the plain one,
+because the plain ClientHello was paying for a first packet that never arrived and fragmentation
+avoided it. Leave the bound off with a small length and the reverse happens: Happ's documentation
+example `1-10,5-20,tlshello` cuts a ~700-byte handshake into 70–1500 pieces with 5–20 ms between them,
+which measured as more than five seconds on the same profile.
+
+The server never looks at any of these, so a node needs no reconfiguration; the value only ever
+changes the text a client downloads.
+
 ### 8.1 Which clients can use the profile
 
 The profile is VLESS + **XHTTP** (`mode=packet-up`) + TLS, and XHTTP is not a transport every client
@@ -572,6 +709,12 @@ A client without XHTTP does not report "unsupported transport": it falls back to
 the node answers its request with an HTTP `400`, and the client's VLESS reader reports the first byte
 of `HTTP/1.1` as a version — `unknown version: 72` (`72` is `H`). Treat that message as "wrong client",
 not "broken node".
+
+Happ's per-server ping is not a health check for this profile. It reports "Ошибка TLS-рукопожатия"
+while the tunnel carries traffic, because it probes something other than the secret path (a fixed
+health-check URL, or the path without the XHTTP handshake). Judge a profile by a real request —
+`https://www.cloudflare.com/cdn-cgi/trace` answering with `warp=on` — and leave the ping alone. The
+same warning applies to any client that shows a synthetic latency number instead of moving data.
 
 The subscription's `/json` form is a sing-box profile, so it is only useful to the builds that have
 XHTTP: stock sing-box rejects the `xhttp` transport it declares.
@@ -820,9 +963,11 @@ termit-uv uninstall               # units, vhost, core, generated files; keeps c
 termit-uv uninstall --purge       # also config, state, certificates and the service user
 ```
 
-What it does: disconnects the WARP tunnel, stops and disables the units, removes every path the
-install manifest recorded, restores the distribution's default nginx vhost, and reloads nginx so `:80`
-and `:443` are released. What it deliberately keeps: **packages** (nginx may serve other sites; remove
+What it does: removes the host firewall table if one is applied, disconnects the WARP tunnel, stops and
+disables the units, removes every path the install manifest recorded, restores the distribution's
+default nginx vhost, and reloads nginx so `:80` and `:443` are released. The table goes first, and on
+purpose: a default-deny table with no command left to remove it is a host nobody can repair without a
+console. What it deliberately keeps: **packages** (nginx may serve other sites; remove
 `cloudflare-warp` yourself if you want it gone), and — without `--purge` — the configuration and the
 state, so a reinstall keeps the same identity.
 
@@ -876,6 +1021,11 @@ A useful alert set, in the order that matters:
   should — an unattended proxy should not change itself.
 - **Blocking is cooperative.** A node that ignores the server's answer keeps serving; see
   [`THREAT_MODEL.md`](THREAT_MODEL.md) §6.
+- **The host firewall survives a reboot only once it was confirmed.** `termit-uv-firewall.service`
+  restores what the record says was applied and confirmed (§18.7); a table that was applied and never
+  confirmed does not come back, and neither does one an operator took down. The bans survive on their
+  own — `bans.json` outlives the reboot and the guard refills the kernel from it, as soon as the table
+  exists again.
 
 ## 16. Troubleshooting
 
@@ -971,6 +1121,8 @@ server's unit from the repository, and writes `SHA256SUMS`:
 | `termit-mn_<version>_linux_<arch>` | the management server binary |
 | `uv.sh` | the bootstrap installer (§4) |
 | `termit-mn.service` | the unit from `deploy/systemd/`, so a server install needs no clone |
+| `termit-mn-firewall.service`, `termit-mn-firewall-rollback.service`, `.timer` | the server's boot unit and the rollback pair (§18.6) |
+| `termit-mn-guard.service`, `termit-mn-blocklist.service`, `.timer` | the server's ban engine and blocklist (§18.6) |
 | `SHA256SUMS` | covers every file above, in `sha256sum -c` format |
 
 The names are a contract with `uv.sh`, which fetches `<base>/<version>/<asset>` and
@@ -1027,3 +1179,231 @@ When space is the problem, `--build-cache` is the cheap half: it drops the compi
 after a release cycle) and keeps the downloaded modules, so the next build recompiles for a few seconds
 and downloads nothing. `--module-cache` drops the modules as well and costs a download; `--all` does
 both; `--toolchain` removes Go itself.
+
+## 18. The host firewall (opt-in)
+
+Termit ships a firewall and never turns it on. One nftables table per component — `inet termit_uv` on a
+node, `inet termit_mn` on the server — and it exists only after an operator types `termit-uv firewall
+on`. `init`, `sync`, the agent, the menus and every timer leave it alone; `termit-uv firewall off`
+deletes the table and leaves the host exactly as it was. That last sentence is a lab assertion, not a
+promise: the test compares `nft list ruleset` before and after.
+
+Nothing here is required for the tunnel to work. It is host hardening for a machine whose address is
+public, and it is useful even if you never touch it again.
+
+### 18.1 What the table contains
+
+In the order the input chain evaluates it:
+
+| Rule | Why |
+|---|---|
+| `iif lo accept` | loopback is not a decision |
+| `ct state established,related accept` | a connection already flowing is not re-judged |
+| `ct state invalid drop` | malformed state is never legitimate |
+| `ip saddr @blocked4 drop`, `ip6 saddr @blocked6 drop` | the downloaded list (M5.3) |
+| `ip saddr @banned4 drop`, `ip6 saddr @banned6 drop` | what the guard banned |
+| `icmpv6 type { nd-*, packet-too-big, destination-unreachable, time-exceeded } accept` | without NDP and PMTU messages IPv6 stops working |
+| `tcp dport { 22, 80, 443 } accept` | what a node publishes — or, with `ssh_from`, port 22 only from the listed networks |
+| `meter scan4m { … } add @scan4 { … }` | counts attempts to everything else per source, in the kernel |
+| `counter drop` | with `default_deny`, everything else is refused |
+
+Two properties are worth knowing before you trust it:
+
+- **The table is one atomic transaction.** `firewall on` feeds the whole ruleset to `nft -f -`, which
+  commits it or nothing; a failure leaves the previous rules in force. Re-applying the same ruleset
+  replaces it rather than merging.
+- **Bans live in sets, not in rules.** Adding or removing one element does not touch the chain, so a
+  ban never leaves a window where the rules are half-written.
+
+### 18.2 Turning it on without locking yourself out
+
+```bash
+termit-uv firewall on --dry-run              # print the rules; changes nothing
+termit-uv firewall on                        # arm the timer, apply, record
+termit-uv firewall confirm                   # within five minutes, from the same session
+```
+
+`on` arms a five-minute rollback timer **before** it applies anything. If `confirm` does not run in
+time, the timer's oneshot runs `termit-uv firewall rollback`, which deletes the table and stops the
+timer. That is what makes the command safe to run over the connection it might cut — and it is worth
+testing on purpose once, on a host you can afford to lose for five minutes.
+
+`status` tells you which of the three states you are in:
+
+```
+firewall:   on, not confirmed — the table is removed in 4m55s unless you run `termit-uv firewall confirm`
+firewall:   on, confirmed 3m ago
+firewall:   off since 1s ago
+```
+
+If you reach SSH from a fixed address, restrict the port to it — the networks are compiled into the
+table, so the restriction survives a rebuild:
+
+```bash
+termit-uv firewall on --ssh-from 203.0.113.0/24,2001:db8::/32
+```
+
+Port 22 is then refused from everywhere else even with `default_deny: false`, because a restriction
+that only holds when the rest is denied is not a restriction. `ssh_from` in the configuration does the
+same thing for every future `on`.
+
+### 18.3 The way back
+
+```bash
+termit-uv firewall off        # removes the table and the timer; the host is as it was
+```
+
+`off` needs no confirmation and no argument, and it works from any state — including after a rollback,
+where it is a no-op. On a host you have locked yourself out of, wait out the five minutes: the timer
+runs locally, over systemd, and does not need SSH.
+
+### 18.4 The ban engine
+
+With `security.guard.enabled: true`, `init` installs and starts `termit-uv-guard.service`. It watches two
+signals and does one thing with them:
+
+| Signal | Evidence | First ban | Repeat |
+|---|---|---|---|
+| Port scan | the kernel's scan set: attempts to ports the host does not serve, N per window | 1 hour | 24 hours |
+| Failed requests | the web server's log: 4xx answers from one source, counted in a window | 5 minutes | doubling to 1 hour |
+| You | `termit-uv bans block <ip>` | permanent | until `bans unblock` |
+
+A repeat only escalates inside `security.guard.ladder_window`, measured **from the end of the previous
+ban**: coming back a day after being let in earns the long ban, coming back a week later starts over.
+When the ladder has nothing harder to offer, the source is marked an *offender* — nothing automatic
+blocks it forever, and `termit-uv bans offenders` is where you decide.
+
+The guard never applies or removes the table. It adds and removes elements inside it, which is why it is
+safe to leave running: with no table applied it reads nothing and does nothing.
+
+```bash
+termit-uv guard status              # is it on, and what has it decided
+termit-uv bans list                 # what is banned now, and why
+termit-uv bans offenders            # sources the ladder ran out of rungs for
+termit-uv bans block 203.0.113.7    # permanent, my decision
+termit-uv bans unban 203.0.113.7    # lift it now; the ladder remembers the offence
+termit-uv bans unblock 203.0.113.7  # lift a permanent block of mine
+```
+
+Decisions live in `/var/lib/termit/uv/bans.json` and survive a reboot; the kernel's sets do not, and the
+guard refills them from the file on its next pass. `unban` lifts a ban but keeps the offence on record,
+so the source's next offence earns the longer ban — it is not a way to forget what happened.
+
+**What is never banned**, whichever signal fires: loopback, the private and link-local ranges, the
+management server (resolved from `mn.url`, cached for ten minutes) and your own `ssh_from` networks.
+`bans block` refuses them too: a ban on those cuts you off, not an attacker. If you really mean to block
+an address in one of those ranges, do it with `nft` directly and know what you are doing.
+
+### 18.5 The blocklist
+
+A list of networks you never want to hear from again — a hosting provider, a scanner's range, an
+abusive subnet — comes in over a URL:
+
+```yaml
+security:
+  firewall:
+    blocklist_url: https://example.net/termit/blocklist.txt
+    blocklist_refresh: 24h
+```
+
+`http(s)` and `file` URLs are supported and nothing else: no git, no rsync, no rsync-over-ssh. The file is
+one network per line, `#` starts a comment, a bare address means its `/32` or `/128`; overlapping and
+duplicate entries are fine — they are normalised, sorted and written back that way, so the file's digest
+does not move when the order of a source does. The body is capped at 4 MiB.
+
+`init` installs `termit-uv-blocklist.timer` when there is a URL: the oneshot runs a minute after the timer
+starts, then once per `blocklist_refresh`, with jitter and across reboots.
+
+```bash
+termit-uv firewall refresh                 # fetch, validate, put in force
+termit-uv firewall refresh --dry-run       # fetch and validate only
+termit-uv firewall refresh --url file:///root/list.txt   # one-off, test a list before you commit to it
+termit-uv firewall status                  # how many networks are in force, and when they were fetched
+```
+
+The list in force lives in `/var/lib/termit/uv/blocklist.txt`, and the kernel's sets are rebuilt from that
+file, not from the network: a refresh that finds the source unchanged still reloads the kernel, which is
+what repairs a reboot. A download that fails, a body that does not parse and a list with no entries are
+all refused with the message that the list in force was left alone — an empty blocklist is worse than an
+outdated one, because it silently unblocks everything.
+
+`firewall on` loads the file too, so a table applied after a reboot comes back with its networks. With no
+table applied, a refresh writes the file and leaves the kernel alone.
+
+### 18.6 The management server
+
+The server can carry the same table, with its own name and its own ports. It is the same commands with a
+different binary, so everything above is true of it except the two things a server does not have: no access
+log to count 4xx answers (the server logs to the journal, and its admin API is rate-limited instead), and
+no proxy core to sniff.
+
+```bash
+termit-mn firewall status|on|off|confirm|rollback|refresh|restore
+termit-mn bans list|offenders|block IP|unban IP|unblock IP
+termit-mn guard status|run [--once]
+```
+
+The table is `inet termit_mn` and it publishes **22, 80 and 443**: 80 stays open for every node's
+certificate renewal, not only while this server's own order is in flight, which is why it is not opened
+conditionally.
+
+One difference matters before the first `on`: the server's units are plain files in `deploy/systemd`, not
+rendered by the binary, so `firewall on` **refuses to run until the rollback timer is installed**. That is
+deliberate — an apply with no way back is worse than a refused command — and it is the first thing to
+check when `on` says the timer is not installed:
+
+```bash
+install -m 0644 termit-mn-firewall-rollback.service \
+                   termit-mn-firewall-rollback.timer \
+                   termit-mn-firewall.service \
+                   termit-mn-guard.service \
+                   termit-mn-blocklist.service \
+                   termit-mn-blocklist.timer /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable termit-mn-firewall
+systemctl enable --now termit-mn-guard termit-mn-blocklist.timer
+```
+
+The files sit beside `termit-mn` in the release tarball; in a checkout they are under `deploy/systemd/`.
+
+Do not enable the rollback timer: the command starts it, and it exists to fire once. The blocklist timer
+runs `termit-mn firewall refresh` daily; its interval is the timer file, not
+`security.firewall.blocklist_refresh` — the server's units are edited, not generated.
+
+The guard and the refresh run as root because nft does, and both are confined the same way as the node's:
+`ProtectSystem=strict`, writes only to `/var/lib/termit/mn`, and `RestrictAddressFamilies` **including
+`AF_NETLINK`** — without it every cycle fails with "Unable to initialize Netlink socket".
+
+The ban record and the blocklist live beside the database in `/var/lib/termit/mn/`, so the backup in §10
+carries them.
+
+### 18.7 What survives a reboot
+
+The table is a kernel object, so a reboot empties it — but the record of what was applied does not.
+`termit-uv-firewall.service` runs at boot, before `network-pre.target`, and hands the decision to
+`termit-uv firewall restore`:
+
+| The record says | At the next boot |
+|---|---|
+| the apply was **confirmed** | the table comes back, ports, `ssh_from` and `default_deny` included, and no timer guards it — you already accepted exactly this table |
+| the apply was still **waiting** and its five minutes have not run out | the table comes back and the rollback timer is armed with what is left of the window |
+| the apply was **never confirmed** and the window is gone | nothing: nobody ever vouched for that table |
+| you ran `firewall off` | nothing: the record says you took it down |
+
+Nothing to restore is not an error — the unit exits 0 and the journal says so. `termit-uv firewall restore
+--dry-run` is the way to check what a reboot would do before you reboot.
+
+The same unit exists for the server as `deploy/systemd/termit-mn-firewall.service` (§18.6) and is enabled
+the same way.
+
+### 18.8 What it does not do
+
+- It does not rate-limit proxied traffic. Your node's clients are not throttled — that would add latency
+  to the one thing the node exists for.
+- It does not touch routing, NAT or WARP. Proxied traffic still leaves through the loopback WARP
+  sidecar, and direct traffic still goes direct.
+- It does not survive a **configuration loss**. If the record file goes and the configuration still asks
+  for a table, `termit-uv firewall on` is the only way back — the boot unit restores what was applied, it
+  does not invent one.
+- It does not hide the node from a targeted observer. It refuses scans and probes; see
+  [`THREAT_MODEL.md`](THREAT_MODEL.md).

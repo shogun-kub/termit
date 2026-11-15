@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shogun-kub/termit/internal/firewall"
 	"github.com/shogun-kub/termit/internal/uv/config"
 	"github.com/shogun-kub/termit/internal/uv/state"
 	"github.com/shogun-kub/termit/internal/uv/warp"
@@ -26,6 +27,12 @@ var unitNames = []string{
 	service.AgentUnitName,
 	service.RenewTimerName,
 	service.RenewUnitName,
+	service.GuardUnitName,
+	service.FirewallRollbackTimerName,
+	service.FirewallRollbackUnitName,
+	service.BlocklistTimerName,
+	service.BlocklistUnitName,
+	service.FirewallBootUnitName,
 }
 
 // UninstallOptions configure an uninstall.
@@ -100,6 +107,11 @@ func Uninstall(ctx context.Context, opts UninstallOptions) (*UninstallReport, er
 			opts.Logger.Debug("systemctl disable", "error", err)
 		}
 	}
+
+	// 2. The table is the one thing that must not outlive the binaries. A default-deny table with no
+	// command left to remove it is a host nobody can repair without a console, so it goes before the
+	// binary that knows how to render it.
+	uninstallTable(ctx, opts, cfg, report)
 
 	// 2. Three passes over the manifest: the things that hold bytes, then the user, then the
 	// directories that held them. A directory cannot go before what is inside it, and the manifest is
@@ -321,4 +333,34 @@ func safeToRemove(target string) bool {
 	// At least "…/termit/uv": never a top-level or single-child directory.
 	depth := strings.Count(clean, "/") + strings.Count(clean, `\`)
 	return depth >= 3
+}
+
+// uninstallTable removes the node's nftables table, if it is applied. It reports what it did, and a
+// failure is a warning rather than an error: the state files still have to go, and a host with a
+// half-removed install is worse than one with a warning in the report.
+func uninstallTable(ctx context.Context, opts UninstallOptions, cfg *config.Config, report *UninstallReport) {
+	applier := firewall.Applier{Runner: nftRunner{exec: opts.Exec}}
+	present, err := applier.Present(ctx, firewall.NodeTable)
+	if err != nil {
+		report.Warnings = append(report.Warnings, "could not ask the kernel about the firewall table: "+err.Error())
+		return
+	}
+	if present {
+		if opts.DryRun {
+			report.Removed = append(report.Removed, "table inet "+firewall.NodeTable+" (the host firewall)")
+		} else if err := applier.Remove(ctx, firewall.NodeTable); err != nil {
+			report.Warnings = append(report.Warnings, "remove the firewall table: "+err.Error())
+		} else {
+			report.Removed = append(report.Removed, "table inet "+firewall.NodeTable+" (the host firewall)")
+		}
+	}
+	report.removeFile(cfg.Paths.FirewallPath(), opts.DryRun)
+}
+
+// nftRunner adapts the installer's executor to the firewall package's smaller interface.
+type nftRunner struct{ exec Executor }
+
+func (r nftRunner) Run(ctx context.Context, name string, args []string, stdin string) (string, error) {
+	res, err := r.exec.Run(ctx, Cmd{Name: name, Args: args, Stdin: stdin})
+	return res.Stdout, err
 }

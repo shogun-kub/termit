@@ -1,0 +1,53 @@
+# Termit ban engine for the management server.
+#
+# The server's units are plain files, not rendered ones: it has one layout, and a binary that rewrites
+# its own units is a binary that can break a host nobody is watching. Install them all with the
+# commands in docs/OPERATIONS.md §18.
+#
+#   install -m 0644 deploy/systemd/termit-mn-guard.service /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now termit-mn-guard
+#
+# It only ever adds and removes elements inside the table `termit-mn firewall on` applied; with no table
+# it reads nothing and does nothing, which is why it is safe to leave enabled.
+
+[Unit]
+Description=Termit ban engine (management server)
+Documentation=https://github.com/shogun-kub/termit
+After=network-online.target termit-mn.service
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/termit-mn guard run --config /etc/termit/mn/config.yaml
+Restart=on-failure
+RestartSec=30s
+Nice=10
+
+# Root for nft, nothing else: writes go to the state directory, reads to the configuration.
+# AF_NETLINK is not optional below: nft talks to the kernel through it, and without it every cycle
+# fails with "Unable to initialize Netlink socket", which is how the node's guard found it in the lab.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/termit/mn
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+[Install]
+WantedBy=multi-user.target

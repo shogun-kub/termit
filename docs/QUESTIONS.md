@@ -36,6 +36,21 @@ The remaining questions below are still open; the ones that matter before M1 are
 
 ---
 
+## 0a. Security hardening (2026-11-15, decided; plan in `IMPLEMENTATION_PLAN.md` M5)
+
+| Question | Decision |
+|---|---|
+| Backend | **Our own code on nftables**, one backend for the firewall and the bans. No ufw and no fail2ban: the lab boxes have neither, `nftables 1.1.3` is installed and its service enabled, and a ban lives in one place instead of two. |
+| Firewall model | **Blacklist first, then a service whitelist** — `22/tcp`, `80/tcp`, `443/tcp` — with `default_deny` on by default; anything else inbound is dropped. |
+| Who turns it on | **The operator, explicitly.** `init`, `sync`, the agent and the timers never *apply* a table; a five-minute rollback timer protects the first apply. A boot unit puts back what an operator applied and confirmed — it never applies anything nobody asked for. |
+| Scan threshold | **Configurable, 5 attempts per 1 minute by default**; a repeat within 24 hours → 24-hour ban. One minute and not ten: nftables writes a rate as "N per one unit", so a ten-minute window has no spelling (§5.6). |
+| Permanent block | **A separate persisted list the operator owns**, plus an automatic ban ladder that never becomes permanent by itself. |
+| `ssh_from` | **Opt-in** flag and config list, not a default: a static address is the exception. |
+| Persistence | **Bans on disk with their TTL**, re-applied after a reboot; the table itself comes back from a boot unit that re-applies the recorded table and arms the rollback timer in the same breath. |
+| Scope and defaults | **Nodes and the server, one mechanism**; everything off until the operator asks, with the wizard offering an unchecked "harden this node". |
+| Rate limiting of proxied traffic | **Not implemented.** The operator is responsible for not abusing their own node; a limiter adds latency to the one thing the node exists for and is a timing fingerprint. The single exception is an opt-in BitTorrent block. |
+---
+
 ## 1. Naming, scope, licence
 
 **Q1.1** Project name. The working folder is `Termit`; the components are already named UV (user VPS

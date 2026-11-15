@@ -172,7 +172,7 @@ own; the systemd units are installed by `termit-uv init`.
 
 | Command | What it does | Main flags |
 |---|---|---|
-| `termit-uv init` | install or converge this node | `--domain`, `--email`, `--no-warp`, `--warp MODE`, `--warp-selected LIST`, `--dry-run`, `--only`, `--skip`, `--acme-ca`, `--xray-version`, `--xray-download-base`, `--relocate`, `--agent-key-file` |
+| `termit-uv init` | install or converge this node | `--domain`, `--email`, `--locale ru\|en`, `--happ-fragment VALUE`, `--no-warp`, `--warp MODE`, `--warp-selected LIST`, `--dry-run`, `--only`, `--skip`, `--acme-ca`, `--xray-version`, `--xray-download-base`, `--relocate`, `--agent-key-file` |
 | `termit-uv doctor` | diagnose the host and the node, change nothing | `--json` |
 | `termit-uv net` | tell a lossy path from a broken node, by sampling the TCP counters | `--seconds 60`, `--json` |
 | `termit-uv status` | identity, certificate, peers, sync, WARP | `--json` |
@@ -181,6 +181,8 @@ own; the systemd units are installed by `termit-uv init`.
 | `termit-uv agent` | run the daily loop in the foreground | `--once` |
 | `termit-uv device` | local devices on this node | `list`, `add --label NAME [--uuid ...]`, `remove NAME` |
 | `termit-uv uri` | print a `vless://` URI for this node | `--label` |
+| `termit-uv options` | render the private page of client links and print its address | `--rotate`, `--quiet` |
+| `termit-uv wizard` | walk through a first installation, remembering the answers; asks for the language first | `--fresh` |
 | `termit-uv warp` / `termit-uv warp status` | report egress | `--json` |
 | `termit-uv warp mode` | change egress | `off`, `all`, `selected --selected a.example,b.example` |
 | `termit-uv unblock` | ask the server to re-verify and unblock | `--domain`, `--vless-url`, `--no-sync` |
@@ -188,9 +190,13 @@ own; the systemd units are installed by `termit-uv init`.
 | `termit-uv renew-cert` | renew the certificate now | `--force` (reissue even if not due) |
 | `termit-uv renew-site` | regenerate the decoy site | `--template product\|portal`, `--seed`, `--dry-run` |
 | `termit-uv uninstall` | remove what Termit created | `--purge` (also config, state, certificates, user), `--dry-run` |
+| `termit-uv firewall` | the host firewall: `status`, `on`, `off`, `confirm`, `refresh` | `--ssh-from`, `--default-deny`, `--dry-run` |
+| `termit-uv bans` | what the ban engine decided: `list`, `offenders`, `block IP`, `unban IP`, `unblock IP` | |
+| `termit-uv guard` | the ban engine: `status`, `run --once` | |
 | `termit-uv version` | build and protocol version | |
 
-Every command accepts `--config <path>` and `-v`/`--verbose`.
+Every command accepts `--config <path>` and `-v`/`--verbose`. The last three are the opt-in hardening
+half and stay off until you ask: [Hardening a node](hardening.md) is their page.
 
 ## Recipes
 

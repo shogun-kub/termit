@@ -1,0 +1,18 @@
+# The blocklist refresh schedule for the management server.
+#
+# First run a minute after the timer starts, then once a day with jitter, and Persistent so a missed run
+# happens after a reboot instead of being skipped. security.firewall.blocklist_refresh changes the
+# interval on a node, where the timer is rendered; here it is this file.
+
+[Unit]
+Description=Refresh the Termit network blocklist every day
+
+[Timer]
+OnActiveSec=1min
+OnUnitActiveSec=24h
+RandomizedDelaySec=1h
+AccuracySec=1min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

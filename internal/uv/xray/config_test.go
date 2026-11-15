@@ -277,3 +277,96 @@ func TestAddresses(t *testing.T) {
 		t.Errorf("APIAddress = %q, want %q", got, want)
 	}
 }
+
+// TestGenerateBitTorrentGolden pins the opt-in variant: the only difference from the default document
+// is the sniffer's shape and one routing rule, and both are load-bearing.
+func TestGenerateBitTorrentGolden(t *testing.T) {
+	t.Parallel()
+	spec := testSpec()
+	spec.BlockBitTorrent = true
+	data, err := xray.Generate(spec)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	golden := filepath.Join("testdata", "xray-bittorrent.json")
+	if *update {
+		if err := os.WriteFile(golden, data, 0o644); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
+		return
+	}
+	want, err := os.ReadFile(golden) // #nosec G304 -- a fixed test path.
+	if err != nil {
+		t.Fatalf("read golden file: %v (run `go test ./internal/uv/xray -update`)", err)
+	}
+	if !bytes.Equal(want, data) {
+		t.Errorf("%s differs from the generated config; regenerate with -update and review the diff", golden)
+	}
+}
+
+// TestBitTorrentRuleIsFirstAndRouteOnly says why the golden looks the way it does: the rule has to come
+// before every egress decision (a WARP rule before it would take the handshake), and routeOnly has to
+// stay true or the sniffed HTTP Host replaces the address the client asked for.
+func TestBitTorrentRuleIsFirstAndRouteOnly(t *testing.T) {
+	t.Parallel()
+	spec := testSpec()
+	spec.BlockBitTorrent = true
+	spec.Warp = xray.WarpSpec{Mode: "all", FailOpen: true}
+	data, err := xray.Generate(spec)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	var document struct {
+		Inbounds []struct {
+			Tag      string `json:"tag"`
+			Sniffing *struct {
+				Enabled      bool     `json:"enabled"`
+				DestOverride []string `json:"destOverride"`
+				RouteOnly    bool     `json:"routeOnly"`
+			} `json:"sniffing"`
+		} `json:"inbounds"`
+		Routing struct {
+			Rules []struct {
+				Protocol    []string `json:"protocol"`
+				OutboundTag string   `json:"outboundTag"`
+				BalancerTag string   `json:"balancerTag"`
+			} `json:"rules"`
+		} `json:"routing"`
+	}
+	if err := json.Unmarshal(data, &document); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	var sniff *struct {
+		Enabled      bool     `json:"enabled"`
+		DestOverride []string `json:"destOverride"`
+		RouteOnly    bool     `json:"routeOnly"`
+	}
+	for _, inbound := range document.Inbounds {
+		if inbound.Tag == xray.InboundTag {
+			sniff = inbound.Sniffing
+		}
+	}
+	if sniff == nil || !sniff.Enabled {
+		t.Fatalf("the vless inbound has no sniffer: %+v", sniff)
+	}
+	if len(sniff.DestOverride) != 0 {
+		t.Errorf("destOverride = %v, want empty: listing a protocol buys nothing for BitTorrent and parses every connection", sniff.DestOverride)
+	}
+	if !sniff.RouteOnly {
+		t.Error("routeOnly is false: the sniffed Host would replace the client's destination")
+	}
+	rules := document.Routing.Rules
+	if len(rules) == 0 || len(rules[0].Protocol) != 1 || rules[0].Protocol[0] != "bittorrent" || rules[0].OutboundTag != "block" {
+		t.Fatalf("the first routing rule is %+v, want the BitTorrent block", rules)
+	}
+	// And the WARP rule is still there, after it.
+	found := false
+	for _, rule := range rules[1:] {
+		if rule.OutboundTag == xray.WarpTag || rule.BalancerTag == xray.WarpBalancerTag {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("the WARP rule disappeared: %+v", rules)
+	}
+}

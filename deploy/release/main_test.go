@@ -120,3 +120,55 @@ func TestRunRefusesADirectoryWithoutGoMod(t *testing.T) {
 		t.Fatalf("run = %v, want a refusal about the root", err)
 	}
 }
+
+// TestWriteNotesTakesTheSectionForTheVersion: the release body is the changelog's own section, and a
+// section that is missing or still marked unreleased must fail the release rather than publish a
+// placeholder.
+func TestWriteNotesTakesTheSectionForTheVersion(t *testing.T) {
+	t.Parallel()
+	changelog := "# Changelog\n\n## 0.3.0 — unreleased\n\nnot yet\n\n## 0.2.1 — 2026-11-14\n\nfirst\n\n- added a thing\n\n### Fixed\n\n- fixed a thing\n\n## 0.2.0 — 2026-11-10\n\nolder\n"
+	path := filepath.Join(t.TempDir(), "CHANGELOG.md")
+	if err := os.WriteFile(path, []byte(changelog), 0o644); err != nil {
+		t.Fatalf("write the changelog: %v", err)
+	}
+
+	var out bytes.Buffer
+	if err := writeNotes(path, "v0.2.1", &out); err != nil {
+		t.Fatalf("writeNotes: %v", err)
+	}
+	got := out.String()
+	for _, want := range []string{"## 0.2.1 — 2026-11-14", "added a thing", "fixed a thing"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the notes are missing %q:\n%s", want, got)
+		}
+	}
+	for _, unwanted := range []string{"## 0.3.0", "## 0.2.0", "older"} {
+		if strings.Contains(got, unwanted) {
+			t.Errorf("the notes carry %q from another section:\n%s", unwanted, got)
+		}
+	}
+
+	out.Reset()
+	if err := writeNotes(path, "v9.9.9", &out); err == nil || !strings.Contains(err.Error(), "no") {
+		t.Errorf("a version with no section = %v, want a refusal", err)
+	}
+	out.Reset()
+	if err := writeNotes(path, "v0.3.0", &out); err == nil || !strings.Contains(err.Error(), "unreleased") {
+		t.Errorf("an unreleased section = %v, want a refusal", err)
+	}
+}
+
+// TestExtraFilesExist: every file the release copies beside the binaries has to be in the repository,
+// and under the name the manifest will show. A renamed server unit would ship a release in which
+// `termit-mn firewall on` refuses forever, because the rollback timer it insists on is not there.
+func TestExtraFilesExist(t *testing.T) {
+	t.Parallel()
+	for _, extra := range extraFiles {
+		if _, err := os.Stat(filepath.Join("..", "..", extra.source)); err != nil {
+			t.Errorf("extra file %s: %v", extra.source, err)
+		}
+		if extra.name != filepath.Base(extra.name) {
+			t.Errorf("extra file %q is not a base name", extra.name)
+		}
+	}
+}

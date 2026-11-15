@@ -109,6 +109,10 @@ persisted values.`)
 		cfg.Paths.SiteDir,
 		cfg.Paths.DecoySnippet)
 	a.reloadWebTier(ctx, cfg.Paths.NginxSite)
+	// The rewritten tree dropped the owner's page along with every other stale file.
+	if err := a.refreshOptions(cfg); err != nil {
+		fmt.Fprintf(a.stderr, "termit-uv renew-site: the client options page could not be refreshed: %v\n", err)
+	}
 	return exitOK
 }
 

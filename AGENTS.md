@@ -294,6 +294,10 @@ already passed CI and the lab.
   an annotated tag `v<version>` on `main`. Pushing the tag runs the final build and publishes the GitHub
   Release. The release stays marked pre-release until the production pass in
   `docs/IMPLEMENTATION_PLAN.md` M4.3 is done; flipping that flag is a deliberate, recorded act.
+- **The release body is the changelog's section for that version** — `go run ./deploy/release --version
+  v<version> --notes` prints it, and CI uses exactly that. Write `CHANGELOG.md` (and `CHANGELOG.ru.md`,
+  which stays in step) with a real date before tagging: the tool refuses a missing section and one that
+  still says `unreleased`, so a release cannot publish a placeholder.
 - **A tag points at a commit that has already been tested.** Retagging is allowed only while the release
   is unpublished; `v0.1.0` is published and stays where it is. Never retag a released commit — a version
   that means two different trees is worse than a wrong one.

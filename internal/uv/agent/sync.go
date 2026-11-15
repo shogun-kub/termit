@@ -141,6 +141,9 @@ type Applier struct {
 	// Warp is the egress the generated config must keep. The daily reconcile regenerates the whole
 	// file, so a WARP route that is not in the spec would silently disappear every day.
 	Warp xray.WarpSpec
+	// BlockBitTorrent is the same kind of promise for the torrent rule: a config this node regenerates
+	// without it would quietly stop blocking.
+	BlockBitTorrent bool
 }
 
 // Result is what applying a set changed.
@@ -184,6 +187,7 @@ func (a Applier) spec(answer proto.SyncResponse, local []state.LocalUser) (xray.
 	spec := xray.DefaultSpec()
 	spec.Path = a.Path
 	spec.Warp = a.Warp
+	spec.BlockBitTorrent = a.BlockBitTorrent
 	desired := a.desired(answer, local)
 	ids := make([]string, 0, len(desired))
 	for id := range desired {

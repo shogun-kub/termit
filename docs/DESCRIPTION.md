@@ -502,6 +502,12 @@ Two independent rule groups, each toggleable in `config.yaml`:
 - **Shape the user experience**: block `geosite:category-ads-all`, `geosite:win-spy`, and an
   optional extra domain list from a local file.
 
+Of that list, only BitTorrent is implemented so far, behind `security.bittorrent_block` (off by
+default): the core sniffs the first bytes of each connection, a `protocol: ["bittorrent"]` rule sends
+the handshake to the blackhole, and `routeOnly: true` with an empty `destOverride` keeps the client's
+destination intact — with `routeOnly: false` a sniffed HTTP `Host` replaces the address the client
+asked for. The rest of the two groups is a plan, not a behaviour: nothing else is blocked today.
+
 Egress, from `config.yaml`:
 
 - `warp.mode: off` — everything not blocked exits `direct` from the node's address.
@@ -535,7 +541,15 @@ nothing is silently degraded. `termit-uv uninstall` disconnects the tunnel and l
 
 These are non-negotiable and must be enforced by tests:
 
-1. **No host-routing changes.** No `ip route`, `ip rule`, iptables or nftables mutation by Termit.
+1. **No host-routing changes.** No `ip route`, no `ip rule`, no NAT, no iptables. The one exception is
+   a single nftables table (`inet termit_uv` on a node, `inet termit_mn` on the server), and it exists
+   only because someone typed `termit-uv firewall on`: `init`, `sync` and the agent leave the table
+   itself alone, `firewall off` deletes it and puts the host back exactly as it was, and an apply that
+   is not confirmed within five minutes removes itself. Two things fill the table's sets and never
+   create, extend or remove the table: the guard (bans) and the blocklist refresh, which is why both are
+   harmless with no table applied. One thing puts the table back: the boot unit, and only from the
+   record of an apply the operator confirmed (or one whose confirmation window is still open) — a table
+   nobody ever confirmed does not come back after a reboot.
 2. **No traffic loss on failing checks.** MN never blocks a node because of a prober/DNS/agent error;
    `unknown` is distinct from `failed` everywhere.
 3. **Config must validate before it is applied.** Every Xray config is written atomically, checked
@@ -580,7 +594,7 @@ Deliberate rejections (each one is a defect we would otherwise inherit):
 | `systemctl restart xray` on every cert renewal | drops all sessions | renewal at a scheduled low point, hot config path, restart gated by `xray -test` |
 | No health checks; "WARP up" = `ss` shows a port | dead tunnels black-hole silently | end-to-end VLESS probe, cert/decoy probe, WARP trace check, fail-open policy |
 | `chmod 744` private key, shared SOCKS creds on every client page, Hysteria auth = REALITY shortId | credential hygiene | `0600`, per-node secrets, no shared SOCKS |
-| Host firewall absent; blocking only in Xray | fine for proxied traffic, no host hardening | same model, documented as such; host hardening is the owner's call |
+| Host firewall absent; blocking only in Xray | fine for proxied traffic, no host hardening | both: Xray rules for proxied traffic, plus an opt-in nftables table the operator applies by hand |
 | Subscription token = proxy password in the URL path | logged by every proxy, cannot be revoked alone | separate revocable read-only token |
 | Hardcoded ports/paths, Debian-only nginx layout | not portable, not testable | single config file, ports and paths configurable |
 | Admin API and panel exposed on public HTTP | needless attack surface | admin over unix socket, token auth, rate limits |
@@ -690,6 +704,28 @@ The owner's own devices are local users: `termit-uv device list`, `termit-uv dev
 `termit-uv device remove phone`. They live in the state file, are written into the core config, and are never
 sent to MN — a family phone is not a mesh participant. `termit-uv uri` prints the `vless://` URI for the
 node's own device; it is the one place a credential is printed on purpose, to stdout only.
+
+`termit-uv options` renders the owner's page of client links: this node's own device, the mesh peers as
+the subscription describes them, and the two subscription forms, each with a copy button. It is a
+static file in the decoy site's tree under a random 32-character path, so nginx needs no new location
+for it; the path is a capability like the subscription token, generated once, stored in the state file
+and replaced by `--rotate`. Nothing creates the page implicitly: `init`, `renew-site` and `sync`
+re-render an existing one (the decoy step rewrites the whole tree) and leave a node that never asked
+for it alone.
+
+`termit-uv wizard` is a front end to `init`, not a second installer: it asks for the domain, the ACME
+contact, the decoy archetype, the egress mode and the invite code, writes each answer to `wizard.yaml`
+beside the configuration so an interrupted run resumes with those answers as defaults, and then runs the
+same `init` and `enroll` with the same flags. A node that is already installed is reported rather than
+re-installed: the wizard runs the pipeline in dry-run mode and exits when every step reports its effect
+present.
+
+Its first question is the language: `locale` in the configuration, Russian by default, English second, and
+the menu, the wizard and the page read it. Two rules keep the setting from becoming a trap. The console
+uses it only where the environment is UTF-8 — on a C or latin-1 locale the menu falls back to English and
+the wizard says so — while the page uses it unconditionally, because a browser is not a terminal.
+Everything else a node prints (commands, logs, errors, `--json`) stays English: it is read by scripts and
+quoted in bug reports, and translating it would make the tool untranslatable in practice.
 
 `termit-uv doctor` answers two different questions. The host half ("could this machine be a node") is the
 preflight checks; the node half ("is it working") covers the state, the three units, the certificate

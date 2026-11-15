@@ -1,0 +1,17 @@
+# The five-minute clock behind the server's rollback oneshot.
+#
+# Started with `systemctl restart` by `termit-mn firewall on` and stopped by `confirm` or `off`; it is
+# never enabled. OnActiveSec matches firewall.ConfirmWindow in the code: five minutes to open a second
+# session and confirm, which is what makes an unconfirmed apply undo itself instead of locking the server
+# out for good.
+
+[Unit]
+Description=Five-minute rollback timer for an unconfirmed Termit firewall table
+
+[Timer]
+OnActiveSec=5min
+AccuracySec=1s
+RemainAfterElapse=no
+
+[Install]
+WantedBy=timers.target

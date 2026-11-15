@@ -53,13 +53,46 @@ func (s *unitsStep) unitFiles() (map[string][]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return map[string][]byte{
+	files := map[string][]byte{
 		filepath.Join(s.e.cfg.Paths.UnitDir, service.XrayUnitName):   xrayUnit,
 		s.e.cfg.Paths.NginxDropIn:                                    dropIn,
 		filepath.Join(s.e.cfg.Paths.UnitDir, service.RenewUnitName):  renewUnit,
 		filepath.Join(s.e.cfg.Paths.UnitDir, service.RenewTimerName): renewTimer,
 		filepath.Join(s.e.cfg.Paths.UnitDir, service.AgentUnitName):  agentUnit,
-	}, nil
+	}
+	// The boot unit is installed always, not only when the configuration asks for a table: what decides
+	// is the record of what was applied and confirmed, and an operator who applies a table after this
+	// install must not have to run `init` again to get it back after a reboot.
+	bootUnit, err := service.FirewallBoot(binary, s.e.configPath, s.e.cfg.Paths.StateDir)
+	if err != nil {
+		return nil, err
+	}
+	files[filepath.Join(s.e.cfg.Paths.UnitDir, service.FirewallBootUnitName)] = bootUnit
+	// The guard is installed only when the operator asked for it, and it needs read access to the web
+	// server's log — the 4xx signal is the whole point of it.
+	if s.e.cfg.Security.Guard.Enabled {
+		readable := []string{s.e.cfg.Paths.ConfigDir, filepath.Dir(s.e.cfg.Paths.AccessLog)}
+		guardUnit, err := service.Guard(binary, s.e.configPath, s.e.cfg.Paths.StateDir, readable...)
+		if err != nil {
+			return nil, err
+		}
+		files[filepath.Join(s.e.cfg.Paths.UnitDir, service.GuardUnitName)] = guardUnit
+	}
+	// The blocklist timer exists only when there is a list to fetch: a daily unit that fails because
+	// nobody configured a URL is noise in the journal, not a feature.
+	if s.e.cfg.Security.Firewall.BlocklistURL != "" {
+		blocklistUnit, err := service.Blocklist(binary, s.e.configPath)
+		if err != nil {
+			return nil, err
+		}
+		blocklistTimer, err := service.BlocklistTimer(s.e.cfg.Security.Firewall.BlocklistRefresh.Std())
+		if err != nil {
+			return nil, err
+		}
+		files[filepath.Join(s.e.cfg.Paths.UnitDir, service.BlocklistUnitName)] = blocklistUnit
+		files[filepath.Join(s.e.cfg.Paths.UnitDir, service.BlocklistTimerName)] = blocklistTimer
+	}
+	return files, nil
 }
 
 func (s *unitsStep) Check(context.Context) (CheckResult, error) {

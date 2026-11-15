@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/shogun-kub/termit/internal/decoy"
+	"github.com/shogun-kub/termit/internal/i18n"
 	"github.com/shogun-kub/termit/internal/mn/config"
 	"github.com/shogun-kub/termit/internal/mn/secret"
 	"github.com/shogun-kub/termit/internal/mn/store"
@@ -39,6 +40,7 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 	acmeDirectory := flags.String("acme-ca", "", "ACME directory URL")
 	acmeInsecure := flags.Bool("acme-skip-tls-verify", false, "lab only: do not verify the ACME server certificate")
 	email := flags.String("email", "", "ACME account contact address")
+	locale := flags.String("locale", "", "language of the interactive menu: ru or en")
 	mode := flags.String("mode", "", "enrollment mode: invite, invite+approval or open")
 	inviteUses := flags.Int("invite-uses", 1, "how many nodes the first invite code may register")
 	adminName := flags.String("admin", "operator", "name of the first admin token")
@@ -49,6 +51,11 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 	decoyTemplate := flags.String("decoy-template", "",
 		"masking site to serve: "+strings.Join(decoy.Templates(), ", ")+
 			" (default: "+config.DefaultDecoyTemplate+")")
+	fragment := flags.Bool("fragment", false, "ask sing-box clients to split the TLS ClientHello into TCP segments")
+	recordFragment := flags.Bool("record-fragment", true, "ask sing-box clients to split it into TLS records instead")
+	happFragment := flags.String("happ-fragment", config.DefaultHappFragment,
+		"Happ's per-link fragment= value, empty to disable: length,interval,packets[,maxSplit]")
+	noFragment := flags.Bool("no-fragmentation", false, "turn every client-side fragmentation off")
 	if err := flags.Parse(args); err != nil {
 		return flagExit(err)
 	}
@@ -127,8 +134,35 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 	if *email != "" {
 		cfg.ACME.Email = *email
 	}
+	if *locale != "" {
+		lang, ok := i18n.Parse(*locale)
+		if !ok {
+			fmt.Fprintf(stderr, "termit-mn init: --locale %q is not one this build speaks (ru, en)\n", *locale)
+			return exitUsage
+		}
+		cfg.Locale = lang.String()
+	}
 	if *mode != "" {
 		cfg.Enrollment.Mode = *mode
+	}
+	set := map[string]bool{}
+	flags.Visit(func(f *flag.Flag) { set[f.Name] = true })
+	switch {
+	case *noFragment && (set["fragment"] || set["record-fragment"] || set["happ-fragment"]):
+		fmt.Fprintln(stderr, "termit-mn init: --no-fragmentation contradicts the other fragmentation flags")
+		return exitUsage
+	case *noFragment:
+		cfg.Subscription = config.Subscription{}
+	case set["fragment"], set["record-fragment"], set["happ-fragment"]:
+		if set["fragment"] {
+			cfg.Subscription.Fragment = *fragment
+		}
+		if set["record-fragment"] {
+			cfg.Subscription.RecordFragment = *recordFragment
+		}
+		if set["happ-fragment"] {
+			cfg.Subscription.HappFragment = strings.TrimSpace(*happFragment)
+		}
 	}
 	if err := cfg.Validate(); err != nil {
 		fmt.Fprintf(stderr, "termit-mn init: %v\n", err)

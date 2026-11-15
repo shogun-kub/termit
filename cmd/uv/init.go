@@ -9,6 +9,8 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/shogun-kub/termit/internal/i18n"
+	"github.com/shogun-kub/termit/internal/proto"
 	"github.com/shogun-kub/termit/internal/uv/config"
 	"github.com/shogun-kub/termit/internal/uv/install"
 	"github.com/shogun-kub/termit/internal/uv/state"
@@ -22,6 +24,9 @@ credential is ever regenerated.`)
 	domain := flags.String("domain", "", "node domain name; required on the first run")
 	mnURL := flags.String("mn", "", "management server URL, the server's API prefix included")
 	email := flags.String("email", "", "ACME account contact address")
+	locale := flags.String("locale", "", "language for the menu and the page of client links: ru or en")
+	happFragment := flags.String("happ-fragment", "",
+		"fragmentation this node writes into its own links (length,interval,packets[,maxSplit]; empty: off)")
 	acmeCA := flags.String("acme-ca", "", "ACME directory URL")
 	acmeInsecure := flags.Bool("acme-skip-tls-verify", false, "lab only: do not verify the ACME server certificate")
 	template := flags.String("decoy-template", "", "decoy site archetype")
@@ -33,6 +38,7 @@ credential is ever regenerated.`)
 	dryRun := flags.Bool("dry-run", false, "report what would change without touching the host")
 	only := flags.String("only", "", "run only these steps, comma separated")
 	skip := flags.String("skip", "", "skip these steps, comma separated")
+	harden := flags.Bool("harden", false, "configure the host firewall and the ban engine for this node (it does not apply the table)")
 	relocate := flags.Bool("relocate", false, "install a rebuilt node: reuse the agent key, mint a new identity, do not enroll")
 	agentKeyFile := flags.String("agent-key-file", "",
 		"0600 file holding the agent key of the node being rebuilt (required with --relocate)")
@@ -70,6 +76,22 @@ credential is ever regenerated.`)
 	if set["email"] {
 		cfg.Email = *email
 	}
+	if set["happ-fragment"] {
+		value := strings.TrimSpace(*happFragment)
+		if value != "" && !proto.ValidHappFragment(value) {
+			fmt.Fprintf(a.stderr, "termit-uv init: --happ-fragment %q must look like length,interval,packets[,maxSplit]\\n", value)
+			return exitUsage
+		}
+		cfg.HappFragment = value
+	}
+	if set["locale"] {
+		lang, ok := i18n.Parse(*locale)
+		if !ok {
+			fmt.Fprintf(a.stderr, "termit-uv init: --locale %q is not one this build speaks (ru, en)\n", *locale)
+			return exitUsage
+		}
+		cfg.Locale = lang.String()
+	}
 	if set["acme-ca"] {
 		cfg.ACME.Directory = *acmeCA
 	}
@@ -101,6 +123,13 @@ credential is ever regenerated.`)
 	}
 	if set["xray-download-base"] {
 		cfg.Xray.DownloadBase = *xrayBase
+	}
+	if set["harden"] {
+		// Only the configuration: the table is applied by `firewall on` and nothing else, because an
+		// install that silently turned on a default-deny table would be a lockout with no operator
+		// present to confirm it.
+		cfg.Security.Firewall.Enabled = *harden
+		cfg.Security.Guard.Enabled = *harden
 	}
 
 	if cfg.Domain == "" {
@@ -206,8 +235,19 @@ credential is ever regenerated.`)
 		fmt.Fprintln(a.stdout, "next: termit-uv unblock                              (the node keeps its domain)")
 		fmt.Fprintln(a.stdout, "      termit-uv migrate --relocate                   (the node moved to a new domain)")
 	}
+	if set["harden"] && cfg.Security.Firewall.Enabled && !*dryRun {
+		fmt.Fprintln(a.stdout, "\nhardening: the configuration and the ban engine are in place; the table is not applied.")
+		fmt.Fprintln(a.stdout, "next: termit-uv firewall on        (it removes itself in five minutes unless you confirm)")
+	}
 	if len(pendingWork) > 0 {
 		fmt.Fprintf(a.stdout, "not yet installed by this build: %s\n", joinWords(pendingWork))
+	}
+	if !*dryRun {
+		// The decoy step rewrites its tree, so the owner's page has to be put back. It is only put
+		// back, never created here: a node whose owner never asked for a page stays without one.
+		if err := a.refreshOptions(cfg); err != nil {
+			fmt.Fprintf(a.stderr, "termit-uv init: the client options page could not be refreshed: %v\n", err)
+		}
 	}
 	return exitOK
 }

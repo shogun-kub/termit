@@ -150,3 +150,87 @@ func TestRandomAPIPrefixShape(t *testing.T) {
 		seen[prefix] = true
 	}
 }
+
+// A fresh server writes fragmentation into its configuration: the defence should not depend on an
+// operator remembering a switch, and the file is where a later run looks for the decision.
+func TestInitWritesFragmentationForAFreshServer(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	out := &strings.Builder{}
+	if code := runInit([]string{"--config", configPath, "--domain", "mn.example.net", "--data-dir", dir}, out, out); code != exitOK {
+		t.Fatalf("init = %d:\n%s", code, out.String())
+	}
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		t.Fatalf("load the configuration init wrote: %v", err)
+	}
+	if !cfg.Subscription.RecordFragment {
+		t.Errorf("a fresh server does not ask clients to split the ClientHello: %+v", cfg.Subscription)
+	}
+	if cfg.Subscription.HappFragment != config.DefaultHappFragment {
+		t.Errorf("happ_fragment is %q, want %q", cfg.Subscription.HappFragment, config.DefaultHappFragment)
+	}
+	if cfg.Subscription.Fragment {
+		t.Errorf("the segment-level variant is on by default: %+v", cfg.Subscription)
+	}
+}
+
+func TestInitFragmentationFlags(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name     string
+		args     []string
+		fragment bool
+		record   bool
+		happ     string
+	}{
+		{name: "no fragmentation at all", args: []string{"--no-fragmentation"}},
+		{
+			name:     "turned off selectively",
+			args:     []string{"--record-fragment=false", "--happ-fragment", ""},
+			record:   false,
+			happ:     "",
+			fragment: false,
+		},
+		{
+			name:     "turned on with a chosen value",
+			args:     []string{"--fragment", "--record-fragment", "--happ-fragment", "300-500,1-5,tlshello"},
+			record:   true,
+			happ:     "300-500,1-5,tlshello",
+			fragment: true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			configPath := filepath.Join(dir, "config.yaml")
+			args := append([]string{"--config", configPath, "--domain", "mn.example.net", "--data-dir", dir}, tc.args...)
+			out := &strings.Builder{}
+			if code := runInit(args, out, out); code != exitOK {
+				t.Fatalf("init = %d:\n%s", code, out.String())
+			}
+			cfg, err := config.Load(configPath)
+			if err != nil {
+				t.Fatalf("load: %v", err)
+			}
+			if cfg.Subscription.Fragment != tc.fragment || cfg.Subscription.RecordFragment != tc.record ||
+				cfg.Subscription.HappFragment != tc.happ {
+				t.Errorf("subscription = %+v, want fragment=%v record=%v happ=%q",
+					cfg.Subscription, tc.fragment, tc.record, tc.happ)
+			}
+		})
+	}
+}
+
+func TestInitRefusesContradictoryFragmentationFlags(t *testing.T) {
+	t.Parallel()
+	out, code := initIn(t, "--no-fragmentation", "--record-fragment")
+	if code != exitUsage {
+		t.Fatalf("init = %d, want %d:\n%s", code, exitUsage, out)
+	}
+	if !strings.Contains(out, "contradicts") {
+		t.Errorf("the refusal does not explain itself:\n%s", out)
+	}
+}

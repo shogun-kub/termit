@@ -25,6 +25,9 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/shogun-kub/termit/internal/acme"
+	"github.com/shogun-kub/termit/internal/harden"
+	"github.com/shogun-kub/termit/internal/i18n"
+	"github.com/shogun-kub/termit/internal/proto"
 	"github.com/shogun-kub/termit/internal/uv/state"
 )
 
@@ -58,6 +61,22 @@ const (
 	DefaultRenewBeforeDays = 30
 )
 
+// The security block's defaults live in internal/harden, because the server's configuration has the
+// same block. These aliases keep the node's own vocabulary where it was.
+const (
+	DefaultScanAttempts     = harden.DefaultScanAttempts
+	DefaultScanWindow       = harden.DefaultScanWindow
+	DefaultScanRemember     = harden.DefaultScanRemember
+	DefaultScanBan          = harden.DefaultScanBan
+	DefaultScanRepeat       = harden.DefaultScanRepeat
+	DefaultLadderWindow     = harden.DefaultLadderWindow
+	DefaultPath404Attempts  = harden.DefaultPath404Attempts
+	DefaultPath404Window    = harden.DefaultPath404Window
+	DefaultPath404Ban       = harden.DefaultPath404Ban
+	DefaultPath404Max       = harden.DefaultPath404Max
+	DefaultBlocklistRefresh = harden.DefaultBlocklistRefresh
+)
+
 var (
 	versionPattern   = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`)
 	digestPattern    = regexp.MustCompile(`^[0-9a-f]{64}$`)
@@ -70,12 +89,32 @@ type Config struct {
 	SchemaVersion int    `yaml:"schema_version"`
 	Domain        string `yaml:"domain"`
 	Email         string `yaml:"email,omitempty"`
-	ACME          ACME   `yaml:"acme"`
-	MN            MN     `yaml:"mn"`
-	Xray          Xray   `yaml:"xray"`
-	Decoy         Decoy  `yaml:"decoy"`
-	Warp          Warp   `yaml:"warp"`
-	Paths         Paths  `yaml:"paths"`
+	// Locale is the language the owner is spoken to in: the menu, the wizard and the page of client
+	// links. Russian is the default; English is the second language and the fallback for a console
+	// that cannot show Cyrillic. Command output stays English either way.
+	Locale string `yaml:"locale"`
+	// HappFragment is the fragmentation parameter this node writes into the URIs it hands out itself —
+	// the page of client links and `termit-uv uri`. The mesh list gets its own from the server; this
+	// one is what makes the page uniform. Empty means no parameter.
+	HappFragment string `yaml:"happ_fragment"`
+	ACME         ACME   `yaml:"acme"`
+	MN           MN     `yaml:"mn"`
+	Xray         Xray   `yaml:"xray"`
+	Decoy        Decoy  `yaml:"decoy"`
+	Warp         Warp   `yaml:"warp"`
+	// Security is off by default in every part; see Security.
+	Security Security `yaml:"security"`
+	Paths    Paths    `yaml:"paths"`
+}
+
+// Lang is the configured language. An unusable value falls back to the default rather than failing:
+// the configuration is validated on load, so this only matters for a value that got in another way.
+func (c *Config) Lang() i18n.Lang {
+	lang, ok := i18n.Parse(c.Locale)
+	if !ok {
+		return i18n.Default
+	}
+	return lang
 }
 
 // MN is the management server this node belongs to. Empty means the node stands alone.
@@ -181,6 +220,10 @@ type Paths struct {
 func Default() *Config {
 	c := &Config{SchemaVersion: SchemaVersion}
 	c.applyDefaults()
+	// A fresh node writes fragmentation into the links it renders itself, so the page of client links
+	// is uniform with the mesh list the server renders. A configuration that predates the key keeps
+	// its links alone: the loader adds nothing.
+	c.HappFragment = proto.DefaultHappFragment
 	return c
 }
 
@@ -261,6 +304,13 @@ func (c *Config) Validate() error {
 	if err := validateMNURL(c.MN.URL); err != nil {
 		problems = append(problems, err)
 	}
+	if _, ok := i18n.Parse(c.Locale); !ok {
+		problems = append(problems, fmt.Errorf("locale %q is not one this build speaks (ru, en)", c.Locale))
+	}
+	if c.HappFragment != "" && !proto.ValidHappFragment(c.HappFragment) {
+		problems = append(problems, fmt.Errorf("happ_fragment %q must look like length,interval,packets[,maxSplit]",
+			c.HappFragment))
+	}
 	if c.Email != "" && (strings.ContainsAny(c.Email, " \t") || !strings.Contains(c.Email, "@") || len(c.Email) > emailLocalMaxLen) {
 		problems = append(problems, fmt.Errorf("email %q is not a usable address", c.Email))
 	}
@@ -299,6 +349,7 @@ func (c *Config) Validate() error {
 			problems = append(problems, fmt.Errorf("warp.selected: %w", err))
 		}
 	}
+	problems = append(problems, c.Security.validate()...)
 	problems = append(problems, c.Paths.validate()...)
 
 	if len(problems) > 0 {
@@ -341,7 +392,11 @@ func (c *Config) applyDefaults() {
 	if c.Decoy.Template == "" {
 		c.Decoy.Template = DefaultDecoyTemplate
 	}
+	if c.Locale == "" {
+		c.Locale = i18n.Default.String()
+	}
 	c.Warp.applyDefaults()
+	c.Security.applyDefaults()
 	c.Paths.applyDefaults()
 }
 
@@ -436,6 +491,17 @@ func (p Paths) StatePath() string { return path.Join(p.StateDir, "state.json") }
 
 // JournalPath is where the installer keeps the run journal.
 func (p Paths) JournalPath() string { return path.Join(p.StateDir, "install-journal.json") }
+
+// FirewallPath is where the last `firewall on` records what it applied, so `status`, `confirm` and
+// the rollback timer agree without asking systemd.
+func (p Paths) FirewallPath() string { return path.Join(p.StateDir, "firewall.json") }
+
+// BansPath is where the guard keeps its decisions; the kernel's sets are rebuilt from it.
+func (p Paths) BansPath() string { return path.Join(p.StateDir, "bans.json") }
+
+// BlocklistPath is the network list in force. The kernel's sets are rebuilt from it, so a failed load
+// costs a refresh, not the list.
+func (p Paths) BlocklistPath() string { return path.Join(p.StateDir, "blocklist.txt") }
 
 // XrayBinary is the pinned core's installed location.
 func (p Paths) XrayBinary() string { return path.Join(p.BinDir, "xray") }

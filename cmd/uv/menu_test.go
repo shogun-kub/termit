@@ -123,20 +123,21 @@ func TestMenuEntriesRunTheCommandsTheyName(t *testing.T) {
 	}
 	seen := map[string]bool{}
 	for _, entry := range app.menuEntries() {
-		wantArgv, ok := want[entry.label]
+		label := entry.labelOf(app.translator())
+		wantArgv, ok := want[label]
 		if !ok {
 			continue
 		}
-		seen[entry.label] = true
+		seen[label] = true
 		plan, err := entry.plan(termui.New(strings.NewReader(""), &strings.Builder{}, termui.Style{}))
 		if err != nil {
-			t.Fatalf("%s: %v", entry.label, err)
+			t.Fatalf("%s: %v", label, err)
 		}
 		if len(plan) != 1 {
-			t.Fatalf("%s: %d commands, want 1", entry.label, len(plan))
+			t.Fatalf("%s: %d commands, want 1", label, len(plan))
 		}
 		if got := strings.Join(plan[0], " "); got != wantArgv {
-			t.Errorf("%s runs %q, want %q", entry.label, got, wantArgv)
+			t.Errorf("%s runs %q, want %q", label, got, wantArgv)
 		}
 	}
 	for label := range want {
@@ -320,7 +321,7 @@ func TestDecoyTemplateIsValidated(t *testing.T) {
 func entryNamed(t *testing.T, app *application, label string) menuEntry {
 	t.Helper()
 	for _, entry := range app.menuEntries() {
-		if entry.label == label {
+		if entry.labelOf(app.translator()) == label {
 			return entry
 		}
 	}
@@ -363,4 +364,58 @@ func TestAppendFlags(t *testing.T) {
 	if got := appendFlags([]string{"status"}, nil); len(got) != 1 {
 		t.Errorf("appendFlags without a base changed the command: %v", got)
 	}
+}
+
+// The menu speaks the configured language where the console can show it, and English where it cannot.
+func TestMenuSpeaksTheConfiguredLanguage(t *testing.T) {
+	t.Parallel()
+	writeConfig := func(t *testing.T, app *application, locale string) {
+		t.Helper()
+		cfg := config.Default()
+		cfg.Domain = "node.example.com"
+		cfg.Locale = locale
+		cfg.Paths.StateDir = t.TempDir()
+		if err := cfg.Save(app.configPath); err != nil {
+			t.Fatalf("save: %v", err)
+		}
+	}
+
+	t.Run("russian on a utf-8 console", func(t *testing.T) {
+		t.Parallel()
+		app, out := menuApp(t, "q\n", true)
+		writeConfig(t, app, "ru")
+		app.getenv = func(name string) string {
+			if name == "LANG" {
+				return "ru_RU.UTF-8"
+			}
+			return ""
+		}
+		if code := app.run([]string{"menu", "--config", app.configPath}); code != exitOK {
+			t.Fatalf("exit = %d", code)
+		}
+		rendered := out.String()
+		if !strings.Contains(rendered, "Termit — узел") {
+			t.Errorf("the menu title is not Russian:\n%s", rendered)
+		}
+		if !strings.Contains(rendered, "состояние") {
+			t.Errorf("the menu entries are not Russian:\n%s", rendered)
+		}
+	})
+
+	t.Run("english on a c console", func(t *testing.T) {
+		t.Parallel()
+		app, out := menuApp(t, "q\n", true)
+		writeConfig(t, app, "ru")
+		app.getenv = func(string) string { return "C" }
+		if code := app.run([]string{"menu", "--config", app.configPath}); code != exitOK {
+			t.Fatalf("exit = %d", code)
+		}
+		rendered := out.String()
+		if !strings.Contains(rendered, "Termit — node") {
+			t.Errorf("the menu did not fall back to English:\n%s", rendered)
+		}
+		if strings.Contains(rendered, "состояние") {
+			t.Errorf("Cyrillic leaked onto a console that cannot show it:\n%s", rendered)
+		}
+	})
 }
