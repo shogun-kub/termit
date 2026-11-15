@@ -137,21 +137,25 @@ func TestWizardOnAnInstalledNodeAsksNothing(t *testing.T) {
 	}
 }
 
-func TestWizardContinuesAnUnfinishedInstallWithItsAnswers(t *testing.T) {
+// A node that is installed but behind this build is an upgrade, not a first installation: asking for
+// the domain again would be an insult, and running init from the wizard would hide the upgrade.
+func TestWizardSaysWhatToRunOnAnOutdatedNode(t *testing.T) {
 	t.Parallel()
 	app, _, configPath := optionsFixture(t, "")
-	app.in = strings.NewReader("en\n\n\n\n\n\nn\n")
+	app.in = strings.NewReader("")
 	app.completeFn = func(*config.Config, string) (bool, error) { return false, nil }
 	if code := app.run([]string{"wizard", "--config", configPath}); code != exitOK {
 		t.Fatalf("exit = %d, want 0", code)
 	}
 	rendered := app.stdout.(*strings.Builder).String()
-	// The half-installed node already knows its domain: the question offers it, so Enter is enough.
-	if !strings.Contains(rendered, "Domain (a DNS name that points at this machine) [node.example.com]") {
-		t.Errorf("the installed domain is not offered as the default:\n%s", rendered)
+	if !strings.Contains(rendered, "this build would change its configuration") {
+		t.Errorf("the wizard did not explain the state of the node:\n%s", rendered)
 	}
-	if !strings.Contains(rendered, "Nothing was changed") {
-		t.Errorf("declining the install did not say that nothing changed:\n%s", rendered)
+	if !strings.Contains(rendered, "termit-uv init") {
+		t.Errorf("the wizard did not say what to run:\n%s", rendered)
+	}
+	if strings.Contains(rendered, "Domain (a DNS name") {
+		t.Errorf("the wizard asked for a domain on an installed node:\n%s", rendered)
 	}
 }
 

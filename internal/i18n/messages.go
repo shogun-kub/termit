@@ -117,6 +117,8 @@ const (
 	WizardDone           Key = "wizard.done"
 	WizardDoneDetail     Key = "wizard.done_detail"
 	WizardInstalled      Key = "wizard.installed"
+	WizardOutdated       Key = "wizard.outdated"
+	WizardOutdatedHint   Key = "wizard.outdated_hint"
 	WizardNothingToAsk   Key = "wizard.nothing_to_ask"
 	WizardOptionsNone    Key = "wizard.options_none"
 	WizardOptionsLine    Key = "wizard.options_line"
@@ -254,6 +256,8 @@ var messagesUVRU = map[Key]string{
 	WizardDone:           "Готово",
 	WizardDoneDetail:     "узел установлен",
 	WizardInstalled:      "Этот узел уже установлен; спрашивать нечего.",
+	WizardOutdated:       "Узел установлен, но эта сборка изменила бы его конфигурацию: %s.",
+	WizardOutdatedHint:   "Запустите `termit-uv init`, чтобы привести узел к текущей сборке; после этого мастеру нечего будет спрашивать.",
 	WizardNothingToAsk:   "настройка завершена",
 	WizardOptionsNone:    "ссылок для клиентов пока нет — их создаст `termit-uv options`",
 	WizardOptionsLine:    "ссылки для клиентов: %s",
@@ -389,6 +393,8 @@ var messagesUVEN = map[Key]string{
 	WizardDone:           "Done",
 	WizardDoneDetail:     "this node is installed",
 	WizardInstalled:      "This node is already installed; nothing to ask.",
+	WizardOutdated:       "This node is installed, but this build would change its configuration: %s.",
+	WizardOutdatedHint:   "Run `termit-uv init` to converge it; after that the wizard has nothing to ask.",
 	WizardNothingToAsk:   "the setup is complete",
 	WizardOptionsNone:    "no client links yet — `termit-uv options` renders one",
 	WizardOptionsLine:    "client options: %s",

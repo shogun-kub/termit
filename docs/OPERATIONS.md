@@ -349,7 +349,10 @@ then runs the same `init` with the same flags. Each answer is kept in `wizard.ya
 configuration, so an interrupted run continues where it stopped and Enter accepts what is already
 there (`--fresh` forgets them). On a node that is already installed it asks nothing: it runs the
 pipeline in dry-run mode, and when every step reports its effect present it prints the status and
-exits. The last thing it prints is the address of the [page with every link](#80-one-page-with-every-link).
+exits. A node that is installed but behind this build is a third case: the wizard names it, prints the
+status and tells the operator to run `termit-uv init` — converging is init's job, and doing it from a
+questionnaire would hide the upgrade. The last thing it prints on a fresh install is the address of the
+[page with every link](#80-one-page-with-every-link).
 
 Without the script, the two commands it wraps are:
 

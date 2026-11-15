@@ -82,6 +82,11 @@ re-installs a working node.`)
 		if done {
 			return a.wizardAlreadyInstalled(cfg, *configPath, draftPath)
 		}
+		// Installed, but not what this build would write: an upgrade, not a first installation. Asking
+		// for the domain again would be an insult; saying what to run is the answer.
+		if node, err := state.LoadInstalled(cfg.Paths.StatePath()); err == nil && node.Identity.SelfUUID != "" {
+			return a.wizardOutdated(cfg, *configPath, draftPath)
+		}
 	}
 
 	answers, err := loadWizardAnswers(draftPath)
@@ -223,6 +228,23 @@ re-installs a working node.`)
 	ui.Title(tr.T(i18n.WizardDone))
 	ui.State("ok", tr.T(i18n.WizardDoneDetail))
 	return a.runOptions([]string{"--config", *configPath})
+}
+
+// wizardOutdated is the third case: a node that is installed but behind this build. The wizard cannot
+// converge it — that is init's job — so it says so and leaves the answers alone.
+func (a *application) wizardOutdated(cfg *config.Config, configPath, draftPath string) int {
+	a.tr = i18n.New(i18n.Console(cfg.Lang(), a.env))
+	tr := a.translator()
+	if err := os.Remove(draftPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		fmt.Fprintf(a.stderr, "termit-uv wizard: remove %s: %v\n", draftPath, err)
+	}
+	fmt.Fprintln(a.stdout, tr.Tf(i18n.WizardOutdated, "termit-uv init"))
+	fmt.Fprintln(a.stdout)
+	if code := a.runStatus([]string{"--config", configPath}); code != exitOK {
+		return code
+	}
+	fmt.Fprintf(a.stdout, "\n%s\n", tr.T(i18n.WizardOutdatedHint))
+	return exitOK
 }
 
 // wizardAskLanguage is the one question asked before a language exists. It shows both names, and an
