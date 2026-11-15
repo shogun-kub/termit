@@ -278,15 +278,26 @@ func TestHappFragmentIsValidatedBeforeItReachesALink(t *testing.T) {
 
 func TestSubscriptionFragmentationRoundTrips(t *testing.T) {
 	t.Parallel()
+	// A fresh server starts with fragmentation on, and says so in the file it writes: the defaults
+	// live there, not in the loader, so a configuration that predates the keys keeps its behaviour.
+	fresh := config.Default()
+	if !fresh.Subscription.RecordFragment || fresh.Subscription.HappFragment != config.DefaultHappFragment {
+		t.Errorf("a fresh server does not default to fragmentation: %+v", fresh.Subscription)
+	}
+	if fresh.Subscription.Fragment {
+		t.Errorf("the segment-splitting option is on by default: %+v", fresh.Subscription)
+	}
+	// A file without the keys is a file that decided nothing: it stays off rather than acquiring a
+	// behaviour on upgrade.
 	cfg, err := config.Parse(strings.NewReader("domain: mn.example.com\n"))
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
-	if cfg.Subscription.Fragment || cfg.Subscription.RecordFragment {
-		t.Errorf("fragmentation is on by default: %+v", cfg.Subscription)
+	if cfg.Subscription.Fragment || cfg.Subscription.RecordFragment || cfg.Subscription.HappFragment != "" {
+		t.Errorf("a file without the keys gained fragmentation: %+v", cfg.Subscription)
 	}
 
-	cfg.Subscription = config.Subscription{Fragment: true, RecordFragment: true}
+	cfg.Subscription = config.Subscription{Fragment: true, RecordFragment: true, HappFragment: "300-500,1-5,tlshello"}
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	if err := cfg.Save(path); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -295,7 +306,8 @@ func TestSubscriptionFragmentationRoundTrips(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if !reloaded.Subscription.Fragment || !reloaded.Subscription.RecordFragment {
+	if !reloaded.Subscription.Fragment || !reloaded.Subscription.RecordFragment ||
+		reloaded.Subscription.HappFragment != "300-500,1-5,tlshello" {
 		t.Errorf("subscription options did not survive the round trip: %+v", reloaded.Subscription)
 	}
 

@@ -49,6 +49,11 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 	decoyTemplate := flags.String("decoy-template", "",
 		"masking site to serve: "+strings.Join(decoy.Templates(), ", ")+
 			" (default: "+config.DefaultDecoyTemplate+")")
+	fragment := flags.Bool("fragment", false, "ask sing-box clients to split the TLS ClientHello into TCP segments")
+	recordFragment := flags.Bool("record-fragment", true, "ask sing-box clients to split it into TLS records instead")
+	happFragment := flags.String("happ-fragment", config.DefaultHappFragment,
+		"Happ's per-link fragment= value, empty to disable: length,interval,packets[,maxSplit]")
+	noFragment := flags.Bool("no-fragmentation", false, "turn every client-side fragmentation off")
 	if err := flags.Parse(args); err != nil {
 		return flagExit(err)
 	}
@@ -129,6 +134,25 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 	}
 	if *mode != "" {
 		cfg.Enrollment.Mode = *mode
+	}
+	set := map[string]bool{}
+	flags.Visit(func(f *flag.Flag) { set[f.Name] = true })
+	switch {
+	case *noFragment && (set["fragment"] || set["record-fragment"] || set["happ-fragment"]):
+		fmt.Fprintln(stderr, "termit-mn init: --no-fragmentation contradicts the other fragmentation flags")
+		return exitUsage
+	case *noFragment:
+		cfg.Subscription = config.Subscription{}
+	case set["fragment"], set["record-fragment"], set["happ-fragment"]:
+		if set["fragment"] {
+			cfg.Subscription.Fragment = *fragment
+		}
+		if set["record-fragment"] {
+			cfg.Subscription.RecordFragment = *recordFragment
+		}
+		if set["happ-fragment"] {
+			cfg.Subscription.HappFragment = strings.TrimSpace(*happFragment)
+		}
 	}
 	if err := cfg.Validate(); err != nil {
 		fmt.Fprintf(stderr, "termit-mn init: %v\n", err)

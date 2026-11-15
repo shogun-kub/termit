@@ -27,6 +27,11 @@ import (
 	"github.com/shogun-kub/termit/internal/decoy"
 )
 
+// DefaultHappFragment is what a fresh server writes into subscription.happ_fragment: pieces small
+// enough not to look like one ClientHello, with a bound on their number so the handshake cannot
+// stretch into seconds. Measured in Happ at 446-464 ms of ping against 769 ms without fragmentation.
+const DefaultHappFragment = "100-200,1-3,tlshello,6"
+
 // happFragmentPattern bounds subscription.happ_fragment to the shape Happ documents
 // ("length,interval,packets[,maxSplit]") and, just as important, keeps anything that could end a
 // query parameter — a comma is part of the value, an ampersand or a hash is not — out of the URI.
@@ -163,6 +168,14 @@ type Policy struct {
 func Default() *Config {
 	c := &Config{SchemaVersion: SchemaVersion}
 	c.applyDefaults()
+	// Fragmentation is on for a fresh server: the paths this project is deployed against freeze a
+	// plain ClientHello often enough that the defence should not depend on somebody remembering a
+	// switch. It is written into the file rather than applied on load, so an existing server that
+	// never had these keys keeps behaving exactly as before until its operator asks for the change.
+	c.Subscription = Subscription{
+		RecordFragment: true,
+		HappFragment:   DefaultHappFragment,
+	}
 	return c
 }
 
