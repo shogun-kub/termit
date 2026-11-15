@@ -912,8 +912,8 @@ pass. The Docker Compose harness remains a developer convenience (QUESTIONS Q9.4
 
 ## M5 — Security hardening (planned; decisions taken 2026-11-15)
 
-Nothing here is implemented yet except the M5.0 spike (§5.0). The decisions below were made by the
-operator on 2026-11-15; the milestones in §5.9 are the implementation plan, and each one ends in
+Nothing here is implemented yet except M5.0 (§5.0) and M5.1 (§5.9). The decisions below were made by
+the operator on 2026-11-15; the milestones in §5.9 are the implementation plan, and each one ends in
 something the lab can check.
 
 ### 5.1 Decisions
@@ -1090,38 +1090,58 @@ Two details are deliberately not left to the implementation:
 ### 5.5 Commands
 
 ```
-termit-uv firewall status|on|off|confirm|refresh   --dry-run, --ssh-from CIDR, --default-deny=false
+termit-uv firewall status|on|off|confirm|rollback    --dry-run, --ssh-from CIDR, --default-deny=false
+termit-uv firewall refresh                          (M5.3, the blocklist)
 termit-uv bans list|unban IP|block IP|unblock IP|offenders
 termit-uv guard status|run --once                  (the unit runs `guard run`)
 termit-mn  firewall … / bans …                     same code, ports from the server's config
 ```
 
-- `on` renders the table, prints the diff, applies it, and starts the five-minute rollback timer; the
-  timer's unit deletes the table unless `confirm` ran. `off` deletes the table and stops the guard.
-- `--dry-run` prints the rendered rules and changes nothing, which is also what the lab asserts.
-- Every command refuses to run while an install is in flight (`/run/termit/uv/install.lock`).
+- `on` renders the table, arms the rollback timer, applies it, and records what it applied in
+  `firewall.json`; the timer's oneshot runs `firewall rollback`, which deletes the table unless
+  `confirm` ran. The timer is armed **before** nft sees a rule: a firewall that cannot be undone is
+  never installed.
+- `off` deletes the table, disables and removes the timer units, and records that it did.
+- `--dry-run` prints the rendered rules and, when running as root, also asks `nft -c` whether they
+  parse; it changes nothing, which is also what the lab asserts.
+- The commands take `--ssh-from` and `--default-deny` as one-off overrides of the configuration, and the
+  record keeps what was actually applied so `status` never lies; the configuration file is not edited,
+  because the owner edits it by hand.
+- Still missing on purpose: the check against an install in flight. There is no install lock in the
+  tree yet, and a check for a file nothing creates would be decoration — it lands with M5.6, where
+  `init` starts taking one.
 
 ### 5.6 Configuration
+
+What exists today (M5.1); the keys of the later milestones are added by them, so nothing is accepted
+before something reads it:
 
 ```yaml
 security:                       # everything here is off unless the operator says otherwise
   firewall:
-    enabled: false
+    enabled: false              # the operator's intent; `firewall status` compares the host with it
     default_deny: true
     ssh_from: []                # CIDRs allowed to reach 22; empty means "from anywhere"
-    blocklist_url: "https://raw.githubusercontent.com/tread-lightly/CyberOK_Skipa_ips/main/lists/skipa_cidr.txt"
-    blocklist_refresh: 24h
   guard:
-    enabled: false
-    scan:    { attempts: 5, window: 10m, ban: 1h, repeat: 24h }
-    path404: { attempts: 10, window: 5m, ban: 5m, max: 1h }
-    ladder_window: 24h
-  bittorrent_block: false
+    enabled: false              # also decides whether the table carries the scan meters
+    scan:
+      attempts: 5
+      window: 1m                # nftables can only write "N per <unit>"; see below
+      remember: 15m             # how long the kernel remembers a scanning source
 ```
 
-The keys are validated at load: durations positive and ordered (`window < ladder_window`), thresholds
-≥ 2 (a single failure must never ban), CIDRs parsed and normalised. `termit-mn` gets the same block
-with its own ports (`22`, `80`, `443`, plus `listen`).
+Still to come, with the milestone that reads them: `blocklist_url`/`blocklist_refresh` (M5.3), the
+ladder (`scan.ban`, `scan.repeat`, `path404`, `ladder_window` — M5.2), `bittorrent_block` (M5.4).
+
+Two constraints the loader enforces, both learned from the spike (§5.0):
+
+- **`scan.window` is exactly `1s`, `1m`, `1h`, `1d` or `1w`.** nftables writes a rate as
+  `N/<unit>` and nothing else, so the plan's original `5 attempts per 10m` has no spelling; a
+  ten-minute window is refused at load rather than silently rendered as something else. The default is
+  five attempts a minute, which is stricter than the original intent and still far above a single probe.
+- **Thresholds are at least 2** and every duration is positive, so a single failure can never ban.
+  CIDRs are parsed, normalised to their network and sorted. `termit-mn` gets the same block with its own
+  ports (`22`, `80`, `443`, plus `listen`).
 
 ### 5.7 BitTorrent
 
@@ -1161,17 +1181,32 @@ the first packet and is not a detector; `nft -c -f` accepts the whole table, bot
 each. The pinned Xray 26.11.9 does classify a BitTorrent handshake, and `routeOnly` must be `true`. All
 of it is in §5.0, including what changed because of it.
 
-**M5.1 — Table and commands (1–2 d).** `security/firewall.go` renders the table from a typed model;
-`firewall status|on|off|confirm|refresh`; the five-minute rollback timer unit; `--dry-run`. Tests:
-golden files for both components and both `default_deny` values, IPv6 included; a unit test for the
-renderer refusing an invalid CIDR or a port of 0. Lab: `on` with the timer, an SSH session that stays
-alive, `confirm`, then `off` leaving `nft list ruleset` unchanged from before.
+**M5.1 — Table and commands (done).** `internal/firewall` renders the table from a typed model and
+applies it through `nft -f -`; `internal/uv/service` renders the rollback pair; `cmd/uv/firewall.go`
+implements `status|on|off|confirm|rollback` with `--dry-run`, `--ssh-from` and `--default-deny`; the
+`security:` block is in the node's configuration. Four golden files (node with and without
+`default_deny`, node with `ssh_from`, server ports), all four of which nftables 1.1.3 accepts
+(`nft -c -f`). `test/lab/firewall_test.go` is the scenario: dry run changes nothing, `on` keeps SSH and
+443 alive and arms the timer, the oneshot removes an unconfirmed table, `confirm` stands the timer down,
+and `off` returns `nft list ruleset` to its exact previous digest.
+
+The lockout drill was run by hand on `termit-uv2.lan`, because it costs five minutes: with
+`--ssh-from 203.0.113.0/24` a **new** SSH connection was refused, port 443 kept serving inside the
+allowed path, and after 310 s the timer fired on its own, removed the table and SSH came back — `status`
+then said `off since 14s ago` and the journal said why.
 
 **M5.2 — Guard and bans (2–3 d).** The guard loop, the ladder with an injectable clock, `bans.json`,
 `bans list|unban|block|unblock|offenders`, the never-ban set, log-rotation handling (inode changes).
 Tests: ladder arithmetic and the cap, a repeated scan reaching 24 h, a reboot rebuilding the sets from
 the file, an element expiring on its own. Lab: scan `termit-uv2` from `termit-mn` with `nc`, watch the
 ban appear, check that uv1 still works from its own address, unban, and repeat the scan to see 24 h.
+
+**Open question for M5.2:** the table lives in the kernel only, so **a reboot removes it** and nothing
+re-applies it — `OPERATIONS.md` §15 says so plainly. The choice is between a `termit-uv-firewall.service`
+oneshot that re-applies the recorded table at boot (with the rollback timer armed in the same breath, so
+the safety net still exists) and leaving it off after a reboot until an operator runs it again. The
+first is what an operator expects from a firewall; the second cannot lock a box out while nobody is
+watching. Decide before M5.7 writes the guide, because the answer is what the guide has to say.
 
 **M5.3 — Blocklist refresh (half a day).** Fetch, validate, atomic replace, the timer, the "keep the
 last good list" path. Lab: a `file://` URL in the config as the source, a truncated file that must be

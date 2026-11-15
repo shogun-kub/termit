@@ -979,6 +979,10 @@ A useful alert set, in the order that matters:
   should — an unattended proxy should not change itself.
 - **Blocking is cooperative.** A node that ignores the server's answer keeps serving; see
   [`THREAT_MODEL.md`](THREAT_MODEL.md) §6.
+- **The host firewall is not persisted across a reboot.** The table lives in the kernel, and nothing in
+  Termit loads it at boot: after a restart the host is open again until someone runs `termit-uv firewall
+  on`. That is deliberate for now (a boot-time apply could lock a node out while nobody is watching),
+  and it is the open question in `docs/IMPLEMENTATION_PLAN.md` M5.2.
 
 ## 16. Troubleshooting
 
@@ -1130,3 +1134,91 @@ When space is the problem, `--build-cache` is the cheap half: it drops the compi
 after a release cycle) and keeps the downloaded modules, so the next build recompiles for a few seconds
 and downloads nothing. `--module-cache` drops the modules as well and costs a download; `--all` does
 both; `--toolchain` removes Go itself.
+
+## 18. The host firewall (opt-in)
+
+Termit ships a firewall and never turns it on. One nftables table per component — `inet termit_uv` on a
+node, `inet termit_mn` on the server — and it exists only after an operator types `termit-uv firewall
+on`. `init`, `sync`, the agent, the menus and every timer leave it alone; `termit-uv firewall off`
+deletes the table and leaves the host exactly as it was. That last sentence is a lab assertion, not a
+promise: the test compares `nft list ruleset` before and after.
+
+Nothing here is required for the tunnel to work. It is host hardening for a machine whose address is
+public, and it is useful even if you never touch it again.
+
+### 18.1 What the table contains
+
+In the order the input chain evaluates it:
+
+| Rule | Why |
+|---|---|
+| `iif lo accept` | loopback is not a decision |
+| `ct state established,related accept` | a connection already flowing is not re-judged |
+| `ct state invalid drop` | malformed state is never legitimate |
+| `ip saddr @blocked4 drop`, `ip6 saddr @blocked6 drop` | the downloaded list (M5.3) |
+| `ip saddr @banned4 drop`, `ip6 saddr @banned6 drop` | what the guard banned |
+| `icmpv6 type { nd-*, packet-too-big, destination-unreachable, time-exceeded } accept` | without NDP and PMTU messages IPv6 stops working |
+| `tcp dport { 22, 80, 443 } accept` | what a node publishes — or, with `ssh_from`, port 22 only from the listed networks |
+| `meter scan4m { … } add @scan4 { … }` | counts attempts to everything else per source, in the kernel |
+| `counter drop` | with `default_deny`, everything else is refused |
+
+Two properties are worth knowing before you trust it:
+
+- **The table is one atomic transaction.** `firewall on` feeds the whole ruleset to `nft -f -`, which
+  commits it or nothing; a failure leaves the previous rules in force. Re-applying the same ruleset
+  replaces it rather than merging.
+- **Bans live in sets, not in rules.** Adding or removing one element does not touch the chain, so a
+  ban never leaves a window where the rules are half-written.
+
+### 18.2 Turning it on without locking yourself out
+
+```bash
+termit-uv firewall on --dry-run              # print the rules; changes nothing
+termit-uv firewall on                        # arm the timer, apply, record
+termit-uv firewall confirm                   # within five minutes, from the same session
+```
+
+`on` arms a five-minute rollback timer **before** it applies anything. If `confirm` does not run in
+time, the timer's oneshot runs `termit-uv firewall rollback`, which deletes the table and stops the
+timer. That is what makes the command safe to run over the connection it might cut — and it is worth
+testing on purpose once, on a host you can afford to lose for five minutes.
+
+`status` tells you which of the three states you are in:
+
+```
+firewall:   on, not confirmed — the table is removed in 4m55s unless you run `termit-uv firewall confirm`
+firewall:   on, confirmed 3m ago
+firewall:   off since 1s ago
+```
+
+If you reach SSH from a fixed address, restrict the port to it — the networks are compiled into the
+table, so the restriction survives a rebuild:
+
+```bash
+termit-uv firewall on --ssh-from 203.0.113.0/24,2001:db8::/32
+```
+
+Port 22 is then refused from everywhere else even with `default_deny: false`, because a restriction
+that only holds when the rest is denied is not a restriction. `ssh_from` in the configuration does the
+same thing for every future `on`.
+
+### 18.3 The way back
+
+```bash
+termit-uv firewall off        # removes the table and the timer; the host is as it was
+```
+
+`off` needs no confirmation and no argument, and it works from any state — including after a rollback,
+where it is a no-op. On a host you have locked yourself out of, wait out the five minutes: the timer
+runs locally, over systemd, and does not need SSH.
+
+### 18.4 What it does not do
+
+- It does not rate-limit proxied traffic. Your node's clients are not throttled — that would add latency
+  to the one thing the node exists for.
+- It does not touch routing, NAT or WARP. Proxied traffic still leaves through the loopback WARP
+  sidecar, and direct traffic still goes direct.
+- It does not survive a reboot (see §15). Re-apply it after a restart, or leave it off if you cannot
+  reach the box afterwards.
+- It does not hide the node from a targeted observer. It refuses scans and probes; see
+  [`THREAT_MODEL.md`](THREAT_MODEL.md).

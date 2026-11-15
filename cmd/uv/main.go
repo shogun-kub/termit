@@ -79,6 +79,8 @@ type application struct {
 	euid func() int
 	// in is the interactive menu's input; nil means os.Stdin.
 	in io.Reader
+	// executable is the binary the generated units run; empty means the running executable.
+	executable string
 	// configPath overrides the default configuration path; tests point it at a temporary directory so
 	// the menu does not inspect the machine it runs on.
 	configPath string
@@ -163,6 +165,8 @@ func (a *application) run(args []string) int {
 		return exitOK
 	case "warp":
 		return a.runWarp(rest)
+	case "firewall":
+		return a.runFirewall(rest)
 	case "menu":
 		// `menu --config <path>` inspects and acts on that node, like every other command.
 		return a.runMenu(rest)
@@ -196,6 +200,7 @@ Commands:
   unblock      ask the server to verify this node and lift a block
   migrate      move this node to a new domain (--relocate)
   warp         show the egress, or change its mode (all, selected, off)
+  firewall     the host firewall: status, on, off, confirm — off until you say otherwise
   uninstall    remove Termit from this node
   version      print build and protocol version
   menu         the interactive menu (what the bare command does on a terminal); --config given

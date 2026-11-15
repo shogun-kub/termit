@@ -535,7 +535,11 @@ nothing is silently degraded. `termit-uv uninstall` disconnects the tunnel and l
 
 These are non-negotiable and must be enforced by tests:
 
-1. **No host-routing changes.** No `ip route`, `ip rule`, iptables or nftables mutation by Termit.
+1. **No host-routing changes.** No `ip route`, no `ip rule`, no NAT, no iptables. The one exception is
+   a single nftables table (`inet termit_uv` on a node, `inet termit_mn` on the server), and it exists
+   only because someone typed `termit-uv firewall on`: `init`, `sync`, the agent, the guard and every
+   timer leave it alone, `firewall off` deletes it and puts the host back exactly as it was, and an
+   apply that is not confirmed within five minutes removes itself.
 2. **No traffic loss on failing checks.** MN never blocks a node because of a prober/DNS/agent error;
    `unknown` is distinct from `failed` everywhere.
 3. **Config must validate before it is applied.** Every Xray config is written atomically, checked
@@ -580,7 +584,7 @@ Deliberate rejections (each one is a defect we would otherwise inherit):
 | `systemctl restart xray` on every cert renewal | drops all sessions | renewal at a scheduled low point, hot config path, restart gated by `xray -test` |
 | No health checks; "WARP up" = `ss` shows a port | dead tunnels black-hole silently | end-to-end VLESS probe, cert/decoy probe, WARP trace check, fail-open policy |
 | `chmod 744` private key, shared SOCKS creds on every client page, Hysteria auth = REALITY shortId | credential hygiene | `0600`, per-node secrets, no shared SOCKS |
-| Host firewall absent; blocking only in Xray | fine for proxied traffic, no host hardening | same model, documented as such; host hardening is the owner's call |
+| Host firewall absent; blocking only in Xray | fine for proxied traffic, no host hardening | both: Xray rules for proxied traffic, plus an opt-in nftables table the operator applies by hand |
 | Subscription token = proxy password in the URL path | logged by every proxy, cannot be revoked alone | separate revocable read-only token |
 | Hardcoded ports/paths, Debian-only nginx layout | not portable, not testable | single config file, ports and paths configurable |
 | Admin API and panel exposed on public HTTP | needless attack surface | admin over unix socket, token auth, rate limits |

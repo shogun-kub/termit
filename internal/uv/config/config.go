@@ -58,6 +58,18 @@ const (
 
 	// DefaultRenewBeforeDays renews a 90-day certificate around day 60.
 	DefaultRenewBeforeDays = 30
+
+	// DefaultScanAttempts is how many attempts to a closed port in one window make a scan. It is
+	// deliberately above one: a client that probes a port once is not an attacker.
+	DefaultScanAttempts = 5
+
+	// DefaultScanWindow is the rate's time unit. nftables can only write "N per <unit>", so the
+	// window has to be exactly one of second, minute, hour, day or week.
+	DefaultScanWindow = time.Minute
+
+	// DefaultScanRemember is how long the kernel remembers a scanning source for the guard to read.
+	// It is longer than the window so a burst is not forgotten before the guard's next pass.
+	DefaultScanRemember = 15 * time.Minute
 )
 
 var (
@@ -85,7 +97,9 @@ type Config struct {
 	Xray         Xray   `yaml:"xray"`
 	Decoy        Decoy  `yaml:"decoy"`
 	Warp         Warp   `yaml:"warp"`
-	Paths        Paths  `yaml:"paths"`
+	// Security is off by default in every part; see Security.
+	Security Security `yaml:"security"`
+	Paths    Paths    `yaml:"paths"`
 }
 
 // Lang is the configured language. An unusable value falls back to the default rather than failing:
@@ -330,6 +344,7 @@ func (c *Config) Validate() error {
 			problems = append(problems, fmt.Errorf("warp.selected: %w", err))
 		}
 	}
+	problems = append(problems, c.Security.validate()...)
 	problems = append(problems, c.Paths.validate()...)
 
 	if len(problems) > 0 {
@@ -376,6 +391,7 @@ func (c *Config) applyDefaults() {
 		c.Locale = i18n.Default.String()
 	}
 	c.Warp.applyDefaults()
+	c.Security.applyDefaults()
 	c.Paths.applyDefaults()
 }
 
@@ -470,6 +486,10 @@ func (p Paths) StatePath() string { return path.Join(p.StateDir, "state.json") }
 
 // JournalPath is where the installer keeps the run journal.
 func (p Paths) JournalPath() string { return path.Join(p.StateDir, "install-journal.json") }
+
+// FirewallPath is where the last `firewall on` records what it applied, so `status`, `confirm` and
+// the rollback timer agree without asking systemd.
+func (p Paths) FirewallPath() string { return path.Join(p.StateDir, "firewall.json") }
 
 // XrayBinary is the pinned core's installed location.
 func (p Paths) XrayBinary() string { return path.Join(p.BinDir, "xray") }
