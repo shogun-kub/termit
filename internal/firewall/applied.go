@@ -10,7 +10,7 @@ import (
 	"github.com/shogun-kub/termit/internal/atomicfile"
 )
 
-// ConfirmWindow is how long an applied table waits for irewall confirm before the rollback timer removes
+// ConfirmWindow is how long an applied table waits for `firewall confirm` before the rollback timer removes
 // it. It is long enough to open a second session and short enough that a lockout is measured in minutes.
 const ConfirmWindow = 5 * time.Minute
 
@@ -79,4 +79,24 @@ func SaveApplied(path string, applied *Applied) error {
 		return fmt.Errorf("firewall: write %s: %w", path, err)
 	}
 	return nil
+}
+
+// Restore answers what a boot unit should do with this record: put the table back, and whether the
+// rollback timer has to guard it.
+//
+// A confirmed apply comes back on its own — the operator already watched this exact table work, and a
+// reboot is not a reason to forget that. An apply that was still waiting comes back only while its window
+// is open; past the deadline the operator never vouched for it, so it stays gone. A record that says the
+// table was taken down is not a table to restore.
+func (a *Applied) Restore(now time.Time) (apply bool, armTimer bool) {
+	if a == nil || a.AppliedAt.IsZero() || !a.RemovedAt.IsZero() {
+		return false, false
+	}
+	if a.Confirmed() {
+		return true, false
+	}
+	if a.Deadline.IsZero() || !now.Before(a.Deadline) {
+		return false, false
+	}
+	return true, true
 }

@@ -60,6 +60,14 @@ func (s *unitsStep) unitFiles() (map[string][]byte, error) {
 		filepath.Join(s.e.cfg.Paths.UnitDir, service.RenewTimerName): renewTimer,
 		filepath.Join(s.e.cfg.Paths.UnitDir, service.AgentUnitName):  agentUnit,
 	}
+	// The boot unit is installed always, not only when the configuration asks for a table: what decides
+	// is the record of what was applied and confirmed, and an operator who applies a table after this
+	// install must not have to run `init` again to get it back after a reboot.
+	bootUnit, err := service.FirewallBoot(binary, s.e.configPath, s.e.cfg.Paths.StateDir)
+	if err != nil {
+		return nil, err
+	}
+	files[filepath.Join(s.e.cfg.Paths.UnitDir, service.FirewallBootUnitName)] = bootUnit
 	// The guard is installed only when the operator asked for it, and it needs read access to the web
 	// server's log — the 4xx signal is the whole point of it.
 	if s.e.cfg.Security.Guard.Enabled {

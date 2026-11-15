@@ -26,6 +26,8 @@ func Firewall(env *Env, args []string) int {
 			return firewallRollback(env, args[1:])
 		case "refresh":
 			return firewallRefresh(env, args[1:])
+		case "restore":
+			return firewallRestore(env, args[1:])
 		}
 	}
 	return firewallStatus(env, args)
@@ -41,6 +43,7 @@ const firewallSummary = `The host firewall: one nftables table, applied only whe
   %s firewall confirm    keep what ` + "`on`" + ` applied (the rollback timer stands down)
   %s firewall rollback   what the timer runs: remove the table unless it was confirmed
   %s firewall refresh    fetch the network blocklist and load it into the table
+  %s firewall restore    put back the table the last on applied, if it was confirmed (the boot unit)
 
 ` + "`on`" + ` arms a five-minute timer before it touches anything. If you do not confirm, the table is
 removed — which is what makes it safe to run over the very connection it might cut. Nothing else in
@@ -49,7 +52,7 @@ Termit applies or removes it: not init, not sync, not an agent, not a timer.`
 // summary renders the group's help page for this component.
 func (e *Env) summary() string {
 	name := e.Target.Name()
-	return fmt.Sprintf(firewallSummary, name, name, name, name, name, name)
+	return fmt.Sprintf(firewallSummary, name, name, name, name, name, name, name)
 }
 
 // jsonFirewall is the machine-readable firewall report.

@@ -293,3 +293,107 @@ func TestBlocklistInForceIsWhatFirewallOnLoads(t *testing.T) {
 		t.Errorf("the file's modification time is %s old", age)
 	}
 }
+
+// TestFirewallRestoreIsWhatTheBootUnitDoes: a confirmed record comes back, an unconfirmed one comes back
+// with the timer armed, and a removed or absent record does nothing at all.
+func TestFirewallRestoreIsWhatTheBootUnitDoes(t *testing.T) {
+	t.Parallel()
+	f := newFirewallFixture(t, false, true)
+	now := f.app.now()
+	cfg, err := f.app.loadConfig(f.configPath)
+	if err != nil {
+		t.Fatalf("loadConfig: %v", err)
+	}
+
+	// Nothing recorded: the boot unit has nothing to do.
+	f.stdout.Reset()
+	if got := f.run("firewall", "restore"); got != exitOK {
+		t.Fatalf("restore with no record = %d: %s", got, exitFailed(f))
+	}
+	if !strings.Contains(f.stdout.String(), "nothing to restore") {
+		t.Errorf("output = %q", f.stdout.String())
+	}
+
+	// Confirmed: the table comes back and no timer is armed.
+	if err := firewall.SaveApplied(cfg.Paths.FirewallPath(), &firewall.Applied{
+		Table: firewall.NodeTable, Ports: []int{22, 80, 443}, DefaultDeny: true,
+		AppliedAt: now.Add(-time.Hour).UTC(), ConfirmedAt: now.Add(-59 * time.Minute).UTC(),
+	}); err != nil {
+		t.Fatalf("SaveApplied: %v", err)
+	}
+	f.host.cmds = nil
+	f.stdout.Reset()
+	if got := f.run("firewall", "restore"); got != exitOK {
+		t.Fatalf("restore = %d: %s", got, exitFailed(f))
+	}
+	if !f.host.table {
+		t.Error("the table was not applied")
+	}
+	if !strings.Contains(f.stdout.String(), "restored table inet termit_uv, confirmed") {
+		t.Errorf("output = %q", f.stdout.String())
+	}
+	for _, cmd := range f.host.cmds {
+		if strings.Contains(cmd, "rollback.timer") {
+			t.Errorf("a confirmed record armed the rollback timer: %v", f.host.cmds)
+		}
+	}
+
+	// Unconfirmed but inside the window: the table comes back and the timer guards it.
+	f.host.table = false
+	if err := firewall.SaveApplied(cfg.Paths.FirewallPath(), &firewall.Applied{
+		Table: firewall.NodeTable, Ports: []int{22, 80, 443}, DefaultDeny: true,
+		AppliedAt: now.Add(-time.Minute).UTC(), Deadline: now.Add(4 * time.Minute).UTC(),
+	}); err != nil {
+		t.Fatalf("SaveApplied: %v", err)
+	}
+	f.host.cmds = nil
+	f.stdout.Reset()
+	if got := f.run("firewall", "restore"); got != exitOK {
+		t.Fatalf("restore = %d: %s", got, exitFailed(f))
+	}
+	if !strings.Contains(f.stdout.String(), "armed the rollback timer") {
+		t.Errorf("output = %q", f.stdout.String())
+	}
+
+	// Removed: nothing comes back.
+	f.host.table = false
+	if err := firewall.SaveApplied(cfg.Paths.FirewallPath(), &firewall.Applied{
+		Table: firewall.NodeTable, Ports: []int{22, 80, 443}, DefaultDeny: true,
+		AppliedAt: now.Add(-time.Hour).UTC(), ConfirmedAt: now.Add(-time.Hour).UTC(), RemovedAt: now.Add(-time.Minute).UTC(),
+	}); err != nil {
+		t.Fatalf("SaveApplied: %v", err)
+	}
+	f.stdout.Reset()
+	if got := f.run("firewall", "restore"); got != exitOK {
+		t.Fatalf("restore after off = %d: %s", got, exitFailed(f))
+	}
+	if f.host.table {
+		t.Error("a table the operator removed came back")
+	}
+}
+
+// TestFirewallRestoreDryRun says what it would do without touching the kernel.
+func TestFirewallRestoreDryRun(t *testing.T) {
+	t.Parallel()
+	f := newFirewallFixture(t, false, true)
+	cfg, err := f.app.loadConfig(f.configPath)
+	if err != nil {
+		t.Fatalf("loadConfig: %v", err)
+	}
+	now := f.app.now()
+	if err := firewall.SaveApplied(cfg.Paths.FirewallPath(), &firewall.Applied{
+		Table: firewall.NodeTable, Ports: []int{22, 80, 443}, DefaultDeny: true,
+		AppliedAt: now.Add(-time.Hour).UTC(), ConfirmedAt: now.Add(-59 * time.Minute).UTC(),
+	}); err != nil {
+		t.Fatalf("SaveApplied: %v", err)
+	}
+	if got := f.run("firewall", "restore", "--dry-run"); got != exitOK {
+		t.Fatalf("restore --dry-run = %d: %s", got, exitFailed(f))
+	}
+	if !strings.Contains(f.stdout.String(), "would restore table inet termit_uv") {
+		t.Errorf("output = %q", f.stdout.String())
+	}
+	if f.host.table {
+		t.Error("the dry run applied the table")
+	}
+}

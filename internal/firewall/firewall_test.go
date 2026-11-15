@@ -481,3 +481,47 @@ func TestDurationYAML(t *testing.T) {
 		}
 	}
 }
+
+// TestRestoreIsDecidedByTheRecord is the boot unit's whole judgement, and the four cases are the four
+// kinds of record an operator can leave behind.
+func TestRestoreIsDecidedByTheRecord(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 11, 15, 12, 0, 0, 0, time.UTC)
+	cases := []struct {
+		name     string
+		applied  *Applied
+		apply    bool
+		armTimer bool
+	}{
+		{"nothing was ever applied", nil, false, false},
+		{
+			"a confirmed apply comes back on its own",
+			&Applied{AppliedAt: now.Add(-24 * time.Hour), ConfirmedAt: now.Add(-23 * time.Hour)},
+			true, false,
+		},
+		{
+			"an apply still waiting comes back with the timer",
+			&Applied{AppliedAt: now.Add(-time.Minute), Deadline: now.Add(4 * time.Minute)},
+			true, true,
+		},
+		{
+			"an apply whose window passed stays gone",
+			&Applied{AppliedAt: now.Add(-time.Hour), Deadline: now.Add(-55 * time.Minute)},
+			false, false,
+		},
+		{
+			"a record that says the table was taken down is not restored",
+			&Applied{AppliedAt: now.Add(-time.Hour), ConfirmedAt: now.Add(-time.Hour), RemovedAt: now.Add(-time.Minute)},
+			false, false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			apply, armTimer := tc.applied.Restore(now)
+			if apply != tc.apply || armTimer != tc.armTimer {
+				t.Errorf("Restore = (%v, %v), want (%v, %v)", apply, armTimer, tc.apply, tc.armTimer)
+			}
+		})
+	}
+}

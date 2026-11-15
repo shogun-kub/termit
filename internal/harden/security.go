@@ -151,7 +151,7 @@ func (c *Config) Validate() []error {
 			problems = append(problems, fmt.Errorf("security.firewall.ssh_from: %w", err))
 		}
 	}
-	if err := c.scan().Validate(); err != nil {
+	if err := c.Scan().Validate(); err != nil {
 		problems = append(problems, fmt.Errorf("security.guard.scan: %w", err))
 	}
 	if err := c.Ladder().Validate(); err != nil {
@@ -228,12 +228,12 @@ func (c *Config) Table(name string, ports []int) (firewall.Table, error) {
 		Ports:       append([]int(nil), ports...),
 		SSHFrom:     prefixes,
 		DefaultDeny: c.Firewall.DenyOthers(),
-		Scan:        c.scan(),
+		Scan:        c.Scan(),
 	}, nil
 }
 
-// scan is the detector the table carries.
-func (c *Config) scan() firewall.Scan {
+// Scan is the detector the table carries.
+func (c *Config) Scan() firewall.Scan {
 	return firewall.Scan{
 		Enabled:  c.Guard.Enabled,
 		Attempts: c.Guard.Scan.Attempts,

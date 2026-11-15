@@ -99,6 +99,12 @@ func (s *startStep) Run(ctx context.Context) error {
 		}
 	}
 
+	// The boot unit is enabled so a confirmed table comes back by itself. Enabling it does not apply
+	// anything: `firewall restore` reads the record and does nothing when there is none.
+	if _, err := s.e.exec.Run(ctx, Cmd{Name: "systemctl", Args: []string{"enable", service.FirewallBootUnitName}}); err != nil {
+		return fmt.Errorf("enable %s: %w", service.FirewallBootUnitName, err)
+	}
+
 	s.e.log.Info("services are up", "units", service.XrayUnitName+", "+nginxUnit+", "+service.AgentUnitName)
 	return nil
 }

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shogun-kub/termit/internal/firewall"
 	"github.com/shogun-kub/termit/internal/uv/service"
 	"github.com/shogun-kub/termit/test/lab"
 )
@@ -81,6 +82,39 @@ func TestLabHarden(t *testing.T) {
 		}
 		if out := uv.MustRun(t, ctx, "termit-uv guard status --config "+configPath); !strings.Contains(out, "guard:      on") {
 			t.Errorf("guard status:\n%s", out)
+		}
+	})
+
+	t.Run("the boot unit puts a confirmed table back", func(t *testing.T) {
+		uv.MustRun(t, ctx, "test -f /etc/systemd/system/"+service.FirewallBootUnitName)
+		if out := uv.MustRun(t, ctx, "systemctl is-enabled "+service.FirewallBootUnitName); !strings.Contains(out, "enabled") {
+			t.Errorf("the boot unit is %q, want enabled", strings.TrimSpace(out))
+		}
+		// A reboot empties the kernel and leaves the record. Deleting the table is the same thing,
+		// without the wait. `restart`, not `start`: an operator who typed `start` after deleting the
+		// table by hand must get it back, and that is the same no-op-if-active trap.
+		uv.MustRun(t, ctx, "nft delete table inet "+firewall.NodeTable)
+		if out, err := uv.Run(ctx, "systemctl restart "+service.FirewallBootUnitName); err != nil {
+			t.Fatalf("the boot unit failed: %v\n%s", err, oneLine(out))
+		}
+		if out := uv.MustRun(t, ctx, "nft list tables"); !strings.Contains(out, firewall.NodeTable) {
+			t.Errorf("the table did not come back:\n%s", out)
+		}
+		// Confirmed means confirmed: no rollback timer guards a table the operator already accepted.
+		if out := uv.MustRun(t, ctx, "systemctl is-active "+service.FirewallRollbackTimerName+" || true"); strings.TrimSpace(out) == "active" {
+			t.Error("the boot unit armed the rollback timer for a confirmed table")
+		}
+		if out := uv.MustRun(t, ctx, "termit-uv firewall status --config "+configPath); !strings.Contains(out, "confirmed") {
+			t.Errorf("status after the restore:\n%s", out)
+		}
+		// And a table the operator took down stays down: the boot unit reads the record, and `off`
+		// rewrote it.
+		uv.MustRun(t, ctx, "termit-uv firewall off --config "+configPath)
+		if out, err := uv.Run(ctx, "systemctl restart "+service.FirewallBootUnitName); err != nil {
+			t.Fatalf("the boot unit failed after off: %v\n%s", err, oneLine(out))
+		}
+		if out := uv.MustRun(t, ctx, "nft list tables"); strings.Contains(out, firewall.NodeTable) {
+			t.Errorf("a table the operator removed came back:\n%s", out)
 		}
 	})
 }

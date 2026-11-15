@@ -70,3 +70,32 @@ func TestFirewallRollbackTimer(t *testing.T) {
 		t.Errorf("a 90s window rendered as %q", string(odd))
 	}
 }
+
+// TestFirewallBootUnit: the boot oneshot runs `firewall restore`, is ordered before the network, and
+// carries the one line whose absence fails every run at boot.
+func TestFirewallBootUnit(t *testing.T) {
+	t.Parallel()
+	unit, err := service.FirewallBoot("/usr/bin/termit-uv", "/etc/termit/uv/config.yaml", "/var/lib/termit/uv")
+	if err != nil {
+		t.Fatalf("FirewallBoot: %v", err)
+	}
+	text := string(unit)
+	for _, want := range []string{
+		"Type=oneshot",
+		"ExecStart=/usr/bin/termit-uv firewall restore --config /etc/termit/uv/config.yaml",
+		"Before=network-pre.target",
+		"ReadWritePaths=/var/lib/termit/uv",
+		"AF_NETLINK",
+		"WantedBy=multi-user.target",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("unit is missing %q:\n%s", want, text)
+		}
+	}
+	if _, err := service.FirewallBoot("termit-uv", "/etc/termit/uv/config.yaml", "/var/lib/termit/uv"); err == nil {
+		t.Error("a relative binary path was accepted")
+	}
+	if _, err := service.FirewallBoot("/usr/bin/termit-uv", "/etc/termit/uv/config.yaml", "var/lib/termit/uv"); err == nil {
+		t.Error("a relative state dir was accepted")
+	}
+}
