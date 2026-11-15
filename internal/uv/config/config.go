@@ -86,6 +86,9 @@ const (
 	DefaultPath404Window   = 5 * time.Minute
 	DefaultPath404Ban      = 5 * time.Minute
 	DefaultPath404Max      = time.Hour
+
+	// DefaultBlocklistRefresh fetches the network list once a day: that is how often such lists change.
+	DefaultBlocklistRefresh = 24 * time.Hour
 )
 
 var (
@@ -509,6 +512,10 @@ func (p Paths) FirewallPath() string { return path.Join(p.StateDir, "firewall.js
 
 // BansPath is where the guard keeps its decisions; the kernel's sets are rebuilt from it.
 func (p Paths) BansPath() string { return path.Join(p.StateDir, "bans.json") }
+
+// BlocklistPath is the network list in force. The kernel's sets are rebuilt from it, so a failed load
+// costs a refresh, not the list.
+func (p Paths) BlocklistPath() string { return path.Join(p.StateDir, "blocklist.txt") }
 
 // XrayBinary is the pinned core's installed location.
 func (p Paths) XrayBinary() string { return path.Join(p.BinDir, "xray") }

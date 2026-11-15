@@ -29,6 +29,8 @@ var unitNames = []string{
 	service.GuardUnitName,
 	service.FirewallRollbackTimerName,
 	service.FirewallRollbackUnitName,
+	service.BlocklistTimerName,
+	service.BlocklistUnitName,
 }
 
 // UninstallOptions configure an uninstall.

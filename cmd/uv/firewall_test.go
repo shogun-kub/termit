@@ -81,8 +81,17 @@ func (h *nftHost) run(cmd install.Cmd) (install.Result, error) {
 		return install.Result{}, nil
 	case strings.HasSuffix(args, "-f -"):
 		h.stdin = append(h.stdin, cmd.Stdin)
-		// The ruleset is an apply and carries the chain; anything else is the destroy `off` sends.
-		h.table = strings.Contains(cmd.Stdin, "chain input")
+		switch {
+		case strings.Contains(cmd.Stdin, "chain input"):
+			// The whole table: an apply.
+			h.table = true
+		case strings.HasPrefix(cmd.Stdin, "destroy table"):
+			// `off`, and the rollback.
+			h.table = false
+		default:
+			// Set operations: the blocklist batch.
+			h.writes = append(h.writes, cmd.Stdin)
+		}
 		return install.Result{}, nil
 	}
 	return install.Result{}, nil

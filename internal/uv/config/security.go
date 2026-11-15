@@ -2,6 +2,8 @@ package config
 
 import (
 	"fmt"
+	"net/url"
+	"time"
 
 	"github.com/shogun-kub/termit/internal/firewall"
 )
@@ -26,6 +28,11 @@ type Firewall struct {
 	// SSHFrom restricts port 22 to these CIDRs or addresses. Empty means from anywhere, which is the
 	// common case: a static operator address is the exception.
 	SSHFrom []string `yaml:"ssh_from"`
+	// BlocklistURL is the network list the host refuses; empty means no list at all. http(s) and file
+	// URLs are supported, and nothing else: no git, no rsync.
+	BlocklistURL string `yaml:"blocklist_url"`
+	// BlocklistRefresh is how often the timer fetches it.
+	BlocklistRefresh firewall.Duration `yaml:"blocklist_refresh"`
 }
 
 // DenyOthers reports whether the table drops what it did not accept. Unset means yes.
@@ -101,6 +108,9 @@ func (s *Security) applyDefaults() {
 	if s.Guard.LadderWindow == 0 {
 		s.Guard.LadderWindow = firewall.Duration(DefaultLadderWindow)
 	}
+	if s.Firewall.BlocklistRefresh == 0 {
+		s.Firewall.BlocklistRefresh = firewall.Duration(DefaultBlocklistRefresh)
+	}
 }
 
 // validate reports every problem in the block.
@@ -125,7 +135,39 @@ func (s *Security) validate() []error {
 		problems = append(problems, fmt.Errorf("security.guard.path404.window (%s) must be shorter than "+
 			"security.guard.ladder_window (%s)", s.Guard.Path404.Window, s.Guard.LadderWindow))
 	}
+	if err := validateBlocklist(s.Firewall); err != nil {
+		problems = append(problems, err)
+	}
 	return problems
+}
+
+// validateBlocklist checks the source and the cadence. A refresh shorter than an hour would hammer a
+// public list for no gain: these lists change daily, not hourly.
+func validateBlocklist(f Firewall) error {
+	if f.BlocklistURL != "" {
+		parsed, err := url.Parse(f.BlocklistURL)
+		if err != nil {
+			return fmt.Errorf("security.firewall.blocklist_url: %v", err)
+		}
+		switch parsed.Scheme {
+		case "http", "https":
+			if parsed.Host == "" {
+				return fmt.Errorf("security.firewall.blocklist_url %q has no host", f.BlocklistURL)
+			}
+		case "file":
+			if parsed.Path == "" {
+				return fmt.Errorf("security.firewall.blocklist_url %q has no path", f.BlocklistURL)
+			}
+		default:
+			return fmt.Errorf("security.firewall.blocklist_url %q: only http, https and file URLs are supported",
+				f.BlocklistURL)
+		}
+	}
+	if f.BlocklistRefresh.Std() < time.Hour {
+		return fmt.Errorf("security.firewall.blocklist_refresh must be at least 1h, got %s: a public list "+
+			"changes daily, and asking more often is a way to be blocked by a mirror", f.BlocklistRefresh)
+	}
+	return nil
 }
 
 // Ladder is the ban policy the guard applies, assembled from this block.

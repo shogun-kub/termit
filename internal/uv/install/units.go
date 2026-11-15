@@ -70,6 +70,20 @@ func (s *unitsStep) unitFiles() (map[string][]byte, error) {
 		}
 		files[filepath.Join(s.e.cfg.Paths.UnitDir, service.GuardUnitName)] = guardUnit
 	}
+	// The blocklist timer exists only when there is a list to fetch: a daily unit that fails because
+	// nobody configured a URL is noise in the journal, not a feature.
+	if s.e.cfg.Security.Firewall.BlocklistURL != "" {
+		blocklistUnit, err := service.Blocklist(binary, s.e.configPath)
+		if err != nil {
+			return nil, err
+		}
+		blocklistTimer, err := service.BlocklistTimer(s.e.cfg.Security.Firewall.BlocklistRefresh.Std())
+		if err != nil {
+			return nil, err
+		}
+		files[filepath.Join(s.e.cfg.Paths.UnitDir, service.BlocklistUnitName)] = blocklistUnit
+		files[filepath.Join(s.e.cfg.Paths.UnitDir, service.BlocklistTimerName)] = blocklistTimer
+	}
 	return files, nil
 }
 

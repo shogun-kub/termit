@@ -267,3 +267,47 @@ func TestSecurityLadderRejectsAnImpossibleOrder(t *testing.T) {
 		})
 	}
 }
+
+// TestSecurityBlocklist: the source and the cadence, and the two ways they can be wrong.
+func TestSecurityBlocklist(t *testing.T) {
+	t.Parallel()
+	cfg, err := config.Parse(strings.NewReader(minimal))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if cfg.Security.Firewall.BlocklistURL != "" {
+		t.Errorf("a fresh configuration has a blocklist URL: %q", cfg.Security.Firewall.BlocklistURL)
+	}
+	if cfg.Security.Firewall.BlocklistRefresh.Std() != 24*time.Hour {
+		t.Errorf("blocklist_refresh = %s, want 24h", cfg.Security.Firewall.BlocklistRefresh)
+	}
+
+	good := minimal + `security:
+  firewall:
+    blocklist_url: https://example.com/list.txt
+    blocklist_refresh: 6h
+`
+	parsed, err := config.Parse(strings.NewReader(good))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if parsed.Security.Firewall.BlocklistURL != "https://example.com/list.txt" ||
+		parsed.Security.Firewall.BlocklistRefresh.Std() != 6*time.Hour {
+		t.Errorf("the keys were not read: %+v", parsed.Security.Firewall)
+	}
+
+	bad := map[string]string{
+		"git url":        minimal + "security:\n  firewall:\n    blocklist_url: git+https://example.com/x\n",
+		"no host":        minimal + "security:\n  firewall:\n    blocklist_url: \"https://\"\n",
+		"hourly or less": minimal + "security:\n  firewall:\n    blocklist_refresh: 30m\n",
+		"not a duration": minimal + "security:\n  firewall:\n    blocklist_refresh: daily\n",
+	}
+	for name, document := range bad {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if _, err := config.Parse(strings.NewReader(document)); err == nil {
+				t.Error("the configuration was accepted")
+			}
+		})
+	}
+}

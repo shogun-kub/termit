@@ -1096,7 +1096,7 @@ Two details are deliberately not left to the implementation:
 
 ```
 termit-uv firewall status|on|off|confirm|rollback    --dry-run, --ssh-from CIDR, --default-deny=false
-termit-uv firewall refresh                          (M5.3, the blocklist)
+termit-uv firewall refresh                          --url, --dry-run: the blocklist
 termit-uv bans list|unban IP|block IP|unblock IP|offenders
 termit-uv guard status|run --once                  (the unit runs `guard run`)
 termit-mn  firewall … / bans …                     same code, ports from the server's config
@@ -1143,8 +1143,8 @@ security:                       # everything here is off unless the operator say
     ladder_window: 24h          # how long a repeat still counts as one
 ```
 
-Still to come, with the milestone that reads them: `blocklist_url`/`blocklist_refresh` (M5.3) and
-`bittorrent_block` (M5.4).
+Still to come, with the milestone that reads it: `bittorrent_block` (M5.4). The blocklist keys
+(`blocklist_url`, `blocklist_refresh`, M5.3) are in place.
 
 Three constraints the loader enforces:
 
@@ -1248,9 +1248,22 @@ off after a reboot until an operator runs it again. The first is what an operato
 firewall; the second cannot lock a box out while nobody is watching. Decide before M5.7 writes the
 guide, because the answer is what the guide has to say.
 
-**M5.3 — Blocklist refresh (half a day).** Fetch, validate, atomic replace, the timer, the "keep the
-last good list" path. Lab: a `file://` URL in the config as the source, a truncated file that must be
-refused, an unreachable URL that must keep the previous list.
+**M5.3 — Blocklist refresh (done).** `internal/firewall/blocklist.go` parses, normalises, renders and
+stores the list, fetches it over `http(s)` or `file` with `If-Modified-Since` and a 4 MiB cap, and
+replaces the kernel's two sets in **one** `nft -f -` batch (`flush set` plus the elements), so the host is
+never without a blocklist. `termit-uv firewall refresh` is the command (`--url` for a one-off,
+`--dry-run`); `init` installs `termit-uv-blocklist.timer` when `security.firewall.blocklist_url` is set;
+`firewall on` reloads the file, and `status` reports the count and the fetch age.
+
+The decision that is not obvious: **a source that has not changed still reloads the kernel.** The file is
+the record of truth — a reboot or a failed load empties the sets — so skipping the reload on a 304 would
+leave a host with a list on disk and nothing in the kernel until the *next* change. The download is what
+the conditional request saves; the load is cheap and idempotent.
+
+Lab (`TestLabBlocklist`, 8.7 s): the timer unit is installed and enabled, its own oneshot (started by
+hand, which is what systemd does daily) loads a `file://` list into the kernel, a truncated source is
+refused with the sets untouched, an unreachable source is refused the same way, a network that leaves the
+source leaves the kernel, and `off` then `on` restores the list from the file.
 
 **M5.4 — BitTorrent (half a day).** Config generation plus a golden test; the manual check is documented
 because a real torrent client is not lab-shaped. The spike already proved the routing rule fires (§5.0),

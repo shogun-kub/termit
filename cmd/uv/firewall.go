@@ -28,6 +28,7 @@ const firewallSummary = `The host firewall: one nftables table, applied only whe
   termit-uv firewall off        remove the table and leave the host exactly as it was
   termit-uv firewall confirm    keep what ` + "`on`" + ` applied (the rollback timer stands down)
   termit-uv firewall rollback   what the timer runs: remove the table unless it was confirmed
+  termit-uv firewall refresh    fetch the network blocklist and load it into the table
 
 ` + "`on`" + ` arms a five-minute timer before it touches anything. If you do not confirm, the table is
 removed — which is what makes it safe to run over the very connection it might cut. Nothing else in
@@ -44,6 +45,8 @@ type jsonFirewall struct {
 	Bans        int      `json:"bans"`
 	Blocked     int      `json:"blocked"`
 	Scans       int      `json:"scans"`
+	Blocklist   int      `json:"blocklist"`
+	BlocklistAt string   `json:"blocklist_fetched,omitempty"`
 	ConfirmBy   string   `json:"confirm_by,omitempty"`
 	Note        string   `json:"note,omitempty"`
 }
@@ -59,6 +62,8 @@ func (a *application) runFirewall(args []string) int {
 			return a.runFirewallConfirm(args[1:])
 		case "rollback":
 			return a.runFirewallRollback(args[1:])
+		case "refresh":
+			return a.runFirewallRefresh(args[1:])
 		case "status":
 			return a.runFirewallStatus(args[1:])
 		}
@@ -164,6 +169,8 @@ first: if you cannot reach the node to confirm, the table removes itself.`)
 
 	fmt.Fprintf(a.stdout, "firewall: on, table inet %s, %s, ports %s\n",
 		table.Name, denyWords(table.DefaultDeny), portsWords(table.Ports))
+	// The table starts with empty sets, so the list in force goes back in before the operator walks away.
+	a.loadBlocklistIntoKernel(cfg)
 	if len(table.SSHFrom) > 0 {
 		fmt.Fprintf(a.stdout, "ssh:      port %d from %s\n", firewall.SSHPort, strings.Join(prefixStrings(table.SSHFrom), ", "))
 	}
@@ -347,6 +354,14 @@ func (a *application) runFirewallStatus(args []string) int {
 	if applied.Pending(now) && now.Before(applied.Deadline) {
 		report.ConfirmBy = applied.Deadline.Format(time.RFC3339)
 	}
+	// The list in force, from the file rather than the kernel: the kernel's sets are a copy that a
+	// reboot or a failed load can empty, and the file is what the next refresh restores.
+	if prefixes, fetchedAt, err := firewall.LoadBlocklist(cfg.Paths.BlocklistPath()); err == nil {
+		report.Blocklist = len(prefixes)
+		if !fetchedAt.IsZero() {
+			report.BlocklistAt = humanSince(now, fetchedAt)
+		}
+	}
 	var notes []string
 	switch {
 	case present && applied == nil:
@@ -383,6 +398,16 @@ func (a *application) runFirewallStatus(args []string) int {
 			fmt.Fprintf(a.stdout, "ssh:        port %d from anywhere\n", firewall.SSHPort)
 		}
 		fmt.Fprintf(a.stdout, "elements:   %s\n", firewall.Describe(counts))
+	}
+	if report.Blocklist > 0 {
+		line := fmt.Sprintf("blocklist:  %d networks", report.Blocklist)
+		if report.BlocklistAt != "" {
+			line += ", fetched " + report.BlocklistAt
+		}
+		if len(counts) > 0 && counts["blocked4"]+counts["blocked6"] == 0 {
+			line += " (not in the kernel: `termit-uv firewall refresh`)"
+		}
+		fmt.Fprintf(a.stdout, "%s\n", line)
 	}
 	if report.Note != "" {
 		fmt.Fprintf(a.stdout, "note:       %s\n", report.Note)

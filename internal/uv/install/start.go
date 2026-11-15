@@ -90,6 +90,15 @@ func (s *startStep) Run(ctx context.Context) error {
 		}
 	}
 
+	// The blocklist timer fetches the list a minute after it starts and then once per interval. It is a
+	// timer, so `enable --now` only schedules it; the first fetch is the oneshot the operator can also
+	// run by hand.
+	if s.e.cfg.Security.Firewall.BlocklistURL != "" {
+		if _, err := s.e.exec.Run(ctx, Cmd{Name: "systemctl", Args: []string{"enable", "--now", service.BlocklistTimerName}}); err != nil {
+			return fmt.Errorf("enable %s: %w", service.BlocklistTimerName, err)
+		}
+	}
+
 	s.e.log.Info("services are up", "units", service.XrayUnitName+", "+nginxUnit+", "+service.AgentUnitName)
 	return nil
 }

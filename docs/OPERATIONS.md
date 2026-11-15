@@ -1250,13 +1250,49 @@ management server (resolved from `mn.url`, cached for ten minutes) and your own 
 `bans block` refuses them too: a ban on those cuts you off, not an attacker. If you really mean to block
 an address in one of those ranges, do it with `nft` directly and know what you are doing.
 
-### 18.5 What it does not do
+### 18.5 The blocklist
+
+A list of networks you never want to hear from again — a hosting provider, a scanner's range, an
+abusive subnet — comes in over a URL:
+
+```yaml
+security:
+  firewall:
+    blocklist_url: https://example.net/termit/blocklist.txt
+    blocklist_refresh: 24h
+```
+
+`http(s)` and `file` URLs are supported and nothing else: no git, no rsync, no rsync-over-ssh. The file is
+one network per line, `#` starts a comment, a bare address means its `/32` or `/128`; overlapping and
+duplicate entries are fine — they are normalised, sorted and written back that way, so the file's digest
+does not move when the order of a source does. The body is capped at 4 MiB.
+
+`init` installs `termit-uv-blocklist.timer` when there is a URL: the oneshot runs a minute after the timer
+starts, then once per `blocklist_refresh`, with jitter and across reboots.
+
+```bash
+termit-uv firewall refresh                 # fetch, validate, put in force
+termit-uv firewall refresh --dry-run       # fetch and validate only
+termit-uv firewall refresh --url file:///root/list.txt   # one-off, test a list before you commit to it
+termit-uv firewall status                  # how many networks are in force, and when they were fetched
+```
+
+The list in force lives in `/var/lib/termit/uv/blocklist.txt`, and the kernel's sets are rebuilt from that
+file, not from the network: a refresh that finds the source unchanged still reloads the kernel, which is
+what repairs a reboot. A download that fails, a body that does not parse and a list with no entries are
+all refused with the message that the list in force was left alone — an empty blocklist is worse than an
+outdated one, because it silently unblocks everything.
+
+`firewall on` loads the file too, so a table applied after a reboot comes back with its networks. With no
+table applied, a refresh writes the file and leaves the kernel alone.
+
+### 18.6 What it does not do
 
 - It does not rate-limit proxied traffic. Your node's clients are not throttled — that would add latency
   to the one thing the node exists for.
 - It does not touch routing, NAT or WARP. Proxied traffic still leaves through the loopback WARP
   sidecar, and direct traffic still goes direct.
 - It does not survive a reboot (see §15). Re-apply it after a restart, or leave it off if you cannot
-  reach the box afterwards.
+  reach the box afterwards. The blocklist file and the bans survive; the table does not.
 - It does not hide the node from a targeted observer. It refuses scans and probes; see
   [`THREAT_MODEL.md`](THREAT_MODEL.md).
