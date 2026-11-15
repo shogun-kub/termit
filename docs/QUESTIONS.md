@@ -42,23 +42,13 @@ The remaining questions below are still open; the ones that matter before M1 are
 |---|---|
 | Backend | **Our own code on nftables**, one backend for the firewall and the bans. No ufw and no fail2ban: the lab boxes have neither, `nftables 1.1.3` is installed and its service enabled, and a ban lives in one place instead of two. |
 | Firewall model | **Blacklist first, then a service whitelist** — `22/tcp`, `80/tcp`, `443/tcp` — with `default_deny` on by default; anything else inbound is dropped. |
-| Who turns it on | **The operator, explicitly.** `init`, `sync`, the agent and the timers never change firewall state; a five-minute rollback timer protects the first apply. |
-| Scan threshold | **Configurable, 5 attempts per 10 minutes by default**; a repeat within 24 hours → 24-hour ban. |
+| Who turns it on | **The operator, explicitly.** `init`, `sync`, the agent and the timers never *apply* a table; a five-minute rollback timer protects the first apply. A boot unit puts back what an operator applied and confirmed — it never applies anything nobody asked for. |
+| Scan threshold | **Configurable, 5 attempts per 1 minute by default**; a repeat within 24 hours → 24-hour ban. One minute and not ten: nftables writes a rate as "N per one unit", so a ten-minute window has no spelling (§5.6). |
 | Permanent block | **A separate persisted list the operator owns**, plus an automatic ban ladder that never becomes permanent by itself. |
 | `ssh_from` | **Opt-in** flag and config list, not a default: a static address is the exception. |
-| Persistence | **Bans on disk with their TTL**, re-applied after a reboot. |
-| BitTorrent | **Opt-in Xray sniffer + routing rule**, and only if the spike proves the sniffer classifies it. |
+| Persistence | **Bans on disk with their TTL**, re-applied after a reboot; the table itself comes back from a boot unit that re-applies the recorded table and arms the rollback timer in the same breath. |
 | Scope and defaults | **Nodes and the server, one mechanism**; everything off until the operator asks, with the wizard offering an unchecked "harden this node". |
-| Rate limiting of proxied traffic | **Not implemented**: the operator owns their traffic, and a limiter costs latency and adds a timing fingerprint. |
----|---|
-| Rate limiting of proxied traffic | **Not implemented.** The operator is responsible for not abusing their own node; a limiter adds latency to the one thing the node exists for and is a timing fingerprint. The single exception is an opt-in BitTorrent block, because a misconfigured client proxying torrents turns a VPS into a complaint magnet. |
-| Firewall model | **Blacklist first, then a service whitelist**: a public CIDR list is denied outright, and `22/tcp`, `80/tcp`, `443/tcp` are allowed for everyone else. The operator's existing ufw script is the base. |
-| Who turns the firewall on | **The operator, explicitly.** `init`, `sync` and the timers never touch host firewall state; `docs/DESCRIPTION.md` §11 says so and stays true. A one-command `off` puts the host back. |
-| "SSH always available for one specific IP" | **Not a default feature**: it assumes a static address. Either a documented manual step or an opt-in flag. |
-| fail2ban | **Ship defaults**: port scans (threshold to settle, 5 or 10) → 1 hour, then 24 hours on a repeat; failed requests to `443` for paths that do not exist → 5 minutes, escalating to 1 hour; repeating offenders are listed for permanent blocking. |
-| Backend for fail2ban and the firewall | **Open.** One backend for both: `fail2ban` + `ufw` (familiar, needs Python on a 1 GB box) or a native implementation sharing nftables sets with the firewall. Decide when M5 starts. |
-| Where the evidence comes from | **Open.** nginx access log for `443` 4xx; conntrack or nftables counters for scans that never reach nginx. |
-
+| Rate limiting of proxied traffic | **Not implemented.** The operator is responsible for not abusing their own node; a limiter adds latency to the one thing the node exists for and is a timing fingerprint. The single exception is an opt-in BitTorrent block. |
 ---
 
 ## 1. Naming, scope, licence

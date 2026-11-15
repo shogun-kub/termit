@@ -190,9 +190,13 @@ own; the systemd units are installed by `termit-uv init`.
 | `termit-uv renew-cert` | renew the certificate now | `--force` (reissue even if not due) |
 | `termit-uv renew-site` | regenerate the decoy site | `--template product\|portal`, `--seed`, `--dry-run` |
 | `termit-uv uninstall` | remove what Termit created | `--purge` (also config, state, certificates, user), `--dry-run` |
+| `termit-uv firewall` | the host firewall: `status`, `on`, `off`, `confirm`, `refresh` | `--ssh-from`, `--default-deny`, `--dry-run` |
+| `termit-uv bans` | what the ban engine decided: `list`, `offenders`, `block IP`, `unban IP`, `unblock IP` | |
+| `termit-uv guard` | the ban engine: `status`, `run --once` | |
 | `termit-uv version` | build and protocol version | |
 
-Every command accepts `--config <path>` and `-v`/`--verbose`.
+Every command accepts `--config <path>` and `-v`/`--verbose`. The last three are the opt-in hardening
+half and stay off until you ask: [Hardening a node](hardening.md) is their page.
 
 ## Recipes
 

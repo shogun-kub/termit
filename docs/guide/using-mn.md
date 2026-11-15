@@ -277,11 +277,16 @@ journalctl -u termit-mn -f
 | `termit-mn admin rotate` | replace the admin token you authenticated with; `--token-out FILE` writes it |
 | `termit-mn status` | server, nodes and schedule |
 | `termit-mn backup`, `termit-mn restore` | snapshot and restore |
+| `termit-mn firewall` | the server's own table: `status`, `on`, `off`, `confirm`, `refresh` |
+| `termit-mn bans`, `termit-mn guard` | the ban engine on the server |
 | `termit-mn version` | build and protocol version |
 
 Admin commands talk to the running server over a unix socket (`/run/termit/mn/admin.sock`) and
 authenticate with `TERMIT_MN_ADMIN_TOKEN`, `TERMIT_MN_ADMIN_TOKEN_FILE`, `--token` or `--token-file`.
 They never open the database behind the server's back.
+
+The firewall, bans and guard are the same opt-in machinery the nodes have, with the server's own table
+name and ports: [Hardening a node](hardening.md) is the page for it.
 
 ## Rules worth keeping
 

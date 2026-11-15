@@ -1239,14 +1239,14 @@ Three things the lab changed:
 Tests: the ladder arithmetic and both caps, the window measured from the released ban, the never-ban
 set, the log tail with rotation, the reconcile from the file after a "reboot", and the commands.
 
-**Open question, still open after M5.2:** the table lives in the kernel only, so **a reboot removes it**
-and nothing re-applies it — `OPERATIONS.md` §15 says so plainly. The bans survive (`bans.json`), and the
-guard refills the kernel from them as soon as a table exists again, but the table itself does not come
-back. The choice is between a `termit-uv-firewall.service` oneshot that re-applies the recorded table at
-boot (with the rollback timer armed in the same breath, so the safety net still exists) and leaving it
-off after a reboot until an operator runs it again. The first is what an operator expects from a
-firewall; the second cannot lock a box out while nobody is watching. Decide before M5.7 writes the
-guide, because the answer is what the guide has to say.
+**Open question, resolved (2026-11-15): a boot unit.** The table lives in the kernel, so a reboot removes
+it. The answer is `termit-uv-firewall.service`: a oneshot ordered before `network-pre.target` that runs
+`termit-uv firewall restore`, which reads the record and decides — a confirmed apply comes back with no
+timer (the operator already watched that exact table work), an apply still inside its five-minute window
+comes back with the timer armed (the safety net still exists), and anything else — never confirmed, or
+taken down by `off` — stays gone. The plugin, the server's copy in `deploy/systemd` and the lab check
+(`TestLabHarden`: delete the table the way a reboot does, start the unit, the table returns without a
+timer; `off` then the unit, nothing returns) are in §5.9.
 
 **M5.3 — Blocklist refresh (done).** `internal/firewall/blocklist.go` parses, normalises, renders and
 stores the list, fetches it over `http(s)` or `file` with `If-Modified-Since` and a 4 MiB cap, and
@@ -1323,17 +1323,19 @@ Lab (`TestLabHarden`, 7.0 s): `init --harden` installs and starts the guard's un
 says what to run, `on` + `confirm` applies the table, a real `guard run --once` pass succeeds against it,
 and the cleanup leaves the node as it was found.
 
-**M5.7 — Docs and the §11 amendment (half a day).** `DESCRIPTION.md` §11 invariant 1 becomes: never
-touch routing; a firewall is only ever changed by the explicit `firewall` command, never by a timer,
-`init`, `sync` or the agent. `OPERATIONS.md` gains a section with the exact rules, the way back, and
-what a false positive looks like; `docs/guide/` gets the operator-facing page in both languages;
-`THREAT_MODEL.md` says what this does and does not defend against (it stops scans and probing, it does
-not hide the node from a targeted observer).
+**M5.7 — Docs and the §11 amendment (done).** Done: `DESCRIPTION.md` §11 invariant 1 (never touch
+routing; the table exists only after `firewall on`; the guard and the blocklist refresh only fill sets; the
+boot unit only puts back a confirmed apply), `OPERATIONS.md` §18 with the exact rules, the way back, the
+blocklist, the server's copy and what survives a reboot, `THREAT_MODEL.md` §5.6/§5.7 and the residual-risk
+line, `QUESTIONS.md` §0a, and the page a new operator needed:
+[`guide/hardening.md`](guide/hardening.md) and its [Russian mirror](guide/ru/hardening.md), linked from
+both overviews, both READMEs and the command tables of `using-uv` and `using-mn`.
 
 **M5.8 — Rollout.** Lab first, all of it; then the production MN (`firewall on` with the rollback
 timer, then `confirm` from a second session), then the two nodes one at a time, checking after each
 step: SSH alive, 443 serving, a client request through the tunnel, the MN's prober green, `status`
-clean. Any step that fails: `firewall off`, and the host is where it started.
+clean. Any step that fails: `firewall off`, and the host is where it started. Reboot one node on purpose
+before touching the second: the boot unit is the one part of this milestone the lab can only imitate.
 
 Total: 5–7 days of work. The first half-day — the spike that decided two syntax questions which could
 have re-shaped the rest — is spent and recorded in §5.0.

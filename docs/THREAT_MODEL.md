@@ -144,7 +144,7 @@ pair credential without touching a database.
 | The prober is used as a weapon | a prober failure is `unknown`, never `failed`; a DNS resolver that cannot answer is skipped, not counted against the node; only a genuine negative result moves a state, and only after the configured number of retries | a compromised server can of course lie in the other direction — the admission policy is cooperative |
 | A node's own report is believed | the sync body's `check` is stored beside the probe and never moves a state; the server's verdict comes from its own probe, from its own address, pinned to the leaf it read | a node that also controls the network path to the server could satisfy both; that is a compromised node, not a protocol flaw |
 | An attacker forces re-enrollment of a domain | the domain is unique, the invite is consumed transactionally, and a change of identity requires either an unblock/relocate that passes the same checks or an operator command | an operator can always be socially engineered |
-| SQLite is the single point of failure | the database is opened read-only for backups (`VACUUM INTO`), migrations are forward-only, and `termit-mn backup` captures database, configuration, certificate and master key | a corrupt database without a backup loses the mesh's credentials (§5.6) |
+| SQLite is the single point of failure | the database is opened read-only for backups (`VACUUM INTO`), migrations are forward-only, and `termit-mn backup` captures database, configuration, certificate and master key | a corrupt database without a backup loses the mesh's credentials (§5.7) |
 
 ### 5.5 The endpoints (S5, S9, S10)
 
@@ -156,7 +156,27 @@ pair credential without touching a database.
 | The agent runs as root | it needs root for two narrow things: replacing the core's config (`0640 root:termit`) and asking systemd to restart the core. Its unit confines writes to the config and state directories, drops `ProtectHome` only when a configured CA file demands it, and sets `NoNewPrivileges` and `ProtectSystem=strict` | root in the process can still rewrite what it is allowed to write; a compromise of the agent is a compromise of the node |
 | The core is exploited | it runs as `termit` with an empty capability set, `ProtectSystem=strict`, `SystemCallFilter=@system-service`, `MemoryDenyWriteExecute`, on loopback only | a memory-safety bug in Xray-core would still be remote code execution as an unprivileged user |
 
-### 5.6 Loss scenarios
+### 5.6 The host firewall, the ban engine and the blocklist
+
+The opt-in table is the only thing in Termit that changes host firewall state, and everything about it is
+designed around one failure mode: locking the operator out of their own box.
+
+| Threat | Mitigation | Residual |
+|---|---|---|
+| A scan finds the box is a proxy | the table drops everything inbound except SSH and the ports the component serves (80, 443), and the kernel's meter counts attempts to anything else; the guard bans the source after 5 in a minute | a scan that stays under the threshold is not banned; a distributed scan from many addresses never trips a per-source meter |
+| An automated probe walks paths on `:443` | nginx's 4xx answers are counted per source; ten in five minutes earn a ban that doubles to an hour | an attacker who spreads the requests across addresses, or uses valid paths, is not detected; the decoy answers are indistinguishable from a busy site's |
+| A source comes back after a ban | the ladder escalates inside the 24-hour window measured from the end of the last ban; when it runs out of rungs the source is listed for the operator instead of being blocked forever | the offender is only listed — nothing automatic blocks it permanently, by design |
+| The operator bans something that matters | loopback, the private and link-local ranges, the management server and `ssh_from` are never banned, whichever signal fires, and `bans block` refuses them | an operator who bans their own provider's range on purpose still cuts themselves off; the table can be removed from a console |
+| The first apply cuts the operator's SSH | the rollback timer is armed **before** nft runs and removes the table in five minutes unless `firewall confirm` runs; `off` restores the previous ruleset byte for byte | an operator who confirms a table they cannot reach has five minutes to notice; the record is what the boot unit restores, so the same mistake does not repeat |
+| A reboot leaves the box open | the boot unit puts back the table a confirmed apply left, before `network-pre.target`; an unconfirmed apply does not come back | a box that reboots between `on` and `confirm` comes back open — the safe direction |
+| A downloaded blocklist is hostile | one URL, http(s) or file only; the body is capped at 4 MiB, parsed, normalised and refused if it does not parse or holds nothing; the list in force is replaced atomically | a list that is valid but wrong is applied — it is the operator's list |
+| The ban engine is compromised | the guard runs as root for nft only, writes nothing but `bans.json`, and never renders or applies the table; its unit allows `AF_NETLINK` and nothing else network-shaped | a compromised guard can ban and unban addresses; it cannot open the host or change routing |
+
+What this does **not** do: it does not hide the node from a targeted observer (an open port is an open
+port), it does not defeat a scan that stays under the threshold, and it does not rate-limit proxied
+traffic — the operator owns their traffic, and a limiter adds latency and a timing fingerprint.
+
+### 5.7 Loss scenarios
 
 | Scenario | Consequence | Mitigation |
 |---|---|---|
@@ -194,9 +214,12 @@ These are decisions, not bugs, and each one is a sentence an operator should be 
    that already trusts each other enough to run servers for each other, not a mixnet.
 8. **Availability is not defended.** Rate limits bound enrollment and subscription traffic; nothing
    bounds a bandwidth flood, a provider null-route, or a domain being blocked.
-9. **Compromised endpoints are out of scope.** Root on a client, on a node, or on the server defeats
+9. **The firewall protects a port, not a secret.** An open SSH port with a weak password is an open
+   SSH port with a weak password, and a ban list of scanned sources does not change that; Termit's table
+   is there to stop automated probing and to let an operator block what they already know is hostile.
+10. **Compromised endpoints are out of scope.** Root on a client, on a node, or on the server defeats
    every control above, by definition.
-10. **The system is new.** The threat model is reviewed with the code it describes; the parts with
+11. **The system is new.** The threat model is reviewed with the code it describes; the parts with
     real-world evidence behind them are listed in §7. Anything not listed there is reasoning, not
     measurement.
 
@@ -213,7 +236,8 @@ These are decisions, not bugs, and each one is a sentence an operator should be 
 | WARP fail-open keeps traffic flowing with a dead sidecar | `test/lab/warp_test.go`: a real client fetches the Cloudflare trace through the node with nothing listening on the sidecar port and gets `warp=off` |
 | the admin surface is a `0600` unix socket | `cmd/mn/socket_linux.go` creates the socket `0600` in a `0750` directory; `termit-mn` is the only client |
 | the decoy is self-contained | decoy golden tests: no external hosts in the generated tree |
-
+| the table never locks an operator out by itself | `test/lab/firewall_test.go`: the rollback oneshot removes an unconfirmed table, `off` returns the ruleset to its previous digest, and a lockout drill with `--ssh-from` was run by hand; `test/lab/harden_test.go`: the boot unit restores a confirmed table and leaves a removed one alone |
+| a ban never hits the management server or the operator's own networks | unit tests for the never-ban set; `test/lab/guard_test.go` bans a real address while the server's own address is refused |
 Not verified yet, and therefore not claimed: the WARP tunnel itself (needs `/dev/net/tun`), a real
 Let's Encrypt issuance (the lab uses an ACME test server), and any form of resistance to an adversary
 who can see both ends of a connection.

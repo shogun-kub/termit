@@ -41,6 +41,7 @@ is a Russian version beside every page.
 | [Using a node](docs/guide/using-uv.md) | [Как пользоваться узлом](docs/guide/ru/using-uv.md) | install, enrol, connect a phone, every command |
 | [Running the server](docs/guide/using-mn.md) | [Как запустить сервер](docs/guide/ru/using-mn.md) | install, invite nodes, watch and manage them |
 | [The interactive menu](docs/guide/menu.md) | [Интерактивное меню](docs/guide/ru/menu.md) | doing all of it from a numbered menu instead of flags |
+| [Hardening a node](docs/guide/hardening.md) | [Защита узла](docs/guide/ru/hardening.md) | the host firewall, the ban engine and the blocklist, and the way back |
 | [When something goes wrong](docs/guide/troubleshooting.md) | [Если что-то пошло не так](docs/guide/ru/troubleshooting.md) | the failures you are likely to meet, and what to do |
 
 The reference documents go deeper, and assume you are comfortable with TLS, ACME and systemd:
@@ -91,7 +92,9 @@ Deliberate design choices worth knowing before you deploy it:
 - **The management server never carries traffic.** If it goes down, established connections keep
   working; only membership changes stop.
 - **Only proxied traffic uses WARP.** SSH, the decoy site and certificate renewal always take the
-  node's own path. Termit never touches host routing or firewall rules.
+  node's own path. Termit never touches host routing, and its firewall is opt-in: one nftables table
+  exists only after somebody types `termit-uv firewall on`, and `off` puts the host back exactly as it
+  was.
 - **A failed check is not a failed node.** A probe that cannot produce a verdict leaves the node's
   state alone; only a genuine negative result moves it out of the mesh.
 - **No secrets in logs or metrics.** Logs carry node identifiers; `/metrics` is loopback-only and
@@ -99,7 +102,7 @@ Deliberate design choices worth knowing before you deploy it:
 
 ## Status
 
-`v0.1.0` is cut. M1–M4 are implemented and verified on a three-machine acceptance lab (Debian 13 in
+`v0.2.1` is cut. M1–M5 are implemented and verified on a three-machine acceptance lab (Debian 13 in
 unprivileged containers), and the release pipeline builds verified artifacts for linux/amd64 and
 linux/arm64. Releases are published as **pre-release** until the first production pass is recorded —
 see [what is not here yet](#what-is-not-here-yet).

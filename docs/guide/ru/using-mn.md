@@ -277,10 +277,15 @@ journalctl -u termit-mn -f
 | `termit-mn admin rotate` | заменить админ-токен, которым команда аутентифицировалась; `--token-out FILE` пишет его в файл |
 | `termit-mn status` | сервер, узлы, расписание |
 | `termit-mn backup`, `termit-mn restore` | снимок и восстановление |
+| `termit-mn firewall` | собственная таблица сервера: `status`, `on`, `off`, `confirm`, `refresh` |
+| `termit-mn bans`, `termit-mn guard` | движок банов на сервере |
 | `termit-mn version` | версия сборки и протокола |
 
 Админ-команды общаются с работающим сервером через unix-сокет (`/run/termit/mn/admin.sock`) и
 аутентифицируются `TERMIT_MN_ADMIN_TOKEN`, `TERMIT_MN_ADMIN_TOKEN_FILE`, `--token` или `--token-file`. Они никогда не открывают базу в обход сервера.
+
+Фаервол, баны и guard — та же необязательная механика, что и на узлах, только со своим именем таблицы
+и своими портами: ей посвящена страница [Защита узла](hardening.md).
 
 ## Правила, которые стоит соблюдать
 

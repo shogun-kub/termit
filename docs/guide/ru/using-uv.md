@@ -191,9 +191,13 @@ self-check:   ok 2026-11-10T11:17:04Z
 | `termit-uv renew-cert` | продлить сертификат сейчас | `--force` (перевыпустить, даже если не пора) |
 | `termit-uv renew-site` | перегенерировать сайт-приманку | `--template product\|portal`, `--seed`, `--dry-run` |
 | `termit-uv uninstall` | убрать то, что создал Termit | `--purge` (ещё конфигурация, состояние, сертификаты, пользователь), `--dry-run` |
+| `termit-uv firewall` | фаервол на хосте: `status`, `on`, `off`, `confirm`, `refresh` | `--ssh-from`, `--default-deny`, `--dry-run` |
+| `termit-uv bans` | что решил движок банов: `list`, `offenders`, `block IP`, `unban IP`, `unblock IP` | |
+| `termit-uv guard` | движок банов: `status`, `run --once` | |
 | `termit-uv version` | версия сборки и протокола | |
 
-Любая команда принимает `--config <path>` и `-v`/`--verbose`.
+Любая команда принимает `--config <path>` и `-v`/`--verbose`. Последние три — необязательная половина
+защиты, выключенная, пока не попросите: ей посвящена страница [Защита узла](hardening.md).
 
 ## Рецепты
 

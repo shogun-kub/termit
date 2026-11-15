@@ -3,6 +3,112 @@
 What each release changed, written for the people who run Termit. Newest first;
 `0.1.1` was prepared but never released — its work is part of `0.2.0`.
 
+## 0.3.0 — unreleased
+
+The release that makes Termit pleasant to install and able to defend its own host: a wizard that asks
+instead of eleven flags, an owner surface in Russian or English, client links that carry what was measured
+about frozen handshakes — and an opt-in firewall, ban engine and blocklist for both the node and the
+management server, which no install and no timer ever switches on by itself.
+
+### Added
+
+- **`termit-uv wizard`** — the first installation as questions instead of flags: language, domain, contact
+  address, masking site, egress, hardening, invite code. Each answer is kept in `wizard.yaml` beside the
+  configuration, so an interrupted run continues where it stopped and Enter accepts what is there
+  (`--fresh` forgets it). It is a front end, not a second installer: it runs the same `init` and `enroll`
+  with the same flags, so an operator who prefers flags can do exactly what it does. A node that is
+  installed but behind this build gets named as such instead of being asked for a domain it already has.
+- **A page with every link** in the decoy site's tree — every local device, every mesh peer and both
+  subscription forms, each with a copy button. The path is a capability like a subscription token:
+  generated once, kept in the state file, replaced by `--rotate`, and printed by `status`. Re-rendering
+  never creates a page that was never asked for, and with the server unreachable the page says so and
+  shows the local device.
+- **Russian and English.** `locale` in the configuration, `init --locale`, Russian by default; the wizard
+  asks first because everything after it is written in the language it picks. The console switches only
+  where the environment is UTF-8, because on a C or latin-1 terminal every Cyrillic byte is a mojibake;
+  the page of client links keeps the chosen language either way. `termit-mn menu` speaks the same two.
+- **Fragmentation, where a client can read it.** `subscription.fragment` and
+  `subscription.record_fragment` for the sing-box profile, and `subscription.happ_fragment` /
+  `happ_fragment` for the plain link list — the `fragment=` parameter Happ reads from the URI itself. A
+  fresh server writes `record_fragment: true` and `100-200,1-3,tlshello,6`, because on the paths this
+  project is deployed against the client's plain ClientHello is what pays: Happ's own ping against these
+  nodes went from 769 ms to 446–464 ms. Node links carry the node's own value, so a page of links no
+  longer mixes two answers to the same question.
+- **The host firewall** (`termit-uv firewall status|on|off|confirm|rollback|refresh|restore`). One
+  nftables table, rendered from a typed model, applied with `nft -f -` in one transaction: SSH and the
+  component's own ports, anything else inbound dropped (`--default-deny=false` to allow it), `--ssh-from`
+  to pin SSH to networks. Four golden rulesets, all accepted by nftables 1.1.3. Nothing else in Termit
+  applies or removes it: not `init`, not `sync`, not the agent, not a timer.
+- **The way back, twice.** `on` arms a five-minute rollback timer *before* it touches the kernel; without
+  `confirm` the table removes itself, so a mistake made over the connection it cut costs five minutes.
+  `off` restores the previous `nft list ruleset` byte for byte.
+- **A ban engine** (`termit-uv guard`, `termit-uv bans list|offenders|block|unban|unblock`). Two signals:
+  the kernel's own meter for scans (5 attempts in a minute, remembered for 15) and the web server's 4xx
+  answers (10 in five minutes). A scan earns an hour and a repeat inside the ladder window a day; failed
+  requests earn five minutes and double to an hour. The window is measured from the end of the previous
+  ban, because a window as long as the ban would make every repeat look like a first offence. When the
+  ladder runs out of rungs the source is listed as an offender instead of being blocked forever.
+- **A blocklist** (`security.firewall.blocklist_url`, `termit-uv firewall refresh`, a daily timer). One
+  URL, http(s) or `file`, a 4 MiB cap and `If-Modified-Since`; parsed, normalised, sorted and written
+  atomically, then loaded into the kernel's sets in one batch. A source that is broken, empty or
+  unreachable leaves the list in force alone — an empty blocklist unblocks everything and looks like
+  success.
+- **BitTorrent blocking** (`security.bittorrent_block`, off by default): the core sniffs the first bytes
+  of every connection and blackholes the handshakes, with `routeOnly: true` so the client's destination
+  survives. The spike proved the pinned core classifies the handshake.
+- **The same table on the management server** (`termit-mn firewall|bans|guard`), as `inet termit_mn` with
+  ports 22, 80 and 443 — 80 stays open for every node's renewal, not only its own. The commands are one
+  implementation shared by both binaries, so they cannot drift.
+- **`init --harden`** and the wizard's unchecked "harden this node" question: they write the configuration
+  and install the ban engine, and stop there. The table itself is still `firewall on`.
+- **The table comes back after a reboot.** `termit-uv-firewall.service` (and the server's copy) runs
+  before `network-pre.target` and restores what the record says was applied: a confirmed table comes back
+  with no timer, an apply still inside its five-minute window comes back with the timer armed, and a table
+  that was never confirmed — or that the operator took down — stays gone.
+
+### Changed
+
+- **`status` says what an operator needs between the steps**: a `bans:` line, and a `firewall:` line that
+  appears only when the configuration asks for a table or one was applied once, and reads both the record
+  and the kernel.
+- **`uninstall` removes the table** before it removes the binaries, because a default-deny table with no
+  command left to remove it is a host nobody can repair without a console.
+- **The design contract changed, deliberately.** `docs/DESCRIPTION.md` §11 invariant 1 used to forbid host
+  firewall changes outright; it now says the table exists only after `firewall on`, the guard and the
+  blocklist refresh only fill its sets, and the boot unit only puts back a confirmed apply.
+- **A new `security:` block** in both configurations, off by default, with the thresholds, the ladder, the
+  blocklist and `ssh_from`; `default_deny` is a pointer so an absent key can be told apart from an
+  explicit `false`.
+- **`termit-uv init --harden=false`** undoes the configuration the flag wrote.
+
+### Fixed
+
+- **`bans block` could cut a node off from its management server.** The never-ban set was built from
+  `ssh_from` alone, so the server's address could be blocked by hand even though the guard refuses to ban
+  it automatically. Both now use one set.
+- **A scan set the guard could not read.** With the agent's `RestrictAddressFamilies` copied over, every
+  cycle failed with `Unable to initialize Netlink socket` — nft talks to the kernel through netlink. The
+  guard, the blocklist and the boot units allow `AF_NETLINK`, and say why.
+- **`bans unban` used to be undone by the meter.** The kernel's scan set remembers for minutes, so the
+  next cycle re-banned the source; `unban` clears the scan element too.
+- **The menu's language no longer depends on the machine that runs the tests** — a UTF-8 console used to
+  turn a fixed-language expectation into a Russian menu and a red CI job.
+- **The disk-full drill tops up instead of assuming it can fill the disk**, or says why it cannot.
+
+### Compatibility
+
+- API version 1 and profile v1 are unchanged: a 0.2.1 server and a 0.3.0 node interoperate, and so do the
+  reverse. New configuration keys default to off, and a node that never runs `firewall on` behaves exactly
+  as it did.
+- **Run `termit-uv init` once after upgrading** (and `termit-mn init`, or install the server's units from
+  `deploy/systemd`): that is what writes `termit-uv-firewall.service`, the guard and blocklist units. It
+  converges — no credential, path or certificate is regenerated.
+- **On the management server, `firewall on` refuses until the rollback timer is installed.** Its units are
+  plain files in `deploy/systemd`, not rendered by the binary. An apply with no way back is worse than a
+  refused command.
+- **The boot unit appears for every node**, and with no record it does nothing: a node whose operator never
+  ran `firewall on` is unchanged after a reboot.
+
 ## 0.2.1 — 2026-11-14
 
 The release that lets a node live behind a proxy and tells an operator when the path, not the node, is

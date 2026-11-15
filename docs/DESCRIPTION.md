@@ -543,11 +543,13 @@ These are non-negotiable and must be enforced by tests:
 
 1. **No host-routing changes.** No `ip route`, no `ip rule`, no NAT, no iptables. The one exception is
    a single nftables table (`inet termit_uv` on a node, `inet termit_mn` on the server), and it exists
-   only because someone typed `termit-uv firewall on`: `init`, `sync`, the agent and every timer leave
-   the table itself alone, `firewall off` deletes it and puts the host back exactly as it was, and an
-   apply that is not confirmed within five minutes removes itself. Two things fill the table's sets and
-   never create, extend or remove the table: the guard (bans) and the blocklist refresh, which is why
-   both are harmless with no table applied.
+   only because someone typed `termit-uv firewall on`: `init`, `sync` and the agent leave the table
+   itself alone, `firewall off` deletes it and puts the host back exactly as it was, and an apply that
+   is not confirmed within five minutes removes itself. Two things fill the table's sets and never
+   create, extend or remove the table: the guard (bans) and the blocklist refresh, which is why both are
+   harmless with no table applied. One thing puts the table back: the boot unit, and only from the
+   record of an apply the operator confirmed (or one whose confirmation window is still open) — a table
+   nobody ever confirmed does not come back after a reboot.
 2. **No traffic loss on failing checks.** MN never blocks a node because of a prober/DNS/agent error;
    `unknown` is distinct from `failed` everywhere.
 3. **Config must validate before it is applied.** Every Xray config is written atomically, checked

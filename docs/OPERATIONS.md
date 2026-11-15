@@ -31,14 +31,16 @@ Conventions used below:
 | UV | `termit-uv-renew.timer` | — | the daily certificate check |
 | UV | `termit-uv-guard.service` | — | the ban engine, when `security.guard.enabled` (§18.4) |
 | UV | `termit-uv-blocklist.timer` | — | the network blocklist refresh, when a URL is configured (§18.5) |
+| UV | `termit-uv-firewall.service` | — | puts a confirmed table back at boot (§18.7) |
 | UV | `warp-cli` (Cloudflare's unit) | `127.0.0.1:40000` | the WARP SOCKS5 sidecar, when WARP is on |
-| MN | `termit-mn-guard.service`, `termit-mn-blocklist.timer` | — | the same two, from `deploy/systemd` (§18.6) |
+| MN | `termit-mn-guard.service`, `termit-mn-blocklist.timer`, `termit-mn-firewall.service` | — | the same three, from `deploy/systemd` (§18.6) |
 
-The firewall itself is not a unit on either side: it is a table someone applied with `firewall on`, and
-nothing re-applies it at boot (§15).
+The table itself is applied by `firewall on` and never by a timer; the boot unit only puts back what was
+applied and confirmed, and does nothing when there is no record (§18.7).
 
-Termit never touches host routing or the firewall, so every other service on the box (SSH included)
-keeps working through every code path. That is a contract, not a default.
+Termit never touches host routing, and the one firewall it can create is a single opt-in table that exists
+only after `termit-uv firewall on` — so every other service on the box (SSH included) keeps working through
+every code path. That is a contract, not a default.
 
 ### 1.1 Paths
 
@@ -1019,11 +1021,11 @@ A useful alert set, in the order that matters:
   should — an unattended proxy should not change itself.
 - **Blocking is cooperative.** A node that ignores the server's answer keeps serving; see
   [`THREAT_MODEL.md`](THREAT_MODEL.md) §6.
-- **The host firewall is not persisted across a reboot.** The table lives in the kernel, and nothing in
-  Termit loads it at boot: after a restart the host is open again until someone runs `termit-uv firewall
-  on`. The bans do survive — `bans.json` outlives the reboot and the guard refills the kernel from it —
-  but the table has to exist first. That is deliberate for now (a boot-time apply could lock a node out
-  while nobody is watching), and it is the open question in `docs/IMPLEMENTATION_PLAN.md` M5.2.
+- **The host firewall survives a reboot only once it was confirmed.** `termit-uv-firewall.service`
+  restores what the record says was applied and confirmed (§18.7); a table that was applied and never
+  confirmed does not come back, and neither does one an operator took down. The bans survive on their
+  own — `bans.json` outlives the reboot and the guard refills the kernel from it, as soon as the table
+  exists again.
 
 ## 16. Troubleshooting
 
@@ -1369,13 +1371,33 @@ The guard and the refresh run as root because nft does, and both are confined th
 The ban record and the blocklist live beside the database in `/var/lib/termit/mn/`, so the backup in §10
 carries them.
 
-### 18.7 What it does not do
+### 18.7 What survives a reboot
+
+The table is a kernel object, so a reboot empties it — but the record of what was applied does not.
+`termit-uv-firewall.service` runs at boot, before `network-pre.target`, and hands the decision to
+`termit-uv firewall restore`:
+
+| The record says | At the next boot |
+|---|---|
+| the apply was **confirmed** | the table comes back, ports, `ssh_from` and `default_deny` included, and no timer guards it — you already accepted exactly this table |
+| the apply was still **waiting** and its five minutes have not run out | the table comes back and the rollback timer is armed with what is left of the window |
+| the apply was **never confirmed** and the window is gone | nothing: nobody ever vouched for that table |
+| you ran `firewall off` | nothing: the record says you took it down |
+
+Nothing to restore is not an error — the unit exits 0 and the journal says so. `termit-uv firewall restore
+--dry-run` is the way to check what a reboot would do before you reboot.
+
+The same unit exists for the server as `deploy/systemd/termit-mn-firewall.service` (§18.6) and is enabled
+the same way.
+
+### 18.8 What it does not do
 
 - It does not rate-limit proxied traffic. Your node's clients are not throttled — that would add latency
   to the one thing the node exists for.
 - It does not touch routing, NAT or WARP. Proxied traffic still leaves through the loopback WARP
   sidecar, and direct traffic still goes direct.
-- It does not survive a reboot (see §15). Re-apply it after a restart, or leave it off if you cannot
-  reach the box afterwards. The blocklist file and the bans survive; the table does not.
+- It does not survive a **configuration loss**. If the record file goes and the configuration still asks
+  for a table, `termit-uv firewall on` is the only way back — the boot unit restores what was applied, it
+  does not invent one.
 - It does not hide the node from a targeted observer. It refuses scans and probes; see
   [`THREAT_MODEL.md`](THREAT_MODEL.md).
