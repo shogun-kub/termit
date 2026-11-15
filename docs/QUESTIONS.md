@@ -36,6 +36,20 @@ The remaining questions below are still open; the ones that matter before M1 are
 
 ---
 
+## 0a. Security hardening (2026-11-15, decisions for M5)
+
+| Question | Decision |
+|---|---|
+| Rate limiting of proxied traffic | **Not implemented.** The operator is responsible for not abusing their own node; a limiter adds latency to the one thing the node exists for and is a timing fingerprint. The single exception is an opt-in BitTorrent block, because a misconfigured client proxying torrents turns a VPS into a complaint magnet. |
+| Firewall model | **Blacklist first, then a service whitelist**: a public CIDR list is denied outright, and `22/tcp`, `80/tcp`, `443/tcp` are allowed for everyone else. The operator's existing ufw script is the base. |
+| Who turns the firewall on | **The operator, explicitly.** `init`, `sync` and the timers never touch host firewall state; `docs/DESCRIPTION.md` §11 says so and stays true. A one-command `off` puts the host back. |
+| "SSH always available for one specific IP" | **Not a default feature**: it assumes a static address. Either a documented manual step or an opt-in flag. |
+| fail2ban | **Ship defaults**: port scans (threshold to settle, 5 or 10) → 1 hour, then 24 hours on a repeat; failed requests to `443` for paths that do not exist → 5 minutes, escalating to 1 hour; repeating offenders are listed for permanent blocking. |
+| Backend for fail2ban and the firewall | **Open.** One backend for both: `fail2ban` + `ufw` (familiar, needs Python on a 1 GB box) or a native implementation sharing nftables sets with the firewall. Decide when M5 starts. |
+| Where the evidence comes from | **Open.** nginx access log for `443` 4xx; conntrack or nftables counters for scans that never reach nginx. |
+
+---
+
 ## 1. Naming, scope, licence
 
 **Q1.1** Project name. The working folder is `Termit`; the components are already named UV (user VPS

@@ -910,6 +910,95 @@ pass. The Docker Compose harness remains a developer convenience (QUESTIONS Q9.4
 
 ---
 
+## M5 — Security hardening (planned, not started)
+
+Recorded on 2026-11-15 from the operator's requirements; nothing here is implemented, and nothing here
+runs by itself. The milestone needs one deliberate decision before any code: `docs/DESCRIPTION.md` §11
+forbids the agent from touching host firewall state, and that invariant stays true — a firewall is a
+feature the **operator** turns on with a command, never something `init`, `sync` or the timer does
+behind their back. Amending §11 is part of this milestone, not a side effect of it.
+
+### 5.1 Firewall: blacklist first, then the services we need
+
+The operator already runs a script of this shape on their own boxes, and it is the right base:
+
+- A **blacklist** of CIDRs, refreshed from a public list
+  (`https://github.com/tread-lightly/CyberOK_Skipa_ips`, `lists/skipa_cidr.txt`), is denied outright.
+- **Whitelisted services** are then allowed for everyone who is not blacklisted: SSH, `80/tcp` and
+  `443/tcp`. Those are the only ports a Termit node needs — ACME and the redirect on 80, the node and
+  its decoy on 443, SSH for the operator.
+- Loopback and established connections stay allowed; nothing about the proxy's own traffic changes.
+- The existing script's "SSH always available for one specific IP" is **not** a general feature: it
+  assumes a static address, which most operators do not have. Keep it as a documented manual step, or
+  as an optional `--ssh-from` flag, not as a default.
+
+Constraints this milestone has to respect:
+
+- It changes host firewall state, so it is an explicit command with a confirmation, `--dry-run`, and a
+  way back (`off` puts the host where it was). It must never overlap with a running `init`/`sync`.
+- It must not break ACME (`:80`), the decoy (`:443`), SSH, or the daily sync. WARP stays in proxy mode;
+  no routing changes, no `ip rule`, no tunnel.
+- A blocklist refresh is a network fetch from a third party: it needs a timer, a pinned source, a
+  checksum or at least a size sanity check, and the ability to run without it if the list is
+  unreachable (last known good list stays in force).
+
+### 5.2 Rate limiting: deliberately not implemented
+
+- Throttling proxied traffic is the operator's responsibility: the node is not a public service, the
+  credentials are per pair, and a limiter would add latency to the one thing the node exists for, plus
+  its own fingerprint in timing.
+- One opt-in exception, because it catches an accident rather than abuse: **BitTorrent blocking**.
+  A client that proxies a torrent by mistake turns a VPS into a complaint magnet, so a routing rule
+  that drops bittorrent-shaped traffic should exist — off by default, on with a flag, and documented
+  as "your client should not do this at all".
+
+### 5.3 fail2ban, or the same job without Python
+
+Defaults the operator asked for:
+
+| Signal | Threshold (to settle) | First ban | Repeat |
+|---|---|---|---|
+| Port scanning — many failed connections to closed ports | 5 or 10 within a short window | 1 hour | 24 hours on the next attempt |
+| Failed requests to `443` for paths that do not exist | a handful within minutes | 5 minutes | escalating up to 1 hour |
+| Repeating offenders | every N bans, or a ban ladder that reaches the top | — | listed for permanent blocking |
+
+- Repeats are **logged and reviewable**, with a command to promote one to a permanent block — a
+  persisted list the operator can read, edit and clear, not a rule buried in a jail.local.
+- The signal for "failed 443 request" already exists: the node answers a wrong path with the decoy's
+  own `404`, and Xray's secret path answers `400` for bad credentials, which nginx turns into that
+  same `404`. So both are visible in the nginx access log without new instrumentation.
+- Thresholds must tolerate a real client: a phone that reconnects, a router that re-syncs. A single
+  failure cannot ban anybody, and the operator needs a one-command unban.
+
+Open decisions before implementation:
+
+1. **fail2ban or our own.** Debian 13 ships `fail2ban` (Python) and it is well understood, but the node
+   is a 1 GB box and we already run one Go binary that could share nftables sets with the firewall.
+   A native implementation is less code on the host and one fewer package; fail2ban is more familiar to
+   operators and does log parsing better out of the box. Decide with the firewall choice (ufw vs
+   nftables directly) — they should use one backend.
+2. **Where the evidence comes from**: nginx access log for `443` 4xx, kernel conntrack or nginx error
+   log for scans. A scan that never completes a handshake leaves nothing in nginx; it needs conntrack
+   or nftables counters, which is one more reason to own the nftables backend.
+3. **Never-ban set**: the MN, the prober, private ranges, the operator's own current session.
+4. **Persistence and retention**: bans survive restart? How long are the repeat-offender records kept?
+5. **IPv6**: same rules, separately, because a single-family implementation silently opens the other.
+
+### 5.4 Deliverables (sketch)
+
+- `termit-uv firewall` — `status`, `on`, `off`, `refresh`; `--dry-run`; refuses to run while an install
+  is in flight; writes nothing outside its own nftables table.
+- `termit-uv bans` — `list`, `unban <ip>`, `block <ip>`, `unblock <ip>`; the permanent list lives under
+  `/var/lib/termit/uv/`.
+- A timer for the blocklist refresh, in the same shape as the existing renew timer.
+- Config under `security:` with everything off by default: `firewall.enabled`, `firewall.blocklist_url`,
+  `firewall.ssh_from`, `fail2ban.enabled`, thresholds, `bittorrent_block`.
+- Docs: `docs/OPERATIONS.md` gains a section with the exact rules, the way back, and what a false
+  positive looks like; `docs/DESCRIPTION.md` §11 gets the amended invariant; the lab gets a scenario
+  that turns it on, scans the node, and checks the ban — and one that proves the proxy still works
+  through it.
+---
+
 ## 2. Cross-cutting workstreams
 
 These are not separate milestones; they must be updated in the milestone that touches them.
