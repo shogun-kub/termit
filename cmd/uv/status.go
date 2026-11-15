@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shogun-kub/termit/internal/firewall"
 	"github.com/shogun-kub/termit/internal/uv/config"
 	"github.com/shogun-kub/termit/internal/uv/state"
 	"github.com/shogun-kub/termit/internal/uv/warp"
@@ -265,6 +266,11 @@ the last install run. Secrets are shown as sha256 prefixes only.`)
 			state = "failed (" + out.SelfCheck.ErrorClass + ")"
 		}
 		fmt.Fprintf(a.stdout, "self-check:   %s %s\n", state, out.SelfCheck.At.UTC().Format(time.RFC3339))
+	}
+	if bans, err := firewall.LoadBans(cfg.Paths.BansPath()); err == nil {
+		// The guard's record, not the kernel's: it is what survives a reboot, and the guard refills the
+		// kernel from it.
+		fmt.Fprintf(a.stdout, "bans:         %s\n", describeBans(bans, a.now()))
 	}
 	if last := journal.Last(); last != nil {
 		fmt.Fprintf(a.stdout, "last run:     %s, %s\n", last.Result, last.StartedAt.Format(time.RFC3339))

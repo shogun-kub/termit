@@ -167,6 +167,10 @@ func (a *application) run(args []string) int {
 		return a.runWarp(rest)
 	case "firewall":
 		return a.runFirewall(rest)
+	case "bans":
+		return a.runBans(rest)
+	case "guard":
+		return a.runGuard(rest)
 	case "menu":
 		// `menu --config <path>` inspects and acts on that node, like every other command.
 		return a.runMenu(rest)
@@ -201,6 +205,8 @@ Commands:
   migrate      move this node to a new domain (--relocate)
   warp         show the egress, or change its mode (all, selected, off)
   firewall     the host firewall: status, on, off, confirm — off until you say otherwise
+  bans         what the guard banned, and your own permanent blocks
+  guard        the ban engine: status, or run it in the foreground
   uninstall    remove Termit from this node
   version      print build and protocol version
   menu         the interactive menu (what the bare command does on a terminal); --config given

@@ -53,13 +53,24 @@ func (s *unitsStep) unitFiles() (map[string][]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return map[string][]byte{
+	files := map[string][]byte{
 		filepath.Join(s.e.cfg.Paths.UnitDir, service.XrayUnitName):   xrayUnit,
 		s.e.cfg.Paths.NginxDropIn:                                    dropIn,
 		filepath.Join(s.e.cfg.Paths.UnitDir, service.RenewUnitName):  renewUnit,
 		filepath.Join(s.e.cfg.Paths.UnitDir, service.RenewTimerName): renewTimer,
 		filepath.Join(s.e.cfg.Paths.UnitDir, service.AgentUnitName):  agentUnit,
-	}, nil
+	}
+	// The guard is installed only when the operator asked for it, and it needs read access to the web
+	// server's log — the 4xx signal is the whole point of it.
+	if s.e.cfg.Security.Guard.Enabled {
+		readable := []string{s.e.cfg.Paths.ConfigDir, filepath.Dir(s.e.cfg.Paths.AccessLog)}
+		guardUnit, err := service.Guard(binary, s.e.configPath, s.e.cfg.Paths.StateDir, readable...)
+		if err != nil {
+			return nil, err
+		}
+		files[filepath.Join(s.e.cfg.Paths.UnitDir, service.GuardUnitName)] = guardUnit
+	}
+	return files, nil
 }
 
 func (s *unitsStep) Check(context.Context) (CheckResult, error) {

@@ -70,6 +70,22 @@ const (
 	// DefaultScanRemember is how long the kernel remembers a scanning source for the guard to read.
 	// It is longer than the window so a burst is not forgotten before the guard's next pass.
 	DefaultScanRemember = 15 * time.Minute
+
+	// DefaultScanBan is the first ban a scan earns, and DefaultScanRepeat what a scan inside the
+	// ladder window earns. The plan's one hour and twenty-four hours.
+	DefaultScanBan    = time.Hour
+	DefaultScanRepeat = 24 * time.Hour
+
+	// DefaultLadderWindow is how long a repeat still counts as one.
+	DefaultLadderWindow = 24 * time.Hour
+
+	// The failed-request ladder: ten 4xx answers in five minutes earn five minutes, doubling to an
+	// hour. A wrong key answers 404 by design, so this catches a client that is being tried, not one
+	// that mistyped its URL once.
+	DefaultPath404Attempts = 10
+	DefaultPath404Window   = 5 * time.Minute
+	DefaultPath404Ban      = 5 * time.Minute
+	DefaultPath404Max      = time.Hour
 )
 
 var (
@@ -490,6 +506,9 @@ func (p Paths) JournalPath() string { return path.Join(p.StateDir, "install-jour
 // FirewallPath is where the last `firewall on` records what it applied, so `status`, `confirm` and
 // the rollback timer agree without asking systemd.
 func (p Paths) FirewallPath() string { return path.Join(p.StateDir, "firewall.json") }
+
+// BansPath is where the guard keeps its decisions; the kernel's sets are rebuilt from it.
+func (p Paths) BansPath() string { return path.Join(p.StateDir, "bans.json") }
 
 // XrayBinary is the pinned core's installed location.
 func (p Paths) XrayBinary() string { return path.Join(p.BinDir, "xray") }

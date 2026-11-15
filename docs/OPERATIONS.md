@@ -981,8 +981,9 @@ A useful alert set, in the order that matters:
   [`THREAT_MODEL.md`](THREAT_MODEL.md) §6.
 - **The host firewall is not persisted across a reboot.** The table lives in the kernel, and nothing in
   Termit loads it at boot: after a restart the host is open again until someone runs `termit-uv firewall
-  on`. That is deliberate for now (a boot-time apply could lock a node out while nobody is watching),
-  and it is the open question in `docs/IMPLEMENTATION_PLAN.md` M5.2.
+  on`. The bans do survive — `bans.json` outlives the reboot and the guard refills the kernel from it —
+  but the table has to exist first. That is deliberate for now (a boot-time apply could lock a node out
+  while nobody is watching), and it is the open question in `docs/IMPLEMENTATION_PLAN.md` M5.2.
 
 ## 16. Troubleshooting
 
@@ -1212,7 +1213,44 @@ termit-uv firewall off        # removes the table and the timer; the host is as 
 where it is a no-op. On a host you have locked yourself out of, wait out the five minutes: the timer
 runs locally, over systemd, and does not need SSH.
 
-### 18.4 What it does not do
+### 18.4 The ban engine
+
+With `security.guard.enabled: true`, `init` installs and starts `termit-uv-guard.service`. It watches two
+signals and does one thing with them:
+
+| Signal | Evidence | First ban | Repeat |
+|---|---|---|---|
+| Port scan | the kernel's scan set: attempts to ports the host does not serve, N per window | 1 hour | 24 hours |
+| Failed requests | the web server's log: 4xx answers from one source, counted in a window | 5 minutes | doubling to 1 hour |
+| You | `termit-uv bans block <ip>` | permanent | until `bans unblock` |
+
+A repeat only escalates inside `security.guard.ladder_window`, measured **from the end of the previous
+ban**: coming back a day after being let in earns the long ban, coming back a week later starts over.
+When the ladder has nothing harder to offer, the source is marked an *offender* — nothing automatic
+blocks it forever, and `termit-uv bans offenders` is where you decide.
+
+The guard never applies or removes the table. It adds and removes elements inside it, which is why it is
+safe to leave running: with no table applied it reads nothing and does nothing.
+
+```bash
+termit-uv guard status              # is it on, and what has it decided
+termit-uv bans list                 # what is banned now, and why
+termit-uv bans offenders            # sources the ladder ran out of rungs for
+termit-uv bans block 203.0.113.7    # permanent, my decision
+termit-uv bans unban 203.0.113.7    # lift it now; the ladder remembers the offence
+termit-uv bans unblock 203.0.113.7  # lift a permanent block of mine
+```
+
+Decisions live in `/var/lib/termit/uv/bans.json` and survive a reboot; the kernel's sets do not, and the
+guard refills them from the file on its next pass. `unban` lifts a ban but keeps the offence on record,
+so the source's next offence earns the longer ban — it is not a way to forget what happened.
+
+**What is never banned**, whichever signal fires: loopback, the private and link-local ranges, the
+management server (resolved from `mn.url`, cached for ten minutes) and your own `ssh_from` networks.
+`bans block` refuses them too: a ban on those cuts you off, not an attacker. If you really mean to block
+an address in one of those ranges, do it with `nft` directly and know what you are doing.
+
+### 18.5 What it does not do
 
 - It does not rate-limit proxied traffic. Your node's clients are not throttled — that would add latency
   to the one thing the node exists for.

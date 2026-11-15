@@ -35,8 +35,11 @@ func (f Firewall) DenyOthers() bool { return f.DefaultDeny == nil || *f.DefaultD
 type Guard struct {
 	// Enabled turns the detector on with it: the table's scan meters exist so the guard has
 	// something to read, and they are rendered only when the guard will look at them.
-	Enabled bool `yaml:"enabled"`
-	Scan    Scan `yaml:"scan"`
+	Enabled bool    `yaml:"enabled"`
+	Scan    Scan    `yaml:"scan"`
+	Path404 Path404 `yaml:"path404"`
+	// LadderWindow is how long a repeat still counts as one: past it, a source starts the ladder over.
+	LadderWindow firewall.Duration `yaml:"ladder_window"`
 }
 
 // Scan is the kernel detector: how many attempts to a port the host does not serve make a scan, and
@@ -47,6 +50,18 @@ type Scan struct {
 	// rate as N per one unit, so a ten-minute window has no spelling.
 	Window   firewall.Duration `yaml:"window"`
 	Remember firewall.Duration `yaml:"remember"`
+	// Ban is the first ban a scan earns; Repeat what a scan inside the ladder window earns.
+	Ban    firewall.Duration `yaml:"ban"`
+	Repeat firewall.Duration `yaml:"repeat"`
+}
+
+// Path404 is the failed-request detector: how many 4xx answers from one source inside a window make a
+// ban, and how far the ladder doubles.
+type Path404 struct {
+	Attempts int               `yaml:"attempts"`
+	Window   firewall.Duration `yaml:"window"`
+	Ban      firewall.Duration `yaml:"ban"`
+	Max      firewall.Duration `yaml:"max"`
 }
 
 // applyDefaults fills the security block. An existing configuration that predates it gets the same
@@ -65,6 +80,27 @@ func (s *Security) applyDefaults() {
 	if s.Guard.Scan.Remember == 0 {
 		s.Guard.Scan.Remember = firewall.Duration(DefaultScanRemember)
 	}
+	if s.Guard.Scan.Ban == 0 {
+		s.Guard.Scan.Ban = firewall.Duration(DefaultScanBan)
+	}
+	if s.Guard.Scan.Repeat == 0 {
+		s.Guard.Scan.Repeat = firewall.Duration(DefaultScanRepeat)
+	}
+	if s.Guard.Path404.Attempts == 0 {
+		s.Guard.Path404.Attempts = DefaultPath404Attempts
+	}
+	if s.Guard.Path404.Window == 0 {
+		s.Guard.Path404.Window = firewall.Duration(DefaultPath404Window)
+	}
+	if s.Guard.Path404.Ban == 0 {
+		s.Guard.Path404.Ban = firewall.Duration(DefaultPath404Ban)
+	}
+	if s.Guard.Path404.Max == 0 {
+		s.Guard.Path404.Max = firewall.Duration(DefaultPath404Max)
+	}
+	if s.Guard.LadderWindow == 0 {
+		s.Guard.LadderWindow = firewall.Duration(DefaultLadderWindow)
+	}
 }
 
 // validate reports every problem in the block.
@@ -78,8 +114,39 @@ func (s *Security) validate() []error {
 	if err := s.scan().Validate(); err != nil {
 		problems = append(problems, fmt.Errorf("security.guard.scan: %w", err))
 	}
+	if err := s.ladderDirect().Validate(); err != nil {
+		problems = append(problems, fmt.Errorf("security.guard: %w", err))
+	}
+	if s.Guard.Path404.Attempts < 2 {
+		problems = append(problems, fmt.Errorf("security.guard.path404.attempts must be at least 2, got %d",
+			s.Guard.Path404.Attempts))
+	}
+	if s.Guard.Path404.Window.Std() >= s.Guard.LadderWindow.Std() {
+		problems = append(problems, fmt.Errorf("security.guard.path404.window (%s) must be shorter than "+
+			"security.guard.ladder_window (%s)", s.Guard.Path404.Window, s.Guard.LadderWindow))
+	}
 	return problems
 }
+
+// Ladder is the ban policy the guard applies, assembled from this block.
+func (s *Security) Ladder() firewall.Ladder {
+	return firewall.Ladder{
+		Window: s.Guard.LadderWindow.Std(),
+		Scan: firewall.Escalation{
+			First:  s.Guard.Scan.Ban.Std(),
+			Repeat: s.Guard.Scan.Repeat.Std(),
+		},
+		Path404: firewall.Escalation{
+			First:  s.Guard.Path404.Ban.Std(),
+			Repeat: s.Guard.Path404.Max.Std(),
+			Double: true,
+		},
+	}
+}
+
+// ladderDirect is the ladder as written, before defaults have to exist: validation runs after
+// applyDefaults, so this is just Ladder under a name that says the call does not render anything.
+func (s *Security) ladderDirect() firewall.Ladder { return s.Ladder() }
 
 // scan is the detector the table carries.
 func (s *Security) scan() firewall.Scan {

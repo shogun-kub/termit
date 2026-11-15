@@ -202,3 +202,68 @@ func TestSecurityRoundTrip(t *testing.T) {
 		t.Errorf("remember came back as %s", back.Security.Guard.Scan.Remember)
 	}
 }
+
+// TestSecurityLadder pins the two ladders the guard applies and the constraints the loader enforces.
+func TestSecurityLadder(t *testing.T) {
+	t.Parallel()
+	cfg, err := config.Parse(strings.NewReader(minimal))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	ladder := cfg.Security.Ladder()
+	if ladder.Window != 24*time.Hour {
+		t.Errorf("window = %s, want 24h", ladder.Window)
+	}
+	if ladder.Scan.First != time.Hour || ladder.Scan.Repeat != 24*time.Hour {
+		t.Errorf("scan ladder = %+v", ladder.Scan)
+	}
+	if ladder.Path404.First != 5*time.Minute || ladder.Path404.Repeat != time.Hour || !ladder.Path404.Double {
+		t.Errorf("path404 ladder = %+v", ladder.Path404)
+	}
+	if err := ladder.Validate(); err != nil {
+		t.Errorf("the default ladder is refused: %v", err)
+	}
+
+	// The keys are read, not just defaulted.
+	document := minimal + `security:
+  guard:
+    enabled: true
+    ladder_window: 12h
+    scan:
+      ban: 30m
+      repeat: 12h
+    path404:
+      attempts: 3
+      window: 2m
+      ban: 2m
+      max: 20m
+`
+	edited, err := config.Parse(strings.NewReader(document))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	ladder = edited.Security.Ladder()
+	if ladder.Window != 12*time.Hour || ladder.Scan.First != 30*time.Minute ||
+		ladder.Path404.Repeat != 20*time.Minute {
+		t.Errorf("ladder = %+v", ladder)
+	}
+}
+
+// TestSecurityLadderRejectsAnImpossibleOrder: a repeat shorter than the first offence, or a detector
+// window longer than the ladder's memory, would make the ladder mean nothing.
+func TestSecurityLadderRejectsAnImpossibleOrder(t *testing.T) {
+	t.Parallel()
+	cases := map[string]string{
+		"repeat shorter": minimal + "security:\n  guard:\n    scan:\n      ban: 1h\n      repeat: 5m\n",
+		"no window":      minimal + "security:\n  guard:\n    path404:\n      window: 30h\n",
+		"zero attempts":  minimal + "security:\n  guard:\n    path404:\n      attempts: 1\n",
+	}
+	for name, document := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if _, err := config.Parse(strings.NewReader(document)); err == nil {
+				t.Error("the configuration was accepted")
+			}
+		})
+	}
+}

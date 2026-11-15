@@ -74,6 +74,22 @@ func (s *startStep) Run(ctx context.Context) error {
 	if !s.e.serviceActive(ctx, service.AgentUnitName) {
 		return fmt.Errorf("%s did not stay running", service.AgentUnitName)
 	}
+
+	// The guard exists only when the operator asked for it. Restarting it is what makes a new binary or
+	// a changed ladder take effect, exactly like the agent.
+	if s.e.cfg.Security.Guard.Enabled {
+		_, _ = s.e.exec.Run(ctx, Cmd{Name: "systemctl", Args: []string{"reset-failed", service.GuardUnitName}})
+		if _, err := s.e.exec.Run(ctx, Cmd{Name: "systemctl", Args: []string{"enable", "--now", service.GuardUnitName}}); err != nil {
+			return fmt.Errorf("enable %s: %w", service.GuardUnitName, err)
+		}
+		if _, err := s.e.exec.Run(ctx, Cmd{Name: "systemctl", Args: []string{"restart", service.GuardUnitName}}); err != nil {
+			return fmt.Errorf("restart %s: %w", service.GuardUnitName, err)
+		}
+		if !s.e.serviceActive(ctx, service.GuardUnitName) {
+			return fmt.Errorf("%s did not stay running", service.GuardUnitName)
+		}
+	}
+
 	s.e.log.Info("services are up", "units", service.XrayUnitName+", "+nginxUnit+", "+service.AgentUnitName)
 	return nil
 }

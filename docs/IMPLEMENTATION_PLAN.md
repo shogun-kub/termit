@@ -912,8 +912,8 @@ pass. The Docker Compose harness remains a developer convenience (QUESTIONS Q9.4
 
 ## M5 — Security hardening (planned; decisions taken 2026-11-15)
 
-Nothing here is implemented yet except M5.0 (§5.0) and M5.1 (§5.9). The decisions below were made by
-the operator on 2026-11-15; the milestones in §5.9 are the implementation plan, and each one ends in
+Nothing here is implemented yet except M5.0 (§5.0), M5.1 and M5.2 (§5.9). The decisions below were made
+by the operator on 2026-11-15; the milestones in §5.9 are the implementation plan, and each one ends in
 something the lab can check.
 
 ### 5.1 Decisions
@@ -1079,13 +1079,18 @@ Two details are deliberately not left to the implementation:
 | Failed `443` request | nginx access log: 4xx on any path, counted per source in a sliding window | 5 minutes | doubling: 5 → 10 → 20 → 40 → 60 minutes cap |
 | Operator | `termit-uv bans block <ip>` | permanent | stays until `unblock` |
 
-- The guard holds the counters in memory, writes every decision to `bans.json` (`ip`, `signal`, `until`,
-  `count`), and re-applies unexpired bans when the table is rebuilt. A reboot does not clean a slate.
-- Repeated offenders are never blocked automatically: they appear in `termit-uv bans offenders` with
-  the count and the last signal, and the operator decides.
+- Every decision goes to `bans.json` (`ip`, `signal`, `until`, `count`, the last ban's length) and the
+  guard re-applies the unexpired ones whenever the kernel lost them — a reboot does not clean a slate.
+  The ladder's memory therefore lives in the file, not in a process: restarting the guard changes nothing.
+  Only the 4xx window is in memory, so a restart asks for another window of failures, which is the safe
+  direction.
+- Repeated offenders are never blocked automatically: they appear in `termit-uv bans offenders` with the
+  count and the last signal, and the operator decides. "Repeated" is not a hard-coded third time: a
+  source is an offender when the ladder hands it no longer ban than it served last time, so the answer
+  follows the configured ladder.
 - **Never ban**: loopback, RFC1918/ULA sources, the management server's address (taken from `mn.url`),
   and the operator's own `ssh_from` list. A ban on those would be self-inflicted, and the guard checks
-  before it writes anything.
+  before it writes anything — `bans block` refuses them too.
 
 ### 5.5 Commands
 
@@ -1128,20 +1133,35 @@ security:                       # everything here is off unless the operator say
       attempts: 5
       window: 1m                # nftables can only write "N per <unit>"; see below
       remember: 15m             # how long the kernel remembers a scanning source
+      ban: 1h                   # the first rung
+      repeat: 24h               # what a scan inside the ladder window earns
+    path404:
+      attempts: 10              # 4xx answers from one source inside the window
+      window: 5m
+      ban: 5m                   # doubling from here…
+      max: 1h                   # …to here
+    ladder_window: 24h          # how long a repeat still counts as one
 ```
 
-Still to come, with the milestone that reads them: `blocklist_url`/`blocklist_refresh` (M5.3), the
-ladder (`scan.ban`, `scan.repeat`, `path404`, `ladder_window` — M5.2), `bittorrent_block` (M5.4).
+Still to come, with the milestone that reads them: `blocklist_url`/`blocklist_refresh` (M5.3) and
+`bittorrent_block` (M5.4).
 
-Two constraints the loader enforces, both learned from the spike (§5.0):
+Three constraints the loader enforces:
 
 - **`scan.window` is exactly `1s`, `1m`, `1h`, `1d` or `1w`.** nftables writes a rate as
   `N/<unit>` and nothing else, so the plan's original `5 attempts per 10m` has no spelling; a
   ten-minute window is refused at load rather than silently rendered as something else. The default is
   five attempts a minute, which is stricter than the original intent and still far above a single probe.
 - **Thresholds are at least 2** and every duration is positive, so a single failure can never ban.
-  CIDRs are parsed, normalised to their network and sorted. `termit-mn` gets the same block with its own
-  ports (`22`, `80`, `443`, plus `listen`).
+  `path404.window` must be shorter than `ladder_window`, or a 4xx run would always look like a first
+  offence.
+- **The ladder's memory is measured from the end of the previous ban, not from its start.** With a
+  window as long as the repeat ban, the second reading would make a repeat impossible: the source is
+  let back in exactly when the memory expires, and a scanner that never stops would never be recognised
+  as one. `bans offenders` is what the third offence produces, not a hard-coded "third time".
+
+CIDRs in `ssh_from` are parsed, normalised to their network and sorted. `termit-mn` gets the same block
+with its own ports (`22`, `80`, `443`, plus `listen`).
 
 ### 5.7 BitTorrent
 
@@ -1195,18 +1215,38 @@ The lockout drill was run by hand on `termit-uv2.lan`, because it costs five min
 allowed path, and after 310 s the timer fired on its own, removed the table and SSH came back — `status`
 then said `off since 14s ago` and the journal said why.
 
-**M5.2 — Guard and bans (2–3 d).** The guard loop, the ladder with an injectable clock, `bans.json`,
-`bans list|unban|block|unblock|offenders`, the never-ban set, log-rotation handling (inode changes).
-Tests: ladder arithmetic and the cap, a repeated scan reaching 24 h, a reboot rebuilding the sets from
-the file, an element expiring on its own. Lab: scan `termit-uv2` from `termit-mn` with `nc`, watch the
-ban appear, check that uv1 still works from its own address, unban, and repeat the scan to see 24 h.
+**M5.2 — Guard and bans (done).** `internal/firewall` gained the ban record, the ladder as a pure
+function, the never-ban set and the set-element operations; `internal/guard` is the loop — the kernel's
+scan set, the web server's log with a rotation-aware tail, the 4xx window, and a reconcile pass that
+makes the kernel match `bans.json`. `termit-uv bans list|offenders|block|unban|unblock` and
+`termit-uv guard status|run [--once]` exist; `init` installs and starts the guard unit when
+`security.guard.enabled` is true, and uninstall stops it.
 
-**Open question for M5.2:** the table lives in the kernel only, so **a reboot removes it** and nothing
-re-applies it — `OPERATIONS.md` §15 says so plainly. The choice is between a `termit-uv-firewall.service`
-oneshot that re-applies the recorded table at boot (with the rollback timer armed in the same breath, so
-the safety net still exists) and leaving it off after a reboot until an operator runs it again. The
-first is what an operator expects from a firewall; the second cannot lock a box out while nobody is
-watching. Decide before M5.7 writes the guide, because the answer is what the guide has to say.
+Three things the lab changed:
+
+- **The unit needed `AF_NETLINK`.** With the agent's `RestrictAddressFamilies` copied over, every cycle
+  failed with `Unable to initialize Netlink socket: Address family not supported by protocol` — nft
+  talks to the kernel over netlink. The comment in `service/guard.go` says so, because it looks like a
+  line that could be tightened.
+- **`bans unban` clears the kernel's scan element too.** Otherwise the meter's own memory — minutes
+  long — re-banned the source on the next cycle and the operator's decision looked broken.
+- **The lab cannot produce a bannable scan.** Every address it has is RFC1918, so the never-ban rule
+  correctly refuses them; `TestLabGuard` therefore proves both halves separately: a real scan from the
+  server lands in the meter and is *not* banned, and a documentation-range address put into the scan
+  set the way the meter would is banned for an hour, lifted, and then banned for a day on the next
+  offence.
+
+Tests: the ladder arithmetic and both caps, the window measured from the released ban, the never-ban
+set, the log tail with rotation, the reconcile from the file after a "reboot", and the commands.
+
+**Open question, still open after M5.2:** the table lives in the kernel only, so **a reboot removes it**
+and nothing re-applies it — `OPERATIONS.md` §15 says so plainly. The bans survive (`bans.json`), and the
+guard refills the kernel from them as soon as a table exists again, but the table itself does not come
+back. The choice is between a `termit-uv-firewall.service` oneshot that re-applies the recorded table at
+boot (with the rollback timer armed in the same breath, so the safety net still exists) and leaving it
+off after a reboot until an operator runs it again. The first is what an operator expects from a
+firewall; the second cannot lock a box out while nobody is watching. Decide before M5.7 writes the
+guide, because the answer is what the guide has to say.
 
 **M5.3 — Blocklist refresh (half a day).** Fetch, validate, atomic replace, the timer, the "keep the
 last good list" path. Lab: a `file://` URL in the config as the source, a truncated file that must be

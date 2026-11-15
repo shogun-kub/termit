@@ -21,8 +21,21 @@ type nftHost struct {
 	counts string
 	cmds   []string
 	// stdin keeps what nft received, so a test can assert the ruleset itself.
-	stdin  []string
+	stdin []string
+	// writes records set operations, which the ban commands make, and sets mirrors them: the fake
+	// kernel is what a later `-j list set` answers from.
+	writes []string
+	sets   map[string][]string
 	failOn string
+}
+
+// elementValue reads the address out of `{ 203.0.113.7 timeout 600s }`.
+func elementValue(args []string) string {
+	value := strings.TrimSuffix(strings.TrimPrefix(args[len(args)-1], "{ "), " }")
+	if i := strings.Index(value, " timeout "); i >= 0 {
+		value = value[:i]
+	}
+	return value
 }
 
 func (h *nftHost) run(cmd install.Cmd) (install.Result, error) {
@@ -41,6 +54,31 @@ func (h *nftHost) run(cmd install.Cmd) (install.Result, error) {
 	case strings.Contains(args, "-j list table"):
 		h.stdin = append(h.stdin, cmd.Stdin)
 		return install.Result{Stdout: h.counts}, nil
+	case strings.Contains(args, "-j list set"):
+		set := cmd.Args[len(cmd.Args)-1]
+		payload, err := json.Marshal(map[string]any{"nftables": []any{
+			map[string]any{"set": map[string]any{"name": set, "elem": h.sets[set]}},
+		}})
+		if err != nil {
+			return install.Result{}, err
+		}
+		return install.Result{Stdout: string(payload)}, nil
+	case strings.Contains(args, "element"):
+		// add/delete element: recorded, and mirrored in the fake's sets so a later query sees it.
+		h.writes = append(h.writes, args)
+		set, value := cmd.Args[4], elementValue(cmd.Args)
+		if strings.HasPrefix(args, "add element") {
+			h.sets[set] = append(h.sets[set], value)
+		} else {
+			kept := h.sets[set][:0]
+			for _, existing := range h.sets[set] {
+				if existing != value {
+					kept = append(kept, existing)
+				}
+			}
+			h.sets[set] = kept
+		}
+		return install.Result{}, nil
 	case strings.HasSuffix(args, "-f -"):
 		h.stdin = append(h.stdin, cmd.Stdin)
 		// The ruleset is an apply and carries the chain; anything else is the destroy `off` sends.
@@ -87,7 +125,7 @@ func newFirewallFixture(t *testing.T, enabled, guard bool) *firewallFixture {
 	if err := cfg.Save(configPath); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
-	host := &nftHost{counts: `{"nftables": []}`}
+	host := &nftHost{counts: `{"nftables": []}`, sets: map[string][]string{}}
 	app, stdout, stderr := newTestApp(t)
 	app.exec = stubExecutor{handler: host.run}
 	// Root: these commands change the host's firewall, and a test that pretended to be a normal user
