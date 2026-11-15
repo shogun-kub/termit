@@ -25,10 +25,12 @@ Type=oneshot
 ExecStart=/usr/bin/termit-mn firewall restore --config /etc/termit/mn/config.yaml
 TimeoutStartSec=60s
 
-# Root for nft, nothing else. AF_NETLINK is required: nft talks to the kernel over it.
+# Root for nft, nothing else. AF_NETLINK is required: nft talks to the kernel over it. The unit directory
+# is writable because restoring an apply that was still waiting arms the rollback timer, and arming it
+# writes the timer's units; a read-only /etc/systemd/system failed that path at boot.
 NoNewPrivileges=yes
 ProtectSystem=strict
-ReadWritePaths=/var/lib/termit/mn
+ReadWritePaths=/var/lib/termit/mn /etc/systemd/system
 ProtectHome=yes
 PrivateTmp=yes
 ProtectKernelTunables=yes

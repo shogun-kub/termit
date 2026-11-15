@@ -117,4 +117,22 @@ func TestLabHarden(t *testing.T) {
 			t.Errorf("a table the operator removed came back:\n%s", out)
 		}
 	})
+
+	t.Run("an apply that was still waiting comes back with its timer", func(t *testing.T) {
+		// The other half of the record's decision, and the one that runs the unit's sandbox: restoring a
+		// pending apply arms the rollback timer, which writes the timer's units under /etc/systemd/system.
+		uv.MustRun(t, ctx, "termit-uv firewall on --config "+configPath)
+		uv.MustRun(t, ctx, "nft delete table inet "+firewall.NodeTable)
+		if out, err := uv.Run(ctx, "systemctl restart "+service.FirewallBootUnitName); err != nil {
+			t.Fatalf("the boot unit failed on a pending apply: %v\n%s", err, oneLine(out))
+		}
+		if out := uv.MustRun(t, ctx, "nft list tables"); !strings.Contains(out, firewall.NodeTable) {
+			t.Errorf("the pending table did not come back:\n%s", out)
+		}
+		// Five minutes of window are still running, so the way back has to be armed with them.
+		if out := uv.MustRun(t, ctx, "systemctl is-active "+service.FirewallRollbackTimerName+" || true"); strings.TrimSpace(out) != "active" {
+			t.Error("the boot unit restored a pending apply without arming the rollback timer")
+		}
+		uv.MustRun(t, ctx, "termit-uv firewall off --config "+configPath)
+	})
 }
