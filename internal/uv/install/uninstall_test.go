@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -193,5 +194,54 @@ func TestSafeToRemove(t *testing.T) {
 		if !safeToRemove(target) {
 			t.Errorf("safeToRemove(%q) = false, want true", target)
 		}
+	}
+}
+
+// TestUninstallRemovesTheFirewallTable: a default-deny table with no command left to remove it is a host
+// nobody can repair without a console, so it goes with the binaries.
+func TestUninstallRemovesTheFirewallTable(t *testing.T) {
+	t.Parallel()
+	cfg := testConfig(t)
+	sb := newSandbox()
+	ctx := context.Background()
+
+	installer := newTestInstaller(t, cfg, sb)
+	if _, err := installer.Run(ctx, RunOptions{Skip: []string{"preflight", "certificate"}}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	sb.table = true
+
+	// A dry run says it would go and leaves it alone.
+	report, err := Uninstall(ctx, UninstallOptions{
+		Config: cfg, Exec: sb.exec, Logger: discardLogger(),
+		Now: func() time.Time { return engineNow }, DryRun: true,
+	})
+	if err != nil {
+		t.Fatalf("Uninstall dry run: %v", err)
+	}
+	if !sb.table {
+		t.Error("the dry run removed the table")
+	}
+	found := false
+	for _, item := range report.Removed {
+		if strings.Contains(item, "termit_uv") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("the dry run did not mention the table: %v", report.Removed)
+	}
+
+	if _, err := Uninstall(ctx, UninstallOptions{
+		Config: cfg, Exec: sb.exec, Logger: discardLogger(),
+		Now: func() time.Time { return engineNow },
+	}); err != nil {
+		t.Fatalf("Uninstall: %v", err)
+	}
+	if sb.table {
+		t.Error("the table survived uninstall")
+	}
+	if _, err := os.Stat(cfg.Paths.FirewallPath()); !os.IsNotExist(err) {
+		t.Errorf("the applied record survived uninstall: %v", err)
 	}
 }

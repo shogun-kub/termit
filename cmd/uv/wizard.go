@@ -30,6 +30,7 @@ type wizardAnswers struct {
 	Template     string   `yaml:"decoy_template,omitempty"`
 	Warp         string   `yaml:"warp,omitempty"`
 	WarpSelected []string `yaml:"warp_selected,omitempty"`
+	Harden       bool     `yaml:"harden,omitempty"`
 	MNURL        string   `yaml:"mn,omitempty"`
 	Invite       string   `yaml:"invite,omitempty"`
 }
@@ -157,6 +158,15 @@ re-installs a working node.`)
 		return a.wizardSaveFailed(err)
 	}
 
+	harden, err := a.wizardAskHarden(ui, answers, cfg)
+	if err != nil {
+		return wizardInputEnded(ui, err)
+	}
+	answers.Harden = harden
+	if err := save(); err != nil {
+		return a.wizardSaveFailed(err)
+	}
+
 	mnURL, invite, err := a.wizardAskEnrollment(ui, answers, cfg)
 	if err != nil {
 		return wizardInputEnded(ui, err)
@@ -188,6 +198,9 @@ re-installs a working node.`)
 	}
 	if answers.MNURL != "" {
 		initArgs = append(initArgs, "--mn", answers.MNURL)
+	}
+	if answers.Harden {
+		initArgs = append(initArgs, "--harden")
 	}
 	switch answers.Warp {
 	case config.WarpOff:
@@ -555,4 +568,24 @@ func saveWizardAnswers(path string, answers wizardAnswers) error {
 	}
 	// 0600: the draft may hold an invite code, which is a credential until it is used.
 	return state.WriteFileAtomic(path, data, 0o600)
+}
+
+// wizardAskHarden asks whether the node should close itself. The default is no: an operator who does not
+// know what the table does must not end up behind one, and a node that refuses scans is a choice, not a
+// side effect of installing.
+//
+// A yes only writes the configuration. The table itself is applied by `termit-uv firewall on`, which arms
+// the rollback timer first — the wizard cannot promise the operator's SSH survives, and only that command
+// can undo a mistake in five minutes.
+func (a *application) wizardAskHarden(ui *termui.UI, answers wizardAnswers, cfg *config.Config) (bool, error) {
+	tr := a.translator()
+	ui.Blank()
+	ui.Say(tr.T(i18n.WizardHardenIntro))
+	ui.Hint(tr.T(i18n.WizardHardenHint))
+	def := answers.Harden || cfg.Security.Firewall.Enabled
+	answer, err := ui.Confirm(tr.T(i18n.WizardHarden), def)
+	if err != nil {
+		return false, err
+	}
+	return answer, nil
 }

@@ -29,6 +29,8 @@ type sandbox struct {
 	packages bool
 	aptFails bool
 	active   map[string]bool
+	// table is the node's firewall table, as the kernel would report it.
+	table bool
 }
 
 func newSandbox() *sandbox {
@@ -62,6 +64,8 @@ func newSandbox() *sandbox {
 			return s.systemctl(cmd)
 		case "nginx", "chown":
 			return okResult("")
+		case "nft":
+			return s.nft(cmd)
 		case "userdel":
 			s.user = false
 			return okResult("")
@@ -374,4 +378,25 @@ func TestEngineJournalRecordsRun(t *testing.T) {
 	if want := len(installer.Steps()) - skippedSteps; len(last.Steps) != want {
 		t.Errorf("journal recorded %d steps, want %d: %+v", len(last.Steps), want, last.Steps)
 	}
+}
+
+// nft answers the two questions the firewall code asks: is the table there, and destroy it.
+func (s *sandbox) nft(cmd Cmd) (Result, error) {
+	args := strings.Join(cmd.Args, " ")
+	switch {
+	case strings.Contains(args, "-j list tables"):
+		body := `{"nftables": [{"metainfo": {"version": "1.1.3"}}`
+		if s.table {
+			body += `, {"table": {"family": "inet", "name": "termit_uv"}}`
+		}
+		return okResult(body + "]}")
+	case strings.Contains(args, "-j list table"), strings.Contains(args, "-j list set"):
+		return okResult(`{"nftables": []}`)
+	case strings.HasSuffix(args, "-f -"):
+		if strings.Contains(cmd.Stdin, "destroy table") {
+			s.table = false
+		}
+		return okResult("")
+	}
+	return okResult("")
 }

@@ -350,7 +350,7 @@ termit-uv wizard
 
 Its first question is the language — `ru` or `en`, Russian by default — because the menu and the page
 of client links are written in it. Then it asks for the domain, the contact address, the masking site,
-the egress mode and the invite code,
+the egress mode, whether to harden the node (unchecked: see below) and the invite code,
 then runs the same `init` with the same flags. Each answer is kept in `wizard.yaml` beside the
 configuration, so an interrupted run continues where it stopped and Enter accepts what is already
 there (`--fresh` forgets them). On a node that is already installed it asks nothing: it runs the
@@ -390,7 +390,13 @@ termit-uv enroll --invite ABCD-EFGH-IJKL
 Useful flags: `--dry-run` (report, change nothing), `--only <steps>` / `--skip <steps>`,
 `--no-warp` (opt out of WARP), `--warp selected --warp-selected a.example,b.example`,
 `--xray-download-base` (a mirror, a `file://` URL or a local path), `--acme-ca` (a non-production
-directory, for a lab).
+directory, for a lab), `--harden` (turn on the host firewall and the ban engine in the configuration).
+
+`--harden` configures; it does not apply. It sets `security.firewall.enabled` and
+`security.guard.enabled`, which installs the guard's unit and makes `status` say what is left to do, and
+the table is still your `termit-uv firewall on` — the one command that undoes a mistake five minutes
+later (§18.2). The wizard asks the same question, unchecked, and passes the same flag; no install puts a
+table on a host while nobody is watching. To undo the configuration: `termit-uv init --harden=false`.
 
 Preflight is the place to read when something is wrong; it prints one line per check with a hint:
 
@@ -955,9 +961,11 @@ termit-uv uninstall               # units, vhost, core, generated files; keeps c
 termit-uv uninstall --purge       # also config, state, certificates and the service user
 ```
 
-What it does: disconnects the WARP tunnel, stops and disables the units, removes every path the
-install manifest recorded, restores the distribution's default nginx vhost, and reloads nginx so `:80`
-and `:443` are released. What it deliberately keeps: **packages** (nginx may serve other sites; remove
+What it does: removes the host firewall table if one is applied, disconnects the WARP tunnel, stops and
+disables the units, removes every path the install manifest recorded, restores the distribution's
+default nginx vhost, and reloads nginx so `:80` and `:443` are released. The table goes first, and on
+purpose: a default-deny table with no command left to remove it is a host nobody can repair without a
+console. What it deliberately keeps: **packages** (nginx may serve other sites; remove
 `cloudflare-warp` yourself if you want it gone), and — without `--purge` — the configuration and the
 state, so a reinstall keeps the same identity.
 

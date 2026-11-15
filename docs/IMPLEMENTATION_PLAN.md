@@ -912,7 +912,7 @@ pass. The Docker Compose harness remains a developer convenience (QUESTIONS Q9.4
 
 ## M5 — Security hardening (planned; decisions taken 2026-11-15)
 
-Nothing here is implemented yet except M5.0 (§5.0) and M5.1–M5.5 (§5.9). The decisions below were made
+Nothing here is implemented yet except M5.0 (§5.0) and M5.1–M5.6 (§5.9). The decisions below were made
 by the operator on 2026-11-15; the milestones in §5.9 are the implementation plan, and each one ends in
 something the lab can check.
 
@@ -1309,9 +1309,19 @@ still answers, a node syncs through :443 while the table is up, `check --all` pa
 block`/`unblock` work against the server's sets, `off` returns `nft list ruleset` to its previous
 digest, and the ban record survives the table.
 
-**M5.6 — Wiring (half a day).** `init --harden`, the wizard's unchecked "harden this node" question,
-`status` lines (`firewall: on, 3 bans`, `blocklist: 1234 CIDRs, refreshed 2h ago`), `uninstall`
-removing the table and the units, the `security:` block in both configs and the `--help` text.
+**M5.6 — Wiring (done).** `init --harden` sets `security.firewall.enabled` and `security.guard.enabled`
+and stops there: the table is still `firewall on`, so no install can put a default-deny table on a host
+while nobody is watching, and `init --harden=false` undoes it. The wizard asks the same question,
+unchecked, and passes the same flag (new keys in both languages). `status` gained a `firewall:` line that
+appears only when the operator has business with it — the configuration asks for a table, or one was
+applied once — and it reads both the record and the kernel: `off (the configuration asks for it: run
+`termit-uv firewall on`)` is what an operator sees between `init --harden` and `on`. `uninstall` removes
+the table before the binaries, because a default-deny table with no command left to remove it is a host
+nobody can repair without a console.
+
+Lab (`TestLabHarden`, 7.0 s): `init --harden` installs and starts the guard's unit and stops, `status`
+says what to run, `on` + `confirm` applies the table, a real `guard run --once` pass succeeds against it,
+and the cleanup leaves the node as it was found.
 
 **M5.7 — Docs and the §11 amendment (half a day).** `DESCRIPTION.md` §11 invariant 1 becomes: never
 touch routing; a firewall is only ever changed by the explicit `firewall` command, never by a timer,

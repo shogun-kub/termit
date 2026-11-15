@@ -38,6 +38,7 @@ credential is ever regenerated.`)
 	dryRun := flags.Bool("dry-run", false, "report what would change without touching the host")
 	only := flags.String("only", "", "run only these steps, comma separated")
 	skip := flags.String("skip", "", "skip these steps, comma separated")
+	harden := flags.Bool("harden", false, "configure the host firewall and the ban engine for this node (it does not apply the table)")
 	relocate := flags.Bool("relocate", false, "install a rebuilt node: reuse the agent key, mint a new identity, do not enroll")
 	agentKeyFile := flags.String("agent-key-file", "",
 		"0600 file holding the agent key of the node being rebuilt (required with --relocate)")
@@ -122,6 +123,13 @@ credential is ever regenerated.`)
 	}
 	if set["xray-download-base"] {
 		cfg.Xray.DownloadBase = *xrayBase
+	}
+	if set["harden"] {
+		// Only the configuration: the table is applied by `firewall on` and nothing else, because an
+		// install that silently turned on a default-deny table would be a lockout with no operator
+		// present to confirm it.
+		cfg.Security.Firewall.Enabled = *harden
+		cfg.Security.Guard.Enabled = *harden
 	}
 
 	if cfg.Domain == "" {
@@ -226,6 +234,10 @@ credential is ever regenerated.`)
 		fmt.Fprintln(a.stdout, "\nrelocated: a new identity is installed; the server still holds the old one.")
 		fmt.Fprintln(a.stdout, "next: termit-uv unblock                              (the node keeps its domain)")
 		fmt.Fprintln(a.stdout, "      termit-uv migrate --relocate                   (the node moved to a new domain)")
+	}
+	if set["harden"] && cfg.Security.Firewall.Enabled && !*dryRun {
+		fmt.Fprintln(a.stdout, "\nhardening: the configuration and the ban engine are in place; the table is not applied.")
+		fmt.Fprintln(a.stdout, "next: termit-uv firewall on        (it removes itself in five minutes unless you confirm)")
 	}
 	if len(pendingWork) > 0 {
 		fmt.Fprintf(a.stdout, "not yet installed by this build: %s\n", joinWords(pendingWork))

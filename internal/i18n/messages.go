@@ -115,6 +115,9 @@ const (
 	WizardInstallFailed  Key = "wizard.install_failed"
 	WizardEnrollFailed   Key = "wizard.enroll_failed"
 	WizardDone           Key = "wizard.done"
+	WizardHardenIntro    Key = "wizard.harden_intro"
+	WizardHarden         Key = "wizard.harden"
+	WizardHardenHint     Key = "wizard.harden_hint"
 	WizardDoneDetail     Key = "wizard.done_detail"
 	WizardInstalled      Key = "wizard.installed"
 	WizardOutdated       Key = "wizard.outdated"
@@ -254,6 +257,9 @@ var messagesUVRU = map[Key]string{
 	WizardInstallFailed:  "установка не завершилась; ответы сохранены для следующего запуска",
 	WizardEnrollFailed:   "узел установлен, но в mesh пока не вошёл: исправьте приглашение и запустите `termit-uv enroll`",
 	WizardDone:           "Готово",
+	WizardHardenIntro:    "Узел может закрыть себя: таблица nftables с SSH, портами 80 и 443 и остальным входящим трафиком закрытым, плюс движок банов. Она не включается сама — вы включите её одной командой, когда убедитесь, что доступ не потерян.",
+	WizardHarden:         "Закрыть узел (да/нет)",
+	WizardHardenHint:     "Да настроит firewalls и движок банов; таблица применится командой termit-uv firewall on",
 	WizardDoneDetail:     "узел установлен",
 	WizardInstalled:      "Этот узел уже установлен; спрашивать нечего.",
 	WizardOutdated:       "Узел установлен, но эта сборка изменила бы его конфигурацию: %s.",
@@ -391,6 +397,9 @@ var messagesUVEN = map[Key]string{
 	WizardInstallFailed:  "the installation did not finish; the answers are kept for the next run",
 	WizardEnrollFailed:   "the node is installed but not in the mesh yet: fix the invite and run `termit-uv enroll`",
 	WizardDone:           "Done",
+	WizardHardenIntro:    "The node can close itself: an nftables table that keeps SSH, ports 80 and 443 and drops the rest of the inbound traffic, plus the ban engine. It is not switched on from here — that is one command, run when you know your access survives.",
+	WizardHarden:         "Harden this node (yes/no)",
+	WizardHardenHint:     "Yes configures the firewall and the ban engine; the table itself is applied by termit-uv firewall on",
 	WizardDoneDetail:     "this node is installed",
 	WizardInstalled:      "This node is already installed; nothing to ask.",
 	WizardOutdated:       "This node is installed, but this build would change its configuration: %s.",
