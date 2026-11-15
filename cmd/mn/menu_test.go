@@ -212,6 +212,9 @@ func TestServerMenuStopsAtAFailingStep(t *testing.T) {
 	m := &menu{
 		ui:  termui.New(strings.NewReader("1\n\nq\n"), out, termui.Style{}),
 		run: func([]string) int { return exitFailure },
+		// Pinned like newMenu's: a bare menu takes its language from the console, and CI's console is
+		// UTF-8, so without this the assertion below reads Russian output on Linux and English here.
+		tr: i18n.New(i18n.EN),
 	}
 	if code := m.loop(); code != exitOK {
 		t.Fatalf("loop = %d, want 0", code)
