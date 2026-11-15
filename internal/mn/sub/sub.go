@@ -34,6 +34,10 @@ type Peer struct {
 type Options struct {
 	// SubscriptionURL is the client-facing URL of the plain list; the JSON format lives beside it.
 	SubscriptionURL string
+	// Fragment and RecordFragment split the TLS ClientHello in the sing-box profile. They are
+	// client-side options with no counterpart in the base64 list, so they change only /json.
+	Fragment       bool
+	RecordFragment bool
 }
 
 // Ordered returns the peers in subscription order: label, then id. The order is part of the contract:
@@ -107,6 +111,25 @@ func RenderJSON(peers []Peer, opts Options) ([]byte, error) {
 			tag += " (degraded)"
 		}
 		tags = append(tags, tag)
+		tls := map[string]any{
+			"enabled":     true,
+			"server_name": peer.Domain,
+			// No alpn: the transport is xhttp in packet-up mode, which is HTTP/1.1 on the
+			// wire (the node's nginx terminates TLS and forwards HTTP/1.1 to Xray). Asking for
+			// h2 made the client offer a protocol the hop cannot carry.
+			"utls": map[string]any{
+				"enabled":     true,
+				"fingerprint": proto.Fingerprint,
+			},
+		}
+		// Splitting the ClientHello is the one client-side defence that costs nothing when it is not
+		// needed: the bytes still describe the same handshake, only in more pieces.
+		if opts.Fragment {
+			tls["fragment"] = true
+		}
+		if opts.RecordFragment {
+			tls["record_fragment"] = true
+		}
 		outbounds = append(outbounds, map[string]any{
 			"type":        "vless",
 			"tag":         tag,
@@ -114,17 +137,7 @@ func RenderJSON(peers []Peer, opts Options) ([]byte, error) {
 			"server_port": proto.Port,
 			"uuid":        peer.UUID,
 			"flow":        "",
-			"tls": map[string]any{
-				"enabled":     true,
-				"server_name": peer.Domain,
-				// No alpn: the transport is xhttp in packet-up mode, which is HTTP/1.1 on the
-				// wire (the node's nginx terminates TLS and forwards HTTP/1.1 to Xray). Asking for
-				// h2 made the client offer a protocol the hop cannot carry.
-				"utls": map[string]any{
-					"enabled":     true,
-					"fingerprint": proto.Fingerprint,
-				},
-			},
+			"tls":         tls,
 			"transport": map[string]any{
 				"type": "xhttp",
 				"path": peer.Path,

@@ -67,13 +67,30 @@ type Config struct {
 	//
 	// Empty means the server is exposed directly and the peer is always the client. Listing an address
 	// that never sends the header is harmless: a trusted peer without one keeps its own address.
-	TrustedProxies []string   `yaml:"trusted_proxies,omitempty"`
-	ACME           ACME       `yaml:"acme"`
-	Decoy          Decoy      `yaml:"decoy"`
-	Enrollment     Enrollment `yaml:"enrollment"`
-	Policy         Policy     `yaml:"policy"`
-	DNS            DNS        `yaml:"dns"`
-	Prober         Prober     `yaml:"prober"`
+	TrustedProxies []string     `yaml:"trusted_proxies,omitempty"`
+	ACME           ACME         `yaml:"acme"`
+	Decoy          Decoy        `yaml:"decoy"`
+	Enrollment     Enrollment   `yaml:"enrollment"`
+	Policy         Policy       `yaml:"policy"`
+	DNS            DNS          `yaml:"dns"`
+	Prober         Prober       `yaml:"prober"`
+	Subscription   Subscription `yaml:"subscription"`
+}
+
+// Subscription is what the sing-box profile at /sub/<token>/json asks of the client beyond the peer
+// list. Both options are client-side defences against a middlebox that decides by the first packet:
+// the server does nothing with them, and the plain base64 URI list cannot carry them at all.
+//
+// Off by default. A client that does not know the fields — stock sing-box before 1.12, or any client
+// reading something other than the /json form — never sees them, because only that document changes.
+type Subscription struct {
+	// Fragment splits the TLS ClientHello across TCP segments, so a filter that matches the first
+	// packet whole no longer sees it whole.
+	Fragment bool `yaml:"fragment"`
+	// RecordFragment splits the ClientHello across TLS records instead, which also defeats a filter
+	// that reassembles segments but expects one record. Measured on a path that froze every Chrome
+	// ClientHello: 0 of 15 connections without it, 15 of 15 with it.
+	RecordFragment bool `yaml:"record_fragment"`
 }
 
 // Decoy is the site the server answers a prober with: an ordinary-looking page instead of a bare 404

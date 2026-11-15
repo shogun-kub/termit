@@ -351,6 +351,11 @@ from the address that sent it, serve the decoy, and answer as a proxy.
 the format v2rayNG, NekoBox and friends import.
 
 `GET /sub/{token}/json` returns the same list as a sing-box configuration fragment, `application/json`.
+Its outbounds carry `tls.utls` with the profile's fingerprint and no `alpn`; when the server is
+configured with `subscription.fragment` or `subscription.record_fragment` (both off by default), they
+also carry `tls.fragment` and `tls.record_fragment`, which split the TLS ClientHello on the client side.
+Those two fields exist only here: the base64 list has no way to express them, so a client reading that
+form gets the unmodified profile.
 
 Both:
 

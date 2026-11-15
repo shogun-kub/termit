@@ -53,7 +53,11 @@ func (h *Handler) subscription(w http.ResponseWriter, r *http.Request) {
 		kind string
 	)
 	if jsonFormat {
-		body, err = sub.RenderJSON(peers, sub.Options{SubscriptionURL: h.subscriptionURL(token)})
+		body, err = sub.RenderJSON(peers, sub.Options{
+			SubscriptionURL: h.subscriptionURL(token),
+			Fragment:        h.opts.Fragment,
+			RecordFragment:  h.opts.RecordFragment,
+		})
 		kind = "application/json; charset=utf-8"
 	} else {
 		var list string

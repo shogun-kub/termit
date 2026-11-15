@@ -51,6 +51,10 @@ type Options struct {
 	SyncInterval  time.Duration
 	// MinSyncDelay is how long a fresh node waits before its first own cycle.
 	MinSyncDelay time.Duration
+	// Fragment and RecordFragment are carried into the sing-box subscription: they split the TLS
+	// ClientHello, and the server itself never looks at them.
+	Fragment       bool
+	RecordFragment bool
 	// Metrics receives the counters behind /metrics. Optional: a test or a plain handler runs without
 	// one, and the endpoint then reports only the gauges it can read from the database.
 	Metrics *metrics.Registry

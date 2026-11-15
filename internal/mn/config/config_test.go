@@ -252,3 +252,33 @@ func TestDecoyTemplate(t *testing.T) {
 		t.Errorf("decoy.template = %q, want %q", old.Decoy.Template, config.DefaultDecoyTemplate)
 	}
 }
+
+// TestSubscriptionFragmentationRoundTrips pins the two client-side switches: off by default, carried
+// through a save/load cycle when set, and unknown keys under the section are still refused.
+func TestSubscriptionFragmentationRoundTrips(t *testing.T) {
+	t.Parallel()
+	cfg, err := config.Parse(strings.NewReader("domain: mn.example.com\n"))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if cfg.Subscription.Fragment || cfg.Subscription.RecordFragment {
+		t.Errorf("fragmentation is on by default: %+v", cfg.Subscription)
+	}
+
+	cfg.Subscription = config.Subscription{Fragment: true, RecordFragment: true}
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := cfg.Save(path); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	reloaded, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !reloaded.Subscription.Fragment || !reloaded.Subscription.RecordFragment {
+		t.Errorf("subscription options did not survive the round trip: %+v", reloaded.Subscription)
+	}
+
+	if _, err := config.Parse(strings.NewReader("domain: mn.example.com\nsubscription:\n  nonsense: 1\n")); err == nil {
+		t.Error("Parse accepted an unknown key under subscription")
+	}
+}

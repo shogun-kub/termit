@@ -556,6 +556,29 @@ Both are stable for a given peer set and carry an `ETag`, so a client that cache
 Rotating the token is the way to revoke a client that should no longer see the mesh; it does not
 affect the node's own devices, which never leave the box.
 
+The JSON form can additionally ask the client to split its TLS ClientHello, which is the one defence
+that costs nothing on a path where it is not needed:
+
+```yaml
+subscription:
+  fragment: false          # split across TCP segments
+  record_fragment: true    # split across TLS records; this is the one that gets around a frozen ClientHello
+```
+
+Both are off by default and only the `/json` document changes — the base64 list has no field to carry
+them, and the server itself never looks at the flag. Enable `record_fragment` when a client's
+connections hang right after the handshake starts, or when the same profile works from one network
+and not another; on a path measured in `podkop-engine`'s own notes that froze every Chrome ClientHello
+the difference was 0 of 15 connections without it and 15 of 15 with it. A client that does not know
+the fields refuses the profile rather than ignoring them — sing-box validates strictly, and
+`podkop-engine` from r13 knows both — so turn this on only when every client reading the JSON is new
+enough. Clients that read the plain list never see the fields at all.
+
+On the client side the same switch has different names, and only the client can set it for the plain
+URI: in **podkop** it is `record_fragment` for the server, or `sb.tls.record_fragment=1` appended to
+the link; in **Happ** and other Xray-based clients it is the "Fragment" toggle. Neither is a server
+setting, so a node needs no reconfiguration to benefit.
+
 ### 8.1 Which clients can use the profile
 
 The profile is VLESS + **XHTTP** (`mode=packet-up`) + TLS, and XHTTP is not a transport every client

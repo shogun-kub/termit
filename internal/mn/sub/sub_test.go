@@ -148,6 +148,59 @@ func TestRenderJSON(t *testing.T) {
 	}
 }
 
+// TestRenderJSONCarriesTheFragmentationSwitches pins the only client-side defence the profile can
+// offer: the fields appear when the operator asks for them and are absent otherwise, because a
+// client that does not know them must not receive them.
+func TestRenderJSONCarriesTheFragmentationSwitches(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name           string
+		opts           sub.Options
+		wantFragment   bool
+		wantRecordFrag bool
+	}{
+		{"off", sub.Options{}, false, false},
+		{"plain fragment", sub.Options{Fragment: true}, true, false},
+		{"record only", sub.Options{RecordFragment: true}, false, true},
+		{"both", sub.Options{Fragment: true, RecordFragment: true}, true, true},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			body, err := sub.RenderJSON(peers(), tc.opts)
+			if err != nil {
+				t.Fatalf("RenderJSON: %v", err)
+			}
+			var profile struct {
+				Outbounds []map[string]any `json:"outbounds"`
+			}
+			if err := json.Unmarshal(body, &profile); err != nil {
+				t.Fatalf("the profile is not JSON: %v", err)
+			}
+			tlsSettings, ok := profile.Outbounds[0]["tls"].(map[string]any)
+			if !ok {
+				t.Fatalf("the first outbound has no tls settings: %v", profile.Outbounds[0])
+			}
+			for key, want := range map[string]bool{
+				"fragment":        tc.wantFragment,
+				"record_fragment": tc.wantRecordFrag,
+			} {
+				got, has := tlsSettings[key]
+				if !want {
+					if has {
+						t.Errorf("%s is present with %v, but the option is off", key, got)
+					}
+					continue
+				}
+				if got != true {
+					t.Errorf("%s = %v, want true", key, got)
+				}
+			}
+		})
+	}
+}
+
 func TestETagChangesWithTheBody(t *testing.T) {
 	t.Parallel()
 	first := sub.ETag([]byte("a"))
