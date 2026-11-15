@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/shogun-kub/termit/internal/i18n"
 	"github.com/shogun-kub/termit/internal/termui"
 )
 
@@ -20,6 +21,8 @@ func newMenu(answers string) (*menu, *[]string, *strings.Builder) {
 			ran = append(ran, strings.Join(argv, " "))
 			return exitOK
 		},
+		// The tests find entries by their English label; the language itself is a menu setting.
+		tr: i18n.New(i18n.EN),
 	}
 	return m, &ran, out
 }
@@ -27,7 +30,7 @@ func newMenu(answers string) (*menu, *[]string, *strings.Builder) {
 func planOf(t *testing.T, m *menu, label, answers string) ([][]string, error) {
 	t.Helper()
 	for _, entry := range m.entries() {
-		if entry.label != label {
+		if entry.labelOf(m.translator()) != label {
 			continue
 		}
 		m.ui = termui.New(strings.NewReader(answers), &strings.Builder{}, termui.Style{})
@@ -47,17 +50,18 @@ func TestServerMenuEntriesMapToCommands(t *testing.T) {
 	}
 	seen := map[string]bool{}
 	for _, entry := range m.entries() {
-		expected, ok := want[entry.label]
+		label := entry.labelOf(m.translator())
+		expected, ok := want[label]
 		if !ok {
 			continue
 		}
-		seen[entry.label] = true
-		plan, err := planOf(t, m, entry.label, "")
+		seen[label] = true
+		plan, err := planOf(t, m, label, "")
 		if err != nil {
-			t.Fatalf("%s: %v", entry.label, err)
+			t.Fatalf("%s: %v", label, err)
 		}
 		if got := strings.Join(plan[0], " "); got != expected {
-			t.Errorf("%s runs %q, want %q", entry.label, got, expected)
+			t.Errorf("%s runs %q, want %q", label, got, expected)
 		}
 	}
 	for label := range want {
@@ -370,5 +374,30 @@ func TestMenuRefusesAnUnusableCredential(t *testing.T) {
 		if code != exitUsage {
 			t.Errorf("%s: exit = %d, want %d", name, code, exitUsage)
 		}
+	}
+}
+
+// The server menu speaks the configured language where the console can show it.
+func TestServerMenuSpeaksTheConfiguredLanguage(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		lang i18n.Lang
+		want string
+	}{
+		{name: "russian", lang: i18n.RU, want: "Termit — сервер"},
+		{name: "english", lang: i18n.EN, want: "Termit — server"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			m, _, out := newMenu("q\n")
+			m.tr = i18n.New(tc.lang)
+			if code := m.loop(); code != exitOK {
+				t.Fatalf("exit = %d", code)
+			}
+			if !strings.Contains(out.String(), tc.want) {
+				t.Errorf("the menu does not say %q:\n%s", tc.want, out.String())
+			}
+		})
 	}
 }

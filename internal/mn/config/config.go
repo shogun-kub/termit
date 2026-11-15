@@ -15,7 +15,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -25,17 +24,12 @@ import (
 	"github.com/shogun-kub/termit/internal/acme"
 	"github.com/shogun-kub/termit/internal/atomicfile"
 	"github.com/shogun-kub/termit/internal/decoy"
+	"github.com/shogun-kub/termit/internal/i18n"
+	"github.com/shogun-kub/termit/internal/proto"
 )
 
-// DefaultHappFragment is what a fresh server writes into subscription.happ_fragment: pieces small
-// enough not to look like one ClientHello, with a bound on their number so the handshake cannot
-// stretch into seconds. Measured in Happ at 446-464 ms of ping against 769 ms without fragmentation.
-const DefaultHappFragment = "100-200,1-3,tlshello,6"
-
-// happFragmentPattern bounds subscription.happ_fragment to the shape Happ documents
-// ("length,interval,packets[,maxSplit]") and, just as important, keeps anything that could end a
-// query parameter — a comma is part of the value, an ampersand or a hash is not — out of the URI.
-var happFragmentPattern = regexp.MustCompile(`^[0-9]{1,4}(-[0-9]{1,4})?,[0-9]{1,4}(-[0-9]{1,4})?,([0-9]{1,2}-[0-9]{1,2}|tlshello)(,[0-9]{1,4}(-[0-9]{1,4})?)?$`)
+// DefaultHappFragment is what a fresh server writes into subscription.happ_fragment.
+const DefaultHappFragment = proto.DefaultHappFragment
 
 // SchemaVersion is the configuration schema this build understands.
 const SchemaVersion = 1
@@ -63,7 +57,10 @@ const DefaultAPIPrefix = "/api/v1"
 type Config struct {
 	SchemaVersion int    `yaml:"schema_version"`
 	Domain        string `yaml:"domain"`
-	Listen        string `yaml:"listen"`
+	// Locale is the language of the interactive menu: the CLI output itself stays English, because it
+	// is read by scripts and quoted in bug reports.
+	Locale string `yaml:"locale"`
+	Listen string `yaml:"listen"`
 	// APIPrefix is the path the node API is served under. It is random on a fresh install so a
 	// scanner cannot find the API by trying the usual names; the node learns it as part of its MN URL.
 	APIPrefix     string `yaml:"api_prefix"`
@@ -304,7 +301,10 @@ func (c *Config) Validate() error {
 	if c.ACME.Email != "" && !strings.Contains(c.ACME.Email, "@") {
 		problems = append(problems, fmt.Errorf("acme.email %q is not an address", c.ACME.Email))
 	}
-	if c.Subscription.HappFragment != "" && !happFragmentPattern.MatchString(c.Subscription.HappFragment) {
+	if _, ok := i18n.Parse(c.Locale); !ok {
+		problems = append(problems, fmt.Errorf("locale %q is not one this build speaks (ru, en)", c.Locale))
+	}
+	if c.Subscription.HappFragment != "" && !proto.ValidHappFragment(c.Subscription.HappFragment) {
 		problems = append(problems, fmt.Errorf("subscription.happ_fragment %q must look like length,interval,packets[,maxSplit]", c.Subscription.HappFragment))
 	}
 	for name, value := range map[string]string{
@@ -332,6 +332,9 @@ func (c *Config) applyDefaults() {
 	}
 	if c.Decoy.Template == "" {
 		c.Decoy.Template = DefaultDecoyTemplate
+	}
+	if c.Locale == "" {
+		c.Locale = i18n.Default.String()
 	}
 	if c.DataDir == "" {
 		c.DataDir = "/var/lib/termit/mn"
@@ -378,6 +381,16 @@ func (c *Config) applyDefaults() {
 	if c.Policy.SyncInterval == 0 {
 		c.Policy.SyncInterval = 24 * time.Hour
 	}
+}
+
+// Lang is the configured menu language. An unusable value falls back to the default; Validate catches
+// it on load, so this only matters for a value that got in another way.
+func (c *Config) Lang() i18n.Lang {
+	lang, ok := i18n.Parse(c.Locale)
+	if !ok {
+		return i18n.Default
+	}
+	return lang
 }
 
 // CertDir is where the server's own certificate lives.

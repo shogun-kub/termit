@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/shogun-kub/termit/internal/decoy"
+	"github.com/shogun-kub/termit/internal/i18n"
 	"github.com/shogun-kub/termit/internal/mn/config"
 	"github.com/shogun-kub/termit/internal/mn/secret"
 	"github.com/shogun-kub/termit/internal/mn/store"
@@ -39,6 +40,7 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 	acmeDirectory := flags.String("acme-ca", "", "ACME directory URL")
 	acmeInsecure := flags.Bool("acme-skip-tls-verify", false, "lab only: do not verify the ACME server certificate")
 	email := flags.String("email", "", "ACME account contact address")
+	locale := flags.String("locale", "", "language of the interactive menu: ru or en")
 	mode := flags.String("mode", "", "enrollment mode: invite, invite+approval or open")
 	inviteUses := flags.Int("invite-uses", 1, "how many nodes the first invite code may register")
 	adminName := flags.String("admin", "operator", "name of the first admin token")
@@ -131,6 +133,14 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 	}
 	if *email != "" {
 		cfg.ACME.Email = *email
+	}
+	if *locale != "" {
+		lang, ok := i18n.Parse(*locale)
+		if !ok {
+			fmt.Fprintf(stderr, "termit-mn init: --locale %q is not one this build speaks (ru, en)\n", *locale)
+			return exitUsage
+		}
+		cfg.Locale = lang.String()
 	}
 	if *mode != "" {
 		cfg.Enrollment.Mode = *mode

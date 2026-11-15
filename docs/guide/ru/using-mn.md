@@ -267,7 +267,7 @@ journalctl -u termit-mn -f
 
 | Команда | Что делает |
 |---|---|
-| `termit-mn init` | создать конфигурацию, базу, мастер-ключ, админ-токен и первое приглашение; `--admin-token-out FILE` пишет токен в файл вместо печати |
+| `termit-mn init` | создать конфигурацию, базу, мастер-ключ, админ-токен и первое приглашение; `--admin-token-out FILE` пишет токен в файл вместо печати; `--locale ru\|en` задаёт язык меню |
 | `termit-mn serve` | запустить сервер (`--http` только для разработки, никогда на публичном адресе) |
 | `termit-mn invite create\|list\|revoke` | управление кодами приглашений |
 | `termit-mn uv list\|show\|approve\|reject\|block\|unblock\|rm\|forget\|reissue\|agentkey` | управление узлами |

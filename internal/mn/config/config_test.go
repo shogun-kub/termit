@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shogun-kub/termit/internal/i18n"
 	"github.com/shogun-kub/termit/internal/mn/config"
 )
 
@@ -313,5 +314,22 @@ func TestSubscriptionFragmentationRoundTrips(t *testing.T) {
 
 	if _, err := config.Parse(strings.NewReader("domain: mn.example.com\nsubscription:\n  nonsense: 1\n")); err == nil {
 		t.Error("Parse accepted an unknown key under subscription")
+	}
+}
+
+func TestLocaleIsRussianByDefaultAndValidated(t *testing.T) {
+	t.Parallel()
+	if cfg := config.Default(); cfg.Locale != "ru" || cfg.Lang() != i18n.RU {
+		t.Errorf("a fresh server speaks %q", cfg.Locale)
+	}
+	cfg, err := config.Parse(strings.NewReader("domain: mn.example.com\nlocale: en\n"))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if cfg.Lang() != i18n.EN {
+		t.Errorf("locale en parsed as %q", cfg.Lang())
+	}
+	if _, err := config.Parse(strings.NewReader("domain: mn.example.com\nlocale: de\n")); err == nil {
+		t.Error("Parse accepted an unknown language")
 	}
 }

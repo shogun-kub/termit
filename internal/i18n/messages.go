@@ -146,7 +146,7 @@ const (
 
 // messagesRU is the default language: the operators of this project read Russian, and the guide is
 // written in it.
-var messagesRU = map[Key]string{
+var messagesUVRU = map[Key]string{
 	MenuTitle:        "Termit — узел",
 	MenuNotInstalled: "ещё не установлен: выберите «установить или доустановить»",
 	MenuNoState:      "настроен, но состояния узла нет: запустите «установить или доустановить»",
@@ -281,7 +281,7 @@ var messagesRU = map[Key]string{
 }
 
 // messagesEN is the second language and the fallback for consoles that cannot show Cyrillic.
-var messagesEN = map[Key]string{
+var messagesUVEN = map[Key]string{
 	MenuTitle:        "Termit — node",
 	MenuNotInstalled: "not installed yet: choose “install or converge”",
 	MenuNoState:      "configured, but no node state: run “install or converge”",
@@ -413,4 +413,22 @@ var messagesEN = map[Key]string{
 	PageCopyFailed:   "copy failed",
 	PageFooter:       "This page is secret: anyone with its address sees the same links. Keep it out of screenshots that leave your hands.",
 	PageDegraded:     "degraded",
+}
+
+// messagesRU and messagesEN are the union of the node's catalog and the server's: each binary links
+// only its own half, and the translator walks everything, so a key cannot exist in one menu and be
+// missing from the other language.
+var (
+	messagesRU = merged(messagesUVRU, messagesMNRU)
+	messagesEN = merged(messagesUVEN, messagesMNEN)
+)
+
+func merged(catalogs ...map[Key]string) map[Key]string {
+	out := make(map[Key]string, 256)
+	for _, catalog := range catalogs {
+		for key, value := range catalog {
+			out[key] = value
+		}
+	}
+	return out
 }

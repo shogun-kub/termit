@@ -267,7 +267,7 @@ journalctl -u termit-mn -f
 
 | Command | What it does |
 |---|---|
-| `termit-mn init` | create config, database, master key, admin token and the first invite; `--admin-token-out FILE` writes the token to a file instead of printing it |
+| `termit-mn init` | create config, database, master key, admin token and the first invite; `--admin-token-out FILE` writes the token to a file instead of printing it; `--locale ru\|en` picks the menu language |
 | `termit-mn serve` | run the server (`--http` for development only, never on a public address) |
 | `termit-mn invite create\|list\|revoke` | manage invite codes |
 | `termit-mn uv list\|show\|approve\|reject\|block\|unblock\|rm\|forget\|reissue\|agentkey` | manage nodes |
