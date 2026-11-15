@@ -47,7 +47,7 @@ first invite code (shown once, 1 use(s)):
   ABCD-EFGH-IJKL
 ```
 
-Three things to note. The **api prefix** is where the node API lives: `init` picks a random path, so a
+Two things to note. The **api prefix** is where the node API lives: `init` picks a random path, so a
 scanner probing `/api/v1` on your server finds nothing, and every node is given the full URL —
 `https://mn.example.com/6rfjdqfn5nno` — rather than the bare host. It is not a secret, and
 [the API reference](../MN-API.md) says what is behind it. `--api-prefix /api/v1` keeps the old,
@@ -146,7 +146,7 @@ server:   mn.example.com
 listen:   :443
 api:      /6rfjdqfn5nno
 decoy:    portal
-version:  termit-mn v0.1.0 (commit …, built …, api 1, profile v1)
+version:  termit-mn v0.3.1 (commit …, built …, api 1, profile v1)
 uptime:   3h12m (started 2026-11-10 11:18)
 database: /var/lib/termit/mn/termit.db (412.0 KiB, schema 5)
 prober:   ready (/usr/lib/termit/bin/xray)

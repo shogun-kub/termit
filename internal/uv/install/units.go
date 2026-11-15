@@ -63,7 +63,7 @@ func (s *unitsStep) unitFiles() (map[string][]byte, error) {
 	// The boot unit is installed always, not only when the configuration asks for a table: what decides
 	// is the record of what was applied and confirmed, and an operator who applies a table after this
 	// install must not have to run `init` again to get it back after a reboot.
-	bootUnit, err := service.FirewallBoot(binary, s.e.configPath, s.e.cfg.Paths.StateDir)
+	bootUnit, err := service.FirewallBoot(binary, s.e.configPath, s.e.cfg.Paths.StateDir, s.e.cfg.Paths.UnitDir)
 	if err != nil {
 		return nil, err
 	}

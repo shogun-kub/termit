@@ -140,7 +140,7 @@ go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0   # on
 go run ./cmd/uv --help                # and: go run ./cmd/mn init --domain mn.localhost --data-dir ./.dev/mn
 gofmt -l cmd internal deploy test     # must print nothing
 goimports -l cmd internal deploy      # must print nothing
-go run ./deploy/release --version v0.1.0 --out dist   # the release directory, as CI builds it
+go run ./deploy/release --version v0.3.1 --out dist   # the release directory, as CI builds it
 go run ./deploy/clean                 # drop the artifacts and the scratch; --dry-run lists them first
 go run ./deploy/clean --build-cache   # and the compiled output: the next build recompiles, nothing is
                                       # downloaded (the module cache is --module-cache, which is)
@@ -292,8 +292,9 @@ already passed CI and the lab.
   published from `dev` or `main`.
 - **Final release:** merge `release/<version>` into `dev` and into `main`, delete the branch, then create
   an annotated tag `v<version>` on `main`. Pushing the tag runs the final build and publishes the GitHub
-  Release. The release stays marked pre-release until the production pass in
-  `docs/IMPLEMENTATION_PLAN.md` M4.3 is done; flipping that flag is a deliberate, recorded act.
+  Release. The release stays marked pre-release until that release's own production pass is recorded in
+  `docs/IMPLEMENTATION_PLAN.md` (M4.3 for `0.2.1`, M5.8 for `0.3.1`); flipping the flag is a deliberate,
+  recorded act.
 - **The release body is the changelog's section for that version** — `go run ./deploy/release --version
   v<version> --notes` prints it, and CI uses exactly that. Write `CHANGELOG.md` (and `CHANGELOG.ru.md`,
   which stays in step) with a real date before tagging: the tool refuses a missing section and one that

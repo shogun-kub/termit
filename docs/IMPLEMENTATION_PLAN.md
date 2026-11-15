@@ -1335,7 +1335,14 @@ both overviews, both READMEs and the command tables of `using-uv` and `using-mn`
 timer, then `confirm` from a second session), then the two nodes one at a time, checking after each
 step: SSH alive, 443 serving, a client request through the tunnel, the MN's prober green, `status`
 clean. Any step that fails: `firewall off`, and the host is where it started. Reboot one node on purpose
-before touching the second: the boot unit is the one part of this milestone the lab can only imitate.
+before touching the second.
+
+The lab already did it once, on `v0.3.0` (2026-11-15): a reboot of uv3 and of the MN, once with a
+confirmed apply and once with one still inside its window. The confirmed half came back as designed and
+armed no timer; the pending half failed with `read-only file system`, because arming the rollback timer
+writes its units and `ProtectSystem=strict` did not allow it — that is what 0.3.1 fixes, and the lab
+check now drives both record paths instead of only the confirmed one. A reboot on the production node is
+still worth doing: the lab's boxes are containers, and a container's boot is not a host's.
 
 Total: 5–7 days of work. The first half-day — the spike that decided two syntax questions which could
 have re-shaped the rest — is spent and recorded in §5.0.

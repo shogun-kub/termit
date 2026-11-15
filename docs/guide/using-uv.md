@@ -28,9 +28,9 @@ is [the interactive menu](menu.md), and every entry prints the command it runs.
 Download the installer for a release, then run it — never pipe a URL into a shell:
 
 ```bash
-curl -fsSLO https://github.com/shogun-kub/termit/releases/download/v0.1.0/uv.sh
+curl -fsSLO https://github.com/shogun-kub/termit/releases/download/v0.3.1/uv.sh
 
-sh uv.sh --version v0.1.0 \
+sh uv.sh --version v0.3.1 \
   --domain node1.example.com --email you@example.com \
   --mn https://mn.example.com/6rfjdqfn5nno --invite ABCD-EFGH-IJKL
 ```
@@ -195,8 +195,8 @@ own; the systemd units are installed by `termit-uv init`.
 | `termit-uv guard` | the ban engine: `status`, `run --once` | |
 | `termit-uv version` | build and protocol version | |
 
-Every command accepts `--config <path>` and `-v`/`--verbose`. The last three are the opt-in hardening
-half and stay off until you ask: [Hardening a node](hardening.md) is their page.
+Every command accepts `--config <path>` and `-v`/`--verbose`. The hardening half — `firewall`, `bans`
+and `guard` — stays off until you ask: [Hardening a node](hardening.md) is their page.
 
 ## Recipes
 

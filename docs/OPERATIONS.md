@@ -321,8 +321,8 @@ not something piped from a branch:
 termit-mn invite create --note "node1" --uses 1        # on the MN; prints the code once
 
 # on the fresh node, as root
-curl -fsSLO https://github.com/shogun-kub/termit/releases/download/v0.1.0/uv.sh
-sh uv.sh --version v0.1.0 \
+curl -fsSLO https://github.com/shogun-kub/termit/releases/download/v0.3.1/uv.sh
+sh uv.sh --version v0.3.1 \
   --domain node1.example.net --email you@example.com \
   --mn https://mn.example.com --invite ABCD-EFGH-IJKL
 ```
@@ -1108,7 +1108,7 @@ the provider, or move the node: no Termit setting fixes a lossy uplink.
 A release is one command, and CI runs the same one on a tag:
 
 ```bash
-go run ./deploy/release --version v0.1.0 --out dist
+go run ./deploy/release --version v0.3.1 --out dist
 ```
 
 It cross-compiles both binaries for `linux/amd64` and `linux/arm64` with `CGO_ENABLED=0 -trimpath`,
@@ -1132,7 +1132,7 @@ that is not a `vX.Y.Z` tag rather than sanitising it.
 Verify a directory the way an operator would:
 
 ```bash
-cd dist/v0.1.0 && sha256sum -c SHA256SUMS
+cd dist/v0.3.1 && sha256sum -c SHA256SUMS
 ```
 
 There are deliberately no tarballs: one artifact per platform, verified by digest, is what the
@@ -1140,19 +1140,19 @@ installer consumes, and a tarball would add an unpacking step that protects noth
 reproducible given the same toolchain, commit and `--date`:
 
 ```bash
-go run ./deploy/release --version v0.1.0 --out /tmp/a --commit "$(git rev-parse --short HEAD)" --date 2026-11-10T00:00:00Z
-go run ./deploy/release --version v0.1.0 --out /tmp/b --commit "$(git rev-parse --short HEAD)" --date 2026-11-10T00:00:00Z
-diff /tmp/a/v0.1.0/SHA256SUMS /tmp/b/v0.1.0/SHA256SUMS
+go run ./deploy/release --version v0.3.1 --out /tmp/a --commit "$(git rev-parse --short HEAD)" --date 2026-11-10T00:00:00Z
+go run ./deploy/release --version v0.3.1 --out /tmp/b --commit "$(git rev-parse --short HEAD)" --date 2026-11-10T00:00:00Z
+diff /tmp/a/v0.3.1/SHA256SUMS /tmp/b/v0.3.1/SHA256SUMS
 ```
 
 Publishing is a tag push on `main`, after the branch process in `AGENTS.md` §9 has put a tested tree
 there: `.github/workflows/release.yaml` builds the directory, runs `sha256sum -c SHA256SUMS`, asserts
 `uv.sh` is executable, and attaches everything to the GitHub release, including `uv.sh` — the
 documentation's install URL points at `releases/download/<version>/uv.sh`. The workflow marks the
-release `prerelease: true`: clearing that flag is the deliberate act that records the production pass of
-`docs/IMPLEMENTATION_PLAN.md` M4.3 (a real domain, a real CA, a phone client). A maintainer can do the
-same by hand with `gh release create` and the files from `dist/<version>/`; the assets are plain files,
-so nothing depends on the workflow.
+release `prerelease: true`: clearing that flag is the deliberate act that records that release's own
+production pass — `docs/IMPLEMENTATION_PLAN.md` M4.3 for `0.2.1`, M5.8 for `0.3.1`. A maintainer can do
+the same by hand with `gh release create` and the files from `dist/<version>/`; the assets are plain
+files, so nothing depends on the workflow.
 
 Before that tag exists, a `release/<version>` branch can be built by hand —
 `gh workflow run release.yaml --ref release/v0.1.1 -f publish_prerelease=true` — which attaches the same
@@ -1392,6 +1392,11 @@ The table is a kernel object, so a reboot empties it — but the record of what 
 
 Nothing to restore is not an error — the unit exits 0 and the journal says so. `termit-uv firewall restore
 --dry-run` is the way to check what a reboot would do before you reboot.
+
+Restoring an apply that was still waiting **arms the rollback timer**, which writes the timer's units — so
+the boot unit's sandbox has to allow writes to the unit directory, and both units say so in
+`ReadWritePaths`. Without that line the pending case fails at boot with `read-only file system` and the
+table does not come back (that was v0.3.0); a confirmed apply was never affected, because it arms nothing.
 
 The same unit exists for the server as `deploy/systemd/termit-mn-firewall.service` (§18.6) and is enabled
 the same way.

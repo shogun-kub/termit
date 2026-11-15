@@ -75,7 +75,7 @@ func TestFirewallRollbackTimer(t *testing.T) {
 // carries the one line whose absence fails every run at boot.
 func TestFirewallBootUnit(t *testing.T) {
 	t.Parallel()
-	unit, err := service.FirewallBoot("/usr/bin/termit-uv", "/etc/termit/uv/config.yaml", "/var/lib/termit/uv")
+	unit, err := service.FirewallBoot("/usr/bin/termit-uv", "/etc/termit/uv/config.yaml", "/var/lib/termit/uv", "/etc/systemd/system")
 	if err != nil {
 		t.Fatalf("FirewallBoot: %v", err)
 	}
@@ -84,7 +84,8 @@ func TestFirewallBootUnit(t *testing.T) {
 		"Type=oneshot",
 		"ExecStart=/usr/bin/termit-uv firewall restore --config /etc/termit/uv/config.yaml",
 		"Before=network-pre.target",
-		"ReadWritePaths=/var/lib/termit/uv",
+		// Arming the rollback timer for a pending apply writes its units, so the sandbox has to allow it.
+		"ReadWritePaths=/var/lib/termit/uv /etc/systemd/system",
 		"AF_NETLINK",
 		"WantedBy=multi-user.target",
 	} {
@@ -92,10 +93,13 @@ func TestFirewallBootUnit(t *testing.T) {
 			t.Errorf("unit is missing %q:\n%s", want, text)
 		}
 	}
-	if _, err := service.FirewallBoot("termit-uv", "/etc/termit/uv/config.yaml", "/var/lib/termit/uv"); err == nil {
+	if _, err := service.FirewallBoot("termit-uv", "/etc/termit/uv/config.yaml", "/var/lib/termit/uv", "/etc/systemd/system"); err == nil {
 		t.Error("a relative binary path was accepted")
 	}
-	if _, err := service.FirewallBoot("/usr/bin/termit-uv", "/etc/termit/uv/config.yaml", "var/lib/termit/uv"); err == nil {
+	if _, err := service.FirewallBoot("/usr/bin/termit-uv", "/etc/termit/uv/config.yaml", "var/lib/termit/uv", "/etc/systemd/system"); err == nil {
 		t.Error("a relative state dir was accepted")
+	}
+	if _, err := service.FirewallBoot("/usr/bin/termit-uv", "/etc/termit/uv/config.yaml", "/var/lib/termit/uv", "etc/systemd/system"); err == nil {
+		t.Error("a relative unit dir was accepted")
 	}
 }

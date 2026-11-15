@@ -30,7 +30,7 @@ const ConfirmWindow = firewall.ConfirmWindow
 // It is ordered before network-pre.target so the table is up before the services that listen, and it never
 // fails the boot: a host that never applied a table, or one whose operator took it down, exits 0 with a
 // line in the journal.
-func FirewallBoot(binary, config, stateDir string) ([]byte, error) {
+func FirewallBoot(binary, config, stateDir, unitDir string) ([]byte, error) {
 	if !filepath.IsAbs(binary) && !strings.HasPrefix(binary, "/") {
 		return nil, fmt.Errorf("service: binary %q must be an absolute path", binary)
 	}
@@ -39,6 +39,9 @@ func FirewallBoot(binary, config, stateDir string) ([]byte, error) {
 	}
 	if !filepath.IsAbs(stateDir) && !strings.HasPrefix(stateDir, "/") {
 		return nil, fmt.Errorf("service: state dir %q must be an absolute path", stateDir)
+	}
+	if !filepath.IsAbs(unitDir) && !strings.HasPrefix(unitDir, "/") {
+		return nil, fmt.Errorf("service: unit dir %q must be an absolute path", unitDir)
 	}
 	var b strings.Builder
 	b.WriteString(unitHeader)
@@ -58,9 +61,12 @@ Type=oneshot
 ExecStart=%s firewall restore --config %s
 TimeoutStartSec=60s
 # Root for nft, nothing else: it reads the configuration and the record and touches the kernel.
+# The unit directory is writable because restoring an apply that was still waiting arms the rollback
+# timer, and arming it writes the timer's units — a read-only /etc/systemd/system made that path fail at
+# boot with "read-only file system".
 NoNewPrivileges=yes
 ProtectSystem=strict
-ReadWritePaths=%s
+ReadWritePaths=%s %s
 ProtectHome=yes
 PrivateTmp=yes
 ProtectKernelTunables=yes
@@ -83,7 +89,7 @@ SystemCallErrorNumber=EPERM
 
 [Install]
 WantedBy=multi-user.target
-`, binary, config, path.Clean(stateDir))
+`, binary, config, path.Clean(stateDir), path.Clean(unitDir))
 	return []byte(b.String()), nil
 }
 
