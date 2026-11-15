@@ -556,9 +556,17 @@ func TestDrillDiskFull(t *testing.T) {
 	if _, err := l.MN.Run(ctx, "dd if=/dev/zero bs=1M count=4 >> "+drillFillPath+" 2>/dev/null"); err != nil {
 		t.Logf("the last megabyte went in with an expected failure: %v", err)
 	}
-	free := strings.TrimSpace(l.MN.MustRun(t, ctx, "df --output=avail -B1 /var/lib/termit/mn | tail -1"))
-	if free != "0" {
-		t.Logf("the filesystem still reports %s bytes free", free)
+	// One pass of dd does not always consume everything: ext4 rounds and the journal takes its cut, and
+	// a few kilobytes left are enough for SQLite to commit a small record, which would make the drill
+	// assert a failure that never had a reason to happen. Top up until the space is genuinely gone.
+	free := freeBytes(t, ctx, l)
+	for attempt := 0; attempt < 4 && free > 4096; attempt++ {
+		t.Logf("still %d bytes free; topping up", free)
+		_, _ = l.MN.Run(ctx, fmt.Sprintf("fallocate -l %d %s", free, drillFillPath))
+		free = freeBytes(t, ctx, l)
+	}
+	if free > 4096 {
+		t.Skipf("the filesystem will not go below %d bytes free; a write may still succeed, so the drill proves nothing", free)
 	}
 
 	// The write path must refuse; a check that cannot be recorded would be a lie either way.
@@ -578,6 +586,17 @@ func TestDrillDiskFull(t *testing.T) {
 	if state := showState(t, ctx, l, domain); state != "active" {
 		t.Fatalf("the node is %s after the disk drill", state)
 	}
+}
+
+// freeBytes reports what the server's filesystem has left, in bytes.
+func freeBytes(t *testing.T, ctx context.Context, l *lab.Lab) int64 {
+	t.Helper()
+	raw := strings.TrimSpace(l.MN.MustRun(t, ctx, "df --output=avail -B1 /var/lib/termit/mn | tail -1"))
+	free, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		t.Fatalf("read the free space: %v", err)
+	}
+	return free
 }
 
 // TestDrillClockSkew is the one drill the lab cannot run: an unprivileged LXC has no CAP_SYS_TIME, so
