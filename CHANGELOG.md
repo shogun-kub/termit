@@ -3,7 +3,7 @@
 What each release changed, written for the people who run Termit. Newest first;
 `0.1.1` was prepared but never released — its work is part of `0.2.0`.
 
-## 0.3.0 — unreleased
+## 0.3.0 — 2026-11-15
 
 The release that makes Termit pleasant to install and able to defend its own host: a wizard that asks
 instead of eleven flags, an owner surface in Russian or English, client links that carry what was measured
