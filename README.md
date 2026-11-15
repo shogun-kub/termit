@@ -104,9 +104,10 @@ Deliberate design choices worth knowing before you deploy it:
 
 `v0.3.0` is the newest release. M1–M5 are implemented and verified on a three-machine acceptance lab
 (Debian 13 in unprivileged containers), and the release pipeline builds verified artifacts for
-linux/amd64 and linux/arm64. M5's firewall, ban engine and blocklist are in this release but have not
-been rolled out to the production boxes yet, which is what the first production pass will do. Releases
-are published as **pre-release** until that pass is recorded — see
+linux/amd64 and linux/arm64. It is still marked **pre-release**: the pass for `0.2.1` was recorded on
+2026-11-15 — two providers, real Let's Encrypt certificates, WARP egress, a phone app reading the
+subscription, an in-place Debian 12 → 13 upgrade — while `0.3.0`'s own pass, the host firewall, the ban
+engine and the blocklist on the production boxes, has not happened yet. See
 [what is not here yet](#what-is-not-here-yet).
 
 ## Requirements
@@ -147,10 +148,10 @@ tool's tests and `govulncheck`.
 
 ## What is not here yet
 
-- **A production run**: everything except WARP is exercised on the lab — ACME against a Pebble CA,
-  TLS, the three-node mesh, upgrades, restore — but the first install against a real domain and
-  Let's Encrypt, and a real phone client behind the subscription, is still a manual pass somebody has to
-  run. That pass is what turns a pre-release into a release.
+- **The M5 rollout**: the host firewall, the ban engine and the blocklist are in `0.3.0` and checked on
+  the lab, a real reboot included, but they have not been applied to the production nodes yet
+  ([`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) M5.8). That pass is what turns `0.3.0`
+  into a full release.
 - **WARP against a real tunnel**: the lab has no `/dev/net/tun`, so the suite proves the refusal, the
   generated route, fail-open and the switch back; installing, registering and connecting needs a KVM VM
   or a privileged container.

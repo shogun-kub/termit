@@ -127,9 +127,10 @@ jobs:
           files: dist/${{ github.ref_name }}/*
           fail_on_unmatched_files: true
           draft: false
-          # Every release stays a pre-release until somebody has run the production pass described in
-          # docs/IMPLEMENTATION_PLAN.md M4.3 (a real domain, a real CA, a phone client). Flipping this
-          # to false is a deliberate, recorded act, not a side effect of tagging.
+          # A release stays a pre-release until that release's own production pass is recorded: the
+          # M4.3 pass was for 0.2.1, and the one outstanding for 0.3.0 is the M5 rollout
+          # (docs/IMPLEMENTATION_PLAN.md M5.8). Flipping this to false is a deliberate, recorded act,
+          # not a side effect of tagging.
           prerelease: true
           # The body is CHANGELOG.md's section for this version, not GitHub's list of commit subjects:
           # the changelog is written for the people who run Termit. `--notes` refuses a section that is

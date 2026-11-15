@@ -1149,10 +1149,10 @@ Publishing is a tag push on `main`, after the branch process in `AGENTS.md` §9 
 there: `.github/workflows/release.yaml` builds the directory, runs `sha256sum -c SHA256SUMS`, asserts
 `uv.sh` is executable, and attaches everything to the GitHub release, including `uv.sh` — the
 documentation's install URL points at `releases/download/<version>/uv.sh`. The workflow marks the
-release `prerelease: true`: clearing that flag is the deliberate act that records the production pass of
-`docs/IMPLEMENTATION_PLAN.md` M4.3 (a real domain, a real CA, a phone client). A maintainer can do the
-same by hand with `gh release create` and the files from `dist/<version>/`; the assets are plain files,
-so nothing depends on the workflow.
+release `prerelease: true`: clearing that flag is the deliberate act that records that release's own
+production pass — `docs/IMPLEMENTATION_PLAN.md` M4.3 for `0.2.1`, M5.8 for `0.3.0`. A maintainer can do
+the same by hand with `gh release create` and the files from `dist/<version>/`; the assets are plain
+files, so nothing depends on the workflow.
 
 Before that tag exists, a `release/<version>` branch can be built by hand —
 `gh workflow run release.yaml --ref release/v0.1.1 -f publish_prerelease=true` — which attaches the same
