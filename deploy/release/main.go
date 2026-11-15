@@ -86,6 +86,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	goBinary := flags.String("go", "go", "go command to build with")
 	commit := flags.String("commit", "", "commit to stamp (default: git rev-parse --short HEAD)")
 	date := flags.String("date", "", "build date to stamp (default: now, UTC, RFC 3339)")
+	notes := flags.Bool("notes", false, "print the CHANGELOG.md section for --version and exit (the release body)")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -105,6 +106,9 @@ func run(args []string, stdout, stderr io.Writer) error {
 	}
 	if _, err := os.Stat(filepath.Join(absoluteRoot, "go.mod")); err != nil {
 		return fmt.Errorf("%s does not look like the repository root: %w", absoluteRoot, err)
+	}
+	if *notes {
+		return writeNotes(filepath.Join(absoluteRoot, "CHANGELOG.md"), *version, stdout)
 	}
 
 	stampCommit := *commit
@@ -168,6 +172,49 @@ func run(args []string, stdout, stderr io.Writer) error {
 	}
 	fmt.Fprintf(stdout, "\nSHA256SUMS written; %d artifacts\n", len(artifacts))
 	fmt.Fprintf(stdout, "next: attach %s/* to the %s release, and push the tag\n", directory, *version)
+	return nil
+}
+
+// writeNotes prints the CHANGELOG.md section for one version, which is what the release body is: a
+// document somebody wrote for the people who run Termit, not the commit subjects GitHub assembles.
+//
+// A section that nobody wrote, or one that still says "unreleased", is refused: publishing a release
+// whose notes are a placeholder is a worse failure than a red workflow.
+func writeNotes(path, version string, stdout io.Writer) error {
+	data, err := os.ReadFile(path) // #nosec G304 -- the path is inside the repository root.
+	if err != nil {
+		return fmt.Errorf("read the changelog: %w", err)
+	}
+	want := "## " + strings.TrimPrefix(version, "v")
+	lines := strings.Split(string(data), "\n")
+	start := -1
+	for i, line := range lines {
+		if !strings.HasPrefix(line, want) {
+			continue
+		}
+		if rest := line[len(want):]; rest == "" || rest[0] == ' ' {
+			start = i
+			break
+		}
+	}
+	if start < 0 {
+		return fmt.Errorf("%s has no %q section", path, want)
+	}
+	if strings.Contains(strings.ToLower(lines[start]), "unreleased") {
+		return fmt.Errorf("%s still calls %s unreleased; write the section before tagging", path, version)
+	}
+	end := len(lines)
+	for i := start + 1; i < len(lines); i++ {
+		if strings.HasPrefix(lines[i], "## ") {
+			end = i
+			break
+		}
+	}
+	body := strings.TrimRight(strings.Join(lines[start:end], "\n"), "\n")
+	if strings.TrimSpace(lines[start]) == want {
+		return fmt.Errorf("%s section %q is empty", path, want)
+	}
+	fmt.Fprintln(stdout, body)
 	return nil
 }
 

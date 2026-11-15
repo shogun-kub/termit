@@ -71,6 +71,9 @@ jobs:
           path: dist/${{ steps.identity.outputs.version }}/*
           if-no-files-found: error
 
+      - name: the release notes are the changelog's section
+        run: go run ./deploy/release --version "${{ steps.identity.outputs.version }}" --notes > release-notes.md
+
       - name: publish
         if: inputs.publish_prerelease
         uses: softprops/action-gh-release@v2
@@ -82,7 +85,10 @@ jobs:
           fail_on_unmatched_files: true
           draft: false
           prerelease: true
-          generate_release_notes: true
+          # The body is CHANGELOG.md's section for this version, not GitHub's list of commit subjects:
+          # the changelog is written for the people who run Termit. `--notes` refuses a section that is
+          # missing or still says "unreleased".
+          body_path: release-notes.md
 
   # The final door: the tag pushed on `main` after `release/<version>` was merged there.
   publish:
@@ -109,6 +115,9 @@ jobs:
           sha256sum -c SHA256SUMS
           test -x uv.sh
 
+      - name: the release notes are the changelog's section
+        run: go run ./deploy/release --version "$GITHUB_REF_NAME" --notes > release-notes.md
+
       - name: publish
         uses: softprops/action-gh-release@v2
         with:
@@ -122,4 +131,7 @@ jobs:
           # docs/IMPLEMENTATION_PLAN.md M4.3 (a real domain, a real CA, a phone client). Flipping this
           # to false is a deliberate, recorded act, not a side effect of tagging.
           prerelease: true
-          generate_release_notes: true
+          # The body is CHANGELOG.md's section for this version, not GitHub's list of commit subjects:
+          # the changelog is written for the people who run Termit. `--notes` refuses a section that is
+          # missing or still says "unreleased".
+          body_path: release-notes.md
