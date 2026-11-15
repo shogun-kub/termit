@@ -3,6 +3,20 @@
 What each release changed, written for the people who run Termit. Newest first;
 `0.1.1` was prepared but never released — its work is part of `0.2.0`.
 
+## 0.3.1 — unreleased
+
+One fix, for the half of the boot unit that only a real reboot could find: an apply that was still
+waiting.
+
+### Fixed
+
+- **The boot unit could not restore an apply that was still inside its five-minute window.** Restoring
+  that one arms the rollback timer, and arming writes the timer's units — which the unit's
+  `ProtectSystem=strict` sandbox made read-only. On a reboot in that window the unit failed with
+  `read-only file system` and the table did not come back. A confirmed apply was never affected: it arms
+  nothing. Both boot units now allow writes to the unit directory, and the lab check covers the pending
+  path instead of only the confirmed one.
+
 ## 0.3.0 — 2026-11-15
 
 The release that makes Termit pleasant to install and able to defend its own host: a wizard that asks

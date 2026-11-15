@@ -1393,6 +1393,11 @@ The table is a kernel object, so a reboot empties it — but the record of what 
 Nothing to restore is not an error — the unit exits 0 and the journal says so. `termit-uv firewall restore
 --dry-run` is the way to check what a reboot would do before you reboot.
 
+Restoring an apply that was still waiting **arms the rollback timer**, which writes the timer's units — so
+the boot unit's sandbox has to allow writes to the unit directory, and both units say so in
+`ReadWritePaths`. Without that line the pending case fails at boot with `read-only file system` and the
+table does not come back (that was v0.3.0); a confirmed apply was never affected, because it arms nothing.
+
 The same unit exists for the server as `deploy/systemd/termit-mn-firewall.service` (§18.6) and is enabled
 the same way.
 
