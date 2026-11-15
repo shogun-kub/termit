@@ -579,9 +579,13 @@ directory. The consequences are worth knowing:
   asked for a page stays without one.
 - The page is built from what the node can see. If the management server is unreachable it says so and
   shows the local device only, which is exactly when a link is worth having.
+- The node's own entries carry the fragmentation it configured itself (`happ_fragment`), while the mesh
+  entries carry the server's: set both to the same value and the page speaks with one voice. A fresh
+  node writes `proto.DefaultHappFragment`; a configuration that predates the key keeps its links plain,
+  and `termit-uv init --happ-fragment ""` turns it off deliberately.
 - The page is written in the configured language (`locale: ru` or `en`, Russian by default). The menu
-  follows the same setting, but only where the console can show Cyrillic: on a C or latin-1 locale it
-  falls back to English, because a menu of question marks is worse than English. The page never falls
+  follows the same setting, and so does the server's menu (`locale` in `/etc/termit/mn/config.yaml`),
+  but only where the console can show Cyrillic: on a C or latin-1 locale both fall back to English, because a menu of question marks is worse than English. The page never falls
   back — a browser always has the glyphs — and this node's own device appears once, under “this node”,
   not again in the mesh list it also belongs to.
 

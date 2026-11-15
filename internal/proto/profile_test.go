@@ -150,3 +150,40 @@ func TestValidateCollectsProblems(t *testing.T) {
 		}
 	}
 }
+
+func TestHappFragmentIsValidatedAndAppended(t *testing.T) {
+	t.Parallel()
+	for _, value := range []string{"100-200,1-3,tlshello,6", "300-500,1-5,tlshello", "1-3,1-3,1-2"} {
+		if !proto.ValidHappFragment(value) {
+			t.Errorf("ValidHappFragment rejected %q", value)
+		}
+	}
+	for _, value := range []string{"", "tlshello", "100-200&fragment=1", "1-2,3-4,tlshello#x", "1-2,3-4,5-6,7,8"} {
+		if proto.ValidHappFragment(value) {
+			t.Errorf("ValidHappFragment accepted %q", value)
+		}
+	}
+
+	uri, err := proto.BuildVLESSUrl(proto.Profile{
+		Domain: "node.example.com",
+		UUID:   "11111111-2222-4333-8444-555555555555",
+		Path:   "/0123456789abcdef/",
+		Label:  "node.example.com",
+	})
+	if err != nil {
+		t.Fatalf("BuildVLESSUrl: %v", err)
+	}
+	withFragment := proto.AddHappFragment(uri, "100-200,1-3,tlshello,6")
+	if !strings.Contains(withFragment, "&fragment=100-200,1-3,tlshello,6") {
+		t.Errorf("the parameter is not in the URI: %s", withFragment)
+	}
+	if !strings.HasSuffix(withFragment, "#node.example.com") {
+		t.Errorf("the label moved: %s", withFragment)
+	}
+	if _, err := proto.ParseVLESSUrl(withFragment); err != nil {
+		t.Errorf("a URI with the parameter does not parse: %v", err)
+	}
+	if got := proto.AddHappFragment(uri, ""); got != uri {
+		t.Errorf("an empty value changed the URI: %s", got)
+	}
+}

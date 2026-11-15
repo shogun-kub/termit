@@ -26,6 +26,7 @@ import (
 
 	"github.com/shogun-kub/termit/internal/acme"
 	"github.com/shogun-kub/termit/internal/i18n"
+	"github.com/shogun-kub/termit/internal/proto"
 	"github.com/shogun-kub/termit/internal/uv/state"
 )
 
@@ -75,12 +76,16 @@ type Config struct {
 	// links. Russian is the default; English is the second language and the fallback for a console
 	// that cannot show Cyrillic. Command output stays English either way.
 	Locale string `yaml:"locale"`
-	ACME   ACME   `yaml:"acme"`
-	MN     MN     `yaml:"mn"`
-	Xray   Xray   `yaml:"xray"`
-	Decoy  Decoy  `yaml:"decoy"`
-	Warp   Warp   `yaml:"warp"`
-	Paths  Paths  `yaml:"paths"`
+	// HappFragment is the fragmentation parameter this node writes into the URIs it hands out itself —
+	// the page of client links and `termit-uv uri`. The mesh list gets its own from the server; this
+	// one is what makes the page uniform. Empty means no parameter.
+	HappFragment string `yaml:"happ_fragment"`
+	ACME         ACME   `yaml:"acme"`
+	MN           MN     `yaml:"mn"`
+	Xray         Xray   `yaml:"xray"`
+	Decoy        Decoy  `yaml:"decoy"`
+	Warp         Warp   `yaml:"warp"`
+	Paths        Paths  `yaml:"paths"`
 }
 
 // Lang is the configured language. An unusable value falls back to the default rather than failing:
@@ -196,6 +201,10 @@ type Paths struct {
 func Default() *Config {
 	c := &Config{SchemaVersion: SchemaVersion}
 	c.applyDefaults()
+	// A fresh node writes fragmentation into the links it renders itself, so the page of client links
+	// is uniform with the mesh list the server renders. A configuration that predates the key keeps
+	// its links alone: the loader adds nothing.
+	c.HappFragment = proto.DefaultHappFragment
 	return c
 }
 
@@ -278,6 +287,10 @@ func (c *Config) Validate() error {
 	}
 	if _, ok := i18n.Parse(c.Locale); !ok {
 		problems = append(problems, fmt.Errorf("locale %q is not one this build speaks (ru, en)", c.Locale))
+	}
+	if c.HappFragment != "" && !proto.ValidHappFragment(c.HappFragment) {
+		problems = append(problems, fmt.Errorf("happ_fragment %q must look like length,interval,packets[,maxSplit]",
+			c.HappFragment))
 	}
 	if c.Email != "" && (strings.ContainsAny(c.Email, " \t") || !strings.Contains(c.Email, "@") || len(c.Email) > emailLocalMaxLen) {
 		problems = append(problems, fmt.Errorf("email %q is not a usable address", c.Email))

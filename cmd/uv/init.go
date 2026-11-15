@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/shogun-kub/termit/internal/i18n"
+	"github.com/shogun-kub/termit/internal/proto"
 	"github.com/shogun-kub/termit/internal/uv/config"
 	"github.com/shogun-kub/termit/internal/uv/install"
 	"github.com/shogun-kub/termit/internal/uv/state"
@@ -24,6 +25,8 @@ credential is ever regenerated.`)
 	mnURL := flags.String("mn", "", "management server URL, the server's API prefix included")
 	email := flags.String("email", "", "ACME account contact address")
 	locale := flags.String("locale", "", "language for the menu and the page of client links: ru or en")
+	happFragment := flags.String("happ-fragment", "",
+		"fragmentation this node writes into its own links (length,interval,packets[,maxSplit]; empty: off)")
 	acmeCA := flags.String("acme-ca", "", "ACME directory URL")
 	acmeInsecure := flags.Bool("acme-skip-tls-verify", false, "lab only: do not verify the ACME server certificate")
 	template := flags.String("decoy-template", "", "decoy site archetype")
@@ -71,6 +74,14 @@ credential is ever regenerated.`)
 	}
 	if set["email"] {
 		cfg.Email = *email
+	}
+	if set["happ-fragment"] {
+		value := strings.TrimSpace(*happFragment)
+		if value != "" && !proto.ValidHappFragment(value) {
+			fmt.Fprintf(a.stderr, "termit-uv init: --happ-fragment %q must look like length,interval,packets[,maxSplit]\\n", value)
+			return exitUsage
+		}
+		cfg.HappFragment = value
 	}
 	if set["locale"] {
 		lang, ok := i18n.Parse(*locale)

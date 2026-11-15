@@ -173,7 +173,7 @@ self-check:   ok 2026-11-10T11:17:04Z
 
 | Команда | Что делает | Основные флаги |
 |---|---|---|
-| `termit-uv init` | установить или довести узел до нужного состояния | `--domain`, `--email`, `--locale ru\|en`, `--no-warp`, `--warp MODE`, `--warp-selected LIST`, `--dry-run`, `--only`, `--skip`, `--acme-ca`, `--xray-version`, `--xray-download-base`, `--relocate`, `--agent-key-file` |
+| `termit-uv init` | установить или довести узел до нужного состояния | `--domain`, `--email`, `--locale ru\|en`, `--happ-fragment VALUE`, `--no-warp`, `--warp MODE`, `--warp-selected LIST`, `--dry-run`, `--only`, `--skip`, `--acme-ca`, `--xray-version`, `--xray-download-base`, `--relocate`, `--agent-key-file` |
 | `termit-uv doctor` | диагностика машины и узла, ничего не меняет | `--json` |
 | `termit-uv net` | отличить плохой путь от больного узла по счётчикам TCP | `--seconds 60`, `--json` |
 | `termit-uv status` | идентичность, сертификат, пиры, синхронизация, WARP | `--json` |

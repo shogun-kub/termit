@@ -60,6 +60,6 @@ func (a *application) runURI(args []string) int {
 		fmt.Fprintf(a.stderr, "termit-uv uri: %v\n", err)
 		return exitFailure
 	}
-	fmt.Fprintln(a.stdout, uri)
+	fmt.Fprintln(a.stdout, proto.AddHappFragment(uri, cfg.HappFragment))
 	return exitOK
 }

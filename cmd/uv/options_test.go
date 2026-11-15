@@ -221,3 +221,28 @@ func TestOptionsHonoursTheConfiguredLanguage(t *testing.T) {
 		t.Errorf("a Russian node rendered a page that is not Russian:\n%s", string(page)[:200])
 	}
 }
+
+func TestOptionsCarriesTheNodesOwnFragmentParameter(t *testing.T) {
+	t.Parallel()
+	app, cfg, configPath := optionsFixture(t, "")
+	cfg.HappFragment = "300-500,1-5,tlshello"
+	if err := cfg.Save(configPath); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	if code := app.run([]string{"options", "--config", configPath}); code != exitOK {
+		t.Fatalf("exit = %d, want 0; stderr: %s", code, app.stderr.(*strings.Builder).String())
+	}
+	node, err := state.LoadInstalled(cfg.Paths.StatePath())
+	if err != nil {
+		t.Fatalf("load state: %v", err)
+	}
+	page, err := os.ReadFile(filepath.Join(cfg.Paths.SiteDir, node.Options.Token, "index.html"))
+	if err != nil {
+		t.Fatalf("read the page: %v", err)
+	}
+	// The local device is the one link the node builds itself; without this the page would mix a
+	// fragmented mesh with a plain local entry.
+	if !strings.Contains(string(page), "&amp;fragment=300-500,1-5,tlshello") {
+		t.Errorf("the local link does not carry the node's fragmentation parameter")
+	}
+}

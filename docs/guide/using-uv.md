@@ -172,7 +172,7 @@ own; the systemd units are installed by `termit-uv init`.
 
 | Command | What it does | Main flags |
 |---|---|---|
-| `termit-uv init` | install or converge this node | `--domain`, `--email`, `--locale ru\|en`, `--no-warp`, `--warp MODE`, `--warp-selected LIST`, `--dry-run`, `--only`, `--skip`, `--acme-ca`, `--xray-version`, `--xray-download-base`, `--relocate`, `--agent-key-file` |
+| `termit-uv init` | install or converge this node | `--domain`, `--email`, `--locale ru\|en`, `--happ-fragment VALUE`, `--no-warp`, `--warp MODE`, `--warp-selected LIST`, `--dry-run`, `--only`, `--skip`, `--acme-ca`, `--xray-version`, `--xray-download-base`, `--relocate`, `--agent-key-file` |
 | `termit-uv doctor` | diagnose the host and the node, change nothing | `--json` |
 | `termit-uv net` | tell a lossy path from a broken node, by sampling the TCP counters | `--seconds 60`, `--json` |
 | `termit-uv status` | identity, certificate, peers, sync, WARP | `--json` |
