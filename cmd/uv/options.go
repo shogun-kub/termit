@@ -128,6 +128,7 @@ func (a *application) optionsData(ctx context.Context, cfg *config.Config, node 
 	data := options.Data{
 		Domain:  cfg.Domain,
 		Token:   token,
+		Lang:    cfg.Lang(),
 		PageURL: options.PageURL(cfg.Domain, token),
 		Local: options.Link{
 			Label: cfg.Domain,
@@ -149,7 +150,9 @@ func (a *application) optionsData(ctx context.Context, cfg *config.Config, node 
 			"this page shows the device of this node only. Try `termit-uv sync`, then re-render."
 		return data
 	}
-	data.Peers = peers
+	// The subscription is rendered for every peer, this node included; the page lists it once, under
+	// "this node", and that is where its own credential belongs.
+	data.Peers = options.WithoutLocal(peers, cfg.Domain)
 	return data
 }
 

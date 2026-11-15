@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/shogun-kub/termit/internal/i18n"
 	"github.com/shogun-kub/termit/internal/uv/config"
 	"github.com/shogun-kub/termit/internal/uv/install"
 	"github.com/shogun-kub/termit/internal/uv/state"
@@ -22,6 +23,7 @@ credential is ever regenerated.`)
 	domain := flags.String("domain", "", "node domain name; required on the first run")
 	mnURL := flags.String("mn", "", "management server URL, the server's API prefix included")
 	email := flags.String("email", "", "ACME account contact address")
+	locale := flags.String("locale", "", "language for the menu and the page of client links: ru or en")
 	acmeCA := flags.String("acme-ca", "", "ACME directory URL")
 	acmeInsecure := flags.Bool("acme-skip-tls-verify", false, "lab only: do not verify the ACME server certificate")
 	template := flags.String("decoy-template", "", "decoy site archetype")
@@ -69,6 +71,14 @@ credential is ever regenerated.`)
 	}
 	if set["email"] {
 		cfg.Email = *email
+	}
+	if set["locale"] {
+		lang, ok := i18n.Parse(*locale)
+		if !ok {
+			fmt.Fprintf(a.stderr, "termit-uv init: --locale %q is not one this build speaks (ru, en)\n", *locale)
+			return exitUsage
+		}
+		cfg.Locale = lang.String()
 	}
 	if set["acme-ca"] {
 		cfg.ACME.Directory = *acmeCA

@@ -25,6 +25,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/shogun-kub/termit/internal/acme"
+	"github.com/shogun-kub/termit/internal/i18n"
 	"github.com/shogun-kub/termit/internal/uv/state"
 )
 
@@ -70,12 +71,26 @@ type Config struct {
 	SchemaVersion int    `yaml:"schema_version"`
 	Domain        string `yaml:"domain"`
 	Email         string `yaml:"email,omitempty"`
-	ACME          ACME   `yaml:"acme"`
-	MN            MN     `yaml:"mn"`
-	Xray          Xray   `yaml:"xray"`
-	Decoy         Decoy  `yaml:"decoy"`
-	Warp          Warp   `yaml:"warp"`
-	Paths         Paths  `yaml:"paths"`
+	// Locale is the language the owner is spoken to in: the menu, the wizard and the page of client
+	// links. Russian is the default; English is the second language and the fallback for a console
+	// that cannot show Cyrillic. Command output stays English either way.
+	Locale string `yaml:"locale"`
+	ACME   ACME   `yaml:"acme"`
+	MN     MN     `yaml:"mn"`
+	Xray   Xray   `yaml:"xray"`
+	Decoy  Decoy  `yaml:"decoy"`
+	Warp   Warp   `yaml:"warp"`
+	Paths  Paths  `yaml:"paths"`
+}
+
+// Lang is the configured language. An unusable value falls back to the default rather than failing:
+// the configuration is validated on load, so this only matters for a value that got in another way.
+func (c *Config) Lang() i18n.Lang {
+	lang, ok := i18n.Parse(c.Locale)
+	if !ok {
+		return i18n.Default
+	}
+	return lang
 }
 
 // MN is the management server this node belongs to. Empty means the node stands alone.
@@ -261,6 +276,9 @@ func (c *Config) Validate() error {
 	if err := validateMNURL(c.MN.URL); err != nil {
 		problems = append(problems, err)
 	}
+	if _, ok := i18n.Parse(c.Locale); !ok {
+		problems = append(problems, fmt.Errorf("locale %q is not one this build speaks (ru, en)", c.Locale))
+	}
 	if c.Email != "" && (strings.ContainsAny(c.Email, " \t") || !strings.Contains(c.Email, "@") || len(c.Email) > emailLocalMaxLen) {
 		problems = append(problems, fmt.Errorf("email %q is not a usable address", c.Email))
 	}
@@ -340,6 +358,9 @@ func (c *Config) applyDefaults() {
 	}
 	if c.Decoy.Template == "" {
 		c.Decoy.Template = DefaultDecoyTemplate
+	}
+	if c.Locale == "" {
+		c.Locale = i18n.Default.String()
 	}
 	c.Warp.applyDefaults()
 	c.Paths.applyDefaults()

@@ -56,6 +56,9 @@ func newTestApp(t *testing.T) (*application, *bytes.Buffer, *bytes.Buffer) {
 		// Tests declare the host: without this, "no arguments" would open the menu when the suite
 		// happens to run on a terminal and print usage when it does not.
 		interactiveFn: func() bool { return false },
+		// No locale in the environment: the suite must not depend on the machine's LANG, and an empty
+		// environment is the case where Russian cannot be shown.
+		getenv: func(string) string { return "" },
 		http: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusOK,

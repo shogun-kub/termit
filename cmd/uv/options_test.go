@@ -22,6 +22,8 @@ func optionsFixture(t *testing.T, subscriptionBody string) (*application, *confi
 	dir := t.TempDir()
 	cfg := config.Default()
 	cfg.Domain = "node.example.com"
+	// The tests read the page in English; the language itself is asserted separately below.
+	cfg.Locale = "en"
 	cfg.Paths.ConfigDir = dir
 	cfg.Paths.StateDir = filepath.Join(dir, "state")
 	cfg.Paths.SiteDir = filepath.Join(dir, "site")
@@ -74,7 +76,7 @@ func TestOptionsRendersThePageAndPrintsItsAddress(t *testing.T) {
 	app, cfg, configPath := optionsFixture(t, list)
 
 	if code := app.run([]string{"options", "--config", configPath}); code != exitOK {
-		t.Fatalf("exit = %d, want 0", code)
+		t.Fatalf("exit = %d, want 0; stderr: %s", code, app.stderr.(*strings.Builder).String())
 	}
 	printed := strings.TrimSpace(app.stdout.(*strings.Builder).String())
 	if !strings.HasPrefix(printed, "https://node.example.com/") || !strings.HasSuffix(printed, "/") {
@@ -194,4 +196,28 @@ func fileMode(t *testing.T, path string) os.FileMode {
 		t.Fatalf("stat %s: %v", path, err)
 	}
 	return info.Mode().Perm()
+}
+
+func TestOptionsHonoursTheConfiguredLanguage(t *testing.T) {
+	t.Parallel()
+	app, cfg, configPath := optionsFixture(t, "")
+	cfg.Locale = "ru"
+	if err := cfg.Save(configPath); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	if code := app.run([]string{"options", "--config", configPath}); code != exitOK {
+		t.Fatalf("exit = %d, want 0; stderr: %s", code, app.stderr.(*strings.Builder).String())
+	}
+	node, err := state.LoadInstalled(cfg.Paths.StatePath())
+	if err != nil {
+		t.Fatalf("load state: %v", err)
+	}
+	page, err := os.ReadFile(filepath.Join(cfg.Paths.SiteDir, node.Options.Token, "index.html"))
+	if err != nil {
+		t.Fatalf("read the page: %v", err)
+	}
+	// The page follows the configuration, not the console: a browser always has the glyphs.
+	if !strings.Contains(string(page), `lang="ru"`) || !strings.Contains(string(page), "Этот узел") {
+		t.Errorf("a Russian node rendered a page that is not Russian:\n%s", string(page)[:200])
+	}
 }

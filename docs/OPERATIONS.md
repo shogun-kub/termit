@@ -342,7 +342,9 @@ If you would rather be asked than remember flags, the wizard is the same install
 termit-uv wizard
 ```
 
-It asks for the domain, the contact address, the masking site, the egress mode and the invite code,
+Its first question is the language — `ru` or `en`, Russian by default — because the menu and the page
+of client links are written in it. Then it asks for the domain, the contact address, the masking site,
+the egress mode and the invite code,
 then runs the same `init` with the same flags. Each answer is kept in `wizard.yaml` beside the
 configuration, so an interrupted run continues where it stopped and Enter accepts what is already
 there (`--fresh` forgets them). On a node that is already installed it asks nothing: it runs the
@@ -577,6 +579,11 @@ directory. The consequences are worth knowing:
   asked for a page stays without one.
 - The page is built from what the node can see. If the management server is unreachable it says so and
   shows the local device only, which is exactly when a link is worth having.
+- The page is written in the configured language (`locale: ru` or `en`, Russian by default). The menu
+  follows the same setting, but only where the console can show Cyrillic: on a C or latin-1 locale it
+  falls back to English, because a menu of question marks is worse than English. The page never falls
+  back — a browser always has the glyphs — and this node's own device appears once, under “this node”,
+  not again in the mesh list it also belongs to.
 
 The subscription is the mesh view: one URL per node, containing that node's own profile plus every
 healthy peer, with a **pair credential** for each peer — valid on that pair and nowhere else.

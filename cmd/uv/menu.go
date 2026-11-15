@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/shogun-kub/termit/internal/i18n"
 	"github.com/shogun-kub/termit/internal/termui"
 	"github.com/shogun-kub/termit/internal/uv/config"
 	"github.com/shogun-kub/termit/internal/uv/state"
@@ -19,8 +20,8 @@ import (
 // flag would answer, then runs the same command line a script would. That is the whole point — a
 // second implementation of "install" would drift from the first one.
 type menuEntry struct {
-	label string
-	hint  string
+	labelKey i18n.Key
+	hintKey  i18n.Key
 	// plan builds the commands to run. A nil plan with a nil error means the operator cancelled; an
 	// error means the answer was unusable and nothing runs.
 	plan func(ui *termui.UI) ([][]string, error)
@@ -48,6 +49,14 @@ func (a *application) runMenu(args []string) int {
 		base = []string{"--config", *configPath}
 	}
 
+	// The menu speaks the configured language, unless this console cannot show it. Russian needs a
+	// UTF-8 environment; a console that would print question marks gets English instead.
+	lang := i18n.Default
+	if cfg, err := config.Load(*configPath); err == nil {
+		lang = cfg.Lang()
+	}
+	a.tr = i18n.New(i18n.Console(lang, a.env))
+
 	ui := termui.New(a.stdin(), a.stdout, a.menuStyle())
 	entries := a.menuEntries()
 
@@ -55,8 +64,9 @@ func (a *application) runMenu(args []string) int {
 		ui.Clear()
 		a.menuHeader(ui)
 		items := make([]termui.Item, len(entries))
+		tr := a.translator()
 		for i, entry := range entries {
-			items[i] = termui.Item{Label: entry.label, Hint: entry.hint}
+			items[i] = termui.Item{Label: tr.T(entry.labelKey), Hint: tr.T(entry.hintKey)}
 		}
 		choice, err := ui.Menu(items)
 		if errors.Is(err, io.EOF) {
@@ -76,7 +86,7 @@ func (a *application) runMenu(args []string) int {
 			continue
 		}
 		if index >= len(entries) {
-			ui.Error(fmt.Sprintf("%q is past the end of the menu", choice))
+			ui.Error(a.translator().Tf(i18n.MenuPastEnd, choice))
 			continue
 		}
 
@@ -85,7 +95,7 @@ func (a *application) runMenu(args []string) int {
 		case err != nil:
 			ui.Error(err.Error())
 		case plan == nil:
-			ui.Say("cancelled")
+			ui.Say(a.translator().T(i18n.MenuCancelled))
 		default:
 			if code := a.runPlan(ui, plan, base); code != exitOK {
 				// A failed command has explained itself; keep the summary on screen long enough to read.
@@ -110,7 +120,7 @@ func (a *application) runPlan(ui *termui.UI, plan [][]string, base []string) int
 		ui.Blank()
 		if code := a.run(argv); code != exitOK {
 			ui.Blank()
-			ui.Error(fmt.Sprintf("that step exited with status %d", code))
+			ui.Error(a.translator().Tf(i18n.MenuStepFailed, code))
 			return code
 		}
 	}
@@ -120,32 +130,33 @@ func (a *application) runPlan(ui *termui.UI, plan [][]string, base []string) int
 // menuHeader draws what this node is, without pretending to be a status report: the status command
 // does that, and the menu offers it as an action.
 func (a *application) menuHeader(ui *termui.UI) {
-	ui.Title("Termit — node")
+	tr := a.translator()
+	ui.Title(tr.T(i18n.MenuTitle))
 	ui.Hint(version.String("termit-uv"))
 	ui.Blank()
 
 	cfg, err := config.Load(a.menuConfigPath())
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
-		ui.State("warn", "not installed yet: choose “install or converge”")
+		ui.State("warn", tr.T(i18n.MenuNotInstalled))
 		ui.Blank()
 		return
 	case err != nil:
-		ui.State("fail", "configuration: "+err.Error())
+		ui.State("fail", tr.Tf(i18n.MenuConfigError, err.Error()))
 		ui.Blank()
 		return
 	}
 	node, err := state.LoadInstalled(cfg.Paths.StatePath())
 	switch {
 	case errors.Is(err, state.ErrNotInstalled):
-		ui.State("warn", "configured, but no node state: run “install or converge”")
+		ui.State("warn", tr.T(i18n.MenuNoState))
 	case err != nil:
-		ui.State("fail", "state: "+err.Error())
+		ui.State("fail", tr.Tf(i18n.MenuStateError, err.Error()))
 	default:
 		ui.KV("domain", cfg.Domain)
 		ui.KV("identity", state.Fingerprint(node.Identity.SelfUUID))
 		ui.KV("peer path", state.Fingerprint(node.Identity.XHTTPPath))
-		ui.State("ok", "installed")
+		ui.State("ok", tr.T(i18n.MenuInstalled))
 	}
 	ui.Blank()
 }
@@ -154,87 +165,91 @@ func (a *application) menuHeader(ui *termui.UI) {
 func (a *application) menuEntries() []menuEntry {
 	return []menuEntry{
 		{
-			label: "status",
-			hint:  "identity, certificate, peers, sync, WARP",
-			plan:  fixed("status"),
+			labelKey: i18n.MenuStatusLabel,
+			hintKey:  i18n.MenuStatusHint,
+			plan:     fixed("status"),
 		},
 		{
-			label: "doctor",
-			hint:  "check the host and the node, change nothing",
-			plan:  fixed("doctor"),
+			labelKey: i18n.MenuDoctorLabel,
+			hintKey:  i18n.MenuDoctorHint,
+			plan:     fixed("doctor"),
 		},
 		{
-			label: "connection diagnostics",
-			hint:  "sample the TCP counters: is the node dropping, or is the path?",
-			plan:  fixed("net"),
+			labelKey: i18n.MenuNetLabel,
+			hintKey:  i18n.MenuNetHint,
+			plan:     fixed("net"),
 		},
 		{
-			label: "install or converge",
-			hint:  "first run asks for the domain; later runs only re-check",
-			plan:  a.planInstall,
+			labelKey: i18n.MenuInstallLabel,
+			hintKey:  i18n.MenuInstallHint,
+			plan:     a.planInstall,
 		},
 		{
-			label: "setup wizard",
-			hint:  "step by step through a first installation, remembering the answers",
-			plan:  fixed("wizard"),
+			labelKey: i18n.MenuWizardLabel,
+			hintKey:  i18n.MenuWizardHint,
+			plan:     fixed("wizard"),
 		},
 		{
-			label: "client options",
-			hint:  "the private page with every client link, and its address",
-			plan:  fixed("options"),
+			labelKey: i18n.MenuOptionsLabel,
+			hintKey:  i18n.MenuOptionsHint,
+			plan:     fixed("options"),
 		},
 		{
-			label: "join the mesh",
-			hint:  "enroll with an invite code from the server operator",
-			plan:  a.planEnroll,
+			labelKey: i18n.MenuEnrollLabel,
+			hintKey:  i18n.MenuEnrollHint,
+			plan:     a.planEnroll,
 		},
 		{
-			label: "sync now",
-			hint:  "fetch the peer set immediately instead of waiting a day",
-			plan:  fixed("sync"),
+			labelKey: i18n.MenuSyncLabel,
+			hintKey:  i18n.MenuSyncHint,
+			plan:     fixed("sync"),
 		},
 		{
-			label: "check drift",
-			hint:  "exit 4 tells you the core differs from the server",
-			plan:  fixed("sync", "--check"),
+			labelKey: i18n.MenuDriftLabel,
+			hintKey:  i18n.MenuDriftHint,
+			plan:     fixed("sync", "--check"),
 		},
 		{
-			label: "devices",
-			hint:  "phones and laptops that use this node only",
-			plan:  a.planDevices,
+			labelKey: i18n.MenuDevicesLabel,
+			hintKey:  i18n.MenuDevicesHint,
+			plan:     a.planDevices,
 		},
 		{
-			label: "print vless URI",
-			hint:  "the URI of this node's own device",
-			plan:  fixed("uri"),
+			labelKey: i18n.MenuURILabel,
+			hintKey:  i18n.MenuURIHint,
+			plan:     fixed("uri"),
 		},
 		{
-			label: "egress (WARP)",
-			hint:  "where proxied traffic leaves",
-			plan:  a.planWarp,
+			labelKey: i18n.MenuWarpLabel,
+			hintKey:  i18n.MenuWarpHint,
+			plan:     a.planWarp,
 		},
 		{
-			label: "certificate",
-			hint:  "renew the TLS certificate now",
-			plan:  a.planCertificate,
+			labelKey: i18n.MenuCertificateLabel,
+			hintKey:  i18n.MenuCertificateHint,
+			plan:     a.planCertificate,
 		},
 		{
-			label: "decoy site",
-			hint:  "regenerate the site the node serves to strangers",
-			plan:  a.planDecoy,
+			labelKey: i18n.MenuDecoyLabel,
+			hintKey:  i18n.MenuDecoyHint,
+			plan:     a.planDecoy,
 		},
 		{
-			label: "uninstall",
-			hint:  "remove what Termit created, optionally with its secrets",
-			plan:  a.planUninstall,
+			labelKey: i18n.MenuUninstallLabel,
+			hintKey:  i18n.MenuUninstallHint,
+			plan:     a.planUninstall,
 		},
 		{
-			label: "help",
-			hint:  "every command and flag",
-			plan:  fixed("help"),
+			labelKey: i18n.MenuHelpLabel,
+			hintKey:  i18n.MenuHelpHint,
+			plan:     fixed("help"),
 		},
 	}
 }
+
+// labelOf is the entry's label in one language. It exists so tests can find an entry without
+// depending on its position or on the machine's locale.
+func (e menuEntry) labelOf(tr i18n.Translator) string { return tr.T(e.labelKey) }
 
 // fixed is an entry that runs one command line with no questions.
 func fixed(argv ...string) func(*termui.UI) ([][]string, error) {
@@ -262,22 +277,23 @@ func appendFlags(argv, base []string) []string {
 // planInstall converges an installed node, or installs one, asking only for what the flags would
 // require on a first run.
 func (a *application) planInstall(ui *termui.UI) ([][]string, error) {
+	tr := a.translator()
 	if _, err := config.Load(a.menuConfigPath()); err == nil {
 		return [][]string{{"init"}}, nil
 	}
-	ui.Say("This machine has no node configuration yet.")
-	domain, err := ui.Prompt("Domain (a DNS name that points at this machine)", "")
+	ui.Say(tr.T(i18n.MenuNoConfig))
+	domain, err := ui.Prompt(tr.T(i18n.PromptDomain), "")
 	if err != nil {
 		return nil, err
 	}
 	if domain == "" {
-		return nil, errors.New("a domain is required")
+		return nil, errors.New(i18n.New(i18n.EN).T(i18n.ErrDomainRequired))
 	}
-	email, err := ui.Prompt("Email for the certificate authority", "")
+	email, err := ui.Prompt(tr.T(i18n.PromptEmail), "")
 	if err != nil {
 		return nil, err
 	}
-	warp, err := ui.Confirm("Send proxied traffic through Cloudflare WARP?", true)
+	warp, err := ui.Confirm(tr.T(i18n.PromptWarp), true)
 	if err != nil {
 		return nil, err
 	}
@@ -295,18 +311,19 @@ func (a *application) planInstall(ui *termui.UI) ([][]string, error) {
 // planEnroll asks for the server and the invite code. The MN URL defaults to the configured one, so a
 // converged node needs one answer.
 func (a *application) planEnroll(ui *termui.UI) ([][]string, error) {
+	tr := a.translator()
 	mn := ""
 	if cfg, err := config.Load(a.menuConfigPath()); err == nil {
 		mn = cfg.MN.URL
 	}
 	if mn == "" {
-		answer, err := ui.Prompt("Management server URL", "https://mn.example.com")
+		answer, err := ui.Prompt(tr.T(i18n.PromptMN), "https://mn.example.com")
 		if err != nil {
 			return nil, err
 		}
 		mn = answer
 	}
-	invite, err := ui.Prompt("Invite code from the server operator", "")
+	invite, err := ui.Prompt(tr.T(i18n.PromptInvite), "")
 	if err != nil {
 		return nil, err
 	}
@@ -318,11 +335,12 @@ func (a *application) planEnroll(ui *termui.UI) ([][]string, error) {
 
 // planDevices handles the local devices on this node.
 func (a *application) planDevices(ui *termui.UI) ([][]string, error) {
+	tr := a.translator()
 	ui.Blank()
 	choice, err := ui.Menu([]termui.Item{
-		{Label: "list", Hint: "labels and UUID prefixes"},
-		{Label: "add", Hint: "create a device and print its URI"},
-		{Label: "remove", Hint: "delete one by label"},
+		{Label: tr.T(i18n.SubDevicesListLabel), Hint: tr.T(i18n.SubDevicesListHint)},
+		{Label: tr.T(i18n.SubDevicesAddLabel), Hint: tr.T(i18n.SubDevicesAddHint)},
+		{Label: tr.T(i18n.SubDevicesRemoveLabel), Hint: tr.T(i18n.SubDevicesRemoveHint)},
 	})
 	if err != nil || choice == "" {
 		return nil, err
@@ -331,7 +349,7 @@ func (a *application) planDevices(ui *termui.UI) ([][]string, error) {
 	case "1":
 		return [][]string{{"device", "list"}}, nil
 	case "2":
-		label, err := ui.Prompt("Label for the new device", "phone")
+		label, err := ui.Prompt(tr.T(i18n.PromptDeviceLabel), "phone")
 		if err != nil {
 			return nil, err
 		}
@@ -340,7 +358,7 @@ func (a *application) planDevices(ui *termui.UI) ([][]string, error) {
 		}
 		return [][]string{{"device", "add", "--label", label}}, nil
 	default:
-		label, err := ui.Prompt("Label of the device to remove", "")
+		label, err := ui.Prompt(tr.T(i18n.PromptDeviceRemove), "")
 		if err != nil {
 			return nil, err
 		}
@@ -353,12 +371,13 @@ func (a *application) planDevices(ui *termui.UI) ([][]string, error) {
 
 // planWarp changes where proxied traffic leaves.
 func (a *application) planWarp(ui *termui.UI) ([][]string, error) {
+	tr := a.translator()
 	ui.Blank()
 	choice, err := ui.Menu([]termui.Item{
-		{Label: "show", Hint: "mode, what warp-cli says, and what Cloudflare sees"},
-		{Label: "all", Hint: "every proxied connection goes through WARP (default)"},
-		{Label: "off", Hint: "exit from this node's own address"},
-		{Label: "selected", Hint: "only the domains you list"},
+		{Label: tr.T(i18n.SubWarpShowLabel), Hint: tr.T(i18n.SubWarpShowHint)},
+		{Label: tr.T(i18n.SubWarpAllLabel), Hint: tr.T(i18n.SubWarpAllHint)},
+		{Label: tr.T(i18n.SubWarpOffLabel), Hint: tr.T(i18n.SubWarpOffHint)},
+		{Label: tr.T(i18n.SubWarpSelectedLabel), Hint: tr.T(i18n.SubWarpSelectedHint)},
 	})
 	if err != nil || choice == "" {
 		return nil, err
@@ -371,7 +390,7 @@ func (a *application) planWarp(ui *termui.UI) ([][]string, error) {
 	case "3":
 		return [][]string{{"warp", "mode", "off"}}, nil
 	default:
-		domains, err := ui.Prompt("Domains that use WARP, comma separated", "")
+		domains, err := ui.Prompt(tr.T(i18n.PromptWarpDomains), "")
 		if err != nil {
 			return nil, err
 		}
@@ -384,7 +403,8 @@ func (a *application) planWarp(ui *termui.UI) ([][]string, error) {
 
 // planCertificate renews the certificate, forcing a reissue when asked.
 func (a *application) planCertificate(ui *termui.UI) ([][]string, error) {
-	force, err := ui.Confirm("Reissue even if the current certificate is not due?", false)
+	tr := a.translator()
+	force, err := ui.Confirm(tr.T(i18n.PromptCertForce), false)
 	if err != nil {
 		return nil, err
 	}
@@ -396,7 +416,8 @@ func (a *application) planCertificate(ui *termui.UI) ([][]string, error) {
 
 // planDecoy regenerates the decoy site, optionally with another archetype.
 func (a *application) planDecoy(ui *termui.UI) ([][]string, error) {
-	template, err := ui.Prompt("Archetype: product or portal (empty keeps the current one)", "")
+	tr := a.translator()
+	template, err := ui.Prompt(tr.T(i18n.PromptTemplate), "")
 	if err != nil {
 		return nil, err
 	}
@@ -412,7 +433,8 @@ func (a *application) planDecoy(ui *termui.UI) ([][]string, error) {
 
 // planUninstall is the one destructive path, so it asks twice and names what --purge takes.
 func (a *application) planUninstall(ui *termui.UI) ([][]string, error) {
-	purge, err := ui.Confirm("Also delete configuration, state, certificates and the service user?", false)
+	tr := a.translator()
+	purge, err := ui.Confirm(tr.T(i18n.PromptPurge), false)
 	if err != nil {
 		return nil, err
 	}
@@ -420,7 +442,7 @@ func (a *application) planUninstall(ui *termui.UI) ([][]string, error) {
 	if purge {
 		what = "the units, the core, the nginx vhost, and every secret and certificate"
 	}
-	sure, err := ui.Confirm("Really remove "+what+"?", false)
+	sure, err := ui.Confirm(tr.Tf(i18n.PromptSure, what), false)
 	if err != nil {
 		return nil, err
 	}

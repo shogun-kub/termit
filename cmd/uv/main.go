@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shogun-kub/termit/internal/i18n"
 	"github.com/shogun-kub/termit/internal/uv/config"
 	"github.com/shogun-kub/termit/internal/uv/install"
 	"github.com/shogun-kub/termit/internal/uv/warp"
@@ -86,6 +87,28 @@ type application struct {
 	// completeFn answers "is this node fully installed" for the wizard; nil means run the pipeline in
 	// dry-run mode. Tests set it, because a complete node needs units and a certificate.
 	completeFn func(*config.Config, string) (bool, error)
+	// tr is the language the owner is spoken to in, once a command that speaks has resolved it.
+	tr i18n.Translator
+	// getenv reads the environment for the locale check; nil means os.Getenv. Tests set it, so the
+	// language of a menu never depends on the machine that runs the suite.
+	getenv func(string) string
+}
+
+// translator is the language of the current session. A command that never resolves one gets the
+// default rather than an empty screen.
+func (a *application) translator() i18n.Translator {
+	if a.tr.Lang() == "" {
+		return i18n.New(i18n.Console(i18n.Default, a.env))
+	}
+	return a.tr
+}
+
+// env reads one environment variable, through the seam tests use.
+func (a *application) env(name string) string {
+	if a.getenv != nil {
+		return a.getenv(name)
+	}
+	return os.Getenv(name)
 }
 
 func (a *application) run(args []string) int {

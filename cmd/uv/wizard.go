@@ -14,6 +14,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/shogun-kub/termit/internal/decoy"
+	"github.com/shogun-kub/termit/internal/i18n"
 	"github.com/shogun-kub/termit/internal/termui"
 	"github.com/shogun-kub/termit/internal/uv/config"
 	"github.com/shogun-kub/termit/internal/uv/install"
@@ -23,6 +24,7 @@ import (
 // wizardAnswers is what the wizard has learned so far. It is written after every answered step, so an
 // interrupted run resumes with the answers already given instead of starting over.
 type wizardAnswers struct {
+	Locale       string   `yaml:"locale,omitempty"`
 	Domain       string   `yaml:"domain,omitempty"`
 	Email        string   `yaml:"email,omitempty"`
 	Template     string   `yaml:"decoy_template,omitempty"`
@@ -89,12 +91,30 @@ re-installs a working node.`)
 	}
 
 	ui := termui.New(a.stdin(), a.stdout, a.menuStyle())
-	ui.Clear()
-	ui.Title("Termit — first installation")
-	ui.Hint("Enter accepts the value in brackets; an empty answer with no value means \"not now\".")
-	ui.Blank()
-
 	save := func() error { return saveWizardAnswers(draftPath, answers) }
+
+	// The language comes first, because everything after it is written in it. The question itself is
+	// bilingual: it cannot be asked in a language the operator has not chosen yet.
+	ui.Clear()
+	lang, err := a.wizardAskLanguage(ui, answers, cfg)
+	if err != nil {
+		return wizardInputEnded(ui, err)
+	}
+	answers.Locale = lang.String()
+	// The console decides whether Cyrillic is safe here; the page keeps the chosen language either way.
+	a.tr = i18n.New(i18n.Console(lang, a.env))
+	tr := a.translator()
+	if a.tr.Lang() != lang {
+		ui.Say(tr.T(i18n.WizardConsoleNote))
+	}
+	if err := save(); err != nil {
+		return a.wizardSaveFailed(err)
+	}
+
+	ui.Blank()
+	ui.Title(tr.T(i18n.WizardTitle))
+	ui.Hint(tr.T(i18n.WizardHint))
+	ui.Blank()
 
 	domain, err := a.wizardAskDomain(ui, answers, cfg)
 	if err != nil {
@@ -105,7 +125,7 @@ re-installs a working node.`)
 		return a.wizardSaveFailed(err)
 	}
 
-	email, err := ui.Prompt("Contact address for the certificate authority (optional)", firstNonEmpty(answers.Email, cfg.Email))
+	email, err := ui.Prompt(tr.T(i18n.WizardEmail), firstNonEmpty(answers.Email, cfg.Email))
 	if err != nil {
 		return wizardInputEnded(ui, err)
 	}
@@ -142,16 +162,19 @@ re-installs a working node.`)
 	}
 
 	a.wizardSummary(ui, answers)
-	proceed, err := ui.Confirm("Install this node now?", true)
+	proceed, err := ui.Confirm(tr.T(i18n.WizardConfirm), true)
 	if err != nil {
 		return wizardInputEnded(ui, err)
 	}
 	if !proceed {
-		ui.Say("Nothing was changed. The answers are kept: run `termit-uv wizard` again to continue.")
+		ui.Say(tr.T(i18n.WizardNothingChanged))
 		return exitOK
 	}
 
 	initArgs := []string{"init", "--config", *configPath, "--domain", answers.Domain}
+	if answers.Locale != "" {
+		initArgs = append(initArgs, "--locale", answers.Locale)
+	}
 	if answers.Email != "" {
 		initArgs = append(initArgs, "--email", answers.Email)
 	}
@@ -176,7 +199,7 @@ re-installs a working node.`)
 	ui.Blank()
 	if code := a.runInit(initArgs); code != exitOK {
 		// The draft stays: a second run continues from the same answers.
-		ui.Error("the installation did not finish; the answers are kept for the next run")
+		ui.Error(tr.T(i18n.WizardInstallFailed))
 		return code
 	}
 
@@ -187,7 +210,7 @@ re-installs a working node.`)
 		}
 		ui.Blank()
 		if code := a.runEnroll(enrollArgs); code != exitOK {
-			ui.Error("the node is installed but not in the mesh yet: fix the invite and run `termit-uv enroll`")
+			ui.Error(tr.T(i18n.WizardEnrollFailed))
 			return code
 		}
 	}
@@ -197,27 +220,53 @@ re-installs a working node.`)
 	}
 
 	ui.Blank()
-	ui.Title("Done")
-	ui.State("ok", "this node is installed")
+	ui.Title(tr.T(i18n.WizardDone))
+	ui.State("ok", tr.T(i18n.WizardDoneDetail))
 	return a.runOptions([]string{"--config", *configPath})
+}
+
+// wizardAskLanguage is the one question asked before a language exists. It shows both names, and an
+// empty answer keeps whatever was chosen last time (or the default).
+func (a *application) wizardAskLanguage(ui *termui.UI, answers wizardAnswers, cfg *config.Config) (i18n.Lang, error) {
+	current, ok := i18n.Parse(firstNonEmpty(answers.Locale, cfg.Locale))
+	if !ok {
+		current = i18n.Default
+	}
+	for {
+		answer, err := ui.Prompt(i18n.New(i18n.EN).T(i18n.WizardLang), current.String())
+		if err != nil {
+			return "", err
+		}
+		if strings.TrimSpace(answer) == "" {
+			return current, nil
+		}
+		lang, ok := i18n.Parse(answer)
+		if !ok {
+			ui.Error(i18n.New(i18n.EN).T(i18n.WizardLangInvalid))
+			continue
+		}
+		return lang, nil
+	}
 }
 
 // wizardAlreadyInstalled is what a second run of the wizard shows: what the node is, not questions
 // with answers the node already made.
 func (a *application) wizardAlreadyInstalled(cfg *config.Config, configPath, draftPath string) int {
+	a.tr = i18n.New(i18n.Console(cfg.Lang(), a.env))
+	tr := a.translator()
 	if err := os.Remove(draftPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		fmt.Fprintf(a.stderr, "termit-uv wizard: remove %s: %v\n", draftPath, err)
 	}
-	fmt.Fprintln(a.stdout, "This node is already installed; nothing to ask.")
+	fmt.Fprintln(a.stdout, tr.T(i18n.WizardInstalled))
 	fmt.Fprintln(a.stdout)
 	if code := a.runStatus([]string{"--config", configPath}); code != exitOK {
 		return code
 	}
 	if node, err := state.LoadInstalled(cfg.Paths.StatePath()); err == nil {
 		if tok := node.Options.Token; tok != "" {
-			fmt.Fprintf(a.stdout, "\nclient options: https://%s/%s/\n", cfg.Domain, tok)
+			fmt.Fprintf(a.stdout, "\n"+tr.T(i18n.WizardOptionsLine)+"\n", "https://"+cfg.Domain+"/"+tok+"/")
 		} else {
-			fmt.Fprintln(a.stdout, "\nclient options: none yet — `termit-uv options` renders one")
+			fmt.Fprintf(a.stdout, "\n%s\n", tr.T(i18n.WizardOptionsNone))
 		}
 	}
 	return exitOK
@@ -226,18 +275,19 @@ func (a *application) wizardAlreadyInstalled(cfg *config.Config, configPath, dra
 // wizardAskDomain keeps asking until there is a domain, because there is nothing to install without
 // one; every other question accepts an empty answer.
 func (a *application) wizardAskDomain(ui *termui.UI, answers wizardAnswers, cfg *config.Config) (string, error) {
+	tr := a.translator()
 	def := firstNonEmpty(answers.Domain, cfg.Domain)
 	for {
-		answer, err := ui.Prompt("Domain (a DNS name that points at this machine)", def)
+		answer, err := ui.Prompt(tr.T(i18n.WizardDomain), def)
 		if err != nil {
 			return "", err
 		}
 		if answer == "" {
-			ui.Error("this node needs a domain: it is what the certificate is issued for")
+			ui.Error(tr.T(i18n.WizardDomainNeeded))
 			continue
 		}
 		if strings.ContainsAny(answer, " /:@") {
-			ui.Error("a domain is a bare name such as node.example.com")
+			ui.Error(tr.T(i18n.WizardDomainShape))
 			continue
 		}
 		return answer, nil
@@ -246,12 +296,13 @@ func (a *application) wizardAskDomain(ui *termui.UI, answers wizardAnswers, cfg 
 
 // wizardAskTemplate offers the archetypes the build can generate, with the configured one as default.
 func (a *application) wizardAskTemplate(ui *termui.UI, answers wizardAnswers, cfg *config.Config) (string, error) {
+	tr := a.translator()
 	known := decoy.Templates()
 	def := firstNonEmpty(answers.Template, cfg.Decoy.Template, config.DefaultDecoyTemplate)
 	ui.Blank()
-	ui.Say("The page the node serves to a visitor who is not a client: " + strings.Join(known, ", ") + ".")
+	ui.Say(tr.Tf(i18n.WizardTemplateIntro, strings.Join(known, ", ")))
 	for {
-		answer, err := ui.Prompt("Masking site", def)
+		answer, err := ui.Prompt(tr.T(i18n.WizardTemplate), def)
 		if err != nil {
 			return "", err
 		}
@@ -262,18 +313,19 @@ func (a *application) wizardAskTemplate(ui *termui.UI, answers wizardAnswers, cf
 		if decoy.KnownTemplate(answer) {
 			return answer, nil
 		}
-		ui.Error(fmt.Sprintf("%q is not one this build generates", answer))
+		ui.Error(tr.Tf(i18n.WizardTemplateBad, answer))
 	}
 }
 
 // wizardAskWarp decides where proxied traffic leaves, and, for "selected", which domains use WARP.
 func (a *application) wizardAskWarp(ui *termui.UI, answers wizardAnswers, cfg *config.Config) (string, []string, error) {
+	tr := a.translator()
 	def := firstNonEmpty(answers.Warp, cfg.Warp.Mode, config.WarpAll)
 	ui.Blank()
-	ui.Say("Egress: all — proxied traffic leaves through Cloudflare WARP;")
-	ui.Say("        selected — only the listed domains do; off — it leaves directly from this node.")
+	ui.Say(tr.T(i18n.WizardWarpIntro1))
+	ui.Say(tr.T(i18n.WizardWarpIntro2))
 	for {
-		answer, err := ui.Prompt("Egress (all, selected, off)", def)
+		answer, err := ui.Prompt(tr.T(i18n.WizardWarp), def)
 		if err != nil {
 			return "", nil, err
 		}
@@ -286,18 +338,18 @@ func (a *application) wizardAskWarp(ui *termui.UI, answers wizardAnswers, cfg *c
 			return answer, nil, nil
 		case config.WarpSelected:
 			selected := strings.Join(answers.WarpSelected, ", ")
-			line, err := ui.Prompt("Domains that use WARP, comma separated", selected)
+			line, err := ui.Prompt(tr.T(i18n.WizardWarpDomains), selected)
 			if err != nil {
 				return "", nil, err
 			}
 			domains := splitList(line)
 			if len(domains) == 0 {
-				ui.Error("selected mode needs at least one domain")
+				ui.Error(tr.T(i18n.WizardWarpNeedsOne))
 				continue
 			}
 			return answer, domains, nil
 		default:
-			ui.Error("answer all, selected or off")
+			ui.Error(tr.T(i18n.WizardWarpBad))
 		}
 	}
 }
@@ -305,13 +357,14 @@ func (a *application) wizardAskWarp(ui *termui.UI, answers wizardAnswers, cfg *c
 // wizardAskEnrollment asks for the server and the invite code. Both are optional: a node can be
 // installed now and joined to the mesh later with `termit-uv enroll`.
 func (a *application) wizardAskEnrollment(ui *termui.UI, answers wizardAnswers, cfg *config.Config) (string, string, error) {
+	tr := a.translator()
 	ui.Blank()
-	ui.Say("The mesh: one management server hands every client the whole peer list.")
+	ui.Say(tr.T(i18n.WizardMeshIntro))
 	defURL := firstNonEmpty(answers.MNURL, cfg.MN.URL)
 	if defURL != "" {
-		ui.Say("Server: " + defURL)
+		ui.Say(tr.Tf(i18n.WizardMeshServer, defURL))
 	}
-	invite, err := ui.Prompt("Invite code from the server operator (empty to skip for now)", answers.Invite)
+	invite, err := ui.Prompt(tr.T(i18n.WizardInvite), answers.Invite)
 	if err != nil {
 		return "", "", err
 	}
@@ -321,17 +374,17 @@ func (a *application) wizardAskEnrollment(ui *termui.UI, answers wizardAnswers, 
 	}
 	mnURL := defURL
 	for mnURL == "" {
-		mnURL, err = ui.Prompt("Management server URL", "")
+		mnURL, err = ui.Prompt(tr.T(i18n.WizardMNURL), "")
 		if err != nil {
 			return "", "", err
 		}
 		mnURL = strings.TrimRight(strings.TrimSpace(mnURL), "/")
 		if mnURL == "" {
-			ui.Error("an invite code is useless without the server it belongs to")
+			ui.Error(tr.T(i18n.WizardMNNeeded))
 			continue
 		}
 		if !strings.HasPrefix(mnURL, "https://") && !strings.HasPrefix(mnURL, "http://") {
-			ui.Error("the server URL starts with https://")
+			ui.Error(tr.T(i18n.WizardMNShape))
 			mnURL = ""
 		}
 	}
@@ -339,14 +392,15 @@ func (a *application) wizardAskEnrollment(ui *termui.UI, answers wizardAnswers, 
 }
 
 func (a *application) wizardSummary(ui *termui.UI, answers wizardAnswers) {
+	tr := a.translator()
 	ui.Blank()
-	ui.Title("Ready to install")
+	ui.Title(tr.T(i18n.WizardSummary))
 	ui.KV("domain", answers.Domain)
 	ui.KV("email", orNone(answers.Email))
-	ui.KV("masking site", answers.Template)
+	ui.KV("site", answers.Template)
 	ui.KV("egress", answers.Warp+selectedNote(answers.WarpSelected))
 	ui.KV("mesh", orNone(answers.MNURL))
-	ui.KV("invite", orNone(maskInvite(answers.Invite)))
+	ui.KV(tr.T(i18n.WizardKVIndeed), orNone(maskInvite(answers.Invite)))
 }
 
 // maskInvite shows enough of a code to recognise it and not enough to use it from a screenshot.
@@ -384,7 +438,7 @@ func firstNonEmpty(values ...string) string {
 // is a cancel, not a failure, and nothing it saved is thrown away.
 func wizardInputEnded(ui *termui.UI, err error) int {
 	if errors.Is(err, io.EOF) || errors.Is(err, fs.ErrClosed) {
-		ui.Say("cancelled; the answers so far are kept")
+		ui.Say(i18n.New(i18n.EN).T(i18n.WizardCancelled))
 		return exitOK
 	}
 	ui.Error(err.Error())

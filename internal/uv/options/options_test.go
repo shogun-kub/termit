@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shogun-kub/termit/internal/i18n"
 	"github.com/shogun-kub/termit/internal/uv/options"
 )
 
@@ -82,6 +83,7 @@ func TestRenderCarriesEveryLinkAndSaysWhatItIs(t *testing.T) {
 	t.Parallel()
 	data := options.Data{
 		Domain: "node.example.com",
+		Lang:   i18n.EN,
 		Token:  strings.Repeat("ab", options.TokenBytes),
 		Local: options.Link{
 			Label: "node.example.com",
@@ -131,6 +133,7 @@ func TestRenderWithoutPeersIsHonest(t *testing.T) {
 	t.Parallel()
 	page, err := options.Render(options.Data{
 		Domain: "node.example.com",
+		Lang:   i18n.EN,
 		Token:  strings.Repeat("cd", options.TokenBytes),
 		Local:  options.Link{Label: "node.example.com", URI: "vless://self@node.example.com:443"},
 	})
@@ -150,6 +153,7 @@ func TestRenderShowsAWarningInsteadOfAnEmptyMesh(t *testing.T) {
 	t.Parallel()
 	page, err := options.Render(options.Data{
 		Domain:  "node.example.com",
+		Lang:    i18n.EN,
 		Token:   strings.Repeat("ef", options.TokenBytes),
 		Local:   options.Link{Label: "node.example.com", URI: "vless://self@node.example.com:443"},
 		Warning: "The mesh could not be fetched just now.",
@@ -163,5 +167,39 @@ func TestRenderShowsAWarningInsteadOfAnEmptyMesh(t *testing.T) {
 	}
 	if strings.Contains(html, "No peers") {
 		t.Error("the page claims the node is not enrolled while it is only unreachable")
+	}
+}
+
+func TestRenderInRussian(t *testing.T) {
+	t.Parallel()
+	page, err := options.Render(options.Data{
+		Domain: "node.example.com",
+		Lang:   i18n.RU,
+		Token:  strings.Repeat("ab", options.TokenBytes),
+		Local:  options.Link{Label: "node.example.com", URI: "vless://self@node.example.com:443#node.example.com"},
+		Peers: []options.Link{
+			{Label: "pesok.example.com", URI: "vless://peer@pesok.example.com:443#pesok.example.com", Degraded: true},
+		},
+		Warning:   "",
+		Generated: time.Date(2026, 11, 15, 9, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	html := string(page)
+	for _, want := range []string{
+		`lang="ru"`,
+		"Ссылки для клиентов",
+		"Этот узел",
+		"Mesh (1)",
+		"замедлен",
+		"копировать",
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("the Russian page does not contain %q", want)
+		}
+	}
+	if strings.Contains(html, "degraded") {
+		t.Error("the Russian page still carries the English badge")
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/shogun-kub/termit/internal/acme"
+	"github.com/shogun-kub/termit/internal/i18n"
 	"github.com/shogun-kub/termit/internal/uv/config"
 )
 
@@ -368,5 +369,46 @@ func TestValidateMNURL(t *testing.T) {
 				t.Fatalf("Validate(%q) accepted an unusable URL", tc.url)
 			}
 		})
+	}
+}
+
+func TestLocaleDefaultsToRussian(t *testing.T) {
+	t.Parallel()
+	cfg := config.Default()
+	if cfg.Locale != "ru" {
+		t.Errorf("a fresh configuration speaks %q, want Russian", cfg.Locale)
+	}
+	if cfg.Lang() != i18n.RU {
+		t.Errorf("Lang() = %q", cfg.Lang())
+	}
+
+	cfg.Domain = "node.example.com"
+	cfg.Locale = "en"
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := cfg.Save(path); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	reloaded, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if reloaded.Lang() != i18n.EN {
+		t.Errorf("the chosen language did not survive the round trip: %q", reloaded.Locale)
+	}
+}
+
+func TestLocaleRejectsALanguageTheBuildDoesNotSpeak(t *testing.T) {
+	t.Parallel()
+	cfg := config.Default()
+	cfg.Domain = "node.example.com"
+	cfg.Locale = "de"
+	if err := cfg.Validate(); err == nil {
+		t.Error("Validate accepted an unknown language")
+	}
+	// A configuration written before the key existed has no locale at all, and must gain the default
+	// rather than fail to load.
+	cfg.Locale = ""
+	if _, ok := i18n.Parse(cfg.Locale); ok {
+		t.Error("an empty locale parsed as a language; the default is applied on load instead")
 	}
 }

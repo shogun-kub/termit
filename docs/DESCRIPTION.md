@@ -706,6 +706,13 @@ same `init` and `enroll` with the same flags. A node that is already installed i
 re-installed: the wizard runs the pipeline in dry-run mode and exits when every step reports its effect
 present.
 
+Its first question is the language: `locale` in the configuration, Russian by default, English second, and
+the menu, the wizard and the page read it. Two rules keep the setting from becoming a trap. The console
+uses it only where the environment is UTF-8 — on a C or latin-1 locale the menu falls back to English and
+the wizard says so — while the page uses it unconditionally, because a browser is not a terminal.
+Everything else a node prints (commands, logs, errors, `--json`) stays English: it is read by scripts and
+quoted in bug reports, and translating it would make the tool untranslatable in practice.
+
 `termit-uv doctor` answers two different questions. The host half ("could this machine be a node") is the
 preflight checks; the node half ("is it working") covers the state, the three units, the certificate
 window, the decoy against its seed, and whether the core accepts its generated config. A check that

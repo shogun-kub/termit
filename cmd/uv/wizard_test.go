@@ -25,6 +25,7 @@ func wizardApp(t *testing.T, answers string) (*application, *strings.Builder) {
 func TestWizardRemembersAnswersBetweenRuns(t *testing.T) {
 	t.Parallel()
 	app, out := wizardApp(t, strings.Join([]string{
+		"en",               // language
 		"node.example.com", // domain
 		"ops@example.com",  // email
 		"nope",             // not a template this build generates
@@ -56,7 +57,7 @@ func TestWizardRemembersAnswersBetweenRuns(t *testing.T) {
 
 	// A second run offers the same answers, and Enter alone accepts them: the script has one empty line
 	// per question and then declines the install again.
-	again, againOut := wizardApp(t, "\n\n\n\n\nn\n")
+	again, againOut := wizardApp(t, "en\n\n\n\n\n\nn\n")
 	// The draft lives beside the configuration, so the second run has to look at the same file.
 	again.configPath = app.configPath
 	if code := again.run([]string{"wizard", "--config", again.configPath}); code != exitOK {
@@ -72,7 +73,7 @@ func TestWizardRemembersAnswersBetweenRuns(t *testing.T) {
 
 func TestWizardFreshDiscardsTheDraft(t *testing.T) {
 	t.Parallel()
-	app, _ := wizardApp(t, "node.example.com\n\nportal\nall\n\nn\n")
+	app, _ := wizardApp(t, "en\nnode.example.com\n\nportal\nall\n\nn\n")
 	if code := app.run([]string{"wizard", "--config", app.configPath}); code != exitOK {
 		t.Fatalf("exit = %d, want 0", code)
 	}
@@ -83,7 +84,7 @@ func TestWizardFreshDiscardsTheDraft(t *testing.T) {
 
 	// --fresh forgets the answers, so the domain question comes back without a default. The run then
 	// writes a new draft, which is correct: the operator started over, not stopped.
-	app.in = strings.NewReader("\n\n\n\n\nn\n")
+	app.in = strings.NewReader("en\n\n\n\n\n\nn\n")
 	app.stdout = &strings.Builder{}
 	if code := app.run([]string{"wizard", "--fresh", "--config", app.configPath}); code != exitOK {
 		t.Fatalf("exit = %d, want 0", code)
@@ -96,7 +97,7 @@ func TestWizardFreshDiscardsTheDraft(t *testing.T) {
 func TestWizardRequiresADomain(t *testing.T) {
 	t.Parallel()
 	// An empty answer with no default must not become an empty domain, and the wizard must ask again.
-	app, out := wizardApp(t, "\nnode.example.com\n\nportal\nall\n\nn\n")
+	app, out := wizardApp(t, "en\n\nnode.example.com\n\nportal\nall\n\nn\n")
 	if code := app.run([]string{"wizard", "--config", app.configPath}); code != exitOK {
 		t.Fatalf("exit = %d, want 0", code)
 	}
@@ -139,7 +140,7 @@ func TestWizardOnAnInstalledNodeAsksNothing(t *testing.T) {
 func TestWizardContinuesAnUnfinishedInstallWithItsAnswers(t *testing.T) {
 	t.Parallel()
 	app, _, configPath := optionsFixture(t, "")
-	app.in = strings.NewReader("\n\n\n\n\nn\n")
+	app.in = strings.NewReader("en\n\n\n\n\n\nn\n")
 	app.completeFn = func(*config.Config, string) (bool, error) { return false, nil }
 	if code := app.run([]string{"wizard", "--config", configPath}); code != exitOK {
 		t.Fatalf("exit = %d, want 0", code)
