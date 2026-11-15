@@ -40,7 +40,7 @@ a provisioning script is a hang, not a convenience.
 │    …                                                                 │
 │    q   quit                                                          │
 │                                                                      │
-│  choose [1-13, q]:                                                   │
+│  choose [1-16, q]:                                                   │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 

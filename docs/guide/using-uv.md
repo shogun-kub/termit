@@ -195,8 +195,8 @@ own; the systemd units are installed by `termit-uv init`.
 | `termit-uv guard` | the ban engine: `status`, `run --once` | |
 | `termit-uv version` | build and protocol version | |
 
-Every command accepts `--config <path>` and `-v`/`--verbose`. The last three are the opt-in hardening
-half and stay off until you ask: [Hardening a node](hardening.md) is their page.
+Every command accepts `--config <path>` and `-v`/`--verbose`. The hardening half — `firewall`, `bans`
+and `guard` — stays off until you ask: [Hardening a node](hardening.md) is their page.
 
 ## Recipes
 

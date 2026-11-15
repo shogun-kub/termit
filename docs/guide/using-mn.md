@@ -47,7 +47,7 @@ first invite code (shown once, 1 use(s)):
   ABCD-EFGH-IJKL
 ```
 
-Three things to note. The **api prefix** is where the node API lives: `init` picks a random path, so a
+Two things to note. The **api prefix** is where the node API lives: `init` picks a random path, so a
 scanner probing `/api/v1` on your server finds nothing, and every node is given the full URL —
 `https://mn.example.com/6rfjdqfn5nno` — rather than the bare host. It is not a secret, and
 [the API reference](../MN-API.md) says what is behind it. `--api-prefix /api/v1` keeps the old,
