@@ -502,6 +502,12 @@ Two independent rule groups, each toggleable in `config.yaml`:
 - **Shape the user experience**: block `geosite:category-ads-all`, `geosite:win-spy`, and an
   optional extra domain list from a local file.
 
+Of that list, only BitTorrent is implemented so far, behind `security.bittorrent_block` (off by
+default): the core sniffs the first bytes of each connection, a `protocol: ["bittorrent"]` rule sends
+the handshake to the blackhole, and `routeOnly: true` with an empty `destOverride` keeps the client's
+destination intact — with `routeOnly: false` a sniffed HTTP `Host` replaces the address the client
+asked for. The rest of the two groups is a plan, not a behaviour: nothing else is blocked today.
+
 Egress, from `config.yaml`:
 
 - `warp.mode: off` — everything not blocked exits `direct` from the node's address.

@@ -130,6 +130,7 @@ func (a *application) applier(cfg *config.Config, st *state.State) agent.Applier
 			Selected: cfg.Warp.Selected,
 			FailOpen: cfg.Warp.FailOpenEnabled(),
 		},
+		BlockBitTorrent: cfg.Security.BitTorrentBlock,
 		Canary: agent.Canary{
 			Binary:    binary,
 			ProxyAddr: xray.DefaultListen + ":" + strconv.Itoa(xray.DefaultPort),

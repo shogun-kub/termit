@@ -11,10 +11,15 @@ import (
 // Security is the hardening the operator can ask for. Everything here is off by default, and nothing
 // in this block is applied by `init`, `sync`, the agent or a timer: the table exists only after
 // `termit-uv firewall on`, which is the one command that may change host firewall state
-// (docs/DESCRIPTION.md §11, docs/IMPLEMENTATION_PLAN.md M5).
+// (docs/DESCRIPTION.md §11, docs/IMPLEMENTATION_PLAN.md M5). The one exception is the BitTorrent rule,
+// which lives in the generated core config and therefore lands with any config write.
 type Security struct {
 	Firewall Firewall `yaml:"firewall"`
 	Guard    Guard    `yaml:"guard"`
+	// BitTorrentBlock makes the core sniff every connection and blackhole the torrent handshakes. It
+	// is not part of the firewall, and it costs a little CPU per connection, which is why it is off
+	// unless asked for.
+	BitTorrentBlock bool `yaml:"bittorrent_block"`
 }
 
 // Firewall is the shape of the node's own table.

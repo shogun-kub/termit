@@ -34,6 +34,7 @@ func (s *xrayConfigStep) spec() (xray.Spec, error) {
 		return spec, errors.New("the node identity has not been generated")
 	}
 	spec.Path = "/" + s.e.st.Identity.XHTTPPath + "/"
+	spec.BlockBitTorrent = s.e.cfg.Security.BitTorrentBlock
 	spec.Warp = xray.WarpSpec{
 		Mode:     s.e.cfg.Warp.Mode,
 		Selected: s.e.cfg.Warp.Selected,

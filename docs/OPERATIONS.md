@@ -505,6 +505,32 @@ If the host cannot run WARP (no `/dev/net/tun`, unsupported architecture), `term
 say so with the exact reason and the node keeps working with direct egress. Nothing is silently
 degraded, and `termit-uv uninstall` disconnects the tunnel it left behind.
 
+### 6.1 Refusing BitTorrent
+
+`security.bittorrent_block: true` makes the core look at the first bytes of every connection and
+blackhole the ones it recognises as BitTorrent. It is off by default and it is not part of the firewall:
+it lives in the generated core configuration, and sniffing costs a little CPU on every connection.
+
+```yaml
+security:
+  bittorrent_block: true
+```
+
+Re-run `termit-uv init` (or wait for the daily cycle) and the rule is regenerated into the config; the
+core is reloaded the same way any config change is — hot update first, validated restart second. To
+undo it, set the key back to `false` and re-run.
+
+Two properties are deliberate and easy to "improve" by accident: `routeOnly: true` keeps the
+destination the client asked for (without it a sniffed HTTP `Host` replaces the address and the tunnel
+dials a name the node resolves), and `destOverride` stays empty (BitTorrent is classified whether or not
+a protocol is listed, so listing `http`/`tls`/`quic` buys nothing and parses every connection).
+
+The block sits on `protocol: bittorrent` in the routing table, before the egress rules, so it applies
+whatever the WARP mode is. It cannot be checked from a script: the way to verify it is to run a real
+torrent client through the node and watch the handshake die while a normal HTTPS request through the
+same client still works. The generated document itself is covered by
+`internal/uv/xray/testdata/xray-bittorrent.json` and accepted by the pinned core (`xray -test`).
+
 ## 7. Certificates
 
 Both sides use ACME HTTP-01. A node answers the challenge through the nginx webroot it already

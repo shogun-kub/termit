@@ -1265,9 +1265,18 @@ hand, which is what systemd does daily) loads a `file://` list into the kernel, 
 refused with the sets untouched, an unreachable source is refused the same way, a network that leaves the
 source leaves the kernel, and `off` then `on` restores the list from the file.
 
-**M5.4 — BitTorrent (half a day).** Config generation plus a golden test; the manual check is documented
-because a real torrent client is not lab-shaped. The spike already proved the routing rule fires (§5.0),
-so what is left is the generator, the config key and the test.
+**M5.4 — BitTorrent (done).** `security.bittorrent_block` (off by default, `security:` top level, not the
+firewall) reaches `xray.Spec.BlockBitTorrent` through both paths that generate the config — the install
+step and the agent's reconciler — because a config regenerated without the flag would quietly stop
+blocking. The generated document swaps the sniffer for `{enabled, destOverride: [], routeOnly: true}` and
+puts `{protocol: ["bittorrent"], outboundTag: "block"}` first in the routing rules, before any egress
+decision. `testdata/xray-bittorrent.json` pins it, and a second test states the two properties a reviewer
+would otherwise "improve": the empty `destOverride` and `routeOnly: true` are the spike's conclusion, not
+an oversight.
+
+The golden was fed to the pinned core on the lab node: `xray -test` says `Configuration OK` (26.11.9).
+A real torrent client is still not lab-shaped, so that half stays manual and `OPERATIONS.md` §6.1 says
+what to watch: the handshake dies, an HTTPS request through the same client does not.
 
 **M5.5 — MN parity (half a day).** Same commands in `termit-mn`, ports from its config, table named
 `inet termit_mn`; a lab run where the firewall is on while a node syncs and enrolls.
