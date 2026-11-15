@@ -32,7 +32,7 @@ func decodeList(t *testing.T, body string) []string {
 
 func TestRenderListIsOrderedAndStable(t *testing.T) {
 	t.Parallel()
-	body, err := sub.RenderList(peers())
+	body, err := sub.RenderList(peers(), sub.Options{})
 	if err != nil {
 		t.Fatalf("RenderList: %v", err)
 	}
@@ -56,7 +56,7 @@ func TestRenderListIsOrderedAndStable(t *testing.T) {
 
 	// The same peers in another order produce the same bytes.
 	reversed := []sub.Peer{peers()[1], peers()[0]}
-	again, err := sub.RenderList(reversed)
+	again, err := sub.RenderList(reversed, sub.Options{})
 	if err != nil {
 		t.Fatalf("RenderList: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestRenderListMarksDegradedPeers(t *testing.T) {
 	t.Parallel()
 	list := peers()
 	list[0].Degraded = true
-	body, err := sub.RenderList(list)
+	body, err := sub.RenderList(list, sub.Options{})
 	if err != nil {
 		t.Fatalf("RenderList: %v", err)
 	}
@@ -80,9 +80,51 @@ func TestRenderListMarksDegradedPeers(t *testing.T) {
 	}
 }
 
+func TestRenderListCarriesHappsFragmentParameter(t *testing.T) {
+	t.Parallel()
+	const param = "100-200,1-3,tlshello,6"
+	body, err := sub.RenderList(peers(), sub.Options{FragmentParam: param})
+	if err != nil {
+		t.Fatalf("RenderList: %v", err)
+	}
+	lines := decodeList(t, body)
+	if len(lines) != 2 {
+		t.Fatalf("the list has %d lines, want 2", len(lines))
+	}
+	for _, line := range lines {
+		// It has to sit in the query and leave the label alone: Happ reads the parameter from the
+		// link, everything else (including our own parser) must still see a valid URI.
+		hash := strings.IndexByte(line, '#')
+		if hash < 0 {
+			t.Fatalf("a rendered URI lost its label: %s", line)
+		}
+		if !strings.Contains(line[:hash], "&fragment="+param) {
+			t.Errorf("the fragmentation parameter is missing from %s", line)
+		}
+		if strings.Contains(line[hash:], "fragment") {
+			t.Errorf("the parameter leaked into the label: %s", line)
+		}
+		if _, err := proto.ParseVLESSUrl(line); err != nil {
+			t.Errorf("a URI with the parameter does not parse: %v", err)
+		}
+	}
+
+	// Without it the links stay byte-identical, so an operator who never sets the option is not
+	// silently changed by this feature.
+	plain, err := sub.RenderList(peers(), sub.Options{})
+	if err != nil {
+		t.Fatalf("RenderList: %v", err)
+	}
+	for _, line := range decodeList(t, plain) {
+		if strings.Contains(line, "fragment=") {
+			t.Errorf("a plain list carries the parameter: %s", line)
+		}
+	}
+}
+
 func TestRenderListOfNothing(t *testing.T) {
 	t.Parallel()
-	body, err := sub.RenderList(nil)
+	body, err := sub.RenderList(nil, sub.Options{})
 	if err != nil {
 		t.Fatalf("RenderList: %v", err)
 	}

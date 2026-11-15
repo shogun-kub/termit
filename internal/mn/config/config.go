@@ -15,6 +15,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -25,6 +26,11 @@ import (
 	"github.com/shogun-kub/termit/internal/atomicfile"
 	"github.com/shogun-kub/termit/internal/decoy"
 )
+
+// happFragmentPattern bounds subscription.happ_fragment to the shape Happ documents
+// ("length,interval,packets[,maxSplit]") and, just as important, keeps anything that could end a
+// query parameter — a comma is part of the value, an ampersand or a hash is not — out of the URI.
+var happFragmentPattern = regexp.MustCompile(`^[0-9]{1,4}(-[0-9]{1,4})?,[0-9]{1,4}(-[0-9]{1,4})?,([0-9]{1,2}-[0-9]{1,2}|tlshello)(,[0-9]{1,4}(-[0-9]{1,4})?)?$`)
 
 // SchemaVersion is the configuration schema this build understands.
 const SchemaVersion = 1
@@ -91,6 +97,11 @@ type Subscription struct {
 	// that reassembles segments but expects one record. Measured on a path that froze every Chrome
 	// ClientHello: 0 of 15 connections without it, 15 of 15 with it.
 	RecordFragment bool `yaml:"record_fragment"`
+	// HappFragment is the "length,interval,packets[,maxSplit]" value Happ reads from the link itself
+	// (fragment=…), so the base64 list can carry fragmentation to a phone without the user finding a
+	// setting. Empty leaves the links alone. Keep maxSplit: it is what bounds the handshake delay,
+	// and an unbounded small length turns a 40 ms handshake into five seconds.
+	HappFragment string `yaml:"happ_fragment"`
 }
 
 // Decoy is the site the server answers a prober with: an ordinary-looking page instead of a bare 404
@@ -279,6 +290,9 @@ func (c *Config) Validate() error {
 	}
 	if c.ACME.Email != "" && !strings.Contains(c.ACME.Email, "@") {
 		problems = append(problems, fmt.Errorf("acme.email %q is not an address", c.ACME.Email))
+	}
+	if c.Subscription.HappFragment != "" && !happFragmentPattern.MatchString(c.Subscription.HappFragment) {
+		problems = append(problems, fmt.Errorf("subscription.happ_fragment %q must look like length,interval,packets[,maxSplit]", c.Subscription.HappFragment))
 	}
 	for name, value := range map[string]string{
 		"data_dir":        c.DataDir,

@@ -255,6 +255,27 @@ func TestDecoyTemplate(t *testing.T) {
 
 // TestSubscriptionFragmentationRoundTrips pins the two client-side switches: off by default, carried
 // through a save/load cycle when set, and unknown keys under the section are still refused.
+func TestHappFragmentIsValidatedBeforeItReachesALink(t *testing.T) {
+	t.Parallel()
+	for _, value := range []string{"100-200,1-3,tlshello,6", "300-500,1-5,tlshello", "1-3,1-3,1-2"} {
+		cfg, err := config.Parse(strings.NewReader("domain: mn.example.com\nsubscription:\n  happ_fragment: \"" + value + "\"\n"))
+		if err != nil {
+			t.Fatalf("Parse rejected %q: %v", value, err)
+		}
+		if cfg.Subscription.HappFragment != value {
+			t.Errorf("happ_fragment came back as %q", cfg.Subscription.HappFragment)
+		}
+	}
+	// An ampersand or a hash would end the parameter and start something else in the URI, so the
+	// value is matched against the shape Happ documents rather than escaped and hoped for.
+	for _, value := range []string{"100-200&fragment=1", "tlshello", "100-200,1-3,", "100-200,1-3,tlshello#x"} {
+		_, err := config.Parse(strings.NewReader("domain: mn.example.com\nsubscription:\n  happ_fragment: \"" + value + "\"\n"))
+		if err == nil {
+			t.Errorf("Parse accepted happ_fragment %q", value)
+		}
+	}
+}
+
 func TestSubscriptionFragmentationRoundTrips(t *testing.T) {
 	t.Parallel()
 	cfg, err := config.Parse(strings.NewReader("domain: mn.example.com\n"))

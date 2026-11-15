@@ -55,6 +55,9 @@ type Options struct {
 	// ClientHello, and the server itself never looks at them.
 	Fragment       bool
 	RecordFragment bool
+	// FragmentParam is written into the plain list as Happ's per-link fragmentation parameter. The
+	// sing-box profile carries the two switches above instead; neither transport sees the other's.
+	FragmentParam string
 	// Metrics receives the counters behind /metrics. Optional: a test or a plain handler runs without
 	// one, and the endpoint then reports only the gauges it can read from the database.
 	Metrics *metrics.Registry

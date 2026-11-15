@@ -38,6 +38,10 @@ type Options struct {
 	// client-side options with no counterpart in the base64 list, so they change only /json.
 	Fragment       bool
 	RecordFragment bool
+	// FragmentParam is the value of Happ's per-server fragmentation parameter, which the plain
+	// list can carry because Happ reads it from the URI itself: "length,interval,packets[,maxSplit]".
+	// Empty means the list is left alone. Other clients ignore a query parameter they do not know.
+	FragmentParam string
 }
 
 // Ordered returns the peers in subscription order: label, then id. The order is part of the contract:
@@ -54,7 +58,7 @@ func Ordered(peers []Peer) []Peer {
 }
 
 // RenderList returns the base64 body of the plain subscription: one `vless://` URI per line.
-func RenderList(peers []Peer) (string, error) {
+func RenderList(peers []Peer, opts Options) (string, error) {
 	ordered := Ordered(peers)
 	lines := make([]string, 0, len(ordered))
 	for _, peer := range ordered {
@@ -73,6 +77,9 @@ func RenderList(peers []Peer) (string, error) {
 		})
 		if err != nil {
 			return "", fmt.Errorf("sub: build the URI for %s: %w", peer.Domain, err)
+		}
+		if opts.FragmentParam != "" {
+			raw = withFragmentParam(raw, opts.FragmentParam)
 		}
 		lines = append(lines, raw)
 	}
@@ -95,6 +102,16 @@ type singBoxProfile struct {
 	Route     map[string]any `json:"route"`
 	// SubscriptionURL is ours, not sing-box's: it lets a client find the plain list again.
 	SubscriptionURL string `json:"termit_subscription_url,omitempty"`
+}
+
+// withFragmentParam adds Happ's per-server fragmentation parameter to a finished URI. It goes before
+// the #label, where a query parameter belongs; the value is validated where it is configured, because
+// an unvalidated one could inject a second parameter or a fragment.
+func withFragmentParam(uri, value string) string {
+	if hash := strings.IndexByte(uri, '#'); hash >= 0 {
+		return uri[:hash] + "&fragment=" + value + uri[hash:]
+	}
+	return uri + "&fragment=" + value
 }
 
 // RenderJSON returns the sing-box profile for the same peers.

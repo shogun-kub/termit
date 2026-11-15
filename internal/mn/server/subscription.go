@@ -61,7 +61,7 @@ func (h *Handler) subscription(w http.ResponseWriter, r *http.Request) {
 		kind = "application/json; charset=utf-8"
 	} else {
 		var list string
-		list, err = sub.RenderList(peers)
+		list, err = sub.RenderList(peers, sub.Options{FragmentParam: h.opts.FragmentParam})
 		body, kind = []byte(list), "text/plain; charset=utf-8"
 	}
 	if err != nil {

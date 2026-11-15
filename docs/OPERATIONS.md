@@ -556,28 +556,39 @@ Both are stable for a given peer set and carry an `ETag`, so a client that cache
 Rotating the token is the way to revoke a client that should no longer see the mesh; it does not
 affect the node's own devices, which never leave the box.
 
-The JSON form can additionally ask the client to split its TLS ClientHello, which is the one defence
-that costs nothing on a path where it is not needed:
+Fragmentation is the one client-side defence that costs nothing on a path where it is not needed: the
+same handshake, in more pieces. It is stated three ways because clients differ in where they can be
+told about it:
 
 ```yaml
 subscription:
-  fragment: false          # split across TCP segments
-  record_fragment: true    # split across TLS records; this is the one that gets around a frozen ClientHello
+  fragment: false                            # sing-box profile: split across TCP segments
+  record_fragment: true                      # sing-box profile: split across TLS records
+  happ_fragment: "100-200,1-3,tlshello,6"    # Happ: the per-link fragment= parameter
 ```
 
-Both are off by default and only the `/json` document changes — the base64 list has no field to carry
-them, and the server itself never looks at the flag. Enable `record_fragment` when a client's
-connections hang right after the handshake starts, or when the same profile works from one network
-and not another; on a path measured in `podkop-engine`'s own notes that froze every Chrome ClientHello
-the difference was 0 of 15 connections without it and 15 of 15 with it. A client that does not know
-the fields refuses the profile rather than ignoring them — sing-box validates strictly, and
-`podkop-engine` from r13 knows both — so turn this on only when every client reading the JSON is new
-enough. Clients that read the plain list never see the fields at all.
+The two booleans change only the `/json` document, and only by adding the field — never by writing
+`false`. sing-box validates strictly and refuses a profile with a field it does not know, so the
+default has to leave the document untouched and a client that reads the plain list never sees the
+fields at all. `podkop-engine` from r13 knows both. Enable `record_fragment` when connections hang
+right after the handshake starts, or when the same profile works from one network and not another: on
+a path recorded in `podkop-engine`'s notes that froze every Chrome ClientHello, 0 of 15 connections
+got through without it and 15 of 15 with it.
 
-On the client side the same switch has different names, and only the client can set it for the plain
-URI: in **podkop** it is `record_fragment` for the server, or `sb.tls.record_fragment=1` appended to
-the link; in **Happ** and other Xray-based clients it is the "Fragment" toggle. Neither is a server
-setting, so a node needs no reconfiguration to benefit.
+`happ_fragment` is a different mechanism: Happ reads the value from the link itself, so the plain
+base64 list carries it and a phone needs no setting at all. The value is Happ's
+`length,interval,packets[,maxSplit]`, and the custom parameter is appended before the label, where a
+client that does not know it ignores it and `ParseVLESSUrl` still round-trips. The fourth field is the
+one that matters: it bounds the number of pieces and therefore the delay. Measured with Happ's own
+ping against these two nodes — 769 ms without fragmentation, 446 ms with `300-500,1-5,tlshello`,
+464 ms with `100-200,1-3,tlshello,6`. The fragmented handshake came out *faster* than the plain one,
+because the plain ClientHello was paying for a first packet that never arrived and fragmentation
+avoided it. Leave the bound off with a small length and the reverse happens: Happ's documentation
+example `1-10,5-20,tlshello` cuts a ~700-byte handshake into 70–1500 pieces with 5–20 ms between them,
+which measured as more than five seconds on the same profile.
+
+The server never looks at any of these, so a node needs no reconfiguration; the value only ever
+changes the text a client downloads.
 
 ### 8.1 Which clients can use the profile
 
@@ -595,6 +606,12 @@ A client without XHTTP does not report "unsupported transport": it falls back to
 the node answers its request with an HTTP `400`, and the client's VLESS reader reports the first byte
 of `HTTP/1.1` as a version — `unknown version: 72` (`72` is `H`). Treat that message as "wrong client",
 not "broken node".
+
+Happ's per-server ping is not a health check for this profile. It reports "Ошибка TLS-рукопожатия"
+while the tunnel carries traffic, because it probes something other than the secret path (a fixed
+health-check URL, or the path without the XHTTP handshake). Judge a profile by a real request —
+`https://www.cloudflare.com/cdn-cgi/trace` answering with `warp=on` — and leave the ping alone. The
+same warning applies to any client that shows a synthetic latency number instead of moving data.
 
 The subscription's `/json` form is a sing-box profile, so it is only useful to the builds that have
 XHTTP: stock sing-box rejects the `xhttp` transport it declares.

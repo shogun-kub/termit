@@ -354,8 +354,13 @@ the format v2rayNG, NekoBox and friends import.
 Its outbounds carry `tls.utls` with the profile's fingerprint and no `alpn`; when the server is
 configured with `subscription.fragment` or `subscription.record_fragment` (both off by default), they
 also carry `tls.fragment` and `tls.record_fragment`, which split the TLS ClientHello on the client side.
-Those two fields exist only here: the base64 list has no way to express them, so a client reading that
-form gets the unmodified profile.
+
+Fragmentation reaches the plain list by a different route, because it has to: Happ reads a
+`fragment=length,interval,packets[,maxSplit]` query parameter from the link itself, so
+`subscription.happ_fragment` appends it to every URI before the `#label`. The parameter is not part of
+the profile — a client that does not know it ignores it, and the server never validates anything about
+it beyond its shape. Neither form leaks into the other: `/json` never carries the parameter, the list
+never carries the TLS fields.
 
 Both:
 
