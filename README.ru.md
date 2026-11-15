@@ -70,8 +70,8 @@ install -m 0644 termit-mn.service /etc/systemd/system/ && systemctl enable --now
 termit-mn invite create --note "node-a"            # печатает код один раз
 
 # на узле (Debian 13, порты 80/443 свободны, DNS указывает на него)
-curl -fsSLO https://github.com/shogun-kub/termit/releases/download/v0.1.0/uv.sh
-sh uv.sh --version v0.1.0 --domain node-a.example.com --email you@example.com \
+curl -fsSLO https://github.com/shogun-kub/termit/releases/download/v0.3.1/uv.sh
+sh uv.sh --version v0.3.1 --domain node-a.example.com --email you@example.com \
   --mn https://mn.example.com --invite ABCD-EFGH-IJKL
 ```
 
@@ -102,11 +102,11 @@ sh uv.sh --version v0.1.0 --domain node-a.example.com --email you@example.com \
 
 ## Состояние
 
-`v0.3.0` — последний выпуск. M1–M5 реализованы и проверены на приёмочной лабе из трёх машин (Debian 13 в
+`v0.3.1` — последний выпуск. M1–M5 реализованы и проверены на приёмочной лабе из трёх машин (Debian 13 в
 непривилегированных контейнерах), конвейер релиза собирает проверенные артефакты под linux/amd64 и
 linux/arm64. Он всё ещё помечен **pre-release**: проход для `0.2.1` записан 2026-11-15 — два провайдера,
 настоящие сертификаты Let's Encrypt, выход через WARP, телефонное приложение с подпиской, обновление
-Debian 12 → 13 на месте, — а собственный проход `0.3.0` (фаервол хоста, движок банов и блок-лист на
+Debian 12 → 13 на месте, — а собственный проход `0.3.1` (фаервол хоста, движок банов и блок-лист на
 боевых машинах) ещё не сделан. См. [чего ещё нет](#чего-ещё-нет).
 
 ## Требования
@@ -127,7 +127,7 @@ go test ./cmd/... ./internal/...                  # юнит-тесты
 go vet ./cmd/... ./internal/...
 gofmt -l cmd internal deploy test                 # должно быть пусто
 
-go run ./deploy/release --version v0.1.0 --out dist   # каталог релиза, как его собирает CI
+go run ./deploy/release --version v0.3.1 --out dist   # каталог релиза, как его собирает CI
 ```
 
 Шаблоны пакетов указаны явно намеренно: `references/` содержит сторонний Go-код внутри дерева
@@ -147,9 +147,9 @@ go test -tags=lab ./test/lab -v -timeout 30m
 
 ## Чего ещё нет
 
-- **Раскатки M5**: фаервол хоста, движок банов и блок-лист есть в `0.3.0` и проверены на лабе, включая
+- **Раскатки M5**: фаервол хоста, движок банов и блок-лист есть в `0.3.1` и проверены на лабе, включая
   настоящую перезагрузку, но на боевые узлы их ещё не ставили
-  ([`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md), M5.8). Этот проход и превращает `0.3.0`
+  ([`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md), M5.8). Этот проход и превращает `0.3.1`
   в полный релиз.
 - **WARP через настоящий туннель**: на лабе нет `/dev/net/tun`, поэтому набор доказывает отказ,
   сгенерированный маршрут, fail-open (трафик идёт напрямую, когда туннель упал) и возврат к

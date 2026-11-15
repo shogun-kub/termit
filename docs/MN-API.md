@@ -200,7 +200,7 @@ Request:
   "invite_code": "ABCD-EFGH-....",
   "domain": "node1.example.com",
   "basic_vless_url": "vless://<uuid>@node1.example.com:443?encryption=none&security=tls&type=xhttp&path=%2Fp%2F&mode=packet-up",
-  "agent_version": "termit-uv v0.1.0",
+  "agent_version": "termit-uv v0.3.1",
   "profile": "v1",
   "capabilities": []
 }
@@ -258,7 +258,7 @@ Request:
 
 ```json
 {
-  "agent_version": "termit-uv v0.1.0",
+  "agent_version": "termit-uv v0.3.1",
   "check": {"ok": true, "latency_ms": 84, "at": "2026-11-10T18:16:11Z"}
 }
 ```
@@ -384,7 +384,7 @@ working immediately.
 ### 5.1 `GET {prefix}/healthz`
 
 ```json
-{"api_version": "1", "build": "v0.1.0", "domain": "mn.example.com",
+{"api_version": "1", "build": "v0.3.1", "domain": "mn.example.com",
  "schema_version": 5, "status": "ok"}
 ```
 

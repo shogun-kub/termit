@@ -28,7 +28,7 @@ termit-mn menu
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
 │  Termit — node                                                       │
-│  termit-uv v0.1.0 (commit 8f8cb7c, built 2026-11-09, api 1)          │
+│  termit-uv v0.3.1 (commit …, built …, api 1)                         │
 │                                                                      │
 │    domain        node-a.example.com                                  │
 │    identity      3f9c1a2b                                            │

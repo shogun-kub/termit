@@ -28,9 +28,9 @@ Termit](overview.md) — начните с той страницы: она об�
 Скачайте установщик релиза и запустите его — не передавайте URL в шелл через пайп:
 
 ```bash
-curl -fsSLO https://github.com/shogun-kub/termit/releases/download/v0.1.0/uv.sh
+curl -fsSLO https://github.com/shogun-kub/termit/releases/download/v0.3.1/uv.sh
 
-sh uv.sh --version v0.1.0 \
+sh uv.sh --version v0.3.1 \
   --domain node1.example.com --email you@example.com \
   --mn https://mn.example.com/6rfjdqfn5nno --invite ABCD-EFGH-IJKL
 ```

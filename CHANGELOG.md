@@ -3,7 +3,7 @@
 What each release changed, written for the people who run Termit. Newest first;
 `0.1.1` was prepared but never released — its work is part of `0.2.0`.
 
-## 0.3.1 — unreleased
+## 0.3.1 — 2026-11-15
 
 One fix, for the half of the boot unit that only a real reboot could find: an apply that was still
 waiting.

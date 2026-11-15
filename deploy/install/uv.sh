@@ -7,7 +7,7 @@
 # Nothing here is interactive and nothing is piped from a branch: the version is an argument, the
 # checksum is checked before the binary is installed, and a mismatch aborts before anything is written.
 #
-#   uv.sh --version v0.1.0 --domain node1.example.net --email you@example.com \
+#   uv.sh --version v0.3.1 --domain node1.example.net --email you@example.com \
 #         --mn https://mn.example.com --invite ABCD-EFGH-IJKL
 #
 # Re-running it is the upgrade path: the binary is replaced and `termit-uv init` converges, which never
@@ -48,7 +48,7 @@ Usage: uv.sh --version VERSION [--domain NAME] [options]
 Install or upgrade one Termit node. Must run as root on Debian 13, amd64 or arm64.
 
 Required on a first install:
-  --version VERSION        release to install, e.g. v0.1.0 or v0.1.0-rc1
+  --version VERSION        release to install, e.g. v0.3.1 or v0.3.1-rc1
   --domain NAME            the node's public name; its A/AAAA record must already point here
   --mn URL                 management server URL, e.g. https://mn.example.com
   --invite CODE            invite code from `termit-mn invite create`

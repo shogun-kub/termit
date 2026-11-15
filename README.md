@@ -70,8 +70,8 @@ install -m 0644 termit-mn.service /etc/systemd/system/ && systemctl enable --now
 termit-mn invite create --note "node-a"            # prints the code once
 
 # on the node (Debian 13, ports 80/443 free, DNS pointing at it)
-curl -fsSLO https://github.com/shogun-kub/termit/releases/download/v0.1.0/uv.sh
-sh uv.sh --version v0.1.0 --domain node-a.example.com --email you@example.com \
+curl -fsSLO https://github.com/shogun-kub/termit/releases/download/v0.3.1/uv.sh
+sh uv.sh --version v0.3.1 --domain node-a.example.com --email you@example.com \
   --mn https://mn.example.com --invite ABCD-EFGH-IJKL
 ```
 
@@ -102,11 +102,11 @@ Deliberate design choices worth knowing before you deploy it:
 
 ## Status
 
-`v0.3.0` is the newest release. M1–M5 are implemented and verified on a three-machine acceptance lab
+`v0.3.1` is the newest release. M1–M5 are implemented and verified on a three-machine acceptance lab
 (Debian 13 in unprivileged containers), and the release pipeline builds verified artifacts for
 linux/amd64 and linux/arm64. It is still marked **pre-release**: the pass for `0.2.1` was recorded on
 2026-11-15 — two providers, real Let's Encrypt certificates, WARP egress, a phone app reading the
-subscription, an in-place Debian 12 → 13 upgrade — while `0.3.0`'s own pass, the host firewall, the ban
+subscription, an in-place Debian 12 → 13 upgrade — while `0.3.1`'s own pass, the host firewall, the ban
 engine and the blocklist on the production boxes, has not happened yet. See
 [what is not here yet](#what-is-not-here-yet).
 
@@ -128,7 +128,7 @@ go test ./cmd/... ./internal/...                  # unit tests
 go vet ./cmd/... ./internal/...
 gofmt -l cmd internal deploy test                 # must print nothing
 
-go run ./deploy/release --version v0.1.0 --out dist   # the release directory, as CI builds it
+go run ./deploy/release --version v0.3.1 --out dist   # the release directory, as CI builds it
 ```
 
 Package patterns are explicit on purpose: `references/` holds third-party Go source inside this
@@ -148,9 +148,9 @@ tool's tests and `govulncheck`.
 
 ## What is not here yet
 
-- **The M5 rollout**: the host firewall, the ban engine and the blocklist are in `0.3.0` and checked on
+- **The M5 rollout**: the host firewall, the ban engine and the blocklist are in `0.3.1` and checked on
   the lab, a real reboot included, but they have not been applied to the production nodes yet
-  ([`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) M5.8). That pass is what turns `0.3.0`
+  ([`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) M5.8). That pass is what turns `0.3.1`
   into a full release.
 - **WARP against a real tunnel**: the lab has no `/dev/net/tun`, so the suite proves the refusal, the
   generated route, fail-open and the switch back; installing, registering and connecting needs a KVM VM

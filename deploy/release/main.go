@@ -1,7 +1,7 @@
 // Command release builds the artifacts of one release: four binaries, the node bootstrap script, the
 // management server's unit and a SHA256SUMS file that covers them.
 //
-// It is a maintenance tool, not a shipped binary: `go run ./deploy/release --version v0.1.0`. It exists
+// It is a maintenance tool, not a shipped binary: `go run ./deploy/release --version v0.3.1`. It exists
 // because the release has to be reproducible by a person as well as by CI, and because the naming is a
 // contract — the bootstrap script fetches
 // `<base>/<version>/termit-uv_<version>_linux_<arch>` and `<base>/<version>/SHA256SUMS`, so a renamed
@@ -9,11 +9,11 @@
 //
 // The layout it produces is what `deploy/install/uv.sh` expects:
 //
-//	dist/v0.1.0/
-//	  termit-uv_v0.1.0_linux_amd64
-//	  termit-uv_v0.1.0_linux_arm64
-//	  termit-mn_v0.1.0_linux_amd64
-//	  termit-mn_v0.1.0_linux_arm64
+//	dist/v0.3.1/
+//	  termit-uv_v0.3.1_linux_amd64
+//	  termit-uv_v0.3.1_linux_arm64
+//	  termit-mn_v0.3.1_linux_amd64
+//	  termit-mn_v0.3.1_linux_arm64
 //	  uv.sh
 //	  termit-mn.service
 //	  termit-mn-firewall-rollback.service, .timer
@@ -94,7 +94,7 @@ type artifact struct {
 func run(args []string, stdout, stderr io.Writer) error {
 	flags := flag.NewFlagSet("release", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	version := flags.String("version", "", "release version, e.g. v0.1.0 (required)")
+	version := flags.String("version", "", "release version, e.g. v0.3.1 (required)")
 	out := flags.String("out", "dist", "output directory")
 	root := flags.String("root", ".", "repository root (must contain go.mod)")
 	goBinary := flags.String("go", "go", "go command to build with")
@@ -111,7 +111,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return errors.New("--version is required; the release never guesses one")
 	}
 	if !versionPattern.MatchString(*version) {
-		return fmt.Errorf("version %q is not a release tag like v0.1.0", *version)
+		return fmt.Errorf("version %q is not a release tag like v0.3.1", *version)
 	}
 
 	absoluteRoot, err := filepath.Abs(*root)
