@@ -912,8 +912,9 @@ pass. The Docker Compose harness remains a developer convenience (QUESTIONS Q9.4
 
 ## M5 — Security hardening (planned; decisions taken 2026-11-15)
 
-Nothing here is implemented yet. The decisions below were made by the operator on 2026-11-15; the
-milestones in §5.9 are the implementation plan, and each one ends in something the lab can check.
+Nothing here is implemented yet except the M5.0 spike (§5.0). The decisions below were made by the
+operator on 2026-11-15; the milestones in §5.9 are the implementation plan, and each one ends in
+something the lab can check.
 
 ### 5.1 Decisions
 
@@ -930,6 +931,72 @@ milestones in §5.9 are the implementation plan, and each one ends in something 
 | BitTorrent | **Opt-in Xray sniffer + routing rule**; off by default, a spike verifies the sniffer actually recognises it before we ship it. |
 | Scope | **Nodes and the server, one mechanism**: same code, different allowed ports. |
 | Defaults | **Everything off.** The wizard offers "harden this node" as a checkbox that is unchecked, and `init --harden` does the same without a wizard. |
+
+### 5.0 Spike results (measured on `termit-uv2.lan`, nftables 1.1.3, Xray 26.11.9)
+
+M5.0 asked two questions. Both are answered, and the second answer changed the config we planned to
+ship. The throwaway rulesets and configs lived in the session scratch, not in the repository; the
+conclusions are here.
+
+**The scan detector is `meter`, and the form that looks like its modern replacement is not one.**
+nftables 1.1.3 refuses that form outright when it carries a TTL, and accepts it without one but then
+fires on the wrong packet:
+
+| Form | `nft -c -f` | With one packet from a fresh source |
+|---|---|---|
+| `meter scan4m { ip saddr limit rate over 5/minute } add @scan4 { ip saddr timeout 15m }` | accepts | nothing added; the offender appears only once the rate is exceeded — **what we want** |
+| `add @scan4 { ip saddr limit rate over 5/minute timeout 15m }` | `Error: syntax error, unexpected timeout` | — |
+| `add @scan4 { ip saddr limit rate over 5/minute }` with the set's `timeout 15m` | accepts | **the element is added on the first packet**, so a drop rule keyed on it bans a single probe |
+| `ip saddr limit rate over 5/minute add @scan4 { … }` | `Error: syntax error, unexpected limit` | — |
+
+A single UDP packet to a closed port per data point, so the count is exact. The third form is not a
+detector: `add` creates the element and the `limit` merely becomes part of the element it stores
+(`nft list set` shows `192.168.88.135 limit rate over 5/minute burst 5 packets`), and the `add` never
+consults it. The `meter` statement does — its set *is* the rate state, and the statements after it run
+only when the rate is exceeded. §5.3's sketch stands as written, and the `log prefix` fallback it named
+is not needed.
+
+Three consequences for the implementation:
+
+- The meter's own set (`scan4m`) is `flags dynamic` with **no timeout** and `size 65535`: one entry per
+  source that ever scanned, and its rate state never expires. The memory is bounded (a few megabytes at
+  worst) but the entries are not, so the guard flushes that set on the counting window — every
+  `guard.scan.window`, ten minutes by default — in the same pass that reads `@scan4`. Flushing resets
+  rate state only; an offender is detected again by scanning again.
+- Rate state is per source and per rule, so IPv6 needs its own meter. Verified: one meter per family,
+  both accepted inside one `inet` table.
+- The element-level `timeout` and a `limit` expression cannot be combined, so the `@scan4` TTL comes
+  from the statement (`add @scan4 { ip saddr timeout 15m }`) and the meter's set has none. The two
+  sets differ on purpose.
+
+**Rebuilding the table is one atomic batch.** A file that begins with `destroy table inet termit_uv` and
+then declares the whole table applies cleanly whether the table is absent or present (both exit 0), and
+the second apply *replaces* the contents instead of merging — applying the same ruleset twice does not
+accumulate duplicate rules. Elements go with the table, bans included, so the guard re-applies
+`bans.json` immediately after every apply. Teardown is `nft delete table`, which exits 1 when the table
+is absent; `firewall off` treats that as success.
+
+**Reading bans back.** `nft -j list set … banned4` returns two element shapes, and the parser must take
+both: a bare string for an element with no timeout (the operator's permanent ban) and
+`{"elem": {"val": "203.0.113.7", "timeout": 3600, "expires": 3599}}` for one with a TTL, where
+`expires` is the seconds left. `nft delete element … { 1.2.3.4 }` removes one element; a set with a
+default TTL also expires its elements on its own, which is the point of the design.
+
+**The sniffer does classify BitTorrent — and `routeOnly: false` would have been a bug.** With
+`"sniffing": {"enabled": true, "destOverride": […], "routeOnly": false}` and a routing rule
+`{"protocol": ["bittorrent"], "outboundTag": "block"}`, a torrent handshake through a socks inbound went
+to the blackhole (`app/dispatcher: taking detour [block]`) while a TLS ClientHello passed. The same run
+also logged `sniffed domain: spike … taking detour [direct] for [tcp:spike:19000]`: with
+`routeOnly: false` the sniffed HTTP `Host` **replaces the destination**, so an HTTP request through the
+tunnel is dialled to the name in its own header and resolved by the node's DNS instead of going where
+the client asked (`lookup spike on 192.168.90.1:53: no such host` — a real rewrite, not a logging
+artefact). `routeOnly: true` keeps the destination and still classifies: HTTP and TLS pass, the
+handshake is blocked. §5.7 now says `routeOnly: true`.
+
+Also measured: classification does not depend on `destOverride` — with `"destOverride": []` and
+`routeOnly: true` the handshake is still blocked and nothing else is sniffed. That is the smallest
+configuration that does the job, and the one §5.7 shows: no HTTP/TLS/QUIC sniffing, so the only cost is
+reading the first bytes of a connection.
 
 ### 5.2 What owns what
 
@@ -965,7 +1032,8 @@ table inet termit_uv {
     set blocked4  { type ipv4_addr; flags interval; auto-merge; }        # the downloaded list
     set banned4   { type ipv4_addr; flags timeout; }                      # dynamic, TTL per element
     set ssh4      { type ipv4_addr; flags interval; }                     # only with ssh_from
-    set scan4     { type ipv4_addr; flags timeout; }                      # to recognise repeats
+    set scan4     { type ipv4_addr; flags dynamic, timeout; timeout 15m; } # the guard reads these
+    # scan4m is not declared here: the meter rule below creates it as its rate state.
 
     chain input {
         type filter hook input priority -5; policy accept;
@@ -984,7 +1052,8 @@ table inet termit_uv {
         tcp dport { 80, 443 } accept
 
         # Everything else: count per source, remember who tried, drop when default_deny is on.
-        meter scan4 { ip saddr limit rate over 5/minute } add @scan4 { ip saddr timeout 15m }
+        # The meter's set is the rate state; the add writes the offender into scan4 with a TTL.
+        meter scan4m { ip saddr limit rate over 5/minute } add @scan4 { ip saddr timeout 15m }
         drop
     }
 }
@@ -995,9 +1064,9 @@ Two details are deliberately not left to the implementation:
 - **A scan is counted in the kernel, banned by the guard.** `meter … limit rate over N/minute` needs no
   userspace, and the guard sees the resulting element in `@scan4` and applies the ban with the ladder's
   TTL. That keeps one ban path for both signals and avoids a second, kernel-only ladder that the state
-  file would not know about. **Spike first:** `add @set { … timeout … }` inside a metered rule is the
-  nftables feature this rests on; if 1.1.3 refuses it, the fallback is the same rule with `log prefix
-  "termit-scan "` and the guard reading those events from the journal — slower, still native.
+  file would not know about. The spike settled the syntax (§5.0): the `meter` statement is the form that
+  gates, its set needs a name of its own (`scan4m`) because the meter creates it, and the guard flushes
+  it on the counting window.
 - **`default_deny` is configurable and on.** A node publishes exactly three ports; anything else
   inbound is a scan or a leftover service the operator forgot, and both are worth refusing. Off is for
   an operator who runs something else on the box and knows it.
@@ -1059,13 +1128,20 @@ with its own ports (`22`, `80`, `443`, plus `listen`).
 `security.bittorrent_block: true` adds to the generated Xray config, not to the firewall:
 
 ```json
-"sniffing": { "enabled": true, "destOverride": ["http", "tls", "quic"], "routeOnly": false },
+"sniffing": { "enabled": true, "destOverride": [], "routeOnly": true },
 "routing":  { "rules": [ { "type": "field", "protocol": [ "bittorrent" ], "outboundTag": "block" } ] }
 ```
 
-**Spike M5.0 proves the sniffer actually classifies it**; if Xray's build cannot, the feature is
-dropped and documented as such rather than shipped as a placebo. Sniffing costs a little CPU on the
-first packets, which is why it is off by default and not implied by the firewall.
+`routeOnly` is `true` and `destOverride` is empty on purpose, and §5.0 measured why: with
+`routeOnly: false` the sniffed HTTP `Host` replaces the request's destination, so the tunnel would dial
+a name the node resolves instead of the address the client asked for; and BitTorrent is classified
+whether or not a protocol is listed in `destOverride`, so listing `http`/`tls`/`quic` buys nothing but
+extra parsing on every connection.
+
+The spike also settled that this build does classify the handshake — a torrent handshake went to the
+blackhole while a TLS ClientHello passed — so the feature is not a placebo and ships. A real torrent
+client is still not lab-shaped, so that half of the check stays manual. Sniffing costs a little CPU on
+the first bytes of each connection, which is why it is off by default and not implied by the firewall.
 
 ### 5.8 Blocklist refresh
 
@@ -1078,10 +1154,12 @@ first packets, which is why it is off by default and not implied by the firewall
 
 ### 5.9 Milestones
 
-**M5.0 — Spike (half a day).** On `termit-uv2.lan`: does nftables 1.1.3 accept `add @set { ip saddr
-timeout … }` inside a `meter` rule, and what does `nft -c -f` say about the whole table? Does the
-pinned Xray recognise `protocol: bittorrent` with `destOverride`? Both answers go in the plan before
-code exists.
+**M5.0 — Spike (done).** On `termit-uv2.lan`: nftables 1.1.3 accepts the `meter … add @set { …
+timeout … }` form and refuses the two shapes that look equivalent (element-level `timeout` with a
+`limit`, and a `limit` matcher before `add`); the `add @set { … limit … }` form without a meter adds on
+the first packet and is not a detector; `nft -c -f` accepts the whole table, both families, one meter
+each. The pinned Xray 26.11.9 does classify a BitTorrent handshake, and `routeOnly` must be `true`. All
+of it is in §5.0, including what changed because of it.
 
 **M5.1 — Table and commands (1–2 d).** `security/firewall.go` renders the table from a typed model;
 `firewall status|on|off|confirm|refresh`; the five-minute rollback timer unit; `--dry-run`. Tests:
@@ -1099,8 +1177,9 @@ ban appear, check that uv1 still works from its own address, unban, and repeat t
 last good list" path. Lab: a `file://` URL in the config as the source, a truncated file that must be
 refused, an unreachable URL that must keep the previous list.
 
-**M5.4 — BitTorrent, if M5.0 allows (half a day).** Config generation plus a golden test; the manual
-check is documented because a real torrent client is not lab-shaped.
+**M5.4 — BitTorrent (half a day).** Config generation plus a golden test; the manual check is documented
+because a real torrent client is not lab-shaped. The spike already proved the routing rule fires (§5.0),
+so what is left is the generator, the config key and the test.
 
 **M5.5 — MN parity (half a day).** Same commands in `termit-mn`, ports from its config, table named
 `inet termit_mn`; a lab run where the firewall is on while a node syncs and enrolls.
@@ -1121,8 +1200,8 @@ timer, then `confirm` from a second session), then the two nodes one at a time, 
 step: SSH alive, 443 serving, a client request through the tunnel, the MN's prober green, `status`
 clean. Any step that fails: `firewall off`, and the host is where it started.
 
-Total: 5–7 days of work, of which the first half-day decides two syntax questions that could re-shape
-the rest.
+Total: 5–7 days of work. The first half-day — the spike that decided two syntax questions which could
+have re-shaped the rest — is spent and recorded in §5.0.
 
 ### 5.10 Explicitly out of scope
 
