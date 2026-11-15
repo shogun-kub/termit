@@ -33,7 +33,7 @@ Conventions used below:
 | UV | `termit-uv-blocklist.timer` | — | the network blocklist refresh, when a URL is configured (§18.5) |
 | UV | `termit-uv-firewall.service` | — | puts a confirmed table back at boot (§18.7) |
 | UV | `warp-cli` (Cloudflare's unit) | `127.0.0.1:40000` | the WARP SOCKS5 sidecar, when WARP is on |
-| MN | `termit-mn-guard.service`, `termit-mn-blocklist.timer`, `termit-mn-firewall.service` | — | the same three, from `deploy/systemd` (§18.6) |
+| MN | `termit-mn-guard.service`, `termit-mn-blocklist.timer`, `termit-mn-firewall.service` | — | the same three, shipped with the release (§18.6) |
 
 The table itself is applied by `firewall on` and never by a timer; the boot unit only puts back what was
 applied and confirmed, and does nothing when there is no record (§18.7).
@@ -1121,6 +1121,8 @@ server's unit from the repository, and writes `SHA256SUMS`:
 | `termit-mn_<version>_linux_<arch>` | the management server binary |
 | `uv.sh` | the bootstrap installer (§4) |
 | `termit-mn.service` | the unit from `deploy/systemd/`, so a server install needs no clone |
+| `termit-mn-firewall.service`, `termit-mn-firewall-rollback.service`, `.timer` | the server's boot unit and the rollback pair (§18.6) |
+| `termit-mn-guard.service`, `termit-mn-blocklist.service`, `.timer` | the server's ban engine and blocklist (§18.6) |
 | `SHA256SUMS` | covers every file above, in `sha256sum -c` format |
 
 The names are a contract with `uv.sh`, which fetches `<base>/<version>/<asset>` and
@@ -1351,16 +1353,18 @@ deliberate — an apply with no way back is worse than a refused command — and
 check when `on` says the timer is not installed:
 
 ```bash
-install -m 0644 deploy/systemd/termit-mn-firewall-rollback.service \
-                   deploy/systemd/termit-mn-firewall-rollback.timer \
-                   deploy/systemd/termit-mn-firewall.service \
-                   deploy/systemd/termit-mn-guard.service \
-                   deploy/systemd/termit-mn-blocklist.service \
-                   deploy/systemd/termit-mn-blocklist.timer /etc/systemd/system/
+install -m 0644 termit-mn-firewall-rollback.service \
+                   termit-mn-firewall-rollback.timer \
+                   termit-mn-firewall.service \
+                   termit-mn-guard.service \
+                   termit-mn-blocklist.service \
+                   termit-mn-blocklist.timer /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable termit-mn-firewall
 systemctl enable --now termit-mn-guard termit-mn-blocklist.timer
 ```
+
+The files sit beside `termit-mn` in the release tarball; in a checkout they are under `deploy/systemd/`.
 
 Do not enable the rollback timer: the command starts it, and it exists to fire once. The blocklist timer
 runs `termit-mn firewall refresh` daily; its interval is the timer file, not

@@ -157,3 +157,18 @@ func TestWriteNotesTakesTheSectionForTheVersion(t *testing.T) {
 		t.Errorf("an unreleased section = %v, want a refusal", err)
 	}
 }
+
+// TestExtraFilesExist: every file the release copies beside the binaries has to be in the repository,
+// and under the name the manifest will show. A renamed server unit would ship a release in which
+// `termit-mn firewall on` refuses forever, because the rollback timer it insists on is not there.
+func TestExtraFilesExist(t *testing.T) {
+	t.Parallel()
+	for _, extra := range extraFiles {
+		if _, err := os.Stat(filepath.Join("..", "..", extra.source)); err != nil {
+			t.Errorf("extra file %s: %v", extra.source, err)
+		}
+		if extra.name != filepath.Base(extra.name) {
+			t.Errorf("extra file %q is not a base name", extra.name)
+		}
+	}
+}

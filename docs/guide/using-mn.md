@@ -118,6 +118,10 @@ systemctl enable --now termit-mn
 journalctl -u termit-mn -n 30 --no-pager
 ```
 
+The same release carries the server's hardening units (`termit-mn-firewall*`, `termit-mn-guard`,
+`termit-mn-blocklist*`). They are installed only if you decide to harden the server, and the firewall
+refuses to run without them: [Hardening a node](hardening.md) has the rest.
+
 The first start **issues the certificate before it serves TLS**, and refuses to start if that fails:
 a management API that silently falls back to HTTP is worse than one that does not come up. Expect
 a minute or two, then:

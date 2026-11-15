@@ -16,6 +16,10 @@
 //	  termit-mn_v0.1.0_linux_arm64
 //	  uv.sh
 //	  termit-mn.service
+//	  termit-mn-firewall-rollback.service, .timer
+//	  termit-mn-firewall.service
+//	  termit-mn-guard.service
+//	  termit-mn-blocklist.service, .timer
 //	  SHA256SUMS
 package main
 
@@ -45,8 +49,12 @@ var platforms = []string{"amd64", "arm64"}
 // commands are the binaries, keyed by the directory under cmd/.
 var commands = []string{"uv", "mn"}
 
-// extraFiles are copied beside the binaries: the installer an operator runs, and the unit an operator
+// extraFiles are copied beside the binaries: the installer an operator runs, and the units an operator
 // installs. Both are read from the repository so the release cannot drift from it.
+//
+// The server's hardening units are here because they are plain files, not rendered by the binary: a
+// release that shipped only `termit-mn` would leave `termit-mn firewall on` refusing forever — it will
+// not apply a table without the rollback timer installed.
 var extraFiles = []struct {
 	source string
 	name   string
@@ -54,6 +62,12 @@ var extraFiles = []struct {
 }{
 	{"deploy/install/uv.sh", "uv.sh", 0o755},
 	{"deploy/systemd/termit-mn.service", "termit-mn.service", 0o644},
+	{"deploy/systemd/termit-mn-firewall-rollback.service", "termit-mn-firewall-rollback.service", 0o644},
+	{"deploy/systemd/termit-mn-firewall-rollback.timer", "termit-mn-firewall-rollback.timer", 0o644},
+	{"deploy/systemd/termit-mn-firewall.service", "termit-mn-firewall.service", 0o644},
+	{"deploy/systemd/termit-mn-guard.service", "termit-mn-guard.service", 0o644},
+	{"deploy/systemd/termit-mn-blocklist.service", "termit-mn-blocklist.service", 0o644},
+	{"deploy/systemd/termit-mn-blocklist.timer", "termit-mn-blocklist.timer", 0o644},
 }
 
 // versionPattern is the shape of a release tag. A version that does not match would produce asset

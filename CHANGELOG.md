@@ -58,7 +58,8 @@ management server, which no install and no timer ever switches on by itself.
   survives. The spike proved the pinned core classifies the handshake.
 - **The same table on the management server** (`termit-mn firewall|bans|guard`), as `inet termit_mn` with
   ports 22, 80 and 443 — 80 stays open for every node's renewal, not only its own. The commands are one
-  implementation shared by both binaries, so they cannot drift.
+  implementation shared by both binaries, so they cannot drift. Its units are plain files rather than
+  rendered by the binary, so the release now ships them beside `termit-mn`.
 - **`init --harden`** and the wizard's unchecked "harden this node" question: they write the configuration
   and install the ban engine, and stop there. The table itself is still `firewall on`.
 - **The table comes back after a reboot.** `termit-uv-firewall.service` (and the server's copy) runs
