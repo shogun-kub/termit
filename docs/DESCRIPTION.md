@@ -691,6 +691,21 @@ The owner's own devices are local users: `termit-uv device list`, `termit-uv dev
 sent to MN — a family phone is not a mesh participant. `termit-uv uri` prints the `vless://` URI for the
 node's own device; it is the one place a credential is printed on purpose, to stdout only.
 
+`termit-uv options` renders the owner's page of client links: this node's own device, the mesh peers as
+the subscription describes them, and the two subscription forms, each with a copy button. It is a
+static file in the decoy site's tree under a random 32-character path, so nginx needs no new location
+for it; the path is a capability like the subscription token, generated once, stored in the state file
+and replaced by `--rotate`. Nothing creates the page implicitly: `init`, `renew-site` and `sync`
+re-render an existing one (the decoy step rewrites the whole tree) and leave a node that never asked
+for it alone.
+
+`termit-uv wizard` is a front end to `init`, not a second installer: it asks for the domain, the ACME
+contact, the decoy archetype, the egress mode and the invite code, writes each answer to `wizard.yaml`
+beside the configuration so an interrupted run resumes with those answers as defaults, and then runs the
+same `init` and `enroll` with the same flags. A node that is already installed is reported rather than
+re-installed: the wizard runs the pipeline in dry-run mode and exits when every step reports its effect
+present.
+
 `termit-uv doctor` answers two different questions. The host half ("could this machine be a node") is the
 preflight checks; the node half ("is it working") covers the state, the three units, the certificate
 window, the decoy against its seed, and whether the core accepts its generated config. A check that

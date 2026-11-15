@@ -83,6 +83,9 @@ type application struct {
 	configPath string
 	// interactiveFn answers "may the menu open"; nil means "ask the terminal".
 	interactiveFn func() bool
+	// completeFn answers "is this node fully installed" for the wizard; nil means run the pipeline in
+	// dry-run mode. Tests set it, because a complete node needs units and a certificate.
+	completeFn func(*config.Config, string) (bool, error)
 }
 
 func (a *application) run(args []string) int {
@@ -125,6 +128,10 @@ func (a *application) run(args []string) int {
 		return a.runMigrate(rest)
 	case "uri":
 		return a.runURI(rest)
+	case "options":
+		return a.runOptions(rest)
+	case "wizard":
+		return a.runWizard(rest)
 	case "version":
 		fmt.Fprintln(a.stdout, version.String("termit-uv"))
 		return exitOK
@@ -157,6 +164,8 @@ Commands:
   device       list, add or remove the owner's own devices
   renew-cert   renew the TLS certificate (--force to replace it)
   uri          print the vless:// URI for this node's own device
+  options      render the owner's private page of client links and print its address
+  wizard       walk through a first installation, remembering each answer
   renew-site   regenerate the decoy site and its nginx fragment
   enroll       register this node with the management server
   sync         reconcile the core with the server's peer set; --check reports drift

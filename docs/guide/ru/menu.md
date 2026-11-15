@@ -57,6 +57,8 @@ termit-mn menu
 | status | домен, отпечатки идентичности, сертификат, пиры, последняя и следующая синхронизация, WARP | `termit-uv status` |
 | doctor | диагностика хоста и узла; ничего не меняет | `termit-uv doctor` |
 | install or converge | первый запуск спросит домен, email и WARP; последующие только перепроверяют | `termit-uv init …` |
+| setup wizard | вся первая установка в виде вопросов; ответы запоминаются между запусками | `termit-uv wizard` |
+| client options | закрытая страница со всеми ссылками для клиентов и её адрес | `termit-uv options` |
 | join the mesh | спросит адрес сервера и код приглашения | `termit-uv enroll …` |
 | sync now | получить список пиров сейчас, не дожидаясь суточной синхронизации | `termit-uv sync` |
 | check drift | показать, совпадает ли работающее ядро с сервером | `termit-uv sync --check` |

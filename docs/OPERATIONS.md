@@ -336,6 +336,19 @@ converges the rest, keeping the identity, the Xray path and the certificate. The
 on the command line and is visible in `ps` for the duration of the run; revoke it afterwards if that
 matters (`termit-mn invite revoke`).
 
+If you would rather be asked than remember flags, the wizard is the same installation with questions:
+
+```bash
+termit-uv wizard
+```
+
+It asks for the domain, the contact address, the masking site, the egress mode and the invite code,
+then runs the same `init` with the same flags. Each answer is kept in `wizard.yaml` beside the
+configuration, so an interrupted run continues where it stopped and Enter accepts what is already
+there (`--fresh` forgets them). On a node that is already installed it asks nothing: it runs the
+pipeline in dry-run mode, and when every step reports its effect present it prints the status and
+exits. The last thing it prints is the address of the [page with every link](#80-one-page-with-every-link).
+
 Without the script, the two commands it wraps are:
 
 ```bash
@@ -539,6 +552,32 @@ termit-uv device remove phone
 termit-uv uri                             # this node's own URI, for the default device
 ```
 
+### 8.0 One page with every link
+
+Handing out links one `termit-uv uri` at a time is fine for a shell and awkward on a phone. The page
+collects them:
+
+```bash
+termit-uv options            # renders it and prints the address
+termit-uv options --rotate   # new address; the old one answers 404
+```
+
+`https://<node-domain>/<32 hex characters>/` shows this node's own device, every mesh peer the
+subscription describes, and the two subscription forms, each with a copy button. It is a **static file
+in the decoy site's tree**, so nginx needs no new location for it: the vhost already serves that
+directory. The consequences are worth knowing:
+
+- The path is generated once and lives in the state file (`options.token`), not in the configuration;
+  `termit-uv status` prints the address, so it can be found again months later.
+- Anyone with the address sees the same links. That is the model — the same as the subscription token —
+  so the page carries `noindex`, is served with the site's own headers, and is only as safe as the
+  browser history it ends up in.
+- `init`, `renew-site` and `sync` re-render the page when it exists, because the decoy step rewrites its
+  whole tree and the peer set changes under it. None of them *creates* one: a node whose owner never
+  asked for a page stays without one.
+- The page is built from what the node can see. If the management server is unreachable it says so and
+  shows the local device only, which is exactly when a link is worth having.
+
 The subscription is the mesh view: one URL per node, containing that node's own profile plus every
 healthy peer, with a **pair credential** for each peer — valid on that pair and nowhere else.
 
@@ -565,6 +604,16 @@ subscription:
   fragment: false                            # sing-box profile: split across TCP segments
   record_fragment: true                      # sing-box profile: split across TLS records
   happ_fragment: "100-200,1-3,tlshello,6"    # Happ: the per-link fragment= parameter
+```
+
+That is what a fresh `termit-mn init` writes: fragmentation on, because the paths this project is
+deployed against freeze a plain ClientHello often enough that it should not depend on somebody
+remembering a switch. A configuration written before these keys existed keeps whatever it says — the
+loader never adds them — so an installed server changes only when its operator asks:
+
+```bash
+termit-mn init --record-fragment --happ-fragment 100-200,1-3,tlshello,6   # on
+termit-mn init --no-fragmentation                                        # off, all three
 ```
 
 The two booleans change only the `/json` document, and only by adding the field — never by writing

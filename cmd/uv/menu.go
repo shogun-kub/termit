@@ -174,6 +174,16 @@ func (a *application) menuEntries() []menuEntry {
 			plan:  a.planInstall,
 		},
 		{
+			label: "setup wizard",
+			hint:  "step by step through a first installation, remembering the answers",
+			plan:  fixed("wizard"),
+		},
+		{
+			label: "client options",
+			hint:  "the private page with every client link, and its address",
+			plan:  fixed("options"),
+		},
+		{
 			label: "join the mesh",
 			hint:  "enroll with an invite code from the server operator",
 			plan:  a.planEnroll,

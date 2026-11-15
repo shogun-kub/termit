@@ -56,6 +56,8 @@ trusts. Closed stdin (a pipe that ran out) ends the session cleanly with status 
 | status | domain, identity fingerprints, certificate, peers, last and next sync, WARP | `termit-uv status` |
 | doctor | host and node diagnostics; changes nothing | `termit-uv doctor` |
 | install or converge | first run asks for domain, email and WARP; later runs only re-check | `termit-uv init …` |
+| setup wizard | the whole first installation as questions; remembers the answers between runs | `termit-uv wizard` |
+| client options | the private page with every client link, and its address | `termit-uv options` |
 | join the mesh | asks for the server URL and an invite code | `termit-uv enroll …` |
 | sync now | fetch the peer set now instead of waiting for the daily sync | `termit-uv sync` |
 | check drift | report whether the running core matches the server | `termit-uv sync --check` |

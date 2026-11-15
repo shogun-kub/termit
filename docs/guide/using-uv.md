@@ -181,6 +181,8 @@ own; the systemd units are installed by `termit-uv init`.
 | `termit-uv agent` | run the daily loop in the foreground | `--once` |
 | `termit-uv device` | local devices on this node | `list`, `add --label NAME [--uuid ...]`, `remove NAME` |
 | `termit-uv uri` | print a `vless://` URI for this node | `--label` |
+| `termit-uv options` | render the private page of client links and print its address | `--rotate`, `--quiet` |
+| `termit-uv wizard` | walk through a first installation, remembering the answers | `--fresh` |
 | `termit-uv warp` / `termit-uv warp status` | report egress | `--json` |
 | `termit-uv warp mode` | change egress | `off`, `all`, `selected --selected a.example,b.example` |
 | `termit-uv unblock` | ask the server to re-verify and unblock | `--domain`, `--vless-url`, `--no-sync` |

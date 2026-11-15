@@ -182,6 +182,8 @@ self-check:   ok 2026-11-10T11:17:04Z
 | `termit-uv agent` | цикл агента на переднем плане | `--once` |
 | `termit-uv device` | локальные устройства на этом узле | `list`, `add --label NAME [--uuid ...]`, `remove NAME` |
 | `termit-uv uri` | напечатать `vless://` для этого узла | `--label` |
+| `termit-uv options` | собрать закрытую страницу со ссылками для клиентов и напечатать её адрес | `--rotate`, `--quiet` |
+| `termit-uv wizard` | провести через первую установку, запоминая ответы | `--fresh` |
 | `termit-uv warp` / `termit-uv warp status` | показать выход | `--json` |
 | `termit-uv warp mode` | сменить выход | `off`, `all`, `selected --selected a.example,b.example` |
 | `termit-uv unblock` | попросить сервер перепроверить и разблокировать | `--domain`, `--vless-url`, `--no-sync` |

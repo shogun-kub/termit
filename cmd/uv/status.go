@@ -30,9 +30,11 @@ type jsonStatus struct {
 	LastRunAt    *time.Time   `json:"last_run_at,omitempty"`
 	LastRunSteps []stepStatus `json:"last_run_steps,omitempty"`
 
-	Enrolled      bool           `json:"enrolled"`
-	EnrolledAt    *time.Time     `json:"enrolled_at,omitempty"`
-	Subscription  string         `json:"subscription_url,omitempty"`
+	Enrolled     bool       `json:"enrolled"`
+	EnrolledAt   *time.Time `json:"enrolled_at,omitempty"`
+	Subscription string     `json:"subscription_url,omitempty"`
+	// OptionsPage is the owner's private page of client links, when one has been rendered.
+	OptionsPage   string         `json:"options_page,omitempty"`
 	Peers         []jsonPeer     `json:"peers,omitempty"`
 	LastSyncAt    *time.Time     `json:"last_sync_at,omitempty"`
 	NextSyncAt    *time.Time     `json:"next_sync_at,omitempty"`
@@ -130,6 +132,9 @@ the last install run. Secrets are shown as sha256 prefixes only.`)
 	}
 	if node.Certificate != nil {
 		out.Certificate = describeCertificate(node.Certificate.NotAfter, a.now())
+	}
+	if node.Options.Token != "" {
+		out.OptionsPage = "https://" + cfg.Domain + "/" + node.Options.Token + "/"
 	}
 	if node.Credentials != nil && node.Credentials.AgentKey != "" {
 		out.Enrolled = true
@@ -232,6 +237,9 @@ the last install run. Secrets are shown as sha256 prefixes only.`)
 		fmt.Fprintf(a.stdout, "peers:        %d (%s)\n", len(node.Peers), strings.Join(domains, ", "))
 	} else if out.Enrolled {
 		fmt.Fprintln(a.stdout, "peers:        none")
+	}
+	if out.OptionsPage != "" {
+		fmt.Fprintf(a.stdout, "options:      %s\n", out.OptionsPage)
 	}
 	if out.LastSyncAt != nil {
 		fmt.Fprintf(a.stdout, "last sync:    %s %s\n", orDefault(out.LastSyncState, "unknown"),

@@ -209,6 +209,13 @@ credential is ever regenerated.`)
 	if len(pendingWork) > 0 {
 		fmt.Fprintf(a.stdout, "not yet installed by this build: %s\n", joinWords(pendingWork))
 	}
+	if !*dryRun {
+		// The decoy step rewrites its tree, so the owner's page has to be put back. It is only put
+		// back, never created here: a node whose owner never asked for a page stays without one.
+		if err := a.refreshOptions(cfg); err != nil {
+			fmt.Fprintf(a.stderr, "termit-uv init: the client options page could not be refreshed: %v\n", err)
+		}
+	}
 	return exitOK
 }
 

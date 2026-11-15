@@ -162,5 +162,10 @@ func (a *application) runSync(args []string) int {
 		}
 	}
 	fmt.Fprintf(stdout, "next sync: %s\n", st.Schedule.NextSyncAt.Format(time.RFC3339))
+	// The peer set just changed, and the owner's page lists the mesh: keep it from describing a mesh
+	// that no longer exists. A failure is a warning, never a failed sync.
+	if err := a.refreshOptions(cfg); err != nil {
+		fmt.Fprintf(stderr, "termit-uv sync: the client options page could not be refreshed: %v\n", err)
+	}
 	return exitOK
 }

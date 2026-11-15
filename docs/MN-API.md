@@ -351,9 +351,10 @@ from the address that sent it, serve the decoy, and answer as a proxy.
 the format v2rayNG, NekoBox and friends import.
 
 `GET /sub/{token}/json` returns the same list as a sing-box configuration fragment, `application/json`.
-Its outbounds carry `tls.utls` with the profile's fingerprint and no `alpn`; when the server is
-configured with `subscription.fragment` or `subscription.record_fragment` (both off by default), they
-also carry `tls.fragment` and `tls.record_fragment`, which split the TLS ClientHello on the client side.
+Its outbounds carry `tls.utls` with the profile's fingerprint and no `alpn`. A fresh server is created
+with `subscription.record_fragment` on, so they also carry `tls.record_fragment`, which splits the TLS
+ClientHello across records on the client side; `subscription.fragment` (the segment-level variant,
+off by default) adds `tls.fragment` instead, and a configuration that predates the keys gets neither.
 
 Fragmentation reaches the plain list by a different route, because it has to: Happ reads a
 `fragment=length,interval,packets[,maxSplit]` query parameter from the link itself, so
