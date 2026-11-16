@@ -108,7 +108,7 @@ linux/amd64 and linux/arm64. It is still marked **pre-release**: the pass for `0
 2026-11-15 — two providers, real Let's Encrypt certificates, WARP egress, a phone app reading the
 subscription, an in-place Debian 12 → 13 upgrade — while the pass for the line that shipped the host
 firewall, the ban engine and the blocklist has not happened yet. The build being tested in the meantime
-is `v0.3.2p1`, a pre-release of the next version: the `p<n>` counter numbers the builds of a release
+is `v0.3.2p3`, a pre-release of the next version: the `p<n>` counter numbers the builds of a release
 branch and never names anything a participant installs. See
 [what is not here yet](#what-is-not-here-yet).
 
