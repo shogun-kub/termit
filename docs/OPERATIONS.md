@@ -533,6 +533,12 @@ the same flag with `proxy`, which reinstalls `cloudflare-warp` and restores the 
 is `/var/lib/termit/uv/warp.yaml`, `0600`, written once — a re-run of `init` reuses it, and `uninstall
 --purge` removes it with the rest of the state.
 
+**Registration is a warning, not a gate.** Cloudflare's API is unreachable from whole networks — in
+Russia the range is routinely blocked — so a node that cannot register still installs: the step reports
+the reason, the core is written with direct egress, and the run succeeds. `termit-uv warp status` and
+`termit-uv doctor` say the exit is direct until `termit-uv init --only warp` succeeds on a network that
+can reach Cloudflare.
+
 If the host cannot run WARP (no `/dev/net/tun`, unsupported architecture), `termit-uv init` and `termit-uv warp mode`
 say so with the exact reason and the node keeps working with direct egress. Nothing is silently
 degraded, and `termit-uv uninstall` disconnects the tunnel it left behind.

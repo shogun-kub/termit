@@ -80,7 +80,12 @@ func (s *warpStep) ensureIdentity(ctx context.Context) error {
 	}
 	identity, err := s.e.registrar.Register(ctx)
 	if err != nil {
-		return err
+		// Cloudflare is unreachable from plenty of networks — in Russia the whole range is routinely
+		// blocked — and that must not be the thing that stops an install. The node converges with direct
+		// egress, the report carries the reason, and `termit-uv init --only warp,xray-config` registers it
+		// later.
+		return &Warning{Reason: "WARP is on but this node is not registered: " + err.Error() +
+			"; proxied traffic exits directly until registration succeeds"}
 	}
 	return warp.SaveIdentity(path, identity)
 }

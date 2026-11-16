@@ -26,12 +26,18 @@ cannot use it.
 
 ### Changed
 
+- **A blocked Cloudflare does not block the install.** Registration is a warning: the step reports why,
+  the core is written with direct egress, and the run succeeds. Cloudflare's API is unreachable from whole
+  networks — in Russia the range is routinely blocked — and an installer that a third-party service can
+  stop is an installer nobody finishes behind that block. `warp status` and `doctor` say the exit is direct
+  until `termit-uv init --only warp` succeeds.
 - **UDP goes through WARP on the wireguard transport**, which is what the split rule in 0.3.2 existed to
   work around. The `proxy` transport keeps the split: SOCKS5 has no UDP ASSOCIATE, so a UDP flow handed
   to it never returns.
 - **`termit-uv init --warp-transport`** flips a node between the two. Switching to `proxy` reinstalls
   `cloudflare-warp`; switching to `wireguard` leaves the package installed but unused, because removing a
   package is the operator's decision, not the installer's.
+
 ## 0.3.2 — 2026-11-16
 
 The owner's page catches up with what the node knows, and starts listing the devices it was already

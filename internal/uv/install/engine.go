@@ -187,6 +187,14 @@ type RunOptions struct {
 	KeepGoing bool
 }
 
+// Warning is what a step returns when it cannot achieve its effect but the node is still a working node:
+// a WARP registration Cloudflare refuses because the network cannot reach it, for instance. The run
+// continues, the report says why, and the exit code stays success — an install that a blocked
+// third-party service can fail is an install nobody can finish behind that block.
+type Warning struct{ Reason string }
+
+func (w *Warning) Error() string { return w.Reason }
+
 // StepReport is the outcome of one step in one run.
 type StepReport struct {
 	Name     string
@@ -302,6 +310,18 @@ func (i *Installer) Run(ctx context.Context, opts RunOptions) (*Report, error) {
 		}
 		if runErr == nil {
 			runErr = i.env.saveState()
+		}
+		var warning *Warning
+		if errors.As(runErr, &warning) {
+			// Converged into a state the operator has to know about, not a failure: the node keeps
+			// working with direct egress and the report says so.
+			i.env.log.Warn("install step converged with a warning", "step", step.Name(), "reason", warning.Reason)
+			report.Steps = append(report.Steps, StepReport{
+				Name: step.Name(), Status: state.StepPresent, Detail: warning.Reason,
+				Duration: i.env.now().Sub(stepStarted),
+			})
+			run.FinishStep(step.Name(), state.StepPresent, warning.Reason, i.env.now())
+			runErr = nil
 		}
 		if runErr != nil {
 			report.Steps = append(report.Steps, StepReport{

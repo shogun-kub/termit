@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -47,10 +48,17 @@ func (s *xrayConfigStep) spec() (xray.Spec, error) {
 	// registration on disk for the day the operator turns WARP back on.
 	if spec.Warp.Enabled() && spec.Warp.Transport == xray.WarpTransportWireGuard {
 		identity, err := warp.LoadIdentity(s.e.cfg.Paths.WarpIdentityPath())
-		if err != nil {
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			// No identity means no tunnel, and no tunnel must not mean no node: the route goes out
+			// directly, the warp step has already said why, and the fail-open behaviour the owner chose
+			// still applies once the node is registered.
+			spec.Warp.Mode = ""
+		case err != nil:
 			return spec, fmt.Errorf("warp identity: %w", err)
+		default:
+			spec.Warp.WireGuard = wireGuardIdentity(identity)
 		}
-		spec.Warp.WireGuard = wireGuardIdentity(identity)
 	}
 	spec.Clients = []xray.Client{{ID: s.e.st.Identity.SelfUUID, Email: ownerEmail}}
 	for _, user := range s.e.st.LocalUsers {

@@ -66,9 +66,12 @@ func diagnoseWarp(ctx context.Context, cfg *config.Config, st *state.State, clie
 func diagnoseWireGuardWarp(ctx context.Context, cfg *config.Config, st *state.State) Check {
 	check := Check{Name: "warp"}
 	if _, err := warp.LoadIdentity(cfg.Paths.WarpIdentityPath()); err != nil {
-		check.Status = StatusFail
-		check.Detail = "no WARP identity: " + errorText(err)
-		check.Hint = "run `termit-uv init --only warp` to register this node"
+		// Not a failure: a node that could not register is a working node with direct egress, which is
+		// what the installer reports as a warning too. It is worth saying loudly, though, because the
+		// address the owner wanted to hide is the node's own until registration succeeds.
+		check.Status = StatusWarn
+		check.Detail = "WARP is on but this node is not registered: " + errorText(err)
+		check.Hint = "run `termit-uv init --only warp` when Cloudflare is reachable; until then proxied traffic exits directly"
 		return check
 	}
 	if st == nil || st.Identity.SelfUUID == "" || st.Identity.XHTTPPath == "" {

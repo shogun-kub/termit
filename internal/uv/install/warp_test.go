@@ -310,3 +310,35 @@ func ruleSummary(t *testing.T, cfg *config.Config) string {
 	}
 	return strings.Join(parts, ",")
 }
+
+// Cloudflare is unreachable from networks that block it, and that must not be the thing that stops an
+// install: the step converges into a warning, the document goes out directly, and the run succeeds.
+func TestWarpRegistrationFailureIsAWarning(t *testing.T) {
+	t.Parallel()
+	cfg := warpConfig(t, config.WarpAll)
+	cfg.Warp.Transport = config.WarpTransportWireGuard
+	exec := &fakeExecutor{handler: func(Cmd) (Result, error) { return okResult("") }}
+	// Nothing listens on port 1, which is what a blocked or filtered Cloudflare looks like to the step.
+	installer, err := New(Options{Config: cfg, Exec: exec, WarpHost: supportedHost(t),
+		Registrar: warp.Registrar{BaseURL: "http://127.0.0.1:1"}})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	report, err := installer.Run(context.Background(),
+		RunOptions{Command: "init", Only: []string{"dirs", "warp", "identity", "xray-config"}})
+	if err != nil {
+		t.Fatalf("Run: %v\n%+v (an unreachable Cloudflare must not fail the install)", err, report)
+	}
+	if got := report.Steps[1]; got.Status != state.StepPresent || !strings.Contains(got.Detail, "not registered") {
+		t.Errorf("warp step = %+v, want present with the registration warning", got)
+	}
+	if got := outboundProtocols(t, cfg); got["warp"] != "" {
+		t.Errorf("the document has a warp outbound %v, want none without an identity", got["warp"])
+	}
+	if got := ruleSummary(t, cfg); got != "" {
+		t.Errorf("the document routes %q, want everything direct", got)
+	}
+	if _, err := os.Stat(cfg.Paths.WarpIdentityPath()); !os.IsNotExist(err) {
+		t.Errorf("an identity file exists after a failed registration: %v", err)
+	}
+}
