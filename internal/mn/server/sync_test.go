@@ -62,6 +62,12 @@ func newFixture(t *testing.T) *fixture {
 // unblock tests need a node that fails its checks and one that cannot be checked at all.
 func newFixtureWithProber(t *testing.T, prober enroll.Prober) *fixture {
 	t.Helper()
+	return newFixtureWith(t, prober, nil)
+}
+
+// newFixtureWith lets one test change the server's options after the fixture's usual ones are set.
+func newFixtureWith(t *testing.T, prober enroll.Prober, mutate func(*server.Options)) *fixture {
+	t.Helper()
 	db, err := store.Open(context.Background(), store.Options{Path: t.TempDir() + "/termit.db"})
 	if err != nil {
 		t.Fatalf("Open: %v", err)
@@ -102,12 +108,16 @@ func newFixtureWithProber(t *testing.T, prober enroll.Prober) *fixture {
 		t.Fatalf("enroll.New: %v", err)
 	}
 	registry := metrics.New(testNow)
-	handler, err := server.New(server.Options{
+	opts := server.Options{
 		Store: db, Enrollment: service, Domain: "mn.example.com",
 		MasterKey: masterKey, CheckInterval: 24 * time.Hour, SyncInterval: 24 * time.Hour,
 		MinSyncDelay: 2 * time.Hour, Now: func() time.Time { return testNow },
 		Metrics: registry, ProberUp: true,
-	})
+	}
+	if mutate != nil {
+		mutate(&opts)
+	}
+	handler, err := server.New(opts)
 	if err != nil {
 		t.Fatalf("server.New: %v", err)
 	}

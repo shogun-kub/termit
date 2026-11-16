@@ -2,6 +2,7 @@ package server_test
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/shogun-kub/termit/internal/cred"
 	"github.com/shogun-kub/termit/internal/mn/secret"
+	"github.com/shogun-kub/termit/internal/mn/server"
 	"github.com/shogun-kub/termit/internal/proto"
 )
 
@@ -44,6 +46,54 @@ func TestSubscriptionAllowsAClientsRefreshes(t *testing.T) {
 	}
 	if code := fetch(); code != http.StatusTooManyRequests {
 		t.Errorf("request 61 = %d, want 429", code)
+	}
+}
+
+// TestSubscriptionListCarriesTheFragmentSwitches: the plain list is what a client that takes a link
+// reads, and podkop-engine finds the switches in the query string rather than in a profile. The
+// handler has to hand the two flags to the renderer — a list that silently lost them would still look
+// valid, which is why the assertion goes through the HTTP path and not only the renderer.
+func TestSubscriptionListCarriesTheFragmentSwitches(t *testing.T) {
+	t.Parallel()
+	fx := newFixtureWith(t, okProber{}, func(opts *server.Options) {
+		opts.Fragment = true
+		opts.RecordFragment = true
+		opts.FragmentParam = "100-200,1-3,tlshello,6"
+	})
+	token := "subscription-token-for-tests"
+	sealed, err := secret.Seal(masterKey, token)
+	if err != nil {
+		t.Fatalf("Seal: %v", err)
+	}
+	if err := fx.store.SetSubTokenHash(context.Background(), fx.nodeID, secret.Digest(token), sealed); err != nil {
+		t.Fatalf("SetSubTokenHash: %v", err)
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/sub/"+token, nil)
+	request.RemoteAddr = "203.0.113.10:5555"
+	recorder := httptest.NewRecorder()
+	fx.handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("subscription = %d: %s", recorder.Code, recorder.Body)
+	}
+	decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(recorder.Body.String()))
+	if err != nil {
+		t.Fatalf("decode the list: %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(decoded)), "\n")
+	if len(lines) == 0 {
+		t.Fatal("the list is empty")
+	}
+	for _, line := range lines {
+		hash := strings.IndexByte(line, '#')
+		if hash < 0 {
+			t.Fatalf("a rendered URI lost its label: %s", line)
+		}
+		for _, want := range []string{"&fragment=100-200,1-3,tlshello,6", "sb.tls.fragment=1", "sb.tls.record_fragment=1"} {
+			if !strings.Contains(line[:hash], want) {
+				t.Errorf("%q is missing from %s", want, line)
+			}
+		}
 	}
 }
 
