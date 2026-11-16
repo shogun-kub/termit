@@ -185,7 +185,9 @@ func TestEngineInstallsAndReusesState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v\n%+v", err, report)
 	}
-	if counts := report.Counts(); counts[state.StepOK] != len(first.Steps())-skippedSteps {
+	// The egress probe is the one step the sandbox reports as present: its core never becomes active, so
+	// there is no tunnel to verify and it says so instead of running.
+	if counts := report.Counts(); counts[state.StepOK] != len(first.Steps())-skippedSteps-1 {
 		t.Fatalf("first run counts = %v, want every step after preflight to be ok: %+v", counts, report.Steps)
 	}
 
@@ -275,6 +277,7 @@ func TestEngineResumesAfterFailure(t *testing.T) {
 		t.Errorf("error %q does not name the failing step", err)
 	}
 	failed := report.Counts()[state.StepFailed]
+
 	if failed != 1 {
 		t.Errorf("failed steps = %d, want 1: %+v", failed, report.Steps)
 	}
@@ -292,7 +295,9 @@ func TestEngineResumesAfterFailure(t *testing.T) {
 		t.Fatalf("resume Run: %v", err)
 	}
 	counts := resumeReport.Counts()
-	if counts[state.StepPresent] != 2 || counts[state.StepOK] != len(resumed.Steps())-skippedSteps-2 {
+	// Three now: the two steps before the failure, and the egress probe, which the fake sandbox reports
+	// as skipped because its core is never active.
+	if counts[state.StepPresent] != 3 || counts[state.StepOK] != len(resumed.Steps())-skippedSteps-3 {
 		t.Errorf("resume counts = %v, want the two steps before the failure present and the rest ok: %+v", counts, resumeReport.Steps)
 	}
 	if !resumed.State().Installed() {
@@ -310,8 +315,8 @@ func TestEngineDryRunTouchesNothing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if counts := report.Counts(); counts[state.StepPlanned] != len(installer.Steps())-skippedSteps {
-		t.Errorf("dry run counts = %v, want 6 planned: %+v", counts, report.Steps)
+	if counts := report.Counts(); counts[state.StepPlanned] != len(installer.Steps())-skippedSteps-1 {
+		t.Errorf("dry run counts = %v, want every step but the egress probe planned: %+v", counts, report.Steps)
 	}
 	if _, err := os.Stat(cfg.Paths.StateDir); !os.IsNotExist(err) {
 		t.Errorf("dry run created %s", cfg.Paths.StateDir)

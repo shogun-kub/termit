@@ -539,6 +539,13 @@ the reason, the core is written with direct egress, and the run succeeds. `termi
 `termit-uv doctor` say the exit is direct until `termit-uv init --only warp` succeeds on a network that
 can reach Cloudflare.
 
+**The install ends by checking the exit.** When WARP is on and the node is registered, the last step
+(`warp-egress`) fetches Cloudflare's trace through the node's own tunnel and reads the address it came
+from. A tunnel that is configured but carries nothing is the failure this project exists to avoid, and
+registration succeeding does not prove the tunnel works: the API answers over HTTPS while the WireGuard
+endpoint can be filtered. A wrong or failed answer is a warning naming the address, never a failed
+install — the node is a working node, it is just exiting directly.
+
 If the host cannot run WARP (no `/dev/net/tun`, unsupported architecture), `termit-uv init` and `termit-uv warp mode`
 say so with the exact reason and the node keeps working with direct egress. Nothing is silently
 degraded, and `termit-uv uninstall` disconnects the tunnel it left behind.

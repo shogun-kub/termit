@@ -23,6 +23,10 @@ cannot use it.
   on Cloudflare's side.
 - **`termit-uv warp status` says which transport is in use**, and on the wireguard one it probes the exit
   through the node's own tunnel and reports the address Cloudflare sees.
+- **The install ends by proving the tunnel works.** With WARP on and the node registered, the last step
+  fetches Cloudflare's trace through the node itself and reports where the traffic came from. A tunnel that
+  is configured but exits directly is a warning naming that address — the failure this project exists to
+  avoid, caught at install time instead of on a phone.
 
 ### Changed
 

@@ -55,6 +55,9 @@ type Options struct {
 	// Registrar creates the WARP identity on the wireguard transport. The zero value talks to
 	// Cloudflare; tests point its BaseURL at a local server.
 	Registrar warp.Registrar
+	// WarpProbe verifies that the tunnel carries traffic. Tests answer with a trace; production starts
+	// the core as a temporary client.
+	WarpProbe func(context.Context, *config.Config, *state.State) (warp.Trace, error)
 }
 
 // Installer runs the install steps in order and records them in the journal.
@@ -135,6 +138,10 @@ func New(opts Options) (*Installer, error) {
 		env.warpHost = opts.WarpHost
 	}
 	env.registrar = opts.Registrar
+	env.probeWarp = probeWarpEgress
+	if opts.WarpProbe != nil {
+		env.probeWarp = opts.WarpProbe
+	}
 	return &Installer{
 		cfg:         cfg,
 		st:          st,
@@ -156,6 +163,7 @@ func New(opts Options) (*Installer, error) {
 			&unitsStep{env},
 			&certificateStep{env},
 			&startStep{env},
+			&warpProbeStep{env},
 		},
 	}, nil
 }
@@ -312,7 +320,9 @@ func (i *Installer) Run(ctx context.Context, opts RunOptions) (*Report, error) {
 			runErr = i.env.saveState()
 		}
 		var warning *Warning
-		if errors.As(runErr, &warning) {
+		stop := false
+		switch {
+		case errors.As(runErr, &warning):
 			// Converged into a state the operator has to know about, not a failure: the node keeps
 			// working with direct egress and the report says so.
 			i.env.log.Warn("install step converged with a warning", "step", step.Name(), "reason", warning.Reason)
@@ -321,19 +331,15 @@ func (i *Installer) Run(ctx context.Context, opts RunOptions) (*Report, error) {
 				Duration: i.env.now().Sub(stepStarted),
 			})
 			run.FinishStep(step.Name(), state.StepPresent, warning.Reason, i.env.now())
-			runErr = nil
-		}
-		if runErr != nil {
+		case runErr != nil:
 			report.Steps = append(report.Steps, StepReport{
 				Name: step.Name(), Status: state.StepFailed, Err: runErr,
 				Duration: i.env.now().Sub(stepStarted),
 			})
 			run.FinishStep(step.Name(), state.StepFailed, runErr.Error(), i.env.now())
 			failures = append(failures, fmt.Errorf("%s: %w", step.Name(), runErr))
-			if !opts.KeepGoing {
-				break
-			}
-		} else {
+			stop = !opts.KeepGoing
+		default:
 			report.Steps = append(report.Steps, StepReport{
 				Name: step.Name(), Status: state.StepOK, Duration: i.env.now().Sub(stepStarted),
 			})
@@ -341,6 +347,9 @@ func (i *Installer) Run(ctx context.Context, opts RunOptions) (*Report, error) {
 		}
 		if err := i.journal.Save(i.journalPath); err != nil {
 			return nil, err
+		}
+		if stop {
+			break
 		}
 	}
 

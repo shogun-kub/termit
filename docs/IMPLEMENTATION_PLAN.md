@@ -1683,6 +1683,12 @@ Cloudflare API:
 - **UDP through the tunnel answered**: a DNS query to `1.1.1.1:53` sent over SOCKS5 UDP through the node
   to that tunnel came back with two answers. This is the thing 0.3.2 could not do.
 
+The install itself ends with the step that would have caught the 0.3.2 problem on the node instead of on a
+phone: `warp-egress` runs after the core is started, and when WARP is on and the node is registered it
+fetches Cloudflare's trace through the tunnel and reads the address. A wrong answer — the tunnel is
+configured but the exit is the node's own — is a warning naming that address, not a failed install, and
+`warp-egress ok` on the lab node is the same evidence a client would produce.
+
 Still open before a release: the acceptance-lab run, and the production pass that a `0.4.0` release needs.
 
 ### 11.8 Size
