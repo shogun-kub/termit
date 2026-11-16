@@ -104,13 +104,12 @@ Deliberate design choices worth knowing before you deploy it:
 
 `v0.3.1` is the newest release. M1–M5 are implemented and verified on a three-machine acceptance lab
 (Debian 13 in unprivileged containers), and the release pipeline builds verified artifacts for
-linux/amd64 and linux/arm64. It is still marked **pre-release**: the pass for `0.2.1` was recorded on
-2026-11-15 — two providers, real Let's Encrypt certificates, WARP egress, a phone app reading the
-subscription, an in-place Debian 12 → 13 upgrade — while the pass for the line that shipped the host
-firewall, the ban engine and the blocklist has not happened yet. The build being tested in the meantime
-is `v0.3.2p4`, a pre-release of the next version: the `p<n>` counter numbers the builds of a release
-branch and never names anything a participant installs. See
-[what is not here yet](#what-is-not-here-yet).
+linux/amd64 and linux/arm64. `v0.3.2` is released, and the pass behind it is recorded in
+[`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) (M5.8): three production hosts — a
+management server in a container and two nodes behind real domains — with the host firewall confirmed and
+surviving a reboot, the ban engine and the blocklist active, WARP egress on, the owner's page reachable
+over TLS, and a phone app passing traffic through both nodes. `v0.3.1` and `v0.3.0` carry their own
+sections of the same changelog. See [what is not here yet](#what-is-not-here-yet).
 
 ## Requirements
 
