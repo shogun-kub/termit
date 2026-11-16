@@ -2,6 +2,7 @@ package install
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -207,4 +208,105 @@ func TestWarpStepRegistersTheWireGuardIdentityOnce(t *testing.T) {
 	if !strings.Contains(second.Steps()[4].Name(), "warp") {
 		t.Fatal("the pipeline moved; this test assumed warp is the fifth step")
 	}
+}
+
+// Switching the transport rewrites the document in both directions, and neither direction loses the
+// identity: it is what the node would need to switch back, and a device on Cloudflare's side is not
+// something an installer should throw away.
+func TestWarpTransportSwitchGeneratesBothDocuments(t *testing.T) {
+	t.Parallel()
+	cfg := warpConfig(t, config.WarpAll)
+	cfg.Warp.Transport = config.WarpTransportWireGuard
+	exec := &fakeExecutor{handler: func(Cmd) (Result, error) { return okResult("") }}
+	calls := 0
+	installer, err := New(Options{Config: cfg, Exec: exec, WarpHost: supportedHost(t), Registrar: wireguardRegistrar(t, &calls)})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	ctx := context.Background()
+	if report, err := installer.Run(ctx, RunOptions{Command: "init", Only: []string{"dirs", "warp", "identity", "xray-config"}}); err != nil {
+		t.Fatalf("wireguard run: %v\n%+v", err, report)
+	}
+	if got := outboundProtocols(t, cfg); got["warp"] != "wireguard" {
+		t.Fatalf("the wireguard document has %v, want a wireguard warp outbound", got)
+	}
+	if got := ruleSummary(t, cfg); !strings.Contains(got, "tcp,udp->warp-egress") {
+		t.Errorf("the wireguard document routes %q, want one tcp,udp rule through the balancer", got)
+	}
+
+	// Now the other direction: the same node, told to use the sidecar.
+	cfg.Warp.Transport = config.WarpTransportProxy
+	second, err := New(Options{Config: cfg, Exec: exec, WarpHost: supportedHost(t), Registrar: wireguardRegistrar(t, &calls)})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if report, err := second.Run(ctx, RunOptions{Command: "init", Only: []string{"xray-config"}}); err != nil {
+		t.Fatalf("proxy run: %v\n%+v", err, report)
+	}
+	if got := outboundProtocols(t, cfg); got["warp"] != "socks" {
+		t.Fatalf("the proxy document has %v, want a socks warp outbound", got)
+	}
+	if got := ruleSummary(t, cfg); !strings.Contains(got, "udp->direct") || !strings.Contains(got, "tcp->warp-egress") {
+		t.Errorf("the proxy document routes %q, want the split that keeps UDP working", got)
+	}
+	if _, err := warp.LoadIdentity(cfg.Paths.WarpIdentityPath()); err != nil {
+		t.Errorf("the identity did not survive the switch back: %v", err)
+	}
+}
+
+// outboundProtocols maps an outbound tag to its protocol in the generated document.
+func outboundProtocols(t *testing.T, cfg *config.Config) map[string]string {
+	t.Helper()
+	var doc struct {
+		Outbounds []struct {
+			Tag      string `json:"tag"`
+			Protocol string `json:"protocol"`
+		} `json:"outbounds"`
+	}
+	data, err := os.ReadFile(cfg.Paths.XrayConfig)
+	if err != nil {
+		t.Fatalf("read the generated config: %v", err)
+	}
+	if err := json.Unmarshal(data, &doc); err != nil {
+		t.Fatalf("decode the generated config: %v", err)
+	}
+	out := map[string]string{}
+	for _, outbound := range doc.Outbounds {
+		out[outbound.Tag] = outbound.Protocol
+	}
+	return out
+}
+
+// ruleSummary renders the WARP-related routing rules as "network->target", which is what the two
+// transports differ in.
+func ruleSummary(t *testing.T, cfg *config.Config) string {
+	t.Helper()
+	var doc struct {
+		Routing struct {
+			Rules []struct {
+				Network     string `json:"network"`
+				OutboundTag string `json:"outboundTag"`
+				BalancerTag string `json:"balancerTag"`
+			} `json:"rules"`
+		} `json:"routing"`
+	}
+	data, err := os.ReadFile(cfg.Paths.XrayConfig)
+	if err != nil {
+		t.Fatalf("read the generated config: %v", err)
+	}
+	if err := json.Unmarshal(data, &doc); err != nil {
+		t.Fatalf("decode the generated config: %v", err)
+	}
+	parts := make([]string, 0, len(doc.Routing.Rules))
+	for _, rule := range doc.Routing.Rules {
+		target := rule.OutboundTag
+		if target == "" {
+			target = rule.BalancerTag
+		}
+		if rule.Network == "" {
+			continue
+		}
+		parts = append(parts, rule.Network+"->"+target)
+	}
+	return strings.Join(parts, ",")
 }
