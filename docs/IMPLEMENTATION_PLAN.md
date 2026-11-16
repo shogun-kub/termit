@@ -1664,7 +1664,28 @@ watching the exit address of a request the node itself makes.
 - **The package removal is a one-way door on a running node.** Switching back to `proxy` reinstalls
   `cloudflare-warp`; the lab proves the round trip before a node in production takes it.
 
-### 11.7 Size
+### 11.7 Implemented, 2026-11-16
+
+Tasks 1–8 are in `dev`: the registration client, the identity file, `warp.transport`, the generator for
+both documents, `init --warp-transport` / `warp rotate` / a `warp status` that probes the exit,
+`internal/uv/tunnelprobe` for that probe, and the transport-switch test. The preflight no longer warns
+about a missing `/dev/net/tun` on the wireguard transport, because the userspace tunnel does not need one.
+
+Verified on the lab node (`termit-uv1`, an unprivileged container, no `/dev/net/tun`) against the real
+Cloudflare API:
+
+- registration succeeded — device `40d665d2…`, peer `engage.cloudflareclient.com:2408`, three reserved
+  bytes, the tunnel addresses, the identity on disk as `0600`;
+- `xray -test` accepted the generated document, and the route collapsed to one `tcp,udp` rule through the
+  balancer with a `wireguard` outbound whose `noKernelTun` is true;
+- `termit-uv warp status` reported `egress: on` with a `2a09:bac5:…` address — a WARP address, fetched
+  through the node's own tunnel;
+- **UDP through the tunnel answered**: a DNS query to `1.1.1.1:53` sent over SOCKS5 UDP through the node
+  to that tunnel came back with two answers. This is the thing 0.3.2 could not do.
+
+Still open before a release: the acceptance-lab run, and the production pass that a `0.4.0` release needs.
+
+### 11.8 Size
 
 Two to three days of work: the registration client and the state file are the bulk of it, the generator
 change is small, and the lab pass is a half-day. It ships as `0.4.0` from a `release/v0.4.0` branch, with
