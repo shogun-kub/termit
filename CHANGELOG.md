@@ -1,7 +1,7 @@
-# Changelog
-
 What each release changed, written for the people who run Termit. Newest first;
-`0.1.1` was prepared but never released — its work is part of `0.2.0`.
+`0.1.1` was prepared but never released — its work is part of `0.2.0`. The GitHub release for a version
+carries every section back to the last release: the versions in between were handed out only as
+pre-releases, and whoever installs the release skipped them.
 
 ## 0.3.2 — 2026-11-16
 
