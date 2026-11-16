@@ -1163,6 +1163,14 @@ resets for that version. The artifacts carry that same version — `v0.3.2p1` is
 section per build would be noise. That is how testers get a build without anything being published from
 `dev` or from `main`.
 
+A **release** body is longer than one section. Versions that were handed out only as pre-releases were
+never installed by a participant, so the body of the next release counts back to the last one that was:
+`go run ./deploy/release --version v0.4.0 --notes --since v0.2.1` prints the `0.4.0`, `0.3.2`, `0.3.1`
+and `0.3.0` sections and stops at `0.2.1`. The workflow works the `--since` value out itself — the newest
+release on GitHub that is not flagged pre-release — so nobody has to remember which version participants
+last saw. `--since` refuses a version the changelog has no section for, and one that is not older than the
+release being cut: a typo must not silently publish everything or nothing.
+
 CI gates on every push to `main`, `dev` and `release/**`, and on tags and pull requests: `gofmt`,
 `go vet`, the unit suite with `-race`, the cross-build, the release tool's own tests, and
 `govulncheck`. It never publishes except through the two doors above. The lab suite is the acceptance
