@@ -1478,20 +1478,35 @@ path cooperate.
 Work that is understood, wanted and deliberately not in the current milestone. Each item names the rule
 that keeps it out, so nobody re-discovers the reason from scratch.
 
-### 10.1 WARP that carries UDP (WireGuard instead of the proxy)
+### 10.1 WARP that carries UDP
 
 Today `warp.mode` routes TCP through `warp-cli`'s SOCKS5 listener and sends UDP `direct`
 (`docs/OPERATIONS.md` §6): proxy mode has no UDP ASSOCIATE, so a UDP flow handed to it never returns and
-the first casualty is client DNS.
+the first casualty is client DNS. The split keeps the nodes usable and gives up the address WARP exists to
+hide, for UDP only. Four ways to close that gap were surveyed on 2026-11-16.
 
-The fix is the one `references/Blitz` uses: a WireGuard WARP (`wgcf` + `wg-quick`) with the proxied
-outbound bound to that interface, so TCP and UDP take the same path. It is out of scope now because it
-contradicts §2.2.1 — `wg-quick` installs `ip rule`/route/`resolvconf` state on the host, and the node is
-not allowed to touch host routing. Doing it properly means writing the interface and the routing by hand
-in a way that cannot capture the node's own traffic, plus a fail-open story for the case where the
-interface is down (today's balancer gives that for free).
+| Option | UDP | Host routing | Cost |
+|---|---|---|---|
+| **A. Xray `wireguard` outbound** with WARP credentials (`noKernelTun: true`) | yes | **none** — gVisor netstack inside the core | needs a WARP registration and a stored private key; one fewer service than today |
+| B. `wgcf` + `wg-quick` (what `references/Blitz` does) | yes | `ip rule`, routes, `resolvconf` | contradicts §2.2.1 |
+| C. `warp-cli` in TUN mode | yes | full-tunnel capture | contradicts §2.2.1, and `/dev/net/tun` is absent on the LXC nodes |
+| D. `usque` (MASQUE, userspace SOCKS5 with TCP and UDP) | yes | none | a third-party service and its netstack, plus a licence to check; MASQUE is where Cloudflare is going |
 
-Acceptance, when it is picked up: UDP through the tunnel exits at Cloudflare (`warp=on` in the trace for
-a UDP-based check), the node's own SSH/ACME/decoy traffic still leaves from its own address, the
-fail-open behaviour survives `wgcf` going down, and no `ip rule`/`ip route` change exists outside the
-unit's own lifecycle.
+**Recommended: A.** Xray has shipped a userspace WireGuard outbound since 1.6.5 and documents the WARP
+setup end to end ([xtls guide](https://xtls.github.io/en/document/level-2/warp.html)); `noKernelTun` forces
+the in-process gVisor stack, which is exactly the LXC case these nodes are
+([outbound docs](https://xtls.github.io/config/outbounds/wireguard.html)). `wgcf generate --xray` prints the
+credentials in the shape the outbound wants, including the three `reserved` bytes Cloudflare needs. Because
+the tunnel lives in the core, the fail-open balancer keeps working unchanged and the node keeps one
+long-running process instead of two. The registration is the only new secret (a WireGuard private key per
+node, `0600` in the state directory) and it must never reach a log.
+
+The risk to design around: Cloudflare is moving WARP to MASQUE, and WARP+ already reportedly does not work
+over WireGuard ([wgcf#459](https://github.com/ViRb3/wgcf/issues/459)). Free WARP works today. The outbound
+must therefore stay swappable — the routing rule names a tag, not a protocol — so option D can replace it
+without touching anything else.
+
+Acceptance, when it is picked up: a UDP probe through the tunnel reports `warp=on` in the trace, the node's
+own SSH/ACME/decoy traffic still leaves from its own address, `wgcf`-equivalent credentials survive a
+restart and are never logged, fail-open still moves traffic to `direct` when WARP stops answering, and no
+`ip rule`/`ip route` change exists on the host.
