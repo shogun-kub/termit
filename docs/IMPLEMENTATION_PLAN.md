@@ -1501,6 +1501,17 @@ the tunnel lives in the core, the fail-open balancer keeps working unchanged and
 long-running process instead of two. The registration is the only new secret (a WireGuard private key per
 node, `0600` in the state directory) and it must never reach a log.
 
+Measured on a production node (then5: one vCPU of a Ryzen 9 7950X3D, 2 GB) on 2026-11-16, 50 MB from
+`speed.cloudflare.com`, both paths saturating the single core: kernel path (`direct`) 95–98 MB/s, the
+userspace WARP stack (`warp-cli` SOCKS, which terminates TCP in userspace exactly as `noKernelTun` does)
+66–69 MB/s. So the userspace data path costs about a third of the throughput at this size. Xray's own
+documentation says the same in one line — the system interface "offers relatively higher performance" — and
+`noKernelTun` is documented as the LXC-compatible fallback
+([docs](https://xtls.github.io/config/outbounds/wireguard.html)). At the ~800 Mbit/s ceiling this node
+measures, expecting roughly 500–550 Mbit/s per flow through gVisor is realistic, minus whatever the XHTTP
+and VLESS work takes from the same core. That is above what this deployment needs; a node that must carry
+more than that is a node whose problem is the vCPU count, not the routing.
+
 The risk to design around: Cloudflare is moving WARP to MASQUE, and WARP+ already reportedly does not work
 over WireGuard ([wgcf#459](https://github.com/ViRb3/wgcf/issues/459)). Free WARP works today. The outbound
 must therefore stay swappable — the routing rule names a tag, not a protocol — so option D can replace it
