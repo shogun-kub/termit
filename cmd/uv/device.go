@@ -121,6 +121,11 @@ func (a *application) deviceAdd(args []string) int {
 		fmt.Fprintf(a.stderr, "termit-uv device add: %v\n", err)
 		return exitFailure
 	}
+	// The page lists the devices, so a device the owner just added and cannot see there is the one
+	// thing they will look for. A failed render is a warning: the device is already applied.
+	if err := a.refreshOptions(cfg); err != nil {
+		fmt.Fprintf(a.stderr, "termit-uv device add: the client options page could not be refreshed: %v\n", err)
+	}
 	fmt.Fprintf(a.stdout, "added %s\n%s\n", *label, uri)
 	return exitOK
 }
@@ -130,10 +135,14 @@ func (a *application) deviceRemove(args []string) int {
 	flags := flag.NewFlagSet("device remove", flag.ContinueOnError)
 	flags.SetOutput(a.stderr)
 	configPath := flags.String("config", configPathDefault(), "path to config.yaml")
-	if err := flags.Parse(args); err != nil {
+	// `device remove phone --config /etc/...` is how an operator writes it, and Go's flag stops at the
+	// first positional: without lifting the label out, the flags after it become extra arguments and
+	// the command refuses a perfectly good line.
+	label, rest := liftLabel(args)
+	if err := flags.Parse(rest); err != nil {
 		return exitUsage
 	}
-	if flags.NArg() != 1 {
+	if label == "" || flags.NArg() > 0 {
 		fmt.Fprintln(a.stderr, "termit-uv device remove: give one device label or UUID")
 		return exitUsage
 	}
@@ -141,7 +150,7 @@ func (a *application) deviceRemove(args []string) int {
 	if code != exitOK {
 		return code
 	}
-	if err := node.RemoveLocalUser(flags.Arg(0)); err != nil {
+	if err := node.RemoveLocalUser(label); err != nil {
 		fmt.Fprintf(a.stderr, "termit-uv device remove: %v\n", err)
 		return exitFailure
 	}
@@ -152,8 +161,39 @@ func (a *application) deviceRemove(args []string) int {
 	if code := a.applyXrayConfig(cfg, *configPath, "termit-uv device remove"); code != exitOK {
 		return code
 	}
-	fmt.Fprintf(a.stdout, "removed %s\n", flags.Arg(0))
+	// A device that still sits on the page after it was removed is a credential the owner thinks is
+	// dead. Re-render, and treat a failure as a warning like the add path does.
+	if err := a.refreshOptions(cfg); err != nil {
+		fmt.Fprintf(a.stderr, "termit-uv device remove: the client options page could not be refreshed: %v\n", err)
+	}
+	fmt.Fprintf(a.stdout, "removed %s\n", label)
 	return exitOK
+}
+
+// liftLabel takes the first non-flag argument out of args and returns the rest untouched. The value of
+// a flag is never mistaken for the label: `--config` is the only flag this command has, and its value
+// is the token after it.
+func liftLabel(args []string) (string, []string) {
+	var label string
+	rest := make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--config" || arg == "-config":
+			rest = append(rest, arg)
+			if i+1 < len(args) {
+				i++
+				rest = append(rest, args[i])
+			}
+		case strings.HasPrefix(arg, "-"):
+			rest = append(rest, arg)
+		case label == "":
+			label = arg
+		default:
+			rest = append(rest, arg)
+		}
+	}
+	return label, rest
 }
 
 // applyXrayConfig regenerates the proxy configuration after a device change.
@@ -179,13 +219,20 @@ func (a *application) applyXrayConfig(cfg *config.Config, configPath, command st
 }
 
 // deviceURI renders the client URI for one device.
+// deviceURI renders the client URI for one device. It carries the same fragmentation parameter as the
+// node's own link, because the page puts the two rows next to each other: a device that behaves
+// differently from the link above it is a difference nobody would think to check.
 func (a *application) deviceURI(cfg *config.Config, node *state.State, id, label string) (string, error) {
-	return proto.BuildVLESSUrl(proto.Profile{
+	uri, err := proto.BuildVLESSUrl(proto.Profile{
 		Domain: cfg.Domain,
 		UUID:   id,
 		Path:   "/" + node.Identity.XHTTPPath + "/",
 		Label:  label,
 	})
+	if err != nil {
+		return "", err
+	}
+	return withFragmentation(uri, cfg), nil
 }
 
 // loadInstalled loads the configuration and state, reporting the standard messages.

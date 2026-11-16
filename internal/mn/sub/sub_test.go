@@ -122,6 +122,32 @@ func TestRenderListCarriesHappsFragmentParameter(t *testing.T) {
 	}
 }
 
+// TestRenderListCarriesPodkopsSwitches: podkop-engine and the patched sing-box builds take a link, not
+// a profile, and read the two switches from the query string. The same subscription has to serve them
+// and Happ, so the list carries both dialects.
+func TestRenderListCarriesPodkopsSwitches(t *testing.T) {
+	t.Parallel()
+	const param = "100-200,1-3,tlshello,6"
+	body, err := sub.RenderList(peers(), sub.Options{Fragment: true, RecordFragment: true, FragmentParam: param})
+	if err != nil {
+		t.Fatalf("RenderList: %v", err)
+	}
+	for _, line := range decodeList(t, body) {
+		hash := strings.IndexByte(line, '#')
+		if hash < 0 {
+			t.Fatalf("a rendered URI lost its label: %s", line)
+		}
+		for _, want := range []string{"&fragment=" + param, "sb.tls.fragment=1", "sb.tls.record_fragment=1"} {
+			if !strings.Contains(line[:hash], want) {
+				t.Errorf("%q is missing from %s", want, line)
+			}
+		}
+		if _, err := proto.ParseVLESSUrl(line); err != nil {
+			t.Errorf("a URI with the switches does not parse: %v", err)
+		}
+	}
+}
+
 func TestRenderListOfNothing(t *testing.T) {
 	t.Parallel()
 	body, err := sub.RenderList(nil, sub.Options{})

@@ -89,6 +89,9 @@ func TestRenderCarriesEveryLinkAndSaysWhatItIs(t *testing.T) {
 			Label: "node.example.com",
 			URI:   "vless://self@node.example.com:443?type=xhttp&security=tls#node.example.com",
 		},
+		Devices: []options.Link{
+			{Label: "phone", URI: "vless://dev@node.example.com:443?type=xhttp#phone"},
+		},
 		Peers: []options.Link{
 			{Label: "far.example.com", URI: "vless://peer@far.example.com:443?a=1&b=2#far.example.com"},
 			{Label: "slow.example.com", URI: "vless://peer@slow.example.com:443#slow.example.com (degraded)", Degraded: true},
@@ -106,6 +109,8 @@ func TestRenderCarriesEveryLinkAndSaysWhatItIs(t *testing.T) {
 	html := string(page)
 	for _, want := range []string{
 		data.Local.URI[:40],
+		"Devices (1)",
+		"phone",
 		"far.example.com",
 		"slow.example.com",
 		`noindex`,

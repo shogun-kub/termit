@@ -169,6 +169,46 @@ func TestCycleAppliesTheAnswerAndPersistsTheSchedule(t *testing.T) {
 	}
 }
 
+func TestAfterSyncRunsOnTheSavedStateAndCannotFailTheCycle(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(answerAt(cycleNow.Add(24 * time.Hour)))
+	}))
+	defer server.Close()
+
+	statePath := enrolled(t, cycleNow.Add(-3*time.Hour))
+	var peers int
+	loop := &agent.Loop{
+		Remote:    agent.Remote{BaseURL: server.URL},
+		StatePath: statePath,
+		Now:       func() time.Time { return cycleNow },
+		Apply: func(context.Context, *state.State, proto.SyncResponse) (agent.Result, error) {
+			return agent.Result{Clients: 1, Unchanged: true}, nil
+		},
+		AfterSync: func(context.Context) error {
+			st, err := state.Load(statePath)
+			if err != nil {
+				t.Errorf("after the sync: load state: %v", err)
+				return nil
+			}
+			// The hook exists to describe the mesh that was just applied, so the state it reads has to
+			// be the saved one, not the copy the cycle was still holding.
+			peers = len(st.Peers)
+			if st.Schedule.LastResult != "ok" {
+				t.Errorf("after the sync the state says %q", st.Schedule.LastResult)
+			}
+			return errors.New("the page could not be written")
+		},
+	}
+	report, err := loop.Once(context.Background())
+	if err != nil {
+		t.Fatalf("a failing hook failed the cycle: %v", err)
+	}
+	if report.Result != "ok" || peers != 1 {
+		t.Fatalf("report %q, peers seen by the hook %d", report.Result, peers)
+	}
+}
+
 func TestCycleLeavesTheCoreAloneWhenTheServerIsUnreachable(t *testing.T) {
 	t.Parallel()
 	statePath := enrolled(t, cycleNow.Add(-3*time.Hour))

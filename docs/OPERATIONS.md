@@ -515,6 +515,13 @@ direct while WARP does not answer. Recovery is equally automatic. With `fail_ope
 names the WARP outbound directly, so the node fails closed instead — the right choice for an owner who
 would rather lose connectivity than expose the address.
 
+UDP never goes through WARP: `warp-cli` in proxy mode is a SOCKS5 listener without UDP ASSOCIATE, so a
+UDP flow handed to it never returns — and the first thing a client sends is DNS. The generated route
+therefore splits the catch-all in two: TCP takes the WARP hop (through the balancer when fail-open is
+on), UDP exits `direct` from the node's address. Names resolve and QUIC works; what a UDP destination
+sees is the node, not Cloudflare. A WARP that carries UDP needs the WireGuard client rather than the
+proxy, which is on the backlog in `IMPLEMENTATION_PLAN.md`.
+
 If the host cannot run WARP (no `/dev/net/tun`, unsupported architecture), `termit-uv init` and `termit-uv warp mode`
 say so with the exact reason and the node keeps working with direct egress. Nothing is silently
 degraded, and `termit-uv uninstall` disconnects the tunnel it left behind.
@@ -623,9 +630,12 @@ directory. The consequences are worth knowing:
 - The page is built from what the node can see. If the management server is unreachable it says so and
   shows the local device only, which is exactly when a link is worth having.
 - The node's own entries carry the fragmentation it configured itself (`happ_fragment`), while the mesh
-  entries carry the server's: set both to the same value and the page speaks with one voice. A fresh
-  node writes `proto.DefaultHappFragment`; a configuration that predates the key keeps its links plain,
-  and `termit-uv init --happ-fragment ""` turns it off deliberately.
+  entries carry the server's: set both to the same value and the page speaks with one voice. One link
+  carries every dialect of the switch, because the owner copies it without being asked which client
+  they run: Happ reads `fragment=…`, `podkop-engine` and the patched sing-box builds read
+  `sb.tls.fragment=1` and `sb.tls.record_fragment=1`. A fresh node writes `proto.DefaultHappFragment`; a
+  configuration that predates the key keeps its links plain, and `termit-uv init --happ-fragment ""`
+  turns all three off deliberately.
 - The page is written in the configured language (`locale: ru` or `en`, Russian by default). The menu
   follows the same setting, and so does the server's menu (`locale` in `/etc/termit/mn/config.yaml`),
   but only where the console can show Cyrillic: on a C or latin-1 locale both fall back to English, because a menu of question marks is worse than English. The page never falls
@@ -670,10 +680,12 @@ termit-mn init --record-fragment --happ-fragment 100-200,1-3,tlshello,6   # on
 termit-mn init --no-fragmentation                                        # off, all three
 ```
 
-The two booleans change only the `/json` document, and only by adding the field — never by writing
-`false`. sing-box validates strictly and refuses a profile with a field it does not know, so the
-default has to leave the document untouched and a client that reads the plain list never sees the
-fields at all. `podkop-engine` from r13 knows both. Enable `record_fragment` when connections hang
+The two booleans reach both documents, because the same client may take either. In `/json` they add
+`tls.fragment` and `tls.record_fragment` — never by writing `false`, because sing-box validates strictly
+and refuses a field it does not know, so the default has to leave the document untouched. In the plain
+list they appear per link as `sb.tls.fragment=1` and `sb.tls.record_fragment=1`, the spelling
+`podkop-engine` reads from a URI; a client that does not know a parameter ignores it, so one list still
+serves Happ and podkop alike. `podkop-engine` from r13 knows both. Enable `record_fragment` when connections hang
 right after the handshake starts, or when the same profile works from one network and not another: on
 a path recorded in `podkop-engine`'s notes that froze every Chrome ClientHello, 0 of 15 connections
 got through without it and 15 of 15 with it.
@@ -1150,14 +1162,26 @@ there: `.github/workflows/release.yaml` builds the directory, runs `sha256sum -c
 `uv.sh` is executable, and attaches everything to the GitHub release, including `uv.sh` — the
 documentation's install URL points at `releases/download/<version>/uv.sh`. The workflow marks the
 release `prerelease: true`: clearing that flag is the deliberate act that records that release's own
-production pass — `docs/IMPLEMENTATION_PLAN.md` M4.3 for `0.2.1`, M5.8 for `0.3.1`. A maintainer can do
+production pass — `docs/IMPLEMENTATION_PLAN.md` M4.3 for `0.2.1`, M5.8 for `0.3.2`. A maintainer can do
 the same by hand with `gh release create` and the files from `dist/<version>/`; the assets are plain
 files, so nothing depends on the workflow.
 
 Before that tag exists, a `release/<version>` branch can be built by hand —
-`gh workflow run release.yaml --ref release/v0.1.1 -f publish_prerelease=true` — which attaches the same
-six files to a pre-release tagged `pre-v<version>-<run>`. That is how testers get a build without
-anything being published from `dev` or from `main`.
+`gh workflow run release.yaml --ref release/v0.3.2 -f publish_prerelease=true`. The workflow numbers the
+build itself: the pre-release is named `v<version>p<n>`, where `n` is one more than the highest
+`v<version>p*` tag that already exists, so the first build of 0.3.2 is `v0.3.2p1` and the counter never
+resets for that version. The artifacts carry that same version — `v0.3.2p1` is installed with
+`sh uv.sh --version v0.3.2p1` — and the release body is the `0.3.2` section of the changelog, because a
+section per build would be noise. That is how testers get a build without anything being published from
+`dev` or from `main`.
+
+A **release** body is longer than one section. Versions that were handed out only as pre-releases were
+never installed by a participant, so the body of the next release counts back to the last one that was:
+`go run ./deploy/release --version v0.4.0 --notes --since v0.2.1` prints the `0.4.0`, `0.3.2`, `0.3.1`
+and `0.3.0` sections and stops at `0.2.1`. The workflow works the `--since` value out itself — the newest
+release on GitHub that is not flagged pre-release — so nobody has to remember which version participants
+last saw. `--since` refuses a version the changelog has no section for, and one that is not older than the
+release being cut: a typo must not silently publish everything or nothing.
 
 CI gates on every push to `main`, `dev` and `release/**`, and on tags and pull requests: `gofmt`,
 `go vet`, the unit suite with `-race`, the cross-build, the release tool's own tests, and

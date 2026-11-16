@@ -106,8 +106,10 @@ Deliberate design choices worth knowing before you deploy it:
 (Debian 13 in unprivileged containers), and the release pipeline builds verified artifacts for
 linux/amd64 and linux/arm64. It is still marked **pre-release**: the pass for `0.2.1` was recorded on
 2026-11-15 — two providers, real Let's Encrypt certificates, WARP egress, a phone app reading the
-subscription, an in-place Debian 12 → 13 upgrade — while `0.3.1`'s own pass, the host firewall, the ban
-engine and the blocklist on the production boxes, has not happened yet. See
+subscription, an in-place Debian 12 → 13 upgrade — while the pass for the line that shipped the host
+firewall, the ban engine and the blocklist has not happened yet. The build being tested in the meantime
+is `v0.3.2p4`, a pre-release of the next version: the `p<n>` counter numbers the builds of a release
+branch and never names anything a participant installs. See
 [what is not here yet](#what-is-not-here-yet).
 
 ## Requirements
@@ -148,9 +150,9 @@ tool's tests and `govulncheck`.
 
 ## What is not here yet
 
-- **The M5 rollout**: the host firewall, the ban engine and the blocklist are in `0.3.1` and checked on
+- **The M5 rollout**: the host firewall, the ban engine and the blocklist shipped in `0.3.0`, are in `0.3.2` and checked on
   the lab, a real reboot included, but they have not been applied to the production nodes yet
-  ([`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) M5.8). That pass is what turns `0.3.1`
+  ([`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) M5.8). That pass is what turns `0.3.2`
   into a full release.
 - **WARP against a real tunnel**: the lab has no `/dev/net/tun`, so the suite proves the refusal, the
   generated route, fail-open and the switch back; installing, registering and connecting needs a KVM VM

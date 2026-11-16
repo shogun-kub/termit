@@ -93,9 +93,11 @@ type Config struct {
 	// links. Russian is the default; English is the second language and the fallback for a console
 	// that cannot show Cyrillic. Command output stays English either way.
 	Locale string `yaml:"locale"`
-	// HappFragment is the fragmentation parameter this node writes into the URIs it hands out itself —
-	// the page of client links and `termit-uv uri`. The mesh list gets its own from the server; this
-	// one is what makes the page uniform. Empty means no parameter.
+	// HappFragment is the fragmentation this node writes into the URIs it hands out itself — the page of
+	// client links, `termit-uv uri` and the device links. One knob, every dialect: Happ reads
+	// `fragment=…`, podkop-engine and the patched sing-box builds read `sb.tls.fragment=1` and
+	// `sb.tls.record_fragment=1` from the same link. The mesh list gets its own from the server; this
+	// one is what makes the page uniform. Empty means no parameter at all.
 	HappFragment string `yaml:"happ_fragment"`
 	ACME         ACME   `yaml:"acme"`
 	MN           MN     `yaml:"mn"`

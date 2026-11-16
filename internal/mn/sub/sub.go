@@ -81,6 +81,9 @@ func RenderList(peers []Peer, opts Options) (string, error) {
 		if opts.FragmentParam != "" {
 			raw = withFragmentParam(raw, opts.FragmentParam)
 		}
+		// The same two switches the profile carries, for the clients that take a link: podkop-engine
+		// and the patched sing-box builds read them from the URI.
+		raw = proto.AddSingBoxFragment(raw, opts.Fragment, opts.RecordFragment)
 		lines = append(lines, raw)
 	}
 	// A trailing newline is what every client tolerates, and it keeps a one-peer list from looking

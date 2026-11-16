@@ -170,6 +170,102 @@ func TestOptionsSurvivesAnUnreachableServer(t *testing.T) {
 	}
 }
 
+func TestOptionsListsTheOwnersDevices(t *testing.T) {
+	t.Parallel()
+	app, cfg, configPath := optionsFixture(t, "")
+	// The device row has to look like the row above it: same fragmentation, or none of them.
+	cfg.HappFragment = "100-200,1-3,tlshello,6"
+	if err := cfg.Save(configPath); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+	node, err := state.LoadInstalled(cfg.Paths.StatePath())
+	if err != nil {
+		t.Fatalf("load state: %v", err)
+	}
+	if err := node.AddLocalUser("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "phone", time.Unix(0, 0)); err != nil {
+		t.Fatalf("add a local user: %v", err)
+	}
+	if err := node.Save(cfg.Paths.StatePath()); err != nil {
+		t.Fatalf("save state: %v", err)
+	}
+	if code := app.run([]string{"options", "--config", configPath}); code != exitOK {
+		t.Fatalf("exit = %d, want 0; stderr: %s", code, app.stderr.(*strings.Builder).String())
+	}
+	node, err = state.LoadInstalled(cfg.Paths.StatePath())
+	if err != nil {
+		t.Fatalf("load state after the render: %v", err)
+	}
+	page, err := os.ReadFile(filepath.Join(cfg.Paths.SiteDir, node.Options.Token, "index.html"))
+	if err != nil {
+		t.Fatalf("read the page: %v", err)
+	}
+	html := string(page)
+	// A device lives only on this node, so the page is the one place the owner can pick its link
+	// without a terminal.
+	if !strings.Contains(html, "Devices (1)") || !strings.Contains(html, "phone") {
+		t.Errorf("the page does not list the local device:\n%s", html)
+	}
+	if !strings.Contains(html, "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee") {
+		t.Error("the device row carries no link with the device's UUID")
+	}
+	// The device link and the node's own link must agree on fragmentation: the page shows them as two
+	// rows of the same kind, and a client that works from one and not the other is a support call.
+	if idx := strings.Index(html, "vless://aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"); idx < 0 {
+		t.Error("the page does not carry the device link")
+	} else {
+		row := html[idx:]
+		if end := strings.IndexByte(row, '<'); end > 0 {
+			row = row[:end]
+		}
+		for _, want := range []string{"fragment=100-200,1-3,tlshello,6", "sb.tls.fragment=1", "sb.tls.record_fragment=1"} {
+			if !strings.Contains(row, want) {
+				t.Errorf("the device link is missing %q: %s", want, row)
+			}
+		}
+	}
+}
+
+func TestThePageFollowsTheSubscriptionWhenTheMeshChanges(t *testing.T) {
+	t.Parallel()
+	one := base64.StdEncoding.EncodeToString([]byte(
+		"vless://11111111-2222-4333-8444-555555555555@node.example.com:443?type=xhttp#node.example.com\n" +
+			"vless://22222222-3333-4444-8555-666666666666@far.example.com:443?type=xhttp#far.example.com\n"))
+	app, cfg, configPath := optionsFixture(t, one)
+	if code := app.run([]string{"options", "--config", configPath}); code != exitOK {
+		t.Fatalf("exit = %d, want 0; stderr: %s", code, app.stderr.(*strings.Builder).String())
+	}
+	if page := pageText(t, cfg); !strings.Contains(page, "far.example.com") || strings.Contains(page, "near.example.com") {
+		t.Fatal("the page did not start from the first subscription")
+	}
+
+	// A peer left and another joined on the server. The refresh is the call `sync` and the agent's
+	// cycle make, so this is the whole path from a new subscription to new bytes on disk.
+	changed := base64.StdEncoding.EncodeToString([]byte(
+		"vless://11111111-2222-4333-8444-555555555555@node.example.com:443?type=xhttp#node.example.com\n" +
+			"vless://22222222-3333-4444-8555-666666666666@near.example.com:443?type=xhttp#near.example.com\n" +
+			"vless://33333333-4444-4555-8666-777777777777@another.example.com:443?type=xhttp#another.example.com\n"))
+	app.http = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Status:     "200 OK",
+			Header:     http.Header{"Content-Type": []string{"text/plain"}},
+			Body:       io.NopCloser(strings.NewReader(changed)),
+		}, nil
+	})}
+	if err := app.refreshOptions(cfg); err != nil {
+		t.Fatalf("refreshOptions: %v", err)
+	}
+	page := pageText(t, cfg)
+	for _, want := range []string{"near.example.com", "another.example.com", "Mesh (2)"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the refreshed page does not list %q", want)
+		}
+	}
+	if strings.Contains(page, "far.example.com") {
+		t.Error("the refreshed page still lists the peer the server dropped")
+	}
+}
+
 func TestOptionsWithoutAnIdentityExplainsItself(t *testing.T) {
 	t.Parallel()
 	app, cfg, configPath := optionsFixture(t, "")
@@ -244,5 +340,12 @@ func TestOptionsCarriesTheNodesOwnFragmentParameter(t *testing.T) {
 	// fragmented mesh with a plain local entry.
 	if !strings.Contains(string(page), "&amp;fragment=300-500,1-5,tlshello") {
 		t.Errorf("the local link does not carry the node's fragmentation parameter")
+	}
+	// The same link has to work for the clients that read sing-box's switches rather than Happ's
+	// parameter, because the owner copies one link and may not run Happ at all.
+	for _, want := range []string{"sb.tls.fragment=1", "sb.tls.record_fragment=1"} {
+		if !strings.Contains(string(page), want) {
+			t.Errorf("the local link is missing %q", want)
+		}
 	}
 }

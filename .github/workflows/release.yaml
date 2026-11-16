@@ -4,7 +4,8 @@ name: release
 #
 #   * a tag `v<version>` on `main` publishes the release a participant installs;
 #   * a manual run on a `release/<version>` branch builds the same artifacts and may publish them as a
-#     pre-release tagged `pre-v<version>-<run>`.
+#     pre-release named `v<version>p<n>`: `v0.3.2p1` is the first build of 0.3.2 from its release branch,
+#     `v0.3.2p2` the second, and the counter never resets for a version.
 #
 # Nothing is published from `dev` or `main` directly, and the build in both doors is
 # `go run ./deploy/release` — the command a maintainer runs by hand — so a published artifact cannot
@@ -51,43 +52,52 @@ jobs:
               exit 1
               ;;
           esac
-          version="${GITHUB_REF_NAME#release/}"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "tag=pre-$version-$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "version=${GITHUB_REF_NAME#release/}" >> "$GITHUB_OUTPUT"
+
+      - name: the pre-release counter
+        id: prerelease
+        run: |
+          version="${{ steps.identity.outputs.version }}"
+          # The published tags are the only record of what has been handed out, so the counter comes from
+          # them: v0.3.2p1 was the first build of 0.3.2, v0.3.2p2 is this one. A fresh version starts at 1.
+          last=$(git tag --list "v${version}p*" | sed "s/^v${version}p//" | grep -E '^[0-9]+$' | sort -n | tail -1 || true)
+          echo "version=${version}p$(( ${last:-0} + 1 ))" >> "$GITHUB_OUTPUT"
 
       - name: build the release
-        run: go run ./deploy/release --version "${{ steps.identity.outputs.version }}" --out dist
+        run: go run ./deploy/release --version "${{ steps.prerelease.outputs.version }}" --out dist
 
       - name: verify the checksums the way an operator will
         run: |
-          cd "dist/${{ steps.identity.outputs.version }}"
+          cd "dist/${{ steps.prerelease.outputs.version }}"
           sha256sum -c SHA256SUMS
           test -x uv.sh
 
       - name: keep the artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.identity.outputs.tag }}
-          path: dist/${{ steps.identity.outputs.version }}/*
+          name: ${{ steps.prerelease.outputs.version }}
+          path: dist/${{ steps.prerelease.outputs.version }}/*
           if-no-files-found: error
 
       - name: the release notes are the changelog's section
-        run: go run ./deploy/release --version "${{ steps.identity.outputs.version }}" --notes > release-notes.md
+        run: go run ./deploy/release --version "${{ steps.prerelease.outputs.version }}" --notes > release-notes.md
 
       - name: publish
         if: inputs.publish_prerelease
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.identity.outputs.tag }}
+          tag_name: ${{ steps.prerelease.outputs.version }}
           target_commitish: ${{ github.sha }}
-          name: ${{ steps.identity.outputs.tag }}
-          files: dist/${{ steps.identity.outputs.version }}/*
+          name: ${{ steps.prerelease.outputs.version }}
+          files: dist/${{ steps.prerelease.outputs.version }}/*
           fail_on_unmatched_files: true
           draft: false
           prerelease: true
-          # The body is CHANGELOG.md's section for this version, not GitHub's list of commit subjects:
-          # the changelog is written for the people who run Termit. `--notes` refuses a section that is
-          # missing or still says "unreleased".
+          # The body is the changelog's section for this version, not GitHub's list of commit subjects:
+          # the changelog is written for the people who run Termit. A build describes its own version;
+          # the cumulative body belongs to the release, not to a build of it. `--notes` refuses a
+          # section that is missing or still says "unreleased", and a pre-release reads the section of
+          # the version it belongs to (v0.3.2p2 → 0.3.2).
           body_path: release-notes.md
 
   # The final door: the tag pushed on `main` after `release/<version>` was merged there.
@@ -115,8 +125,32 @@ jobs:
           sha256sum -c SHA256SUMS
           test -x uv.sh
 
+      - name: the last release the notes count back to
+        id: released
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          case "$GITHUB_REF_NAME" in
+            # A pre-release build is one build of a version, so it describes that version alone.
+            *p[0-9]*) echo "since=" >> "$GITHUB_OUTPUT"; exit 0 ;;
+          esac
+          # The newest release nobody has to opt into is the one participants last installed: everything
+          # published after it only ever existed as a pre-release, and this release's body has to say
+          # what all of it changed.
+          since=$(gh release list --exclude-pre-releases --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName' 2>/dev/null || true)
+          if [ -z "$since" ]; then
+            echo "::warning::no released version found; the body describes $GITHUB_REF_NAME alone"
+          fi
+          echo "since=$since" >> "$GITHUB_OUTPUT"
+
       - name: the release notes are the changelog's section
-        run: go run ./deploy/release --version "$GITHUB_REF_NAME" --notes > release-notes.md
+        run: |
+          since="${{ steps.released.outputs.since }}"
+          if [ -n "$since" ]; then
+            go run ./deploy/release --version "$GITHUB_REF_NAME" --notes --since "$since" > release-notes.md
+          else
+            go run ./deploy/release --version "$GITHUB_REF_NAME" --notes > release-notes.md
+          fi
 
       - name: publish
         uses: softprops/action-gh-release@v2
@@ -128,11 +162,12 @@ jobs:
           fail_on_unmatched_files: true
           draft: false
           # A release stays a pre-release until that release's own production pass is recorded: the
-          # M4.3 pass was for 0.2.1, and the one outstanding for 0.3.0 is the M5 rollout
+          # M4.3 pass was for 0.2.1, and the one outstanding for the current line is the M5 rollout
           # (docs/IMPLEMENTATION_PLAN.md M5.8). Flipping this to false is a deliberate, recorded act,
-          # not a side effect of tagging.
+          # not a side effect of tagging — which is also why a `v<version>p<n>` tag published here is a
+          # pre-release of the next line and never becomes a release.
           prerelease: true
-          # The body is CHANGELOG.md's section for this version, not GitHub's list of commit subjects:
-          # the changelog is written for the people who run Termit. `--notes` refuses a section that is
-          # missing or still says "unreleased".
+          # The body counts back to the last released version (see "the last release the notes count
+          # back to"), because the versions between it and this one were handed out as pre-releases
+          # only. `--notes` refuses a section that is missing or still says "unreleased".
           body_path: release-notes.md

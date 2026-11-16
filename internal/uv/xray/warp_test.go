@@ -123,34 +123,44 @@ func TestWarpAllFailOpen(t *testing.T) {
 	if len(balancer.Selector) != 1 || balancer.Selector[0] != xray.WarpTag {
 		t.Errorf("balancer selector = %v", balancer.Selector)
 	}
-	// The order matters: the API rule first, then loopback (the canary), then the catch-all.
-	if len(doc.Routing.Rules) != 3 {
+	// The order matters: the API rule first, then loopback (the canary), then the catch-all — which is
+	// two rules, because UDP cannot go through a SOCKS proxy that has no UDP ASSOCIATE.
+	if len(doc.Routing.Rules) != 4 {
 		t.Fatalf("rules = %+v", doc.Routing.Rules)
 	}
 	if doc.Routing.Rules[1].OutboundTag != "direct" || len(doc.Routing.Rules[1].IP) == 0 {
 		t.Errorf("the loopback rule is missing: %+v", doc.Routing.Rules[1])
 	}
-	last := doc.Routing.Rules[2]
-	if last.BalancerTag != xray.WarpBalancerTag {
-		t.Errorf("the catch-all rule does not use the balancer: %+v", last)
+	proxied := doc.Routing.Rules[2]
+	if proxied.BalancerTag != xray.WarpBalancerTag || proxied.Network != "tcp" {
+		t.Errorf("the TCP catch-all does not use the balancer: %+v", proxied)
 	}
-	if len(last.Domain) != 0 || last.OutboundTag != "" {
-		t.Errorf("all mode should not narrow the rule: %+v", last)
+	if len(proxied.Domain) != 0 || proxied.OutboundTag != "" {
+		t.Errorf("all mode should not narrow the rule: %+v", proxied)
+	}
+	if udp := doc.Routing.Rules[3]; udp.Network != "udp" || udp.OutboundTag != "direct" {
+		t.Errorf("UDP does not bypass the proxy: %+v", udp)
 	}
 }
 
 func TestWarpSelectedNarrowsTheRule(t *testing.T) {
 	t.Parallel()
 	doc := warpGenerate(t, xray.WarpSpec{Mode: "selected", Selected: []string{"b.example.com", "a.example.com"}, FailOpen: true})
-	if len(doc.Routing.Rules) != 3 {
+	if len(doc.Routing.Rules) != 4 {
 		t.Fatalf("rules = %+v", doc.Routing.Rules)
 	}
-	last := doc.Routing.Rules[2]
-	if strings.Join(last.Domain, ",") != "a.example.com,b.example.com" {
-		t.Errorf("domains = %v, want a sorted list", last.Domain)
+	proxied := doc.Routing.Rules[2]
+	if strings.Join(proxied.Domain, ",") != "a.example.com,b.example.com" {
+		t.Errorf("domains = %v, want a sorted list", proxied.Domain)
 	}
-	if last.BalancerTag != xray.WarpBalancerTag {
-		t.Errorf("selected mode should still use the balancer: %+v", last)
+	if proxied.BalancerTag != xray.WarpBalancerTag || proxied.Network != "tcp" {
+		t.Errorf("selected mode should still use the balancer for TCP: %+v", proxied)
+	}
+	// The same domains, but UDP goes direct: the narrower the set, the more surprising a silent black
+	// hole would be.
+	if udp := doc.Routing.Rules[3]; udp.Network != "udp" || udp.OutboundTag != "direct" ||
+		strings.Join(udp.Domain, ",") != "a.example.com,b.example.com" {
+		t.Errorf("UDP does not bypass the proxy for the selected domains: %+v", udp)
 	}
 }
 
@@ -165,9 +175,12 @@ func TestWarpFailClosedHasNoFallback(t *testing.T) {
 	if len(doc.Routing.Balancers) != 0 {
 		t.Error("fail-closed has no reason for a balancer")
 	}
-	last := doc.Routing.Rules[len(doc.Routing.Rules)-1]
-	if last.OutboundTag != xray.WarpTag || last.BalancerTag != "" {
-		t.Errorf("fail-closed should route straight to WARP: %+v", last)
+	proxied := doc.Routing.Rules[len(doc.Routing.Rules)-2]
+	if proxied.OutboundTag != xray.WarpTag || proxied.BalancerTag != "" || proxied.Network != "tcp" {
+		t.Errorf("fail-closed should route TCP straight to WARP: %+v", proxied)
+	}
+	if udp := doc.Routing.Rules[len(doc.Routing.Rules)-1]; udp.Network != "udp" || udp.OutboundTag != "direct" {
+		t.Errorf("UDP does not bypass the proxy: %+v", udp)
 	}
 }
 

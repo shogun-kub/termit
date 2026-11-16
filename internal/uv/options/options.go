@@ -48,6 +48,9 @@ type Data struct {
 	// Local is this node's own device. It is what survives a management server that cannot be
 	// reached, so it is always present.
 	Local Link
+	// Devices are the node's local users: the owner's phone, laptop, router. They live only on this
+	// node, and the page is where the owner picks the one they need without a terminal.
+	Devices []Link
 	// Peers is the mesh as the subscription last described it, without this node.
 	Peers []Link
 	// Warning explains an empty or stale Peers list in one sentence. Render shows it above the mesh
@@ -62,10 +65,11 @@ type Data struct {
 	// Text is filled by Render from Lang, so callers never have to keep translations in step with the
 	// template. It is exported because html/template reads only exported fields.
 	Text pageText
-	// LocalView and PeersView pair each link with the words its row needs. html/template rebinds $
-	// when a named template is called, so the words have to travel with the link.
-	LocalView LinkView
-	PeersView []LinkView
+	// LocalView, DevicesView and PeersView pair each link with the words its row needs. html/template
+	// rebinds $ when a named template is called, so the words have to travel with the link.
+	LocalView   LinkView
+	DevicesView []LinkView
+	PeersView   []LinkView
 }
 
 // LinkView is one link plus the words around it.
@@ -77,10 +81,10 @@ type LinkView struct {
 // pageText is the resolved strings for one language. It exists so the template holds no prose and the
 // two languages cannot drift apart silently.
 type pageText struct {
-	Title, Subtitle, Local, LocalNote, Subscription string
-	Mesh, NoPeers, Warning, PlainName, PlainNote    string
-	JSONName, JSONNote, ThisPage, ThisPageNote      string
-	Copy, Copied, CopyFailed, Footer, Degraded      string
+	Title, Subtitle, Local, LocalNote, Devices, DevicesNote, Subscription string
+	Mesh, NoPeers, Warning, PlainName, PlainNote                          string
+	JSONName, JSONNote, ThisPage, ThisPageNote                            string
+	Copy, Copied, CopyFailed, Footer, Degraded                            string
 }
 
 func textFor(lang i18n.Lang) pageText {
@@ -89,8 +93,10 @@ func textFor(lang i18n.Lang) pageText {
 		Title:        tr.T(i18n.PageTitle),
 		Subtitle:     tr.T(i18n.PageSubtitle),
 		Local:        tr.T(i18n.PageLocal),
-		Mesh:         tr.T(i18n.PageMesh),
 		LocalNote:    tr.T(i18n.PageLocalNote),
+		Devices:      tr.T(i18n.PageDevices),
+		DevicesNote:  tr.T(i18n.PageDevicesNote),
+		Mesh:         tr.T(i18n.PageMesh),
 		NoPeers:      tr.T(i18n.PageNoPeers),
 		Warning:      tr.T(i18n.PageWarning),
 		Subscription: tr.T(i18n.PageSubscription),
@@ -253,6 +259,16 @@ footer { margin-top: 2.5rem; color: var(--dim); font-size: .8rem; text-align: ce
   <p class="note">{{.Text.LocalNote}}</p>
 </section>
 
+{{if .Devices}}
+<h2>{{printf .Text.Devices (len .Devices)}}</h2>
+<section>
+  <ul class="links">
+    {{range .DevicesView}}{{template "link" .}}{{end}}
+  </ul>
+  <p class="note">{{.Text.DevicesNote}}</p>
+</section>
+{{end}}
+
 <h2>{{printf .Text.Mesh (len .Peers)}}</h2>
 <section>
   {{if .Warning}}<p class="note warn">{{.Text.Warning}}</p>{{end}}
@@ -331,6 +347,10 @@ func Render(d Data) ([]byte, error) {
 	}
 	d.Text = textFor(d.Lang)
 	d.LocalView = LinkView{Link: d.Local, Text: d.Text}
+	d.DevicesView = make([]LinkView, 0, len(d.Devices))
+	for _, device := range d.Devices {
+		d.DevicesView = append(d.DevicesView, LinkView{Link: device, Text: d.Text})
+	}
 	d.PeersView = make([]LinkView, 0, len(d.Peers))
 	for _, peer := range d.Peers {
 		d.PeersView = append(d.PeersView, LinkView{Link: peer, Text: d.Text})

@@ -264,9 +264,9 @@ func Generate(spec Spec) ([]byte, error) {
 				Tag: WarpBalancerTag, Selector: []string{WarpTag},
 				Strategy: &strategy{Type: "leastPing"}, FallbackTag: "direct",
 			}}
-			config.Routing.Rules = append(config.Routing.Rules, warpRule(spec.Warp, WarpBalancerTag))
+			config.Routing.Rules = append(config.Routing.Rules, warpRules(spec.Warp, WarpBalancerTag)...)
 		} else {
-			config.Routing.Rules = append(config.Routing.Rules, warpRule(spec.Warp, ""))
+			config.Routing.Rules = append(config.Routing.Rules, warpRules(spec.Warp, "")...)
 		}
 	}
 
@@ -304,23 +304,26 @@ func warpSocks(w WarpSpec) (string, int) {
 	return host, port
 }
 
-// warpRule is the routing decision for proxied traffic. It names a balancer when fail-open is on and
-// the outbound directly when it is not; selected mode narrows it to the configured domains.
-func warpRule(w WarpSpec, balancerTag string) rule {
-	r := rule{Type: "field"}
+// warpRules are the routing decisions for proxied traffic: TCP takes the WARP hop, UDP goes direct.
+// warp-cli in proxy mode answers UDP ASSOCIATE with "command not supported", and a SOCKS5 proxy that
+// cannot carry UDP does not fail loudly — the flow simply never returns, and the first thing a client
+// sends is DNS. Splitting the rule keeps the address WARP is there to hide for TCP, and keeps UDP
+// working at the price of the node's own address. See docs/OPERATIONS.md.
+func warpRules(w WarpSpec, balancerTag string) []rule {
+	proxied := rule{Type: "field", Network: "tcp"}
+	direct := rule{Type: "field", Network: "udp", OutboundTag: "direct"}
 	if w.Mode == "selected" {
 		domains := append([]string(nil), w.Selected...)
 		sort.Strings(domains)
-		r.Domain = domains
-	} else {
-		r.Network = "tcp,udp"
+		proxied.Domain = domains
+		direct.Domain = domains
 	}
 	if balancerTag != "" {
-		r.BalancerTag = balancerTag
+		proxied.BalancerTag = balancerTag
 	} else {
-		r.OutboundTag = WarpTag
+		proxied.OutboundTag = WarpTag
 	}
-	return r
+	return []rule{proxied, direct}
 }
 
 // APIAddress is the loopback address of the management API for this spec.

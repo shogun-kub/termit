@@ -1,7 +1,39 @@
-# Changelog
-
 What each release changed, written for the people who run Termit. Newest first;
-`0.1.1` was prepared but never released — its work is part of `0.2.0`.
+`0.1.1` was prepared but never released — its work is part of `0.2.0`. The GitHub release for a version
+carries every section back to the last release: the versions in between were handed out only as
+pre-releases, and whoever installs the release skipped them.
+
+## 0.3.2 — 2026-11-16
+
+The owner's page catches up with what the node knows, and starts listing the devices it was already
+holding.
+
+### Added
+
+- **The page lists local devices.** A phone added with `termit-uv device add` now appears on the page
+  with its link, so the owner copies it from the browser instead of scrolling a terminal. Adding or
+  removing a device re-renders the page.
+- **One link carries every client's fragmentation switch.** A link from the node — the page, `termit-uv
+  uri`, `device add` — and every line of the subscription list now carries `sb.tls.fragment=1` and
+  `sb.tls.record_fragment=1` beside Happ's `fragment=…`, which is how `podkop-engine` and the patched
+  sing-box builds read fragmentation from a URI. Clients ignore the dialect they do not use, so nothing
+  needs a second link or a hand edit.
+
+### Fixed
+
+- **UDP through the tunnel was a black hole.** `warp-cli` in proxy mode is a SOCKS5 listener without
+  UDP ASSOCIATE, and every flow — DNS first — was routed into it, so a client that resolved names
+  through the node got nothing back while TCP worked. The route now splits: TCP takes the WARP hop, UDP
+  exits `direct` from the node's address. Names resolve, QUIC works, and what UDP destinations see is
+  the node rather than Cloudflare. A WARP that carries UDP needs WireGuard, which is on the backlog.
+- **The agent's daily cycle left the page describing yesterday's mesh.** `termit-uv sync` refreshed the
+  page and the cycle that runs on its own did not, so a peer added or removed on the server reached the
+  core and not the page until an operator ran something. The cycle now renders the page after it applies
+  the peer set, and a failing render stays a warning: the proxy is already correct.
+- **`device remove` refused the label when the flags came after it.** `termit-uv device remove phone
+  --config /etc/termit/uv/config.yaml` answered "give one device label or UUID", because Go's flag
+  package stops at the first positional argument. The label is now taken before the flags are parsed, so
+  both orders work.
 
 ## 0.3.1 — 2026-11-15
 

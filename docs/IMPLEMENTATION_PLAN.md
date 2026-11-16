@@ -1344,6 +1344,44 @@ writes its units and `ProtectSystem=strict` did not allow it — that is what 0.
 check now drives both record paths instead of only the confirmed one. A reboot on the production node is
 still worth doing: the lab's boxes are containers, and a container's boot is not a host's.
 
+The build to roll out is the pre-release `v0.3.2p4` (2026-11-16): the `0.3.1` fix, the owner's page
+listing local devices and redrawing itself on every sync, the `device remove` argument fix, one link
+carrying every client's fragmentation switch — Happ's `fragment=…` plus `sb.tls.fragment=1` and
+`sb.tls.record_fragment=1` for `podkop-engine` and the patched sing-box builds — on the page, in
+`termit-uv uri`, in the device links and in every line of the subscription list, and a route that sends
+UDP `direct` instead of into a SOCKS proxy that cannot carry it (found on the production phones: every
+name resolved through the node timed out). It is installed like a release — `sh uv.sh --version
+v0.3.2p4 …` — and the `p<n>` counter numbers builds of the `0.3.2` branch, so a later build supersedes it
+without renumbering the version itself.
+
+**Production pass, 2026-11-16 — recorded, the release may be published.** Three hosts: the management
+server `mn` (LXC on Proxmox) and two nodes (a VM and a reinstalled VM). Every gate was executed against
+the live hosts, not the lab:
+
+- **Firewall.** `termit-uv firewall on --ssh-from` on both nodes and `termit-mn firewall on` on the server,
+  confirmed after the five-minute window, table `inet termit_uv` / `inet termit_mn`, default deny, ports
+  22/80/443 only. The record was confirmed on each host and the table reappeared after rebooting both
+  nodes (`systemctl reboot`), which is the thing the lab cannot prove. No other host service stopped
+  answering.
+- **Guard.** `security.guard.enabled: true` on all three, unit active, `sshd` reachable from the allowed
+  source only.
+- **Blocklist.** `security.firewall.blocklist_url` set on all three, 145 networks (128 kernel elements)
+  loaded, 24-hour refresh timer active, `nft list set` non-empty.
+- **WARP.** `warp.mode: all`, egress reported on (WAW and HEL), `warp-egress` balancer with `fallbackTag:
+  direct`, and the WARP sidecar survived the node reboots.
+- **The owner's page.** Rendered and reachable over TLS; lists the mesh, the local devices and the node's
+  own entry; every link carries Happ's `fragment=…` **and** `sb.tls.fragment=1` /
+  `sb.tls.record_fragment=1`; the base64 subscription carries the same; the sing-box profile carries
+  `tls.fragment` and `tls.record_fragment`.
+- **Agents.** Both nodes `active` on the server, syncs landing, subscription URLs served.
+- **A real client.** The owner's phone imported a link from the page and passed traffic through both nodes;
+  the server logs the sessions (`accepted tcp:… [proxy -> warp] email: owner`, nginx `200`).
+
+Two findings from the live pass that a lab cannot produce, both fixed before this record: the `device
+remove` argument order, and UDP being routed into a SOCKS proxy that cannot carry it — client DNS timed out
+until UDP was sent `direct` (0.3.2). The remaining compromise, UDP leaving from the node's address, is
+planned away in §11.
+
 Total: 5–7 days of work. The first half-day — the spike that decided two syntax questions which could
 have re-shaped the rest — is spent and recorded in §5.0.
 
@@ -1462,3 +1500,170 @@ path cooperate.
    default, opt-out with `--no-warp` or `warp.mode: off`. See M4.1.
 5. Whether the MN domain and the UV domains are expected to live in the same DNS zone (affects the
    DNS-consistency check and documentation).
+
+## 10. Backlog
+
+Work that is understood, wanted and deliberately not in the current milestone. Each item names the rule
+that keeps it out, so nobody re-discovers the reason from scratch.
+
+### 10.1 WARP that carries UDP
+
+Today `warp.mode` routes TCP through `warp-cli`'s SOCKS5 listener and sends UDP `direct`
+(`docs/OPERATIONS.md` §6): proxy mode has no UDP ASSOCIATE, so a UDP flow handed to it never returns and
+the first casualty is client DNS. The split keeps the nodes usable and gives up the address WARP exists to
+hide, for UDP only. Four ways to close that gap were surveyed on 2026-11-16.
+
+| Option | UDP | Host routing | Cost |
+|---|---|---|---|
+| **A. Xray `wireguard` outbound** with WARP credentials (`noKernelTun: true`) | yes | **none** — gVisor netstack inside the core | needs a WARP registration and a stored private key; one fewer service than today |
+| B. `wgcf` + `wg-quick` (what `references/Blitz` does) | yes | `ip rule`, routes, `resolvconf` | contradicts §2.2.1 |
+| C. `warp-cli` in TUN mode | yes | full-tunnel capture | contradicts §2.2.1, and `/dev/net/tun` is absent on the LXC nodes |
+| D. `usque` (MASQUE, userspace SOCKS5 with TCP and UDP) | yes | none | a third-party service and its netstack, plus a licence to check; MASQUE is where Cloudflare is going |
+
+**Recommended: A, planned in §11.** Xray has shipped a userspace WireGuard outbound since 1.6.5 and documents the WARP
+setup end to end ([xtls guide](https://xtls.github.io/en/document/level-2/warp.html)); `noKernelTun` forces
+the in-process gVisor stack, which is exactly the LXC case these nodes are
+([outbound docs](https://xtls.github.io/config/outbounds/wireguard.html)). `wgcf generate --xray` prints the
+credentials in the shape the outbound wants, including the three `reserved` bytes Cloudflare needs. Because
+the tunnel lives in the core, the fail-open balancer keeps working unchanged and the node keeps one
+long-running process instead of two. The registration is the only new secret (a WireGuard private key per
+node, `0600` in the state directory) and it must never reach a log.
+
+Measured on a production node (then5: one vCPU of a Ryzen 9 7950X3D, 2 GB) on 2026-11-16, 50 MB from
+`speed.cloudflare.com`, both paths saturating the single core: kernel path (`direct`) 95–98 MB/s, the
+userspace WARP stack (`warp-cli` SOCKS, which terminates TCP in userspace exactly as `noKernelTun` does)
+66–69 MB/s. So the userspace data path costs about a third of the throughput at this size. Xray's own
+documentation says the same in one line — the system interface "offers relatively higher performance" — and
+`noKernelTun` is documented as the LXC-compatible fallback
+([docs](https://xtls.github.io/config/outbounds/wireguard.html)). At the ~800 Mbit/s ceiling this node
+measures, expecting roughly 500–550 Mbit/s per flow through gVisor is realistic, minus whatever the XHTTP
+and VLESS work takes from the same core. That is above what this deployment needs; a node that must carry
+more than that is a node whose problem is the vCPU count, not the routing.
+
+The risk to design around: Cloudflare is moving WARP to MASQUE, and WARP+ already reportedly does not work
+over WireGuard ([wgcf#459](https://github.com/ViRb3/wgcf/issues/459)). Free WARP works today. The outbound
+must therefore stay swappable — the routing rule names a tag, not a protocol — so option D can replace it
+without touching anything else.
+
+Acceptance, when it is picked up: a UDP probe through the tunnel reports `warp=on` in the trace, the node's
+own SSH/ACME/decoy traffic still leaves from its own address, `wgcf`-equivalent credentials survive a
+restart and are never logged, fail-open still moves traffic to `direct` when WARP stops answering, and no
+`ip rule`/`ip route` change exists on the host.
+
+## 11. Planned: WARP over WireGuard inside the core (0.4.0)
+
+The one thing `0.3.2` gave up is that UDP leaves from the node's address: `warp-cli`'s proxy mode cannot
+carry it, so §10.1's option A replaces the proxy with a WireGuard outbound inside Xray. This is the plan;
+the code comes later. Everything below is deliberately testable, and every item names the observable that
+says it is done.
+
+### 11.1 What changes for an operator
+
+Nothing in the interface they know. `warp.mode` keeps its three values, `warp.fail_open` keeps its
+meaning, `termit-uv warp status` keeps its shape. Two things become true that are not true today: UDP
+through the tunnel exits at Cloudflare, and the host no longer runs `cloudflare-warp` at all — no package,
+no second daemon, no SOCKS port.
+
+A new optional key selects the transport while the old path is still supported:
+
+```yaml
+warp:
+  mode: all
+  fail_open: true
+  transport: wireguard     # wireguard (default from 0.4.0) | proxy (what 0.3.x does)
+```
+
+A configuration written before this key exists behaves as `proxy` and is not migrated silently; flipping
+it is `termit-uv init --warp-transport wireguard`, which registers, writes the identity, regenerates the
+core config and applies it. The reverse flag returns the node to the proxy path.
+
+### 11.2 The identity: one secret, written once
+
+WARP over WireGuard needs a registration: a Curve25519 private key, the address Cloudflare assigns
+(`172.16.0.2/32` and an IPv6), the peer public key, the endpoint, and the three `reserved` bytes without
+which the handshake is dropped. That is a credential and it belongs where the node's other credentials
+live:
+
+- `/var/lib/termit/uv/warp.yaml`, `0600`, written atomically, never regenerated once it exists (the node
+  would change its WARP identity on every `init` otherwise).
+- Never in a log line, an error string, `termit-uv status`, `doctor` or the page. `status` may print the
+  endpoint and the device id; the private key and the reserved bytes never leave the file.
+- Removed by `termit-uv uninstall` together with the rest of the state, and only by an explicit flag
+  otherwise — a lost identity is a new device on Cloudflare's side, not a disaster.
+
+Two ways to obtain it, and the plan takes the second:
+
+1. Shell out to `wgcf` (MIT) and parse what it prints. Fast to write, but it adds a third-party binary to
+   the install path, and its output format is not ours to promise.
+2. Speak Cloudflare's registration API from Go: generate a key pair, `POST /reg` with the public key and
+   the WARP client's shape, read back `config.peers[0]` and the reserved bytes. It is a handful of HTTP
+   calls behind an interface, testable against `httptest`, and leaves the node with no new binary. The
+   existing `internal/mn/secret` sealing helpers are the wrong shape here (the key must be usable, not
+   sealed), so it is a plain `0600` file, like the peer secrets already in `state.json`.
+
+### 11.3 The generated outbound
+
+```json
+{ "tag": "warp", "protocol": "wireguard",
+  "settings": {
+    "secretKey": "…", "address": ["172.16.0.2/32", "2606:4700:110:…/128"],
+    "peers": [{ "publicKey": "bmXOC+…", "endpoint": "162.159.192.1:2408",
+                "allowedIPs": ["0.0.0.0/0", "::/0"], "reserved": [240, 25, 146] }],
+    "mtu": 1280, "noKernelTun": true } }
+```
+
+`noKernelTun` is not a tuning knob here: it is what keeps the node out of host routing (invariant §2.2.1)
+and what makes the outbound work in the LXC containers the lab runs on. The measured cost — two thirds of
+the kernel path's throughput on a one-vCPU node (§10.1) — is accepted and recorded.
+
+With the tunnel in the core, the routing rule goes back to a single catch-all:
+
+```json
+{ "type": "field", "network": "tcp,udp", "balancerTag": "warp-egress" }
+```
+
+The `0.3.2` split (UDP `direct`) survives only under `transport: proxy`, where it is still the correct
+answer, and the golden tests cover both documents.
+
+### 11.4 Work breakdown
+
+| # | Task | Done when |
+|---|---|---|
+| 1 | `internal/uv/warp` registration client behind an interface: key pair, `POST /reg`, parse peer/reserved, error classification | unit tests against a fake API; no network in `go test` |
+| 2 | `warp.yaml` in the state directory: atomic write, `0600`, load/validate, idempotent, survives `init` twice | state test: two runs, one identity, unchanged bytes |
+| 3 | Config key `warp.transport` with `proxy` as the legacy default and `wireguard` from fresh installs | config tests: absent key = proxy; validation refuses an unknown value |
+| 4 | Generator: wireguard outbound + single catch-all when `transport: wireguard`; the `0.3.2` split when `proxy` | golden documents for both, plus `xray -test` in the lab |
+| 5 | CLI: `termit-uv init --warp-transport`, `warp status` shows transport and endpoint, `warp rotate` re-registers | `warp status` never prints a key; a redaction test greps the output |
+| 6 | Install/uninstall: skip `cloudflare-warp` when the transport is wireguard, remove the outbound and keep the unit when switching back | lab: proxy → wireguard → proxy leaves no stale package, unit or rule |
+| 7 | Docs: `OPERATIONS.md` §6, `DESCRIPTION.md` §Egress, the guide, `CHANGELOG` for `0.4.0`; §10.1 moves to "done" | a reader can tell which transport their node runs without reading the config |
+| 8 | Transport variants and the migration between them: absent key loads as `proxy`, `init --warp-transport` writes and applies `wireguard`, and switching back leaves nothing behind | a table-driven test loads each variant, flips it through the CLI path and asserts the resulting config, the generated document and the on-disk state; an old config gains no key it did not have, and a switch does not orphan the previous transport's artefacts (package, outbound, identity file, SOCKS port) |
+
+### 11.5 Acceptance
+
+Automated: generator goldens, an `xray -test` on the generated document in the lab, the identity surviving
+`init` twice, redaction of the key in every command's output, and a switch back to `proxy` that restores
+the old document byte for byte.
+
+Manual, because it is the whole point: a client resolves a name through the tunnel and the answer comes
+back; `curl https://www.cloudflare.com/cdn-cgi/trace` through the node reports `warp=on`; and the node's
+own SSH, ACME and decoy traffic still leaves from its own address — checked from the server side by
+watching the exit address of a request the node itself makes.
+
+### 11.6 Risks
+
+- **Cloudflare may stop accepting WireGuard registrations.** WARP+ reportedly already does not work over
+  WireGuard ([wgcf#459](https://github.com/ViRb3/wgcf/issues/459)). The routing rule names a tag, so a
+  MASQUE transport (§10.1 option D) can replace the outbound without touching anything else; keep the
+  switch a config value, not a compile-time choice.
+- **A WARP identity is per node and cannot be shared.** Two nodes behind one registration look like one
+  device; the registration must be per node and stored, not derived.
+- **Fail-open must keep working over a tunnel that is down.** The observatory probes through the tag, which
+  is transport-agnostic; the test suite must cover the balancer pointing at a wireguard outbound.
+- **The package removal is a one-way door on a running node.** Switching back to `proxy` reinstalls
+  `cloudflare-warp`; the lab proves the round trip before a node in production takes it.
+
+### 11.7 Size
+
+Two to three days of work: the registration client and the state file are the bulk of it, the generator
+change is small, and the lab pass is a half-day. It ships as `0.4.0` from a `release/v0.4.0` branch, with
+its own production pass recorded the way `M5.8` was.

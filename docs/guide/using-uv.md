@@ -118,6 +118,13 @@ There are two different things, and it matters which one you use:
 | How you get it | `termit-uv status` prints the URL | `termit-uv device add --label phone` prints a `vless://` URI |
 | Use it for | your own client, when you want the whole mesh | a device that should use one node, or a client that does not support subscriptions |
 
+Both are also on the owner's private page (`termit-uv options`): it lists the node's own device, the local
+devices and the mesh, and it re-renders itself when a device is added or removed and on every sync — the
+agent's daily cycle included, so a peer that joins or leaves the mesh reaches the page without a command.
+Every link it shows carries both dialects of the fragmentation switch — Happ's `fragment=…` and
+`sb.tls.fragment=1`/`sb.tls.record_fragment=1`, which `podkop-engine` and the patched sing-box builds read
+from the URI — so the same link works in either client without being edited by hand.
+
 ```bash
 termit-uv status
 # subscribe:  https://mn.example.com/sub/AbCdEf...

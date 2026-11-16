@@ -136,6 +136,15 @@ func (a *application) optionsData(ctx context.Context, cfg *config.Config, node 
 		},
 		Generated: a.now().UTC(),
 	}
+	// The owner's own devices belong here: the page is where they pick the one they need, and
+	// `device list` in a terminal is the fallback, not the only way.
+	for _, user := range node.LocalUsers {
+		uri, err := a.deviceURI(cfg, node, user.ID, user.Label)
+		if err != nil {
+			continue
+		}
+		data.Devices = append(data.Devices, options.Link{Label: user.Label, URI: uri})
+	}
 	if node.Credentials == nil || node.Credentials.SubscriptionURL == "" {
 		return data
 	}
@@ -189,9 +198,9 @@ func localURI(cfg *config.Config, node *state.State) string {
 		Path:   "/" + node.Identity.XHTTPPath + "/",
 		Label:  cfg.Domain,
 	})
-	// The mesh links the page shows already carry the server's parameter; this one carries the node's,
+	// The mesh links the page shows already carry the server's parameters; this one carries the node's,
 	// so the page does not mix two answers to the same question.
-	uri = proto.AddHappFragment(uri, cfg.HappFragment)
+	uri = withFragmentation(uri, cfg)
 	if err != nil {
 		// BuildVLESSUrl only fails on a profile the node cannot have: an identity with an empty UUID
 		// or a domain that is not a DNS name. Both are caught before this function is called.

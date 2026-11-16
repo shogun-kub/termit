@@ -515,6 +515,9 @@ Egress, from `config.yaml`:
   sidecar unresolved, so the lookup happens inside the tunnel and does not leak the node's resolver.
 - `warp.mode: selected` — only the domains in `warp.selected` (each also covering its subdomains)
   use WARP; everything else is direct.
+- **UDP** — never through WARP: proxy mode is SOCKS5 without UDP ASSOCIATE. The catch-all rule is split,
+  TCP to the tunnel (the balancer when fail-open is on) and UDP to `direct`, so DNS and QUIC leave from
+  the node's address instead of disappearing.
 - **Failure policy** — `warp.fail_open`, default `true`. Fail-open is implemented *inside the core*,
   not by rewriting the configuration: an Xray `observatory` fetches the trace through the WARP
   outbound every 30 s, and a `balancer` over that outbound has `fallbackTag: direct`. While WARP
@@ -705,13 +708,15 @@ The owner's own devices are local users: `termit-uv device list`, `termit-uv dev
 sent to MN — a family phone is not a mesh participant. `termit-uv uri` prints the `vless://` URI for the
 node's own device; it is the one place a credential is printed on purpose, to stdout only.
 
-`termit-uv options` renders the owner's page of client links: this node's own device, the mesh peers as
-the subscription describes them, and the two subscription forms, each with a copy button. It is a
-static file in the decoy site's tree under a random 32-character path, so nginx needs no new location
-for it; the path is a capability like the subscription token, generated once, stored in the state file
-and replaced by `--rotate`. Nothing creates the page implicitly: `init`, `renew-site` and `sync`
-re-render an existing one (the decoy step rewrites the whole tree) and leave a node that never asked
-for it alone.
+`termit-uv options` renders the owner's page of client links: this node's own device, the local users it
+accepts, the mesh peers as the subscription describes them, and the two subscription forms, each with a
+copy button. It is a static file in the decoy site's tree under a random 32-character path, so nginx
+needs no new location for it; the path is a capability like the subscription token, generated once,
+stored in the state file and replaced by `--rotate`. Nothing creates the page implicitly: `init`,
+`renew-site`, `sync`, the agent's daily cycle and `device add`/`device remove` re-render an existing one
+(the decoy step rewrites the whole tree) and leave a node that never asked for it alone. The mesh half is
+the reason the refresh is not left to the owner: a page that lists peers the server dropped, or omits a
+device that was just added, is worse than no page at all.
 
 `termit-uv wizard` is a front end to `init`, not a second installer: it asks for the domain, the ACME
 contact, the decoy archetype, the egress mode and the invite code, writes each answer to `wizard.yaml`

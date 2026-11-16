@@ -86,6 +86,11 @@ func (a *application) newLoop(cfg *config.Config) *agent.Loop {
 		Apply: func(ctx context.Context, st *state.State, answer proto.SyncResponse) (agent.Result, error) {
 			return a.applier(cfg, st).Apply(ctx, answer, st.LocalUsers)
 		},
+		// The page lists the mesh, so a cycle that reconciled it must not leave yesterday's peers on
+		// the page. A node whose owner never asked for the page has nothing to refresh.
+		AfterSync: func(context.Context) error {
+			return a.refreshOptions(cfg)
+		},
 	}
 }
 
