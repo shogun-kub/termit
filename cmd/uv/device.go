@@ -232,7 +232,7 @@ func (a *application) deviceURI(cfg *config.Config, node *state.State, id, label
 	if err != nil {
 		return "", err
 	}
-	return proto.AddHappFragment(uri, cfg.HappFragment), nil
+	return withFragmentation(uri, cfg), nil
 }
 
 // loadInstalled loads the configuration and state, reporting the standard messages.

@@ -210,3 +210,32 @@ func AddHappFragment(uri, value string) string {
 	}
 	return uri + "&fragment=" + value
 }
+
+// The switches podkop-engine and the patched sing-box builds read from the link itself. They are the
+// same two settings the profile carries as tls.fragment and tls.record_fragment, for the clients that
+// take a link rather than a profile.
+const (
+	SingBoxFragmentParam       = "sb.tls.fragment"
+	SingBoxRecordFragmentParam = "sb.tls.record_fragment"
+)
+
+// AddSingBoxFragment sets those switches on a finished URI, before the #label. `segment` splits the
+// ClientHello across TCP segments, `record` across TLS records as well — the second is what defeats a
+// filter that reassembles segments but expects one record. A client that does not know a parameter
+// ignores it, which is why one link can serve both families.
+func AddSingBoxFragment(uri string, segment, record bool) string {
+	extra := ""
+	if segment {
+		extra += "&" + SingBoxFragmentParam + "=1"
+	}
+	if record {
+		extra += "&" + SingBoxRecordFragmentParam + "=1"
+	}
+	if extra == "" {
+		return uri
+	}
+	if hash := strings.IndexByte(uri, '#'); hash >= 0 {
+		return uri[:hash] + extra + uri[hash:]
+	}
+	return uri + extra
+}
