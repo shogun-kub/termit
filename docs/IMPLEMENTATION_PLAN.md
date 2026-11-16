@@ -1354,6 +1354,34 @@ name resolved through the node timed out). It is installed like a release — `s
 v0.3.2p4 …` — and the `p<n>` counter numbers builds of the `0.3.2` branch, so a later build supersedes it
 without renumbering the version itself.
 
+**Production pass, 2026-11-16 — recorded, the release may be published.** Three hosts: the management
+server `mn` (LXC on Proxmox) and two nodes (a VM and a reinstalled VM). Every gate was executed against
+the live hosts, not the lab:
+
+- **Firewall.** `termit-uv firewall on --ssh-from` on both nodes and `termit-mn firewall on` on the server,
+  confirmed after the five-minute window, table `inet termit_uv` / `inet termit_mn`, default deny, ports
+  22/80/443 only. The record was confirmed on each host and the table reappeared after rebooting both
+  nodes (`systemctl reboot`), which is the thing the lab cannot prove. No other host service stopped
+  answering.
+- **Guard.** `security.guard.enabled: true` on all three, unit active, `sshd` reachable from the allowed
+  source only.
+- **Blocklist.** `security.firewall.blocklist_url` set on all three, 145 networks (128 kernel elements)
+  loaded, 24-hour refresh timer active, `nft list set` non-empty.
+- **WARP.** `warp.mode: all`, egress reported on (WAW and HEL), `warp-egress` balancer with `fallbackTag:
+  direct`, and the WARP sidecar survived the node reboots.
+- **The owner's page.** Rendered and reachable over TLS; lists the mesh, the local devices and the node's
+  own entry; every link carries Happ's `fragment=…` **and** `sb.tls.fragment=1` /
+  `sb.tls.record_fragment=1`; the base64 subscription carries the same; the sing-box profile carries
+  `tls.fragment` and `tls.record_fragment`.
+- **Agents.** Both nodes `active` on the server, syncs landing, subscription URLs served.
+- **A real client.** The owner's phone imported a link from the page and passed traffic through both nodes;
+  the server logs the sessions (`accepted tcp:… [proxy -> warp] email: owner`, nginx `200`).
+
+Two findings from the live pass that a lab cannot produce, both fixed before this record: the `device
+remove` argument order, and UDP being routed into a SOCKS proxy that cannot carry it — client DNS timed out
+until UDP was sent `direct` (0.3.2). The remaining compromise, UDP leaving from the node's address, is
+planned away in §11.
+
 Total: 5–7 days of work. The first half-day — the spike that decided two syntax questions which could
 have re-shaped the rest — is spent and recorded in §5.0.
 
@@ -1608,6 +1636,7 @@ answer, and the golden tests cover both documents.
 | 5 | CLI: `termit-uv init --warp-transport`, `warp status` shows transport and endpoint, `warp rotate` re-registers | `warp status` never prints a key; a redaction test greps the output |
 | 6 | Install/uninstall: skip `cloudflare-warp` when the transport is wireguard, remove the outbound and keep the unit when switching back | lab: proxy → wireguard → proxy leaves no stale package, unit or rule |
 | 7 | Docs: `OPERATIONS.md` §6, `DESCRIPTION.md` §Egress, the guide, `CHANGELOG` for `0.4.0`; §10.1 moves to "done" | a reader can tell which transport their node runs without reading the config |
+| 8 | Transport variants and the migration between them: absent key loads as `proxy`, `init --warp-transport` writes and applies `wireguard`, and switching back leaves nothing behind | a table-driven test loads each variant, flips it through the CLI path and asserts the resulting config, the generated document and the on-disk state; an old config gains no key it did not have, and a switch does not orphan the previous transport's artefacts (package, outbound, identity file, SOCKS port) |
 
 ### 11.5 Acceptance
 
