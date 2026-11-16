@@ -1470,3 +1470,26 @@ path cooperate.
    default, opt-out with `--no-warp` or `warp.mode: off`. See M4.1.
 5. Whether the MN domain and the UV domains are expected to live in the same DNS zone (affects the
    DNS-consistency check and documentation).
+
+## 10. Backlog
+
+Work that is understood, wanted and deliberately not in the current milestone. Each item names the rule
+that keeps it out, so nobody re-discovers the reason from scratch.
+
+### 10.1 WARP that carries UDP (WireGuard instead of the proxy)
+
+Today `warp.mode` routes TCP through `warp-cli`'s SOCKS5 listener and sends UDP `direct`
+(`docs/OPERATIONS.md` §6): proxy mode has no UDP ASSOCIATE, so a UDP flow handed to it never returns and
+the first casualty is client DNS.
+
+The fix is the one `references/Blitz` uses: a WireGuard WARP (`wgcf` + `wg-quick`) with the proxied
+outbound bound to that interface, so TCP and UDP take the same path. It is out of scope now because it
+contradicts §2.2.1 — `wg-quick` installs `ip rule`/route/`resolvconf` state on the host, and the node is
+not allowed to touch host routing. Doing it properly means writing the interface and the routing by hand
+in a way that cannot capture the node's own traffic, plus a fail-open story for the case where the
+interface is down (today's balancer gives that for free).
+
+Acceptance, when it is picked up: UDP through the tunnel exits at Cloudflare (`warp=on` in the trace for
+a UDP-based check), the node's own SSH/ACME/decoy traffic still leaves from its own address, the
+fail-open behaviour survives `wgcf` going down, and no `ip rule`/`ip route` change exists outside the
+unit's own lifecycle.
