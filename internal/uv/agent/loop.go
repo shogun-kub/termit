@@ -114,6 +114,10 @@ type Loop struct {
 	Check func(ctx context.Context, st *state.State) state.SelfCheckReport
 	// Apply reconciles the core with the answer. Required.
 	Apply func(ctx context.Context, st *state.State, answer proto.SyncResponse) (Result, error)
+	// AfterSync is the last act of a cycle that applied an answer, and it runs after the state was
+	// saved: the owner's page uses it to list the mesh that was just reconciled. A failure is logged
+	// and never fails the cycle — the core is already correct, and a page is a convenience.
+	AfterSync func(ctx context.Context) error
 }
 
 func (l *Loop) now() time.Time {
@@ -286,6 +290,11 @@ func (l *Loop) cycle(ctx context.Context) (CycleReport, error) {
 	l.logger().Info("sync complete",
 		"peers", len(answer.Peers), "clients", applied.Clients, "changed", changed,
 		"next", st.Schedule.NextSyncAt.Format(time.RFC3339))
+	if l.AfterSync != nil {
+		if err := l.AfterSync(ctx); err != nil {
+			l.logger().Warn("agent: after the sync", "err", err)
+		}
+	}
 	return report, nil
 }
 
