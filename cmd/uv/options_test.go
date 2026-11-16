@@ -22,6 +22,9 @@ func optionsFixture(t *testing.T, subscriptionBody string) (*application, *confi
 	dir := t.TempDir()
 	cfg := config.Default()
 	cfg.Domain = "node.example.com"
+	// A fixture has no WARP identity, so it stands in for an upgraded node: the proxy transport needs
+	// none. The wireguard path has its own tests in internal/uv/install and internal/uv/warp.
+	cfg.Warp.Transport = config.WarpTransportProxy
 	// The tests read the page in English; the language itself is asserted separately below.
 	cfg.Locale = "en"
 	cfg.Paths.ConfigDir = dir

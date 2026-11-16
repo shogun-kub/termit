@@ -134,6 +134,8 @@ func TestWarpStatusReportsTheMode(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	cfg := config.Default()
 	cfg.Domain = "node.example.com"
+	// These tests exercise the proxy transport's states; the wireguard path is tested where it lives.
+	cfg.Warp.Transport = config.WarpTransportProxy
 	cfg.Warp.Mode = config.WarpOff
 	if err := cfg.Save(path); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -177,6 +179,8 @@ func TestWarpStatusSaysNotInstalled(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	cfg := config.Default()
 	cfg.Domain = "node.example.com"
+	// These tests exercise the proxy transport's states; the wireguard path is tested where it lives.
+	cfg.Warp.Transport = config.WarpTransportProxy
 	cfg.Warp.Mode = config.WarpAll
 	if err := cfg.Save(path); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -205,6 +209,8 @@ func TestWarpStatusReportsAFailedProbe(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	cfg := config.Default()
 	cfg.Domain = "node.example.com"
+	// These tests exercise the proxy transport's states; the wireguard path is tested where it lives.
+	cfg.Warp.Transport = config.WarpTransportProxy
 	cfg.Warp.Mode = config.WarpAll
 	if err := cfg.Save(path); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -340,6 +346,8 @@ func TestWarpAcceptsTheDocumentedStatusSubcommand(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	cfg := config.Default()
 	cfg.Domain = "node.example.com"
+	// These tests exercise the proxy transport's states; the wireguard path is tested where it lives.
+	cfg.Warp.Transport = config.WarpTransportProxy
 	cfg.Warp.Mode = config.WarpAll
 	if err := cfg.Save(path); err != nil {
 		t.Fatalf("Save: %v", err)

@@ -119,6 +119,9 @@ func testConfig(t *testing.T) *config.Config {
 	dir := t.TempDir()
 	cfg := config.Default()
 	cfg.Domain = "node.example.com"
+	// These tests skip the WARP step, so the node must not need a WARP identity to generate the core
+	// config: that is what the proxy transport means. The wireguard pipeline has its own test.
+	cfg.Warp.Transport = config.WarpTransportProxy
 	cfg.Paths.ConfigDir = filepath.Join(dir, "etc")
 	cfg.Paths.StateDir = filepath.Join(dir, "var")
 	cfg.Paths.CertDir = filepath.Join(cfg.Paths.StateDir, "certs")

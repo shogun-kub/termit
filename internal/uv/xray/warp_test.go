@@ -18,6 +18,16 @@ type warpDoc struct {
 				Address string `json:"address"`
 				Port    int    `json:"port"`
 			} `json:"servers"`
+			SecretKey   string   `json:"secretKey"`
+			Address     []string `json:"address"`
+			MTU         int      `json:"mtu"`
+			NoKernelTun bool     `json:"noKernelTun"`
+			Peers       []struct {
+				PublicKey  string   `json:"publicKey"`
+				Endpoint   string   `json:"endpoint"`
+				AllowedIPs []string `json:"allowedIPs"`
+				Reserved   []int    `json:"reserved"`
+			} `json:"peers"`
 		} `json:"settings"`
 	} `json:"outbounds"`
 	Routing struct {
@@ -140,6 +150,138 @@ func TestWarpAllFailOpen(t *testing.T) {
 	}
 	if udp := doc.Routing.Rules[3]; udp.Network != "udp" || udp.OutboundTag != "direct" {
 		t.Errorf("UDP does not bypass the proxy: %+v", udp)
+	}
+}
+
+// testWarpIdentity is a shape Cloudflare's registration produces: a private key, the tunnel addresses,
+// the peer, and the three reserved bytes that ride in the WireGuard header.
+func testWarpIdentity() *xray.WireGuardIdentity {
+	return &xray.WireGuardIdentity{
+		SecretKey: "cHJpdmF0ZS1rZXktZm9yLXRlc3RzLW9ubHk=",
+		Addresses: []string{"172.16.0.2/32", "2606:4700:110:8d9c::2/128"},
+		PublicKey: "bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo=",
+		Endpoint:  "162.159.192.1:2408",
+		Reserved:  []int{240, 25, 146},
+		MTU:       1280,
+	}
+}
+
+// The whole point of the transport: one rule, both protocols, the tunnel inside the core. A UDP flow
+// cannot be sent into a SOCKS proxy, so there is nothing to split.
+func TestWarpWireGuardPutsBothProtocolsThroughOneRule(t *testing.T) {
+	t.Parallel()
+	doc := warpGenerate(t, xray.WarpSpec{
+		Mode: "all", FailOpen: true,
+		Transport: xray.WarpTransportWireGuard, WireGuard: testWarpIdentity(),
+	})
+
+	var found bool
+	for _, out := range doc.Outbounds {
+		if out.Tag != xray.WarpTag {
+			continue
+		}
+		found = true
+		if out.Protocol != "wireguard" {
+			t.Fatalf("warp outbound protocol = %q, want wireguard", out.Protocol)
+		}
+		if !out.Settings.NoKernelTun {
+			t.Error("noKernelTun is off, so the core would create a TUN device and touch host routing")
+		}
+		if out.Settings.MTU != 1280 {
+			t.Errorf("mtu = %d, want the configured 1280", out.Settings.MTU)
+		}
+		if len(out.Settings.Address) != 2 {
+			t.Errorf("addresses = %v, want the v4 and v6 tunnel addresses", out.Settings.Address)
+		}
+		if len(out.Settings.Peers) != 1 {
+			t.Fatalf("peers = %+v, want one", out.Settings.Peers)
+		}
+		peer := out.Settings.Peers[0]
+		if peer.Endpoint != "162.159.192.1:2408" || peer.PublicKey == "" {
+			t.Errorf("peer = %+v", peer)
+		}
+		if len(peer.Reserved) != 3 {
+			t.Errorf("reserved = %v, want the three bytes from the registration", peer.Reserved)
+		}
+		if len(peer.AllowedIPs) != 2 {
+			t.Errorf("allowedIPs = %v, want everything", peer.AllowedIPs)
+		}
+	}
+	if !found {
+		t.Fatalf("no outbound %q in %+v", xray.WarpTag, doc.Outbounds)
+	}
+
+	// Rules: the API one, the loopback one, and a single catch-all that names both protocols.
+	if len(doc.Routing.Rules) != 3 {
+		t.Fatalf("rules = %+v", doc.Routing.Rules)
+	}
+	last := doc.Routing.Rules[2]
+	if last.Network != "tcp,udp" || last.BalancerTag != xray.WarpBalancerTag {
+		t.Errorf("the tunnel rule does not carry both protocols through the balancer: %+v", last)
+	}
+	if len(last.Domain) != 0 {
+		t.Errorf("all mode should not narrow the rule: %+v", last)
+	}
+}
+
+func TestWarpWireGuardSelectedNarrowsTheTunnel(t *testing.T) {
+	t.Parallel()
+	doc := warpGenerate(t, xray.WarpSpec{
+		Mode: "selected", Selected: []string{"b.example.com", "a.example.com"}, FailOpen: true,
+		Transport: xray.WarpTransportWireGuard, WireGuard: testWarpIdentity(),
+	})
+	if len(doc.Routing.Rules) != 3 {
+		t.Fatalf("rules = %+v", doc.Routing.Rules)
+	}
+	last := doc.Routing.Rules[2]
+	if strings.Join(last.Domain, ",") != "a.example.com,b.example.com" {
+		t.Errorf("domains = %v, want a sorted list", last.Domain)
+	}
+	if last.Network != "tcp,udp" {
+		t.Errorf("a selected tunnel rule must still cover UDP: %+v", last)
+	}
+}
+
+func TestWarpWireGuardRefusesAnIncompleteIdentity(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		mutate func(*xray.WireGuardIdentity)
+		want   string
+	}{
+		{"no identity at all", nil, "needs an identity"},
+		{"no secret key", func(id *xray.WireGuardIdentity) { id.SecretKey = "" }, "no secret key"},
+		{"no peer key", func(id *xray.WireGuardIdentity) { id.PublicKey = "" }, "no peer public key"},
+		{"no endpoint", func(id *xray.WireGuardIdentity) { id.Endpoint = "" }, "no endpoint"},
+		{"no address", func(id *xray.WireGuardIdentity) { id.Addresses = nil }, "no tunnel address"},
+		{"two reserved bytes", func(id *xray.WireGuardIdentity) { id.Reserved = []int{1, 2} }, "want 3"},
+		{"an mtu out of range", func(id *xray.WireGuardIdentity) { id.MTU = 9000 }, "out of range"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			spec := testSpec()
+			spec.Warp = xray.WarpSpec{Mode: "all", Transport: xray.WarpTransportWireGuard}
+			if tc.mutate != nil {
+				identity := testWarpIdentity()
+				tc.mutate(identity)
+				spec.Warp.WireGuard = identity
+			}
+			_, err := xray.Generate(spec)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Generate = %v, want an error containing %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestWarpRefusesAnUnknownTransport(t *testing.T) {
+	t.Parallel()
+	spec := testSpec()
+	spec.Warp = xray.WarpSpec{Mode: "all", Transport: "masque"}
+	_, err := xray.Generate(spec)
+	if err == nil || !strings.Contains(err.Error(), "must be proxy or wireguard") {
+		t.Fatalf("Generate = %v, want a refusal naming the two transports", err)
 	}
 }
 

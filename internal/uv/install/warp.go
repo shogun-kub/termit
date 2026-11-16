@@ -2,6 +2,8 @@ package install
 
 import (
 	"context"
+	"errors"
+	"io/fs"
 
 	"github.com/shogun-kub/termit/internal/uv/warp"
 )
@@ -31,6 +33,17 @@ func (s *warpStep) Check(ctx context.Context) (CheckResult, error) {
 	if !s.e.cfg.Warp.UsesWarp() {
 		return CheckResult{Satisfied: true, Detail: "off"}, nil
 	}
+	if s.e.cfg.Warp.UsesWireGuard() {
+		// Offline on purpose, like the rest of this check: the identity is a file, and whether
+		// Cloudflare would still accept it is the observatory's business, not the installer's.
+		if _, err := warp.LoadIdentity(s.e.cfg.Paths.WarpIdentityPath()); err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return CheckResult{Detail: "no WARP identity yet"}, nil
+			}
+			return CheckResult{}, err
+		}
+		return CheckResult{Satisfied: true, Detail: "wireguard, registered"}, nil
+	}
 	client := s.client()
 	if err := client.Host.Check(); err != nil {
 		return CheckResult{Satisfied: true, Detail: err.Error()}, nil
@@ -49,7 +62,27 @@ func (s *warpStep) Check(ctx context.Context) (CheckResult, error) {
 }
 
 func (s *warpStep) Run(ctx context.Context) error {
+	if s.e.cfg.Warp.UsesWireGuard() {
+		return s.ensureIdentity(ctx)
+	}
 	return s.client().Ensure(ctx)
+}
+
+// ensureIdentity registers the node once. It is deliberately not idempotent in the "replace" sense: a
+// registration is a device on Cloudflare's side, and a re-run of init that minted a new one every time
+// would leave a trail of forgotten devices. Only a broken file is an error worth failing the step.
+func (s *warpStep) ensureIdentity(ctx context.Context) error {
+	path := s.e.cfg.Paths.WarpIdentityPath()
+	if _, err := warp.LoadIdentity(path); err == nil {
+		return nil
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	identity, err := s.e.registrar.Register(ctx)
+	if err != nil {
+		return err
+	}
+	return warp.SaveIdentity(path, identity)
 }
 
 // warpRunner adapts the install executor to the warp package's small command interface.

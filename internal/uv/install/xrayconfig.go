@@ -11,6 +11,7 @@ import (
 
 	"github.com/shogun-kub/termit/internal/uv/service"
 	"github.com/shogun-kub/termit/internal/uv/state"
+	"github.com/shogun-kub/termit/internal/uv/warp"
 	"github.com/shogun-kub/termit/internal/uv/xray"
 )
 
@@ -36,9 +37,20 @@ func (s *xrayConfigStep) spec() (xray.Spec, error) {
 	spec.Path = "/" + s.e.st.Identity.XHTTPPath + "/"
 	spec.BlockBitTorrent = s.e.cfg.Security.BitTorrentBlock
 	spec.Warp = xray.WarpSpec{
-		Mode:     s.e.cfg.Warp.Mode,
-		Selected: s.e.cfg.Warp.Selected,
-		FailOpen: s.e.cfg.Warp.FailOpenEnabled(),
+		Mode:      s.e.cfg.Warp.Mode,
+		Selected:  s.e.cfg.Warp.Selected,
+		FailOpen:  s.e.cfg.Warp.FailOpenEnabled(),
+		Transport: s.e.cfg.Warp.TransportOrDefault(),
+	}
+	// The wireguard transport is the core's own tunnel, so the identity is an input to the document. It
+	// is only required when WARP is meant to carry traffic: a node with the mode off keeps its
+	// registration on disk for the day the operator turns WARP back on.
+	if spec.Warp.Enabled() && spec.Warp.Transport == xray.WarpTransportWireGuard {
+		identity, err := warp.LoadIdentity(s.e.cfg.Paths.WarpIdentityPath())
+		if err != nil {
+			return spec, fmt.Errorf("warp identity: %w", err)
+		}
+		spec.Warp.WireGuard = wireGuardIdentity(identity)
 	}
 	spec.Clients = []xray.Client{{ID: s.e.st.Identity.SelfUUID, Email: ownerEmail}}
 	for _, user := range s.e.st.LocalUsers {
@@ -58,6 +70,22 @@ func (s *xrayConfigStep) spec() (xray.Spec, error) {
 		spec.Clients = append(spec.Clients, xray.Client{ID: peer.UUID, Email: "peer-" + peer.ID + "@termit"})
 	}
 	return spec, nil
+}
+
+// wireGuardIdentity maps our stored registration onto the generator's plain input. The reserved bytes
+// become ints because that is how the core's JSON carries them.
+func wireGuardIdentity(identity *warp.Identity) *xray.WireGuardIdentity {
+	reserved := make([]int, len(identity.Reserved))
+	for i, b := range identity.Reserved {
+		reserved[i] = int(b)
+	}
+	return &xray.WireGuardIdentity{
+		SecretKey: identity.PrivateKey,
+		Addresses: identity.Addresses,
+		PublicKey: identity.PeerPublicKey,
+		Endpoint:  identity.Endpoint,
+		Reserved:  reserved,
+	}
 }
 
 // localEmail turns a device into the address the core logs. The label is free text, so it cannot be

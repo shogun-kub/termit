@@ -515,12 +515,23 @@ direct while WARP does not answer. Recovery is equally automatic. With `fail_ope
 names the WARP outbound directly, so the node fails closed instead — the right choice for an owner who
 would rather lose connectivity than expose the address.
 
-UDP never goes through WARP: `warp-cli` in proxy mode is a SOCKS5 listener without UDP ASSOCIATE, so a
-UDP flow handed to it never returns — and the first thing a client sends is DNS. The generated route
-therefore splits the catch-all in two: TCP takes the WARP hop (through the balancer when fail-open is
-on), UDP exits `direct` from the node's address. Names resolve and QUIC works; what a UDP destination
-sees is the node, not Cloudflare. A WARP that carries UDP needs the WireGuard client rather than the
-proxy, which is on the backlog in `IMPLEMENTATION_PLAN.md`.
+### 6.1 The transport: WireGuard inside the core, or the proxy
+
+`warp.transport` decides where the tunnel lives. `wireguard` is a WireGuard outbound inside the core —
+one process, no package, no loopback port — and it carries UDP as well as TCP. `proxy` is how 0.3.x
+installed the node: `warp-cli` in proxy mode, a SOCKS5 listener carrying TCP only.
+
+```bash
+termit-uv init --warp-transport wireguard   # registers the node, writes the identity, applies it
+termit-uv warp status                       # mode, transport, and where traffic really leaves
+termit-uv warp rotate                       # a new WARP identity, deliberately
+```
+
+A configuration written before the key existed reads as `proxy`, and nothing migrates it silently: the
+next `init --warp-transport wireguard` registers the node and applies the new route. Switching back is
+the same flag with `proxy`, which reinstalls `cloudflare-warp` and restores the split route. The identity
+is `/var/lib/termit/uv/warp.yaml`, `0600`, written once — a re-run of `init` reuses it, and `uninstall
+--purge` removes it with the rest of the state.
 
 If the host cannot run WARP (no `/dev/net/tun`, unsupported architecture), `termit-uv init` and `termit-uv warp mode`
 say so with the exact reason and the node keeps working with direct egress. Nothing is silently

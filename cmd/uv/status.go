@@ -300,12 +300,16 @@ func describeWarp(cfg *config.Config, report *state.SelfCheckReport) jsonWarpSta
 		return out
 	}
 	// The host fact comes first: a container without a tun device reports an honest "unavailable"
-	// rather than the "on" a converged self-check item would otherwise suggest.
-	if err := (warp.Host{}).Check(); err != nil {
-		out.State = "unavailable"
-		out.Detail = err.Error()
-		return out
+	// rather than the "on" a converged self-check item would otherwise suggest. It is a fact about the
+	// proxy transport only: the tunnel inside the core needs no device.
+	if !cfg.Warp.UsesWireGuard() {
+		if err := (warp.Host{}).Check(); err != nil {
+			out.State = "unavailable"
+			out.Detail = err.Error()
+			return out
+		}
 	}
+
 	out.State = "unknown"
 	if report == nil {
 		out.Detail = "no self-check has run yet"

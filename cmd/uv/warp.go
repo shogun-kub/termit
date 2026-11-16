@@ -9,17 +9,24 @@ import (
 
 	"github.com/shogun-kub/termit/internal/uv/config"
 	"github.com/shogun-kub/termit/internal/uv/install"
+	"github.com/shogun-kub/termit/internal/uv/state"
+	"github.com/shogun-kub/termit/internal/uv/tunnelprobe"
 	"github.com/shogun-kub/termit/internal/uv/warp"
+	"github.com/shogun-kub/termit/internal/uv/xray"
 )
 
 // jsonWarp is the machine-readable egress report.
 type jsonWarp struct {
-	Mode     string      `json:"mode"`
-	State    string      `json:"state"`
-	Detail   string      `json:"detail,omitempty"`
-	Socks    string      `json:"socks,omitempty"`
-	Selected []string    `json:"selected,omitempty"`
-	Trace    *warp.Trace `json:"trace,omitempty"`
+	Mode      string      `json:"mode"`
+	Transport string      `json:"transport"`
+	State     string      `json:"state"`
+	Detail    string      `json:"detail,omitempty"`
+	Socks     string      `json:"socks,omitempty"`
+	Selected  []string    `json:"selected,omitempty"`
+	Trace     *warp.Trace `json:"trace,omitempty"`
+	// DeviceID and Peer describe the wireguard identity. The key material is never in this report.
+	DeviceID string `json:"device_id,omitempty"`
+	Peer     string `json:"peer,omitempty"`
 }
 
 func (a *application) runWarp(args []string) int {
@@ -31,6 +38,8 @@ func (a *application) runWarp(args []string) int {
 			return a.runWarpMode(args[1:])
 		case "status":
 			return a.runWarpStatus(args[1:])
+		case "rotate":
+			return a.runWarpRotate(args[1:])
 		}
 	}
 	return a.runWarpStatus(args)
@@ -56,33 +65,39 @@ through the tunnel says Cloudflare sees. WARP is on by default; `+"`termit-uv wa
 		fmt.Fprintf(a.stderr, "termit-uv warp: %v\n", err)
 		return exitFailure
 	}
-	report := jsonWarp{Mode: cfg.Warp.Mode, Socks: warp.SocksAddress, Selected: cfg.Warp.Selected}
-	client := a.warpClient()
-	hostErr := client.Host.Check()
-	switch {
-	case !cfg.Warp.UsesWarp():
-		report.State = "off"
-		report.Detail = "proxied traffic exits directly"
-	case hostErr != nil:
-		report.State = "unavailable"
-		report.Detail = hostErr.Error()
-	default:
-		status, err := client.Status(context.Background())
-		if err != nil {
-			fmt.Fprintf(a.stderr, "termit-uv warp: %v\n", err)
-			return exitFailure
+	report := jsonWarp{Mode: cfg.Warp.Mode, Transport: cfg.Warp.TransportOrDefault(), Socks: warp.SocksAddress, Selected: cfg.Warp.Selected}
+	if cfg.Warp.UsesWireGuard() {
+		if code := a.wireGuardStatus(cfg, &report); code != exitOK {
+			return code
 		}
-		report.Detail = status.Detail
-		report.Trace = status.Trace
+	} else {
+		client := a.warpClient()
+		hostErr := client.Host.Check()
 		switch {
-		case status.Healthy():
-			report.State = "on"
-		case status.State == "missing":
-			report.State = "not-installed"
+		case !cfg.Warp.UsesWarp():
+			report.State = "off"
+			report.Detail = "proxied traffic exits directly"
+		case hostErr != nil:
+			report.State = "unavailable"
+			report.Detail = hostErr.Error()
 		default:
-			report.State = "direct"
-			if !cfg.Warp.FailOpenEnabled() {
-				report.State = "blocked"
+			status, err := client.Status(context.Background())
+			if err != nil {
+				fmt.Fprintf(a.stderr, "termit-uv warp: %v\n", err)
+				return exitFailure
+			}
+			report.Detail = status.Detail
+			report.Trace = status.Trace
+			switch {
+			case status.Healthy():
+				report.State = "on"
+			case status.State == "missing":
+				report.State = "not-installed"
+			default:
+				report.State = "direct"
+				if !cfg.Warp.FailOpenEnabled() {
+					report.State = "blocked"
+				}
 			}
 		}
 	}
@@ -101,8 +116,18 @@ through the tunnel says Cloudflare sees. WARP is on by default; `+"`termit-uv wa
 	if report.Detail != "" {
 		fmt.Fprintf(a.stdout, "detail:  %s\n", report.Detail)
 	}
-	if cfg.Warp.UsesWarp() {
+	if report.Transport == config.WarpTransportWireGuard {
+		fmt.Fprintf(a.stdout, "tunnel:  wireguard (inside the core)\n")
+		if report.DeviceID != "" {
+			fmt.Fprintf(a.stdout, "identity: %s\n", report.DeviceID)
+		}
+		if report.Peer != "" {
+			fmt.Fprintf(a.stdout, "peer:    %s\n", report.Peer)
+		}
+	} else if cfg.Warp.UsesWarp() {
 		fmt.Fprintf(a.stdout, "socks:   %s\n", report.Socks)
+	}
+	if cfg.Warp.UsesWarp() {
 		if cfg.Warp.Mode == config.WarpSelected {
 			fmt.Fprintf(a.stdout, "domains: %s\n", strings.Join(report.Selected, ", "))
 		}
@@ -214,5 +239,91 @@ func (a *application) applyWarpRoute(cfg *config.Config, configPath string) int 
 			return exitFailure
 		}
 	}
+	return exitOK
+}
+
+// wireGuardStatus reports the transport that lives inside the core. There is no sidecar to ask and no
+// SOCKS port to dial, so the exit is checked the way a client would check it: through the tunnel,
+// against Cloudflare's trace. A probe that cannot run is a skip, never a claim.
+func (a *application) wireGuardStatus(cfg *config.Config, report *jsonWarp) int {
+	if !cfg.Warp.UsesWarp() {
+		report.State = "off"
+		report.Detail = "proxied traffic exits directly"
+		return exitOK
+	}
+	identity, err := warp.LoadIdentity(cfg.Paths.WarpIdentityPath())
+	if err != nil {
+		report.State = "not-installed"
+		report.Detail = "no WARP identity: " + err.Error()
+		return exitOK
+	}
+	report.DeviceID = identity.DeviceID
+	report.Peer = identity.Endpoint
+	node, err := state.LoadInstalled(cfg.Paths.StatePath())
+	if err != nil {
+		report.State = "unknown"
+		report.Detail = "the node has no identity to probe with: " + err.Error()
+		return exitOK
+	}
+	body, err := tunnelprobe.Fetch(context.Background(), tunnelprobe.Options{
+		XrayBinary: cfg.Paths.XrayBinary(),
+		ProxyAddr:  fmt.Sprintf("%s:%d", xray.DefaultListen, xray.DefaultPort),
+		Path:       "/" + node.Identity.XHTTPPath + "/",
+		UUID:       node.Identity.SelfUUID,
+		TargetURL:  xray.WarpProbeURL,
+	})
+	if err != nil {
+		report.State = "unknown"
+		report.Detail = "the probe through the tunnel failed: " + err.Error()
+		return exitOK
+	}
+	trace := warp.ParseTrace(body)
+	report.Trace = &trace
+	if trace.ThroughWarp() {
+		report.State = "on"
+		report.Detail = "via " + trace.IP
+		return exitOK
+	}
+	report.State = "direct"
+	report.Detail = "the tunnel exits at " + trace.IP
+	if !cfg.Warp.FailOpenEnabled() {
+		report.State = "blocked"
+	}
+	return exitOK
+}
+
+// runWarpRotate replaces the node's WARP registration on the wireguard transport. It is a deliberate
+// act: a new identity is a new device on Cloudflare's side, and the old one keeps existing there. The
+// proxy transport has nothing to rotate — warp-cli owns its registration.
+func (a *application) runWarpRotate(args []string) int {
+	flags := a.newFlagSet("warp rotate", `Registers this node with Cloudflare again, replacing the WARP identity the
+core's WireGuard outbound uses. The old device stays on Cloudflare's side; this command gives the node a
+new one.`)
+	configFlag := flags.String("config", configPathDefault(), "path to config.yaml")
+	if err := flags.Parse(args); err != nil {
+		return a.flagError(err)
+	}
+	cfg, err := a.loadConfig(*configFlag)
+	if err != nil {
+		fmt.Fprintf(a.stderr, "termit-uv warp rotate: %v\n", err)
+		return exitFailure
+	}
+	if !cfg.Warp.UsesWireGuard() {
+		fmt.Fprintf(a.stderr, "termit-uv warp rotate: this node uses the proxy transport, where warp-cli owns the registration\n")
+		return exitUsage
+	}
+	identity, err := warp.Registrar{}.Register(context.Background())
+	if err != nil {
+		fmt.Fprintf(a.stderr, "termit-uv warp rotate: %v\n", err)
+		return exitFailure
+	}
+	if err := warp.SaveIdentity(cfg.Paths.WarpIdentityPath(), identity); err != nil {
+		fmt.Fprintf(a.stderr, "termit-uv warp rotate: %v\n", err)
+		return exitFailure
+	}
+	if code := a.applyWarpRoute(cfg, *configFlag); code != exitOK {
+		return code
+	}
+	fmt.Fprintf(a.stdout, "warp: new identity %s, endpoint %s\n", identity.DeviceID, identity.Endpoint)
 	return exitOK
 }

@@ -52,6 +52,9 @@ type Options struct {
 	// WarpHost overrides the platform facts the WARP step judges. Tests set it; production leaves it
 	// nil so the real host decides.
 	WarpHost *warp.Host
+	// Registrar creates the WARP identity on the wireguard transport. The zero value talks to
+	// Cloudflare; tests point its BaseURL at a local server.
+	Registrar warp.Registrar
 }
 
 // Installer runs the install steps in order and records them in the journal.
@@ -131,6 +134,7 @@ func New(opts Options) (*Installer, error) {
 	if opts.WarpHost != nil {
 		env.warpHost = opts.WarpHost
 	}
+	env.registrar = opts.Registrar
 	return &Installer{
 		cfg:         cfg,
 		st:          st,

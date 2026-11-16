@@ -2,6 +2,9 @@ package install
 
 import (
 	"context"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -140,5 +143,68 @@ func TestWarpStepReportsAConvergedSidecarAsPresent(t *testing.T) {
 	}
 	if !strings.Contains(report.Steps[0].Detail, "connected") {
 		t.Errorf("detail = %q", report.Steps[0].Detail)
+	}
+}
+
+// wireguardRegistrar is a fake Cloudflare: it answers one registration and counts how many times it was
+// asked, which is what proves the second run of init reuses the identity.
+func wireguardRegistrar(t *testing.T, calls *int) warp.Registrar {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		*calls++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{
+		  "id": "device-1",
+		  "config": {
+		    "client_id": "8BmS",
+		    "peers": [{"public_key": "peer-key", "endpoint": {"host": "162.159.192.1:2408"}}],
+		    "interface": {"addresses": {"v4": "172.16.0.2", "v6": "2606:4700:110:8d9c::2"}}
+		  }
+		}`)
+	}))
+	t.Cleanup(server.Close)
+	return warp.Registrar{BaseURL: server.URL}
+}
+
+// The wireguard transport does not install a sidecar: it registers a device once and keeps the identity.
+func TestWarpStepRegistersTheWireGuardIdentityOnce(t *testing.T) {
+	t.Parallel()
+	cfg := warpConfig(t, config.WarpAll)
+	cfg.Warp.Transport = config.WarpTransportWireGuard
+	exec := &fakeExecutor{handler: func(Cmd) (Result, error) { return okResult("") }}
+	calls := 0
+
+	installer, err := New(Options{Config: cfg, Exec: exec, WarpHost: supportedHost(t), Registrar: wireguardRegistrar(t, &calls)})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	ctx := context.Background()
+	if report, err := installer.Run(ctx, RunOptions{Command: "init", Only: []string{"warp"}}); err != nil {
+		t.Fatalf("Run: %v\n%+v", err, report)
+	}
+	if calls != 1 {
+		t.Fatalf("the registrar was called %d times, want 1", calls)
+	}
+	identity, err := warp.LoadIdentity(cfg.Paths.WarpIdentityPath())
+	if err != nil {
+		t.Fatalf("LoadIdentity: %v", err)
+	}
+	if identity.DeviceID != "device-1" || identity.Endpoint != "162.159.192.1:2408" {
+		t.Errorf("identity = %+v", identity)
+	}
+
+	// A second run must find the identity and leave Cloudflare alone.
+	second, err := New(Options{Config: cfg, Exec: exec, WarpHost: supportedHost(t), Registrar: wireguardRegistrar(t, &calls)})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if report, err := second.Run(ctx, RunOptions{Command: "init", Only: []string{"warp"}}); err != nil {
+		t.Fatalf("second Run: %v\n%+v", err, report)
+	}
+	if calls != 1 {
+		t.Errorf("the second run registered again (%d calls)", calls)
+	}
+	if !strings.Contains(second.Steps()[4].Name(), "warp") {
+		t.Fatal("the pipeline moved; this test assumed warp is the fifth step")
 	}
 }
