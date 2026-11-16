@@ -515,6 +515,13 @@ direct while WARP does not answer. Recovery is equally automatic. With `fail_ope
 names the WARP outbound directly, so the node fails closed instead — the right choice for an owner who
 would rather lose connectivity than expose the address.
 
+UDP never goes through WARP: `warp-cli` in proxy mode is a SOCKS5 listener without UDP ASSOCIATE, so a
+UDP flow handed to it never returns — and the first thing a client sends is DNS. The generated route
+therefore splits the catch-all in two: TCP takes the WARP hop (through the balancer when fail-open is
+on), UDP exits `direct` from the node's address. Names resolve and QUIC works; what a UDP destination
+sees is the node, not Cloudflare. A WARP that carries UDP needs the WireGuard client rather than the
+proxy, which is on the backlog in `IMPLEMENTATION_PLAN.md`.
+
 If the host cannot run WARP (no `/dev/net/tun`, unsupported architecture), `termit-uv init` and `termit-uv warp mode`
 say so with the exact reason and the node keeps working with direct egress. Nothing is silently
 degraded, and `termit-uv uninstall` disconnects the tunnel it left behind.

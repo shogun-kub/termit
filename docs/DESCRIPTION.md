@@ -515,6 +515,9 @@ Egress, from `config.yaml`:
   sidecar unresolved, so the lookup happens inside the tunnel and does not leak the node's resolver.
 - `warp.mode: selected` — only the domains in `warp.selected` (each also covering its subdomains)
   use WARP; everything else is direct.
+- **UDP** — never through WARP: proxy mode is SOCKS5 without UDP ASSOCIATE. The catch-all rule is split,
+  TCP to the tunnel (the balancer when fail-open is on) and UDP to `direct`, so DNS and QUIC leave from
+  the node's address instead of disappearing.
 - **Failure policy** — `warp.fail_open`, default `true`. Fail-open is implemented *inside the core*,
   not by rewriting the configuration: an Xray `observatory` fetches the trace through the WARP
   outbound every 30 s, and a `balancer` over that outbound has `fallbackTag: direct`. While WARP

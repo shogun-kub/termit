@@ -21,6 +21,11 @@ holding.
 
 ### Fixed
 
+- **UDP through the tunnel was a black hole.** `warp-cli` in proxy mode is a SOCKS5 listener without
+  UDP ASSOCIATE, and every flow — DNS first — was routed into it, so a client that resolved names
+  through the node got nothing back while TCP worked. The route now splits: TCP takes the WARP hop, UDP
+  exits `direct` from the node's address. Names resolve, QUIC works, and what UDP destinations see is
+  the node rather than Cloudflare. A WARP that carries UDP needs WireGuard, which is on the backlog.
 - **The agent's daily cycle left the page describing yesterday's mesh.** `termit-uv sync` refreshed the
   page and the cycle that runs on its own did not, so a peer added or removed on the server reached the
   core and not the page until an operator ran something. The cycle now renders the page after it applies
