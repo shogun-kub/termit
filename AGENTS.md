@@ -287,13 +287,16 @@ already passed CI and the lab.
   allowed. There is no version file to edit — `deploy/release --version v<version>` stamps the binaries,
   so the branch name, the tag and `--version` must agree.
 - **Pre-release** is started by hand: `workflow_dispatch` of `.github/workflows/release.yaml` on a
-  `release/<version>` branch with `publish_prerelease` set. It builds both binaries, `uv.sh`, the unit
-  and `SHA256SUMS`, and may publish them as a pre-release tagged `pre-v<version>-<run>`. Nothing is
-  published from `dev` or `main`.
+  `release/<version>` branch with `publish_prerelease` set. It builds both binaries, `uv.sh`, the units
+  and `SHA256SUMS`, and may publish them as a pre-release named **`v<version>p<n>`** — `v0.3.2p1` is the
+  first build of `0.3.2` from its release branch, `v0.3.2p2` the second, and `n` never resets for a
+  version: the existing tags are the counter. Nothing is published from `dev` or `main`. The artifacts
+  carry the pre-release version itself, so `uv.sh --version v0.3.2p1` installs exactly that build, and
+  the changelog section of `0.3.2` supplies its notes.
 - **Final release:** merge `release/<version>` into `dev` and into `main`, delete the branch, then create
   an annotated tag `v<version>` on `main`. Pushing the tag runs the final build and publishes the GitHub
   Release. The release stays marked pre-release until that release's own production pass is recorded in
-  `docs/IMPLEMENTATION_PLAN.md` (M4.3 for `0.2.1`, M5.8 for `0.3.1`); flipping the flag is a deliberate,
+  `docs/IMPLEMENTATION_PLAN.md` (M4.3 for `0.2.1`, M5.8 for `0.3.2`); flipping the flag is a deliberate,
   recorded act.
 - **The release body is the changelog's section for that version** — `go run ./deploy/release --version
   v<version> --notes` prints it, and CI uses exactly that. Write `CHANGELOG.md` (and `CHANGELOG.ru.md`,

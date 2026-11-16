@@ -35,6 +35,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -71,8 +72,10 @@ var extraFiles = []struct {
 }
 
 // versionPattern is the shape of a release tag. A version that does not match would produce asset
-// names the installer's parser cannot be trusted with, so it is refused rather than sanitised.
-var versionPattern = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$`)
+// names the installer's parser cannot be trusted with, so it is refused rather than sanitised. The
+// `p<n>` suffix is the pre-release counter: `v0.3.2p1` is the first build of 0.3.2 from its release
+// branch, `v0.3.2p2` the second, and neither is a release anyone installs on purpose.
+var versionPattern = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+((p[0-9]+)|(-[0-9A-Za-z.-]+))?$`)
 
 func main() {
 	if err := run(os.Args[1:], os.Stdout, os.Stderr); err != nil {
@@ -199,7 +202,7 @@ func writeNotes(path, version string, stdout io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("read the changelog: %w", err)
 	}
-	want := "## " + strings.TrimPrefix(version, "v")
+	want := "## " + baseVersion(version)
 	lines := strings.Split(string(data), "\n")
 	start := -1
 	for i, line := range lines {
@@ -230,6 +233,18 @@ func writeNotes(path, version string, stdout io.Writer) error {
 	}
 	fmt.Fprintln(stdout, body)
 	return nil
+}
+
+// baseVersion is the release a version belongs to: a pre-release `v0.3.2p3` is described by the 0.3.2
+// section of the changelog, because the alternative would be a section per build.
+func baseVersion(version string) string {
+	base := strings.TrimPrefix(version, "v")
+	if i := strings.IndexByte(base, 'p'); i > 0 {
+		if _, err := strconv.Atoi(base[i+1:]); err == nil {
+			return base[:i]
+		}
+	}
+	return base
 }
 
 // assetName is the contract with the installer. It is a function so a test can pin it.

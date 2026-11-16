@@ -48,7 +48,7 @@ Usage: uv.sh --version VERSION [--domain NAME] [options]
 Install or upgrade one Termit node. Must run as root on Debian 13, amd64 or arm64.
 
 Required on a first install:
-  --version VERSION        release to install, e.g. v0.3.1 or v0.3.1-rc1
+  --version VERSION        release to install, e.g. v0.3.1 or v0.3.2p1
   --domain NAME            the node's public name; its A/AAAA record must already point here
   --mn URL                 management server URL, e.g. https://mn.example.com
   --invite CODE            invite code from `termit-mn invite create`

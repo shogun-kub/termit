@@ -28,7 +28,7 @@ func TestAssetNamesAreTheInstallerContract(t *testing.T) {
 
 func TestVersionPattern(t *testing.T) {
 	t.Parallel()
-	accepted := []string{"v0.1.0", "v1.2.3", "v10.20.30", "v0.1.0-rc1", "v0.1.0-beta.2"}
+	accepted := []string{"v0.1.0", "v1.2.3", "v10.20.30", "v0.1.0-rc1", "v0.1.0-beta.2", "v0.3.2p1", "v0.3.2p12"}
 	for _, version := range accepted {
 		if !versionPattern.MatchString(version) {
 			t.Errorf("%q was refused", version)
@@ -36,7 +36,7 @@ func TestVersionPattern(t *testing.T) {
 	}
 	// A version that does not match would produce asset names the installer's parser cannot be
 	// trusted with; refusing is the only safe answer.
-	refused := []string{"", "0.1.0", "v1", "v1.2", "latest", "v1.2.3/../../x", "v1.2.3 ", "V1.2.3"}
+	refused := []string{"", "0.1.0", "v1", "v1.2", "latest", "v1.2.3/../../x", "v1.2.3 ", "V1.2.3", "v0.3.2p", "v0.3.2p0x"}
 	for _, version := range refused {
 		if versionPattern.MatchString(version) {
 			t.Errorf("%q was accepted", version)
@@ -155,6 +155,15 @@ func TestWriteNotesTakesTheSectionForTheVersion(t *testing.T) {
 	out.Reset()
 	if err := writeNotes(path, "v0.3.0", &out); err == nil || !strings.Contains(err.Error(), "unreleased") {
 		t.Errorf("an unreleased section = %v, want a refusal", err)
+	}
+	// A pre-release of a version is described by that version's section: the counter would otherwise
+	// need a changelog entry per build.
+	out.Reset()
+	if err := writeNotes(path, "v0.2.1p4", &out); err != nil {
+		t.Fatalf("a pre-release of 0.2.1 = %v, want the 0.2.1 section", err)
+	}
+	if !strings.Contains(out.String(), "## 0.2.1 — 2026-11-14") {
+		t.Errorf("the pre-release notes are not 0.2.1's:\n%s", out.String())
 	}
 }
 

@@ -1150,14 +1150,18 @@ there: `.github/workflows/release.yaml` builds the directory, runs `sha256sum -c
 `uv.sh` is executable, and attaches everything to the GitHub release, including `uv.sh` — the
 documentation's install URL points at `releases/download/<version>/uv.sh`. The workflow marks the
 release `prerelease: true`: clearing that flag is the deliberate act that records that release's own
-production pass — `docs/IMPLEMENTATION_PLAN.md` M4.3 for `0.2.1`, M5.8 for `0.3.1`. A maintainer can do
+production pass — `docs/IMPLEMENTATION_PLAN.md` M4.3 for `0.2.1`, M5.8 for `0.3.2`. A maintainer can do
 the same by hand with `gh release create` and the files from `dist/<version>/`; the assets are plain
 files, so nothing depends on the workflow.
 
 Before that tag exists, a `release/<version>` branch can be built by hand —
-`gh workflow run release.yaml --ref release/v0.1.1 -f publish_prerelease=true` — which attaches the same
-six files to a pre-release tagged `pre-v<version>-<run>`. That is how testers get a build without
-anything being published from `dev` or from `main`.
+`gh workflow run release.yaml --ref release/v0.3.2 -f publish_prerelease=true`. The workflow numbers the
+build itself: the pre-release is named `v<version>p<n>`, where `n` is one more than the highest
+`v<version>p*` tag that already exists, so the first build of 0.3.2 is `v0.3.2p1` and the counter never
+resets for that version. The artifacts carry that same version — `v0.3.2p1` is installed with
+`sh uv.sh --version v0.3.2p1` — and the release body is the `0.3.2` section of the changelog, because a
+section per build would be noise. That is how testers get a build without anything being published from
+`dev` or from `main`.
 
 CI gates on every push to `main`, `dev` and `release/**`, and on tags and pull requests: `gofmt`,
 `go vet`, the unit suite with `-race`, the cross-build, the release tool's own tests, and

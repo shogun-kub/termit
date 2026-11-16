@@ -3,7 +3,7 @@
 What each release changed, written for the people who run Termit. Newest first;
 `0.1.1` was prepared but never released — its work is part of `0.2.0`.
 
-## 0.3.2 — unreleased
+## 0.3.2 — 2026-11-16
 
 The owner's page catches up with what the node knows, and starts listing the devices it was already
 holding.
