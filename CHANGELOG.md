@@ -13,6 +13,11 @@ holding.
 - **The page lists local devices.** A phone added with `termit-uv device add` now appears on the page
   with its link, so the owner copies it from the browser instead of scrolling a terminal. Adding or
   removing a device re-renders the page.
+- **One link carries every client's fragmentation switch.** A link from the node — the page, `termit-uv
+  uri`, `device add` — and every line of the subscription list now carries `sb.tls.fragment=1` and
+  `sb.tls.record_fragment=1` beside Happ's `fragment=…`, which is how `podkop-engine` and the patched
+  sing-box builds read fragmentation from a URI. Clients ignore the dialect they do not use, so nothing
+  needs a second link or a hand edit.
 
 ### Fixed
 

@@ -187,3 +187,37 @@ func TestHappFragmentIsValidatedAndAppended(t *testing.T) {
 		t.Errorf("an empty value changed the URI: %s", got)
 	}
 }
+
+// TestAddSingBoxFragmentSetsPodkopsSwitches: the same two settings the profile carries as tls.fragment
+// and tls.record_fragment, spelled the way a client that reads a link understands them.
+func TestAddSingBoxFragmentSetsPodkopsSwitches(t *testing.T) {
+	t.Parallel()
+	uri, err := proto.BuildVLESSUrl(proto.Profile{
+		Domain: "node.example.com",
+		UUID:   "11111111-2222-4333-8444-555555555555",
+		Path:   "/0123456789abcdef/",
+		Label:  "node.example.com",
+	})
+	if err != nil {
+		t.Fatalf("BuildVLESSUrl: %v", err)
+	}
+
+	both := proto.AddSingBoxFragment(uri, true, true)
+	if !strings.Contains(both, "sb.tls.fragment=1") || !strings.Contains(both, "sb.tls.record_fragment=1") {
+		t.Errorf("the switches are not in the URI: %s", both)
+	}
+	if !strings.HasSuffix(both, "#node.example.com") {
+		t.Errorf("the label moved: %s", both)
+	}
+	if _, err := proto.ParseVLESSUrl(both); err != nil {
+		t.Errorf("a URI with the switches does not parse: %v", err)
+	}
+
+	segmentOnly := proto.AddSingBoxFragment(uri, true, false)
+	if !strings.Contains(segmentOnly, "sb.tls.fragment=1") || strings.Contains(segmentOnly, "sb.tls.record_fragment") {
+		t.Errorf("segment-only is wrong: %s", segmentOnly)
+	}
+	if got := proto.AddSingBoxFragment(uri, false, false); got != uri {
+		t.Errorf("with both off the URI changed: %s", got)
+	}
+}

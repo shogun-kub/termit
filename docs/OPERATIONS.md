@@ -623,9 +623,12 @@ directory. The consequences are worth knowing:
 - The page is built from what the node can see. If the management server is unreachable it says so and
   shows the local device only, which is exactly when a link is worth having.
 - The node's own entries carry the fragmentation it configured itself (`happ_fragment`), while the mesh
-  entries carry the server's: set both to the same value and the page speaks with one voice. A fresh
-  node writes `proto.DefaultHappFragment`; a configuration that predates the key keeps its links plain,
-  and `termit-uv init --happ-fragment ""` turns it off deliberately.
+  entries carry the server's: set both to the same value and the page speaks with one voice. One link
+  carries every dialect of the switch, because the owner copies it without being asked which client
+  they run: Happ reads `fragment=…`, `podkop-engine` and the patched sing-box builds read
+  `sb.tls.fragment=1` and `sb.tls.record_fragment=1`. A fresh node writes `proto.DefaultHappFragment`; a
+  configuration that predates the key keeps its links plain, and `termit-uv init --happ-fragment ""`
+  turns all three off deliberately.
 - The page is written in the configured language (`locale: ru` or `en`, Russian by default). The menu
   follows the same setting, and so does the server's menu (`locale` in `/etc/termit/mn/config.yaml`),
   but only where the console can show Cyrillic: on a C or latin-1 locale both fall back to English, because a menu of question marks is worse than English. The page never falls
@@ -670,10 +673,12 @@ termit-mn init --record-fragment --happ-fragment 100-200,1-3,tlshello,6   # on
 termit-mn init --no-fragmentation                                        # off, all three
 ```
 
-The two booleans change only the `/json` document, and only by adding the field — never by writing
-`false`. sing-box validates strictly and refuses a profile with a field it does not know, so the
-default has to leave the document untouched and a client that reads the plain list never sees the
-fields at all. `podkop-engine` from r13 knows both. Enable `record_fragment` when connections hang
+The two booleans reach both documents, because the same client may take either. In `/json` they add
+`tls.fragment` and `tls.record_fragment` — never by writing `false`, because sing-box validates strictly
+and refuses a field it does not know, so the default has to leave the document untouched. In the plain
+list they appear per link as `sb.tls.fragment=1` and `sb.tls.record_fragment=1`, the spelling
+`podkop-engine` reads from a URI; a client that does not know a parameter ignores it, so one list still
+serves Happ and podkop alike. `podkop-engine` from r13 knows both. Enable `record_fragment` when connections hang
 right after the handshake starts, or when the same profile works from one network and not another: on
 a path recorded in `podkop-engine`'s notes that froze every Chrome ClientHello, 0 of 15 connections
 got through without it and 15 of 15 with it.

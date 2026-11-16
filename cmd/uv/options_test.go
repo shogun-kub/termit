@@ -217,8 +217,10 @@ func TestOptionsListsTheOwnersDevices(t *testing.T) {
 		if end := strings.IndexByte(row, '<'); end > 0 {
 			row = row[:end]
 		}
-		if !strings.Contains(row, "fragment=100-200,1-3,tlshello,6") {
-			t.Errorf("the device link carries no fragmentation parameter: %s", row)
+		for _, want := range []string{"fragment=100-200,1-3,tlshello,6", "sb.tls.fragment=1", "sb.tls.record_fragment=1"} {
+			if !strings.Contains(row, want) {
+				t.Errorf("the device link is missing %q: %s", want, row)
+			}
 		}
 	}
 }
@@ -338,5 +340,12 @@ func TestOptionsCarriesTheNodesOwnFragmentParameter(t *testing.T) {
 	// fragmented mesh with a plain local entry.
 	if !strings.Contains(string(page), "&amp;fragment=300-500,1-5,tlshello") {
 		t.Errorf("the local link does not carry the node's fragmentation parameter")
+	}
+	// The same link has to work for the clients that read sing-box's switches rather than Happ's
+	// parameter, because the owner copies one link and may not run Happ at all.
+	for _, want := range []string{"sb.tls.fragment=1", "sb.tls.record_fragment=1"} {
+		if !strings.Contains(string(page), want) {
+			t.Errorf("the local link is missing %q", want)
+		}
 	}
 }
