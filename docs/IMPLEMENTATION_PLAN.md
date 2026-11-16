@@ -1344,6 +1344,11 @@ writes its units and `ProtectSystem=strict` did not allow it — that is what 0.
 check now drives both record paths instead of only the confirmed one. A reboot on the production node is
 still worth doing: the lab's boxes are containers, and a container's boot is not a host's.
 
+The build to roll out is the pre-release `v0.3.2p1` (2026-11-16): the `0.3.1` fix, the owner's page
+listing local devices and redrawing itself on every sync, and the `device remove` argument fix. It is
+installed like a release — `sh uv.sh --version v0.3.2p1 …` — and the `p<n>` counter numbers builds of
+the `0.3.2` branch, so a later `v0.3.2p2` supersedes it without renumbering the version itself.
+
 Total: 5–7 days of work. The first half-day — the spike that decided two syntax questions which could
 have re-shaped the rest — is spent and recorded in §5.0.
 
