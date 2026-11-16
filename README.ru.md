@@ -70,8 +70,8 @@ install -m 0644 termit-mn.service /etc/systemd/system/ && systemctl enable --now
 termit-mn invite create --note "node-a"            # печатает код один раз
 
 # на узле (Debian 13, порты 80/443 свободны, DNS указывает на него)
-curl -fsSLO https://github.com/shogun-kub/termit/releases/download/v0.3.1/uv.sh
-sh uv.sh --version v0.3.1 --domain node-a.example.com --email you@example.com \
+curl -fsSLO https://github.com/shogun-kub/termit/releases/download/v0.3.2/uv.sh
+sh uv.sh --version v0.3.2 --domain node-a.example.com --email you@example.com \
   --mn https://mn.example.com --invite ABCD-EFGH-IJKL
 ```
 
@@ -102,9 +102,9 @@ sh uv.sh --version v0.3.1 --domain node-a.example.com --email you@example.com \
 
 ## Состояние
 
-`v0.3.1` — последний выпуск. M1–M5 реализованы и проверены на приёмочной лабе из трёх машин (Debian 13 в
+`v0.3.2` — последний выпуск. M1–M5 реализованы и проверены на приёмочной лабе из трёх машин (Debian 13 в
 непривилегированных контейнерах), конвейер релиза собирает проверенные артефакты под linux/amd64 и
-linux/arm64. `v0.3.2` выпущен, и проход за ним записан в
+linux/arm64. Проход за релизом записан в
 [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) (M5.8): три боевые машины — сервер
 управления в контейнере и две ноды за настоящими доменами, — фаервол хоста подтверждён и пережил
 перезагрузку, движок банов и блок-лист работают, выход через WARP включён, страница владельца открывается
@@ -129,7 +129,7 @@ go test ./cmd/... ./internal/...                  # юнит-тесты
 go vet ./cmd/... ./internal/...
 gofmt -l cmd internal deploy test                 # должно быть пусто
 
-go run ./deploy/release --version v0.3.1 --out dist   # каталог релиза, как его собирает CI
+go run ./deploy/release --version v0.3.2 --out dist   # каталог релиза, как его собирает CI
 ```
 
 Шаблоны пакетов указаны явно намеренно: `references/` содержит сторонний Go-код внутри дерева

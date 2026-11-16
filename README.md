@@ -70,8 +70,8 @@ install -m 0644 termit-mn.service /etc/systemd/system/ && systemctl enable --now
 termit-mn invite create --note "node-a"            # prints the code once
 
 # on the node (Debian 13, ports 80/443 free, DNS pointing at it)
-curl -fsSLO https://github.com/shogun-kub/termit/releases/download/v0.3.1/uv.sh
-sh uv.sh --version v0.3.1 --domain node-a.example.com --email you@example.com \
+curl -fsSLO https://github.com/shogun-kub/termit/releases/download/v0.3.2/uv.sh
+sh uv.sh --version v0.3.2 --domain node-a.example.com --email you@example.com \
   --mn https://mn.example.com --invite ABCD-EFGH-IJKL
 ```
 
@@ -102,9 +102,9 @@ Deliberate design choices worth knowing before you deploy it:
 
 ## Status
 
-`v0.3.1` is the newest release. M1–M5 are implemented and verified on a three-machine acceptance lab
+`v0.3.2` is the newest release. M1–M5 are implemented and verified on a three-machine acceptance lab
 (Debian 13 in unprivileged containers), and the release pipeline builds verified artifacts for
-linux/amd64 and linux/arm64. `v0.3.2` is released, and the pass behind it is recorded in
+linux/amd64 and linux/arm64. The pass behind the release is recorded in
 [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) (M5.8): three production hosts — a
 management server in a container and two nodes behind real domains — with the host firewall confirmed and
 surviving a reboot, the ban engine and the blocklist active, WARP egress on, the owner's page reachable
@@ -129,7 +129,7 @@ go test ./cmd/... ./internal/...                  # unit tests
 go vet ./cmd/... ./internal/...
 gofmt -l cmd internal deploy test                 # must print nothing
 
-go run ./deploy/release --version v0.3.1 --out dist   # the release directory, as CI builds it
+go run ./deploy/release --version v0.3.2 --out dist   # the release directory, as CI builds it
 ```
 
 Package patterns are explicit on purpose: `references/` holds third-party Go source inside this

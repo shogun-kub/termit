@@ -1344,15 +1344,17 @@ writes its units and `ProtectSystem=strict` did not allow it — that is what 0.
 check now drives both record paths instead of only the confirmed one. A reboot on the production node is
 still worth doing: the lab's boxes are containers, and a container's boot is not a host's.
 
-The build to roll out is the pre-release `v0.3.2p4` (2026-11-16): the `0.3.1` fix, the owner's page
-listing local devices and redrawing itself on every sync, the `device remove` argument fix, one link
-carrying every client's fragmentation switch — Happ's `fragment=…` plus `sb.tls.fragment=1` and
-`sb.tls.record_fragment=1` for `podkop-engine` and the patched sing-box builds — on the page, in
-`termit-uv uri`, in the device links and in every line of the subscription list, and a route that sends
-UDP `direct` instead of into a SOCKS proxy that cannot carry it (found on the production phones: every
-name resolved through the node timed out). It is installed like a release — `sh uv.sh --version
-v0.3.2p4 …` — and the `p<n>` counter numbers builds of the `0.3.2` branch, so a later build supersedes it
-without renumbering the version itself.
+The build rolled out was the pre-release `v0.3.2p4` (2026-11-16), and `v0.3.2` is the release it became:
+four builds on the `0.3.2` branch, each published as a pre-release and each installed on the live hosts
+before the next. What the chain added, in order: the `0.3.1` fix, the owner's page listing local devices
+and redrawing itself on every sync, the `device remove` argument fix, one link carrying every client's
+fragmentation switch — Happ's `fragment=…` plus `sb.tls.fragment=1` and `sb.tls.record_fragment=1` for
+`podkop-engine` and the patched sing-box builds — on the page, in `termit-uv uri`, in the device links and
+in every line of the subscription list, and a route that sends UDP `direct` instead of into a SOCKS proxy
+that cannot carry it (found on the production phones: every name resolved through the node timed out). The
+`p<n>` counter numbered the builds of the branch, so each superseded the previous one without renumbering
+the version; the tag `v0.3.2` was cut from the last of them, and the pre-release flag was cleared once
+this pass was recorded.
 
 **Production pass, 2026-11-16 — recorded, the release may be published.** Three hosts: the management
 server `mn` (LXC on Proxmox) and two nodes (a VM and a reinstalled VM). Every gate was executed against
