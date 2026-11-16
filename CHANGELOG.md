@@ -20,6 +20,10 @@ holding.
   page and the cycle that runs on its own did not, so a peer added or removed on the server reached the
   core and not the page until an operator ran something. The cycle now renders the page after it applies
   the peer set, and a failing render stays a warning: the proxy is already correct.
+- **`device remove` refused the label when the flags came after it.** `termit-uv device remove phone
+  --config /etc/termit/uv/config.yaml` answered "give one device label or UUID", because Go's flag
+  package stops at the first positional argument. The label is now taken before the flags are parsed, so
+  both orders work.
 
 ## 0.3.1 — 2026-11-15
 
