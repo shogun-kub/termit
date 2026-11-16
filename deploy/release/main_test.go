@@ -133,7 +133,7 @@ func TestWriteNotesTakesTheSectionForTheVersion(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	if err := writeNotes(path, "v0.2.1", &out); err != nil {
+	if err := writeNotes(path, "v0.2.1", "", &out); err != nil {
 		t.Fatalf("writeNotes: %v", err)
 	}
 	got := out.String()
@@ -149,21 +149,60 @@ func TestWriteNotesTakesTheSectionForTheVersion(t *testing.T) {
 	}
 
 	out.Reset()
-	if err := writeNotes(path, "v9.9.9", &out); err == nil || !strings.Contains(err.Error(), "no") {
+	if err := writeNotes(path, "v9.9.9", "", &out); err == nil || !strings.Contains(err.Error(), "no") {
 		t.Errorf("a version with no section = %v, want a refusal", err)
 	}
 	out.Reset()
-	if err := writeNotes(path, "v0.3.0", &out); err == nil || !strings.Contains(err.Error(), "unreleased") {
+	if err := writeNotes(path, "v0.3.0", "", &out); err == nil || !strings.Contains(err.Error(), "unreleased") {
 		t.Errorf("an unreleased section = %v, want a refusal", err)
 	}
 	// A pre-release of a version is described by that version's section: the counter would otherwise
 	// need a changelog entry per build.
 	out.Reset()
-	if err := writeNotes(path, "v0.2.1p4", &out); err != nil {
+	if err := writeNotes(path, "v0.2.1p4", "", &out); err != nil {
 		t.Fatalf("a pre-release of 0.2.1 = %v, want the 0.2.1 section", err)
 	}
 	if !strings.Contains(out.String(), "## 0.2.1 — 2026-11-14") {
 		t.Errorf("the pre-release notes are not 0.2.1's:\n%s", out.String())
+	}
+}
+
+// TestWriteNotesCountsBackToTheLastRelease: a release that follows versions published only as
+// pre-releases must talk about all of them, because the person installing it skipped each one.
+func TestWriteNotesCountsBackToTheLastRelease(t *testing.T) {
+	t.Parallel()
+	changelog := "# Changelog\n\n## 0.3.2 — 2026-11-16\n\nsecond\n\n## 0.3.1 — 2026-11-15\n\nfirst patch\n\n" +
+		"## 0.3.0 — 2026-11-15\n\nbig one\n\n## 0.2.1 — 2026-11-14\n\nreleased\n\n"
+	path := filepath.Join(t.TempDir(), "CHANGELOG.md")
+	if err := os.WriteFile(path, []byte(changelog), 0o644); err != nil {
+		t.Fatalf("write the changelog: %v", err)
+	}
+
+	var out bytes.Buffer
+	if err := writeNotes(path, "v0.3.2", "v0.2.1", &out); err != nil {
+		t.Fatalf("writeNotes: %v", err)
+	}
+	got := out.String()
+	for _, want := range []string{"## 0.3.2 — 2026-11-16", "second", "## 0.3.1", "first patch", "## 0.3.0", "big one"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the notes are missing %q:\n%s", want, got)
+		}
+	}
+	for _, unwanted := range []string{"## 0.2.1", "released"} {
+		if strings.Contains(got, unwanted) {
+			t.Errorf("the notes carry %q from the version that was actually released:\n%s", unwanted, got)
+		}
+	}
+
+	// A typo in --since must not silently publish everything, and a --since newer than the release would
+	// produce an empty body.
+	out.Reset()
+	if err := writeNotes(path, "v0.3.2", "v0.2.0", &out); err == nil || !strings.Contains(err.Error(), "cannot count") && !strings.Contains(err.Error(), "no") {
+		t.Errorf("a --since with no section = %v, want a refusal", err)
+	}
+	out.Reset()
+	if err := writeNotes(path, "v0.3.2", "v0.3.2", &out); err == nil || !strings.Contains(err.Error(), "not older") {
+		t.Errorf("a --since equal to the release = %v, want a refusal", err)
 	}
 }
 

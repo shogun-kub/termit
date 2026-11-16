@@ -93,10 +93,11 @@ jobs:
           fail_on_unmatched_files: true
           draft: false
           prerelease: true
-          # The body is CHANGELOG.md's section for this version, not GitHub's list of commit subjects:
-          # the changelog is written for the people who run Termit. `--notes` refuses a section that is
-          # missing or still says "unreleased", and a pre-release reads the section of the version it
-          # belongs to (v0.3.2p2 → 0.3.2).
+          # The body is the changelog's section for this version, not GitHub's list of commit subjects:
+          # the changelog is written for the people who run Termit. A build describes its own version;
+          # the cumulative body belongs to the release, not to a build of it. `--notes` refuses a
+          # section that is missing or still says "unreleased", and a pre-release reads the section of
+          # the version it belongs to (v0.3.2p2 → 0.3.2).
           body_path: release-notes.md
 
   # The final door: the tag pushed on `main` after `release/<version>` was merged there.
@@ -124,8 +125,32 @@ jobs:
           sha256sum -c SHA256SUMS
           test -x uv.sh
 
+      - name: the last release the notes count back to
+        id: released
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          case "$GITHUB_REF_NAME" in
+            # A pre-release build is one build of a version, so it describes that version alone.
+            *p[0-9]*) echo "since=" >> "$GITHUB_OUTPUT"; exit 0 ;;
+          esac
+          # The newest release nobody has to opt into is the one participants last installed: everything
+          # published after it only ever existed as a pre-release, and this release's body has to say
+          # what all of it changed.
+          since=$(gh release list --exclude-pre-releases --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName' 2>/dev/null || true)
+          if [ -z "$since" ]; then
+            echo "::warning::no released version found; the body describes $GITHUB_REF_NAME alone"
+          fi
+          echo "since=$since" >> "$GITHUB_OUTPUT"
+
       - name: the release notes are the changelog's section
-        run: go run ./deploy/release --version "$GITHUB_REF_NAME" --notes > release-notes.md
+        run: |
+          since="${{ steps.released.outputs.since }}"
+          if [ -n "$since" ]; then
+            go run ./deploy/release --version "$GITHUB_REF_NAME" --notes --since "$since" > release-notes.md
+          else
+            go run ./deploy/release --version "$GITHUB_REF_NAME" --notes > release-notes.md
+          fi
 
       - name: publish
         uses: softprops/action-gh-release@v2
@@ -142,7 +167,7 @@ jobs:
           # not a side effect of tagging — which is also why a `v<version>p<n>` tag published here is a
           # pre-release of the next line and never becomes a release.
           prerelease: true
-          # The body is CHANGELOG.md's section for this version, not GitHub's list of commit subjects:
-          # the changelog is written for the people who run Termit. `--notes` refuses a section that is
-          # missing or still says "unreleased".
+          # The body counts back to the last released version (see "the last release the notes count
+          # back to"), because the versions between it and this one were handed out as pre-releases
+          # only. `--notes` refuses a section that is missing or still says "unreleased".
           body_path: release-notes.md

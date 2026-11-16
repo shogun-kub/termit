@@ -103,7 +103,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 	goBinary := flags.String("go", "go", "go command to build with")
 	commit := flags.String("commit", "", "commit to stamp (default: git rev-parse --short HEAD)")
 	date := flags.String("date", "", "build date to stamp (default: now, UTC, RFC 3339)")
-	notes := flags.Bool("notes", false, "print the CHANGELOG.md section for --version and exit (the release body)")
+	notes := flags.Bool("notes", false, "print the release body from CHANGELOG.md and exit")
+	since := flags.String("since", "", "with --notes: print every section back to this released version, for a release that follows unshipped pre-releases")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -124,8 +125,11 @@ func run(args []string, stdout, stderr io.Writer) error {
 	if _, err := os.Stat(filepath.Join(absoluteRoot, "go.mod")); err != nil {
 		return fmt.Errorf("%s does not look like the repository root: %w", absoluteRoot, err)
 	}
+	if *since != "" && !*notes {
+		return errors.New("--since only means something with --notes")
+	}
 	if *notes {
-		return writeNotes(filepath.Join(absoluteRoot, "CHANGELOG.md"), *version, stdout)
+		return writeNotes(filepath.Join(absoluteRoot, "CHANGELOG.md"), *version, *since, stdout)
 	}
 
 	stampCommit := *commit
@@ -192,47 +196,92 @@ func run(args []string, stdout, stderr io.Writer) error {
 	return nil
 }
 
-// writeNotes prints the CHANGELOG.md section for one version, which is what the release body is: a
-// document somebody wrote for the people who run Termit, not the commit subjects GitHub assembles.
+// writeNotes prints the release body: the changelog section for one version, or — when the release
+// follows versions that were published only as pre-releases — every section back to the last released
+// version, because the person installing it never saw those. Either way it is a document somebody wrote
+// for the people who run Termit, not the commit subjects GitHub assembles.
 //
 // A section that nobody wrote, or one that still says "unreleased", is refused: publishing a release
 // whose notes are a placeholder is a worse failure than a red workflow.
-func writeNotes(path, version string, stdout io.Writer) error {
+func writeNotes(path, version, since string, stdout io.Writer) error {
 	data, err := os.ReadFile(path) // #nosec G304 -- the path is inside the repository root.
 	if err != nil {
 		return fmt.Errorf("read the changelog: %w", err)
 	}
-	want := "## " + baseVersion(version)
 	lines := strings.Split(string(data), "\n")
-	start := -1
-	for i, line := range lines {
-		if !strings.HasPrefix(line, want) {
-			continue
-		}
-		if rest := line[len(want):]; rest == "" || rest[0] == ' ' {
-			start = i
+	sections := changelogSections(lines)
+
+	base := baseVersion(version)
+	first := -1
+	for i := range sections {
+		if sections[i].version == base {
+			first = i
 			break
 		}
 	}
-	if start < 0 {
-		return fmt.Errorf("%s has no %q section", path, want)
+	if first < 0 {
+		return fmt.Errorf("%s has no %q section", path, "## "+base)
 	}
-	if strings.Contains(strings.ToLower(lines[start]), "unreleased") {
+	heading := strings.TrimSpace(lines[sections[first].start])
+	if strings.Contains(strings.ToLower(heading), "unreleased") {
 		return fmt.Errorf("%s still calls %s unreleased; write the section before tagging", path, version)
 	}
-	end := len(lines)
-	for i := start + 1; i < len(lines); i++ {
-		if strings.HasPrefix(lines[i], "## ") {
-			end = i
-			break
+	if heading == "## "+base {
+		return fmt.Errorf("%s section %q is empty", path, "## "+base)
+	}
+
+	last := first + 1
+	if since != "" {
+		sinceBase := baseVersion(since)
+		stop := -1
+		for i := range sections {
+			if sections[i].version == sinceBase {
+				stop = i
+				break
+			}
 		}
+		if stop < 0 {
+			return fmt.Errorf("%s has no %q section to count back to", path, "## "+sinceBase)
+		}
+		if stop <= first {
+			return fmt.Errorf("--since %s is not older than %s", since, version)
+		}
+		last = stop
 	}
-	body := strings.TrimRight(strings.Join(lines[start:end], "\n"), "\n")
-	if strings.TrimSpace(lines[start]) == want {
-		return fmt.Errorf("%s section %q is empty", path, want)
+
+	bodies := make([]string, 0, last-first)
+	for i := first; i < last; i++ {
+		bodies = append(bodies, strings.TrimRight(strings.Join(lines[sections[i].start:sections[i].end], "\n"), "\n"))
 	}
-	fmt.Fprintln(stdout, body)
+	fmt.Fprintln(stdout, strings.Join(bodies, "\n\n"))
 	return nil
+}
+
+// section is one `## <version> — <date>` block of the changelog, in file order (newest first).
+type section struct {
+	version string
+	start   int
+	end     int
+}
+
+// changelogSections indexes the version blocks of a changelog, so a release can print one of them or a
+// run of them without caring how the file is laid out beyond the `## ` headings.
+func changelogSections(lines []string) []section {
+	var sections []section
+	for i, line := range lines {
+		if !strings.HasPrefix(line, "## ") {
+			continue
+		}
+		rest := strings.TrimPrefix(line, "## ")
+		if cut := strings.IndexAny(rest, " \t"); cut >= 0 {
+			rest = rest[:cut]
+		}
+		if len(sections) > 0 {
+			sections[len(sections)-1].end = i
+		}
+		sections = append(sections, section{version: rest, start: i, end: len(lines)})
+	}
+	return sections
 }
 
 // baseVersion is the release a version belongs to: a pre-release `v0.3.2p3` is described by the 0.3.2
