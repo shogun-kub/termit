@@ -219,13 +219,20 @@ func (a *application) applyXrayConfig(cfg *config.Config, configPath, command st
 }
 
 // deviceURI renders the client URI for one device.
+// deviceURI renders the client URI for one device. It carries the same fragmentation parameter as the
+// node's own link, because the page puts the two rows next to each other: a device that behaves
+// differently from the link above it is a difference nobody would think to check.
 func (a *application) deviceURI(cfg *config.Config, node *state.State, id, label string) (string, error) {
-	return proto.BuildVLESSUrl(proto.Profile{
+	uri, err := proto.BuildVLESSUrl(proto.Profile{
 		Domain: cfg.Domain,
 		UUID:   id,
 		Path:   "/" + node.Identity.XHTTPPath + "/",
 		Label:  label,
 	})
+	if err != nil {
+		return "", err
+	}
+	return proto.AddHappFragment(uri, cfg.HappFragment), nil
 }
 
 // loadInstalled loads the configuration and state, reporting the standard messages.
