@@ -170,6 +170,41 @@ func TestOptionsSurvivesAnUnreachableServer(t *testing.T) {
 	}
 }
 
+func TestOptionsListsTheOwnersDevices(t *testing.T) {
+	t.Parallel()
+	app, cfg, configPath := optionsFixture(t, "")
+	node, err := state.LoadInstalled(cfg.Paths.StatePath())
+	if err != nil {
+		t.Fatalf("load state: %v", err)
+	}
+	if err := node.AddLocalUser("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "phone", time.Unix(0, 0)); err != nil {
+		t.Fatalf("add a local user: %v", err)
+	}
+	if err := node.Save(cfg.Paths.StatePath()); err != nil {
+		t.Fatalf("save state: %v", err)
+	}
+	if code := app.run([]string{"options", "--config", configPath}); code != exitOK {
+		t.Fatalf("exit = %d, want 0; stderr: %s", code, app.stderr.(*strings.Builder).String())
+	}
+	node, err = state.LoadInstalled(cfg.Paths.StatePath())
+	if err != nil {
+		t.Fatalf("load state after the render: %v", err)
+	}
+	page, err := os.ReadFile(filepath.Join(cfg.Paths.SiteDir, node.Options.Token, "index.html"))
+	if err != nil {
+		t.Fatalf("read the page: %v", err)
+	}
+	html := string(page)
+	// A device lives only on this node, so the page is the one place the owner can pick its link
+	// without a terminal.
+	if !strings.Contains(html, "Devices (1)") || !strings.Contains(html, "phone") {
+		t.Errorf("the page does not list the local device:\n%s", html)
+	}
+	if !strings.Contains(html, "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee") {
+		t.Error("the device row carries no link with the device's UUID")
+	}
+}
+
 func TestOptionsWithoutAnIdentityExplainsItself(t *testing.T) {
 	t.Parallel()
 	app, cfg, configPath := optionsFixture(t, "")

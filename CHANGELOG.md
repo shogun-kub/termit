@@ -3,6 +3,24 @@
 What each release changed, written for the people who run Termit. Newest first;
 `0.1.1` was prepared but never released — its work is part of `0.2.0`.
 
+## 0.3.2 — unreleased
+
+The owner's page catches up with what the node knows, and starts listing the devices it was already
+holding.
+
+### Added
+
+- **The page lists local devices.** A phone added with `termit-uv device add` now appears on the page
+  with its link, so the owner copies it from the browser instead of scrolling a terminal. Adding or
+  removing a device re-renders the page.
+
+### Fixed
+
+- **The agent's daily cycle left the page describing yesterday's mesh.** `termit-uv sync` refreshed the
+  page and the cycle that runs on its own did not, so a peer added or removed on the server reached the
+  core and not the page until an operator ran something. The cycle now renders the page after it applies
+  the peer set, and a failing render stays a warning: the proxy is already correct.
+
 ## 0.3.1 — 2026-11-15
 
 One fix, for the half of the boot unit that only a real reboot could find: an apply that was still

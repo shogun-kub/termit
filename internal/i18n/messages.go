@@ -132,6 +132,8 @@ const (
 	PageSubtitle     Key = "page.subtitle"
 	PageLocal        Key = "page.local"
 	PageLocalNote    Key = "page.local_note"
+	PageDevices      Key = "page.devices"
+	PageDevicesNote  Key = "page.devices_note"
 	PageMesh         Key = "page.mesh"
 	PageNoPeers      Key = "page.no_peers"
 	PageWarning      Key = "page.warning"
@@ -273,6 +275,8 @@ var messagesUVRU = map[Key]string{
 	PageSubtitle:     "Всё, что этот узел может выдать клиенту, в одном месте. Собрано %s.",
 	PageLocal:        "Этот узел",
 	PageLocalNote:    "Это устройство работает, даже если сервер управления недоступен.",
+	PageDevices:      "Устройства (%d)",
+	PageDevicesNote:  "Ваши собственные устройства. Они есть только на этом узле и в mesh не уходят.",
 	PageMesh:         "Mesh (%d)",
 	PageNoPeers:      "Соседей нет: узел не зарегистрирован на сервере управления.",
 	PageWarning:      "Список соседей сейчас не удалось получить с сервера управления; на странице только устройство этого узла. Попробуйте `termit-uv sync` и пересоберите страницу.",
@@ -413,6 +417,8 @@ var messagesUVEN = map[Key]string{
 	PageSubtitle:     "Everything this node can hand to a client, in one place. Rendered %s.",
 	PageLocal:        "This node",
 	PageLocalNote:    "This device works even when the management server cannot be reached.",
+	PageDevices:      "Devices (%d)",
+	PageDevicesNote:  "Your own devices. They exist only on this node and never reach the mesh.",
 	PageMesh:         "Mesh (%d)",
 	PageNoPeers:      "No peers: this node is not enrolled with a management server.",
 	PageWarning:      "The mesh could not be fetched from the management server just now; this page shows the device of this node only. Try `termit-uv sync`, then re-render.",

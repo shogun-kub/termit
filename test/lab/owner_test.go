@@ -91,6 +91,24 @@ func TestLabOwnerSurface(t *testing.T) {
 		}
 	})
 
+	t.Run("a device appears on the page and leaves it again", func(t *testing.T) {
+		// Re-runnable: a previous run that failed between the add and the remove leaves the device.
+		_, _ = uv.Run(ctx, "termit-uv device remove --config /etc/termit/uv/config.yaml labprobe")
+		url := strings.TrimSpace(uv.MustRun(t, ctx, "termit-uv options --config /etc/termit/uv/config.yaml"))
+		if page := uv.MustRun(t, ctx, "curl -sS --max-time 30 "+url); strings.Contains(page, "labprobe") {
+			t.Fatalf("the page already lists a device that was just removed")
+		}
+		uv.MustRun(t, ctx, "termit-uv device add --config /etc/termit/uv/config.yaml --label labprobe")
+		page := uv.MustRun(t, ctx, "curl -sS --max-time 30 "+url)
+		if !strings.Contains(page, "labprobe") {
+			t.Errorf("adding a device did not refresh the page, or the page does not list it")
+		}
+		uv.MustRun(t, ctx, "termit-uv device remove --config /etc/termit/uv/config.yaml labprobe")
+		if page := uv.MustRun(t, ctx, "curl -sS --max-time 30 "+url); strings.Contains(page, "labprobe") {
+			t.Errorf("removing a device left its link on the page")
+		}
+	})
+
 	t.Run("the server menu speaks Russian on a UTF-8 console", func(t *testing.T) {
 		out := l.MN.MustRun(t, ctx, "LANG=ru_RU.UTF-8 termit-mn menu --token-file /etc/termit/mn/admin.token < /dev/null")
 		t.Logf("menu:\n%s", oneLine(out))

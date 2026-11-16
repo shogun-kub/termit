@@ -121,6 +121,11 @@ func (a *application) deviceAdd(args []string) int {
 		fmt.Fprintf(a.stderr, "termit-uv device add: %v\n", err)
 		return exitFailure
 	}
+	// The page lists the devices, so a device the owner just added and cannot see there is the one
+	// thing they will look for. A failed render is a warning: the device is already applied.
+	if err := a.refreshOptions(cfg); err != nil {
+		fmt.Fprintf(a.stderr, "termit-uv device add: the client options page could not be refreshed: %v\n", err)
+	}
 	fmt.Fprintf(a.stdout, "added %s\n%s\n", *label, uri)
 	return exitOK
 }
@@ -151,6 +156,11 @@ func (a *application) deviceRemove(args []string) int {
 	}
 	if code := a.applyXrayConfig(cfg, *configPath, "termit-uv device remove"); code != exitOK {
 		return code
+	}
+	// A device that still sits on the page after it was removed is a credential the owner thinks is
+	// dead. Re-render, and treat a failure as a warning like the add path does.
+	if err := a.refreshOptions(cfg); err != nil {
+		fmt.Fprintf(a.stderr, "termit-uv device remove: the client options page could not be refreshed: %v\n", err)
 	}
 	fmt.Fprintf(a.stdout, "removed %s\n", flags.Arg(0))
 	return exitOK
