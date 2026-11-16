@@ -173,6 +173,11 @@ func TestOptionsSurvivesAnUnreachableServer(t *testing.T) {
 func TestOptionsListsTheOwnersDevices(t *testing.T) {
 	t.Parallel()
 	app, cfg, configPath := optionsFixture(t, "")
+	// The device row has to look like the row above it: same fragmentation, or none of them.
+	cfg.HappFragment = "100-200,1-3,tlshello,6"
+	if err := cfg.Save(configPath); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
 	node, err := state.LoadInstalled(cfg.Paths.StatePath())
 	if err != nil {
 		t.Fatalf("load state: %v", err)
@@ -202,6 +207,19 @@ func TestOptionsListsTheOwnersDevices(t *testing.T) {
 	}
 	if !strings.Contains(html, "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee") {
 		t.Error("the device row carries no link with the device's UUID")
+	}
+	// The device link and the node's own link must agree on fragmentation: the page shows them as two
+	// rows of the same kind, and a client that works from one and not the other is a support call.
+	if idx := strings.Index(html, "vless://aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"); idx < 0 {
+		t.Error("the page does not carry the device link")
+	} else {
+		row := html[idx:]
+		if end := strings.IndexByte(row, '<'); end > 0 {
+			row = row[:end]
+		}
+		if !strings.Contains(row, "fragment=100-200,1-3,tlshello,6") {
+			t.Errorf("the device link carries no fragmentation parameter: %s", row)
+		}
 	}
 }
 
