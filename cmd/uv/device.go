@@ -135,10 +135,14 @@ func (a *application) deviceRemove(args []string) int {
 	flags := flag.NewFlagSet("device remove", flag.ContinueOnError)
 	flags.SetOutput(a.stderr)
 	configPath := flags.String("config", configPathDefault(), "path to config.yaml")
-	if err := flags.Parse(args); err != nil {
+	// `device remove phone --config /etc/...` is how an operator writes it, and Go's flag stops at the
+	// first positional: without lifting the label out, the flags after it become extra arguments and
+	// the command refuses a perfectly good line.
+	label, rest := liftLabel(args)
+	if err := flags.Parse(rest); err != nil {
 		return exitUsage
 	}
-	if flags.NArg() != 1 {
+	if label == "" || flags.NArg() > 0 {
 		fmt.Fprintln(a.stderr, "termit-uv device remove: give one device label or UUID")
 		return exitUsage
 	}
@@ -146,7 +150,7 @@ func (a *application) deviceRemove(args []string) int {
 	if code != exitOK {
 		return code
 	}
-	if err := node.RemoveLocalUser(flags.Arg(0)); err != nil {
+	if err := node.RemoveLocalUser(label); err != nil {
 		fmt.Fprintf(a.stderr, "termit-uv device remove: %v\n", err)
 		return exitFailure
 	}
@@ -162,8 +166,34 @@ func (a *application) deviceRemove(args []string) int {
 	if err := a.refreshOptions(cfg); err != nil {
 		fmt.Fprintf(a.stderr, "termit-uv device remove: the client options page could not be refreshed: %v\n", err)
 	}
-	fmt.Fprintf(a.stdout, "removed %s\n", flags.Arg(0))
+	fmt.Fprintf(a.stdout, "removed %s\n", label)
 	return exitOK
+}
+
+// liftLabel takes the first non-flag argument out of args and returns the rest untouched. The value of
+// a flag is never mistaken for the label: `--config` is the only flag this command has, and its value
+// is the token after it.
+func liftLabel(args []string) (string, []string) {
+	var label string
+	rest := make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--config" || arg == "-config":
+			rest = append(rest, arg)
+			if i+1 < len(args) {
+				i++
+				rest = append(rest, args[i])
+			}
+		case strings.HasPrefix(arg, "-"):
+			rest = append(rest, arg)
+		case label == "":
+			label = arg
+		default:
+			rest = append(rest, arg)
+		}
+	}
+	return label, rest
 }
 
 // applyXrayConfig regenerates the proxy configuration after a device change.

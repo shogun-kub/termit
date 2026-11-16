@@ -205,6 +205,47 @@ func TestOptionsListsTheOwnersDevices(t *testing.T) {
 	}
 }
 
+func TestThePageFollowsTheSubscriptionWhenTheMeshChanges(t *testing.T) {
+	t.Parallel()
+	one := base64.StdEncoding.EncodeToString([]byte(
+		"vless://11111111-2222-4333-8444-555555555555@node.example.com:443?type=xhttp#node.example.com\n" +
+			"vless://22222222-3333-4444-8555-666666666666@far.example.com:443?type=xhttp#far.example.com\n"))
+	app, cfg, configPath := optionsFixture(t, one)
+	if code := app.run([]string{"options", "--config", configPath}); code != exitOK {
+		t.Fatalf("exit = %d, want 0; stderr: %s", code, app.stderr.(*strings.Builder).String())
+	}
+	if page := pageText(t, cfg); !strings.Contains(page, "far.example.com") || strings.Contains(page, "near.example.com") {
+		t.Fatal("the page did not start from the first subscription")
+	}
+
+	// A peer left and another joined on the server. The refresh is the call `sync` and the agent's
+	// cycle make, so this is the whole path from a new subscription to new bytes on disk.
+	changed := base64.StdEncoding.EncodeToString([]byte(
+		"vless://11111111-2222-4333-8444-555555555555@node.example.com:443?type=xhttp#node.example.com\n" +
+			"vless://22222222-3333-4444-8555-666666666666@near.example.com:443?type=xhttp#near.example.com\n" +
+			"vless://33333333-4444-4555-8666-777777777777@another.example.com:443?type=xhttp#another.example.com\n"))
+	app.http = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Status:     "200 OK",
+			Header:     http.Header{"Content-Type": []string{"text/plain"}},
+			Body:       io.NopCloser(strings.NewReader(changed)),
+		}, nil
+	})}
+	if err := app.refreshOptions(cfg); err != nil {
+		t.Fatalf("refreshOptions: %v", err)
+	}
+	page := pageText(t, cfg)
+	for _, want := range []string{"near.example.com", "another.example.com", "Mesh (2)"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the refreshed page does not list %q", want)
+		}
+	}
+	if strings.Contains(page, "far.example.com") {
+		t.Error("the refreshed page still lists the peer the server dropped")
+	}
+}
+
 func TestOptionsWithoutAnIdentityExplainsItself(t *testing.T) {
 	t.Parallel()
 	app, cfg, configPath := optionsFixture(t, "")

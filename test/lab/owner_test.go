@@ -4,6 +4,7 @@ package lab_test
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -18,6 +19,28 @@ import (
 // It is read-mostly on purpose: the only thing it changes is the page, which `options` is supposed to
 // write, and the answer to "is this node installed" must be the wizard's own dry run of the pipeline —
 // the real thing, not a stub.
+// countAfter returns the integer that follows prefix, or -1 when there is none. It is how a test reads
+// "peers:  2 (a, b)" from status and "Mesh (2)" from the page without depending on the padding.
+func countAfter(text, prefix string) int {
+	i := strings.Index(text, prefix)
+	if i < 0 {
+		return -1
+	}
+	rest := strings.TrimLeft(text[i+len(prefix):], " ")
+	end := 0
+	for end < len(rest) && rest[end] >= '0' && rest[end] <= '9' {
+		end++
+	}
+	if end == 0 {
+		return -1
+	}
+	n, err := strconv.Atoi(rest[:end])
+	if err != nil {
+		return -1
+	}
+	return n
+}
+
 func TestLabOwnerSurface(t *testing.T) {
 	l := lab.FromEnv(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
@@ -106,6 +129,27 @@ func TestLabOwnerSurface(t *testing.T) {
 		uv.MustRun(t, ctx, "termit-uv device remove --config /etc/termit/uv/config.yaml labprobe")
 		if page := uv.MustRun(t, ctx, "curl -sS --max-time 30 "+url); strings.Contains(page, "labprobe") {
 			t.Errorf("removing a device left its link on the page")
+		}
+	})
+
+	t.Run("a sync redraws the page and the mesh count matches the node", func(t *testing.T) {
+		url := strings.TrimSpace(uv.MustRun(t, ctx, "termit-uv options --config /etc/termit/uv/config.yaml"))
+		want := countAfter(uv.MustRun(t, ctx, "termit-uv status --config /etc/termit/uv/config.yaml"), "peers:")
+		if want < 0 {
+			t.Fatalf("status does not say how many peers there are")
+		}
+		if got := countAfter(uv.MustRun(t, ctx, "curl -sS --max-time 30 "+url), "Mesh ("); got != want {
+			t.Errorf("the page lists %d peer(s), the node has %d", got, want)
+		}
+		// The mesh the page describes has to be the one the last sync applied, so a sync must rewrite
+		// the file even when the peer set did not change: it is the same path the agent's daily cycle
+		// takes, and the page is the only thing that would stay stale silently.
+		token := url[strings.LastIndex(strings.TrimRight(url, "/"), "/")+1:]
+		pageFile := "/var/www/termit/site/" + token + "/index.html"
+		before := uv.MustRun(t, ctx, "stat -c %y "+pageFile)
+		uv.MustRun(t, ctx, "termit-uv sync --config /etc/termit/uv/config.yaml")
+		if after := uv.MustRun(t, ctx, "stat -c %y "+pageFile); after == before {
+			t.Errorf("a sync left the page untouched: %s", before)
 		}
 	})
 
