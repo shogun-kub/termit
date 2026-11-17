@@ -106,8 +106,8 @@ it claims, or the server refuses the move and leaves the record as it was.
 
 ## 6. The clock drifted
 
-ACME and TLS fail first. `timedatectl status`; fix `systemd-timesyncd` or `chrony`, then `uv renew-cert
---force` if an order was half-finished.
+ACME and TLS fail first. `timedatectl status`; fix `systemd-timesyncd` or `chrony`, then `termit-uv
+renew-cert --force` if an order was half-finished.
 
 ### The node reports drift
 
@@ -210,7 +210,7 @@ A restart in the middle of a burst of restarts can hit systemd's start limit; `t
 you restart by hand and see `start-limit-hit`, run `systemctl reset-failed termit-xray termit-uv-agent` and
 start again.
 
-## 10. Back up, and restore a node
+## 10. Backup and restore
 ### 10.1 The management server (backup and restore)
 
 `termit-mn backup` writes an archive containing the database, the configuration, the server's certificate
@@ -293,11 +293,11 @@ rm -rf /etc/termit/mn /var/lib/termit/mn
 systemctl daemon-reload
 ```
 
-The wildcard covers the four units the release ships beside the server's own — `termit-mn-firewall`,
-`-firewall-rollback`, `-guard` and `-blocklist` ([`OPERATIONS.md`](OPERATIONS.md) §13.6) — which a server
-that ever ran `termit-mn firewall on` has installed. Leaving them behind leaves a boot unit that does
-nothing and a timer that keeps trying.
+The wildcard covers the four unit names the release ships beside the server's own — `termit-mn-firewall`,
+`-firewall-rollback`, `-guard` and `-blocklist`, six files with the two timers
+([`OPERATIONS.md`](OPERATIONS.md) §13.6) — which a server that ever ran `termit-mn firewall on` has
+installed. Leaving them behind leaves a boot unit that does nothing and a timer that keeps trying.
 
-There is no uninstall command for the server: it owns two directories and one unit, and deleting a
-registry is not something an automated command should decide to do.
+There is no uninstall command for the server: it owns two directories, the socket's own directory and one
+unit, and deleting a registry is not something an automated command should decide to do.
 
