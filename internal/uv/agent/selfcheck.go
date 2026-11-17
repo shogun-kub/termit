@@ -193,7 +193,7 @@ func checkWarp(ctx context.Context, cfg *config.Config, host *warp.Host, probe f
 	switch {
 	case err != nil:
 		item.Unknown = true
-		item.Detail = "could not ask the sidecar: " + err.Error()
+		item.Detail = "could not check the tunnel: " + err.Error()
 	case status.Healthy():
 		item.OK = true
 		item.Detail = status.Detail

@@ -199,7 +199,7 @@ func TestSelfCheckWarp(t *testing.T) {
 		}, false, false, "exits directly"},
 		{"a probe that cannot run", config.WarpAll, "", supported, func(context.Context) (warp.Status, error) {
 			return warp.Status{}, errors.New("no route")
-		}, false, true, "could not ask"},
+		}, false, true, "could not check the tunnel"},
 		{"no probe at all", config.WarpAll, "", supported, nil, false, true, "needs a probe"},
 	}
 	for _, tc := range tests {
