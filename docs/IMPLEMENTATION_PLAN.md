@@ -1741,3 +1741,19 @@ and the document, and each `init` ended with `warp-egress`, the step this milest
 
 That is the answer to one of the risks above: the transport is a per-network choice, and `0.4.0` gives
 the operator the check and the switch instead of a default that lies.
+
+#### The endpoint, later the same day
+
+That pass found a second defect, and it was the one that mattered: the node written off as "cannot reach
+WARP" was fine. Cloudflare names its endpoint for both address families and the core resolves that name
+itself; on a host without a global IPv6 it took the AAAA record, the handshake died with
+`sendto: network is unreachable`, the observatory marked the outbound dead and the balancer fell back to
+`direct` — a node that looked healthy while exiting from its own address. The same identity and the same
+document, run by hand against an IPv4 endpoint, handshook in half a second.
+
+`8c15d16` resolves the endpoint once, at registration, and stores the address. `v0.4.0p4` carries it: both
+nodes rotated onto `162.159.192.1:2408` and reported `egress: on` with a Cloudflare address — including
+the one the first pass had written off.
+
+The lesson is a rule in `AGENTS.md` §9 now: a release that touches the network is proved on the
+production nodes as a pre-release, and the final tag waits for that.
