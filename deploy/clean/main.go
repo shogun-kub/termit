@@ -45,8 +45,11 @@ var scratchKeep = map[string]bool{
 	".golangci":      true,
 	"lintcache":      true,
 	"lab.md":         true, // lab coordinates: never in the repository, never regenerable
+	"lab-setup.md":   true, // how that lab is built from scratch, also local-only
 	"mn-admin.token": true, // the lab's admin credential
 	"github-token":   true, // a personal access token for the GitHub API, for the logs of a failed release
+	"gh.js":          true, // the small API client the notes above tell you to run
+	"sonar-token":    true, // the SonarQube token, for a scan by hand
 	"ssh":            true, // the lab's public key
 	"shotgen":        true, // a source file, not output
 }
