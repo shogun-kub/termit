@@ -160,6 +160,17 @@ func TestWizardSaysWhatToRunOnAnOutdatedNode(t *testing.T) {
 	}
 }
 
+// The install branch hands `init` the flags it parses, not the subcommand name: the wizard was the one
+// path that could not install, because it passed "init" as an argument nobody read.
+func TestWizardHandsInstallTheFlagsWithoutTheSubcommand(t *testing.T) {
+	t.Parallel()
+	app, _, configPath := optionsFixture(t, "")
+	app.in = strings.NewReader("en\n\n\n\nportal\noff\nn\n\ny\n")
+	if code := app.run([]string{"wizard", "--config", configPath}); code == exitUsage {
+		t.Fatalf("the wizard handed init an argument it does not parse:\n%v", app.stderr)
+	}
+}
+
 func TestInitCompleteIsFalseWithoutAServiceOrCertificate(t *testing.T) {
 	t.Parallel()
 	app, cfg, configPath := optionsFixture(t, "")

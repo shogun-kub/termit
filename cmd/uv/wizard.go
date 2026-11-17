@@ -186,7 +186,7 @@ re-installs a working node.`)
 		return exitOK
 	}
 
-	initArgs := []string{"init", "--config", *configPath, "--domain", answers.Domain}
+	initArgs := []string{"--config", *configPath, "--domain", answers.Domain}
 	if answers.Locale != "" {
 		initArgs = append(initArgs, "--locale", answers.Locale)
 	}
@@ -222,7 +222,7 @@ re-installs a working node.`)
 	}
 
 	if answers.Invite != "" {
-		enrollArgs := []string{"enroll", "--config", *configPath, "--invite", answers.Invite}
+		enrollArgs := []string{"--config", *configPath, "--invite", answers.Invite}
 		if answers.MNURL != "" {
 			enrollArgs = append(enrollArgs, "--mn", answers.MNURL)
 		}
