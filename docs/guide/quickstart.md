@@ -36,24 +36,13 @@ Wherever you see `mn.example.com` or `node-a.example.com`, use your own names.
 
 ## 1. The server
 
-Log in to the server as `root` and paste this block. It downloads the version, checks the file against
-its published checksum, and installs it.
+Log in to the server as `root` and paste this one line. It downloads the newest release, checks the file
+against its published checksum, installs the server and its systemd unit, gives it the probe worker it
+needs, creates the configuration, starts the service and prints its status. `--version v0.4.1` installs
+that release instead of the newest one.
 
 ```bash
-RELEASE=v0.4.0
-curl -fsSLO "https://github.com/shogun-kub/termit/releases/download/$RELEASE/termit-mn_${RELEASE}_linux_amd64"
-curl -fsSLO "https://github.com/shogun-kub/termit/releases/download/$RELEASE/SHA256SUMS"
-sha256sum -c --ignore-missing SHA256SUMS
-install -m 0755 "termit-mn_${RELEASE}_linux_amd64" /usr/bin/termit-mn
-```
-
-Now create the configuration. This one line writes the settings, the database and your admin password,
-and prints a few lines you will need:
-
-```bash
-install -d -m 0750 /etc/termit/mn
-termit-mn init --domain mn.example.com --email you@example.com \
-  --admin-token-out /etc/termit/mn/admin.token
+curl -fsSLO "https://github.com/shogun-kub/termit/releases/latest/download/mn.sh" && sh mn.sh --domain mn.example.com --email you@example.com --admin-token-out /etc/termit/mn/admin.token
 ```
 
 What to put instead of the placeholders:
@@ -63,21 +52,12 @@ What to put instead of the placeholders:
 | `--domain` | the server's name, the one that already points at this machine |
 | `--email` | your address; Let's Encrypt uses it only to warn you about an expiring certificate |
 
-Two lines of that output matter:
+Two values from the output matter:
 
 - **`api prefix:`** — a short random word like `/6rfjdqfn5nno`. Write it down. The node will need the
   full address `https://mn.example.com/6rfjdqfn5nno`, prefix included.
-- **`admin token`** — the password for every `termit-mn` command. It is written to
+- **`admin token`** — the password for every `termit-mn` command. `--admin-token-out` puts it in
   `/etc/termit/mn/admin.token`, so it does not sit in your terminal history.
-
-Start the server:
-
-```bash
-curl -fsSLO "https://github.com/shogun-kub/termit/releases/download/$RELEASE/termit-mn.service"
-install -m 0644 termit-mn.service /etc/systemd/system/
-systemctl daemon-reload
-systemctl enable --now termit-mn
-```
 
 Check that it is alive:
 
@@ -86,9 +66,9 @@ export TERMIT_MN_ADMIN_TOKEN_FILE=/etc/termit/mn/admin.token
 termit-mn status
 ```
 
-You should see `server:` with your domain, `api:` with the prefix, and an `uptime:` that is not
-`0s` — that means it is running. If you see an error instead, the server is not running yet:
-`systemctl status termit-mn` and `journalctl -u termit-mn -n 50`.
+You should see `server:` with your domain, `api:` with the prefix, `prober: ready`, and an `uptime:` that
+is not `0s`. If you see an error instead, the server is not running yet: `systemctl status termit-mn` and
+`journalctl -u termit-mn -n 50`.
 
 ## 2. Create an invite code
 
@@ -102,16 +82,12 @@ The code (for example `ABCD-EFGH-IJKL`) is printed **once**. Copy it now — you
 
 ## 3. The node
 
-Log in to the node as `root` and paste this block. It downloads the version, checks the file against
-its published checksum, installs the node program, and then asks you questions.
+Log in to the node as `root` and paste this single line. It downloads the installer, verifies the
+release, installs the node program, and then asks you questions. Without `--version` it installs the
+newest release; `sh uv.sh --version v0.4.1 --wizard` pins one instead.
 
 ```bash
-RELEASE=v0.4.0
-curl -fsSLO "https://github.com/shogun-kub/termit/releases/download/$RELEASE/termit-uv_${RELEASE}_linux_amd64"
-curl -fsSLO "https://github.com/shogun-kub/termit/releases/download/$RELEASE/SHA256SUMS"
-sha256sum -c --ignore-missing SHA256SUMS
-install -m 0755 "termit-uv_${RELEASE}_linux_amd64" /usr/bin/termit-uv
-termit-uv wizard
+curl -fsSLO "https://github.com/shogun-kub/termit/releases/latest/download/uv.sh" && sh uv.sh --wizard
 ```
 
 The questions, in the order they come, and what to answer:

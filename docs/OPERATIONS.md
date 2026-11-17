@@ -98,24 +98,41 @@ Per host, before you start:
 The MN's probe worker needs an `xray-core` binary of its own — `prober.xray_binary` in
 `/etc/termit/mn/config.yaml` — because that is what opens a real connection to a node. It is not
 optional: without it `termit-mn status` says `prober: unavailable`, and enrollment refuses with
-`check_failed: the prober could not check this node; retry`. Install the same pinned core the nodes run:
-
-```bash
-apt-get install -y unzip
-curl -fsSLO https://github.com/XTLS/Xray-core/releases/download/v26.11.9/Xray-linux-64.zip
-unzip -o Xray-linux-64.zip -d /usr/local/lib/termit
-chmod 0755 /usr/local/lib/termit/xray
-sed -i 's|^  xray_binary: ""|  xray_binary: /usr/local/lib/termit/xray|' /etc/termit/mn/config.yaml
-systemctl restart termit-mn
-```
-
-`termit-mn status` then reads `prober: ready (/usr/local/lib/termit/xray)`. A node's own installation
-gets that binary as a step; the server does not have that step, which is why this one is by hand.
+`check_failed: the prober could not check this node; retry`. §3 has the commands, and it belongs after
+`termit-mn init` because it edits the configuration `init` writes. A node's own installation gets that
+binary as a step; the server does not have that step.
 
 ## 3. Install the management server
 
+The bootstrap script resolves a release, verifies it, installs the binary and its unit, gives it the probe
+worker, creates the configuration, starts the service and prints the status:
+
+```bash
+curl -fsSLO https://github.com/shogun-kub/termit/releases/latest/download/mn.sh
+sh mn.sh --domain mn.example.com --email you@example.com \
+  --admin-token-out /etc/termit/mn/admin.token
+```
+
+| Flag | Effect |
+|---|---|
+| `--domain` | the name the server answers on; required on a first install |
+| `--version` | `v0.4.1`, or a `v0.4.1p1` build; **the newest published release by default** |
+| `--email` / `--mode` / `--acme-ca` / `--acme-skip-tls-verify` / `--api-prefix` | passed to `termit-mn init` |
+| `--admin-token-out` | where `init` writes the admin token instead of printing it |
+| `--prober-version` / `--no-prober` | the probe worker's Xray-core release (default: the one the nodes run), or none |
+| `--base-url` / `--checksum-file` / `--sha256` | a mirror, a local `SHA256SUMS` or a pinned digest, as in `uv.sh` |
+| `--dry-run` | verify the downloads and print what would be done, change nothing |
+
+Re-running it **is** the upgrade: the binary and the unit are replaced, `init` keeps every decision already
+made — domain, listen, master key, the nodes — the probe worker is brought up to the pinned release, and
+the service is restarted.
+
+By hand, with the binary and the unit taken from a release and verified against its `SHA256SUMS` (§12),
+the steps are what the script does, in the same order:
+
 ```bash
 install -m 0755 termit-mn /usr/bin/termit-mn
+install -m 0644 termit-mn.service /etc/systemd/system/
 
 termit-mn init --domain mn.example.com \
         --email you@example.com \
@@ -123,7 +140,8 @@ termit-mn init --domain mn.example.com \
 ```
 
 `termit-mn init` creates the configuration, the database, the master key, the first admin token and the first
-invite code, and prints them **once**:
+invite code, and prints them **once** (the `--admin-token-out` variant says where the token went instead of
+printing it):
 
 ```
 domain:       mn.example.com
@@ -178,10 +196,9 @@ message, because a world-readable token file is a leaked credential that looks l
 provisioned server keeps its only copy out of an operator's scrollback; if the write fails, `init` prints
 the token and exits non-zero rather than leaving a server with a credential nobody has seen.
 
-Then install the unit and start it:
+Then start it (the script does this at the end of its run):
 
 ```bash
-install -m 0644 deploy/systemd/termit-mn.service /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now termit-mn
 journalctl -u termit-mn -n 30 --no-pager
@@ -195,6 +212,18 @@ to HTTP is worse than one that does not come up. Watch for:
 level=INFO msg="issued a certificate" domain=mn.example.com not_after=…
 level=INFO msg="serving TLS" domain=mn.example.com listen=:443 not_after=…
 level=INFO msg="admin socket ready" path=/run/termit/mn/admin.sock
+```
+
+The probe worker (§2 says why it is not optional) is the last thing the script installs. By hand it is
+the same pinned core the nodes run:
+
+```bash
+apt-get install -y unzip
+curl -fsSLO https://github.com/XTLS/Xray-core/releases/download/v26.11.9/Xray-linux-64.zip
+unzip -o Xray-linux-64.zip -d /usr/local/lib/termit
+chmod 0755 /usr/local/lib/termit/xray
+sed -i 's|^  xray_binary: ""|  xray_binary: /usr/local/lib/termit/xray|' /etc/termit/mn/config.yaml
+systemctl restart termit-mn
 ```
 
 Verify:
@@ -211,7 +240,7 @@ server:   mn.example.com
 listen:   :443
 api:      /6rfjdqfn5nno
 decoy:    portal
-version:  termit-mn v0.4.0 (commit …, built …, api 1, profile v1)
+version:  termit-mn v0.4.1 (commit …, built …, api 1, profile v1)
 uptime:   3h12m (started 2026-11-10 11:18)
 database: /var/lib/termit/mn/termit.db (412.0 KiB, schema 5)
 prober:   ready (/usr/local/lib/termit/xray)
@@ -337,16 +366,16 @@ proxy is told to send one, and a proxy that is trusted for one name only still s
 
 ## 4. Install a node
 
-The bootstrap script verifies a release checksum, installs the binary and then lets `termit-uv init` do the
-work. It never guesses a version and never installs an unverified binary — and it is a file you keep,
-not something piped from a branch:
+The bootstrap script resolves a release, verifies its checksum, installs the binary and then lets
+`termit-uv init` do the work. It never installs an unverified binary — and it is a file you keep, not
+something piped from a branch:
 
 ```bash
 termit-mn invite create --note "node1" --uses 1        # on the MN; prints the code once
 
 # on the fresh node, as root
-curl -fsSLO https://github.com/shogun-kub/termit/releases/download/v0.4.0/uv.sh
-sh uv.sh --version v0.4.0 \
+curl -fsSLO https://github.com/shogun-kub/termit/releases/latest/download/uv.sh
+sh uv.sh \
   --domain node1.example.net --email you@example.com \
   --mn https://mn.example.com/6rfjdqfn5nno --invite ABCD-EFGH-IJKL
 ```
@@ -355,22 +384,25 @@ sh uv.sh --version v0.4.0 \
 
 | Flag | Effect |
 |---|---|
-| `--version` | the release to install; **required** — the installer never picks one for you |
-| `--base-url` | release directory: an `https://` URL, a `file://` URL or a local path (a mirror, or a USB stick) |
+| `--version` | the release to install, `v0.4.1` or a `v0.4.1p1` build; **the newest published release by default** — `releases/latest` is followed for the tag, so a pre-release is never picked by accident |
+| `--base-url` | release directory: an `https://` URL, a `file://` URL or a local path (a mirror, or a USB stick); a mirror cannot answer "newest", so there `--version` is required |
 | `--checksum-file` / `--sha256` | verify against a local `SHA256SUMS` or an explicit digest, for a private build |
 | `--no-warp` / `--warp selected --warp-selected …` | the WARP decision (`all` is the default) |
 | `--mn URL` | the management server, prefix included; written to `mn.url` by `init` and used by `enroll` |
 | `--no-enroll` | install and converge, skip enrollment |
+| `--wizard` | install the binary, then run `termit-uv wizard` instead of converging from the flags |
 | `--dry-run` | verify the download, then run `termit-uv init --dry-run` without installing anything |
 
-Re-running the script with a new `--version` **is** the upgrade: the binary is replaced and `termit-uv init`
-converges the rest, keeping the identity, the Xray path and the certificate. The invite code is passed
-on the command line and is visible in `ps` for the duration of the run; revoke it afterwards if that
-matters (`termit-mn invite revoke`).
+Re-running the script **is** the upgrade: the binary is replaced and `termit-uv init` converges the
+rest, keeping the identity, the Xray path and the certificate. Without `--version` it takes the newest
+release, so an upgrade is `sh uv.sh --no-enroll`; `--version v0.4.1` installs exactly that one, which is
+also how a node that must not move is kept where it is. The invite code is passed on the command line and
+is visible in `ps` for the duration of the run; revoke it afterwards if that matters
+(`termit-mn invite revoke`).
 
-If you would rather be asked than remember flags, the wizard is the same installation with questions. Put
-the binary on the host first — the release asset and `SHA256SUMS`, the way [the quickstart](guide/quickstart.md)
-does it — and run the wizard instead of the script:
+If you would rather be asked than remember flags, the wizard is the same installation with questions —
+`sh uv.sh --wizard` installs the binary (the newest release, or the one `--version` names) and hands over
+to it:
 
 ```bash
 termit-uv wizard
@@ -900,7 +932,7 @@ A useful alert set, in the order that matters:
 A release is one command, and CI runs the same one on a tag:
 
 ```bash
-go run ./deploy/release --version v0.4.0 --out dist
+go run ./deploy/release --version v0.4.1 --out dist
 ```
 
 It cross-compiles both binaries for `linux/amd64` and `linux/arm64` with `CGO_ENABLED=0 -trimpath`, stamps
@@ -922,7 +954,7 @@ a renamed asset is a broken installation, so the tool refuses a version that is 
 than sanitising it. Verify a directory the way an operator would:
 
 ```bash
-cd dist/v0.4.0 && sha256sum -c SHA256SUMS
+cd dist/v0.4.1 && sha256sum -c SHA256SUMS
 ```
 
 There are deliberately no tarballs: one artifact per platform, verified by digest, is what the installer
@@ -930,9 +962,9 @@ consumes, and a tarball adds an unpacking step that protects nothing. The build 
 same toolchain, commit and `--date`:
 
 ```bash
-go run ./deploy/release --version v0.4.0 --out /tmp/a --commit "$(git rev-parse --short HEAD)" --date 2026-11-10T00:00:00Z
-go run ./deploy/release --version v0.4.0 --out /tmp/b --commit "$(git rev-parse --short HEAD)" --date 2026-11-10T00:00:00Z
-diff /tmp/a/v0.4.0/SHA256SUMS /tmp/b/v0.4.0/SHA256SUMS
+go run ./deploy/release --version v0.4.1 --out /tmp/a --commit "$(git rev-parse --short HEAD)" --date 2026-11-10T00:00:00Z
+go run ./deploy/release --version v0.4.1 --out /tmp/b --commit "$(git rev-parse --short HEAD)" --date 2026-11-10T00:00:00Z
+diff /tmp/a/v0.4.1/SHA256SUMS /tmp/b/v0.4.1/SHA256SUMS
 ```
 
 Publishing is a tag push on `main`, after the branch process in `AGENTS.md` §9 has put a tested tree there:
@@ -945,17 +977,17 @@ can do the same by hand with `gh release create` and the files from `dist/<versi
 files, so nothing depends on the workflow.
 
 Before that tag exists, a `release/<version>` branch is built by hand:
-`gh workflow run release.yaml --ref release/v0.4.0 -f publish_prerelease=true`. The workflow numbers the
+`gh workflow run release.yaml --ref release/v0.4.1 -f publish_prerelease=true`. The workflow numbers the
 build itself: the pre-release is `v<version>p<n>`, `n` being one more than the highest `v<version>p*` tag
-that already exists, so the first build of `0.4.0` is `v0.4.0p1` and the counter never resets for that
-version. The artifacts carry that same version — installed with `sh uv.sh --version v0.4.0p1` — and the
-body is the `0.4.0` section of the changelog, because a section per build would be noise. That is how
+that already exists, so the first build of `0.4.1` is `v0.4.1p1` and the counter never resets for that
+version. The artifacts carry that same version — installed with `sh uv.sh --version v0.4.1p1` — and the
+body is the `0.4.1` section of the changelog, because a section per build would be noise. That is how
 testers get a build without anything being published from `dev` or `main`.
 
 A **release** body is longer. Versions handed out only as pre-releases were never installed by a
 participant, so the body of the next release counts back to the last one that was:
-`go run ./deploy/release --version v0.4.0 --notes --since v0.3.2` prints the `0.4.0` section and stops at
-`0.3.2`. The workflow works the `--since` value out itself — the newest GitHub release not flagged
+`go run ./deploy/release --version v0.4.1 --notes --since v0.4.0` prints the `0.4.1` section and stops at
+`0.4.0`. The workflow works the `--since` value out itself — the newest GitHub release not flagged
 pre-release — so nobody has to remember which version participants last saw. `--since` refuses a version
 the changelog has no section for, and one that is not older than the release being cut: a typo must not
 silently publish everything or nothing.

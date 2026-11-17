@@ -41,6 +41,8 @@ func tree(t *testing.T) string {
 	write(".spike-out/golangci/cache", 512)
 	write(".spike-out/lintcache/cache", 512)
 	write(".spike-out/lab.md", 256)
+	write(".spike-out/prod.md", 512)
+	write(".spike-out/prod_known_hosts", 256)
 	write(".spike-out/mn-admin.token", 43)
 	write(".spike-out/ssh/lab.pub", 128)
 	write(".spike-out/shotgen/main.go", 200)
@@ -86,6 +88,7 @@ func TestPlanRemovesArtifactsAndScratchButKeepsTheToolchain(t *testing.T) {
 	// The toolchain, the caches, the lab's own notes and the input directories stay.
 	for _, path := range []string{
 		".spike-out/tools", ".spike-out/gocache", ".spike-out/lab.md", ".spike-out/mn-admin.token",
+		".spike-out/prod.md", ".spike-out/prod_known_hosts",
 		".spike-out/ssh", ".spike-out/shotgen", "captures", "cmd", "docs", "go.mod",
 	} {
 		if strings.Contains(" "+got+" ", " "+path+" ") {

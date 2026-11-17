@@ -193,7 +193,8 @@ termit-mn status
 На узле короткий путь — установочный скрипт: он заменяет бинарник и сводит конфигурацию:
 
 ```bash
-sh uv.sh --version v0.4.0 --base-url https://github.com/shogun-kub/termit/releases/download --no-enroll
+sh uv.sh --no-enroll                     # самый свежий релиз
+sh uv.sh --version v0.4.1 --no-enroll    # или ровно этот
 ```
 
 Вручную это те же два шага:
@@ -297,9 +298,12 @@ nginx при этом продолжает работать, потому что
 systemctl disable --now termit-mn
 rm -f /etc/systemd/system/termit-mn.service /etc/systemd/system/termit-mn-*.service \
       /etc/systemd/system/termit-mn-*.timer
-rm -rf /etc/termit/mn /var/lib/termit/mn
+rm -rf /etc/termit/mn /var/lib/termit/mn /usr/local/lib/termit
 systemctl daemon-reload
 ```
+
+`/usr/local/lib/termit` — это prober, который ставит `mn.sh`; без него переустановленный сервер не сможет
+проверить ни одного узла.
 
 Шаблон со звёздочкой накрывает четыре имени юнитов, которые релиз кладёт рядом с серверным —
 `termit-mn-firewall`, `-firewall-rollback`, `-guard` и `-blocklist`, шесть файлов вместе с двумя
@@ -307,5 +311,6 @@ systemctl daemon-reload
 `termit-mn firewall on`. Если их оставить, останется загрузочный юнит, который ничего не делает, и
 таймер, который продолжает срабатывать.
 
-Команды удаления для сервера нет: у него два каталога, свой каталог для сокета и один юнит, а решать за
-оператора, что реестр пора стереть, автоматическая команда не должна.
+Команды удаления для сервера нет: у него два каталога с данными, свой каталог для сокета, prober в
+`/usr/local/lib/termit` и свои юниты, а решать за оператора, что реестр пора стереть, автоматическая
+команда не должна.

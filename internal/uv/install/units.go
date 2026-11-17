@@ -49,6 +49,9 @@ func (s *unitsStep) unitFiles() (map[string][]byte, error) {
 	agentUnit, err := service.Agent(binary, s.e.configPath, []string{
 		s.e.cfg.Paths.ConfigDir,
 		s.e.cfg.Paths.StateDir,
+		// The agent re-renders the subscription page after every sync, and ProtectSystem=strict makes
+		// everything outside ReadWritePaths read-only: without the site the page is written nowhere.
+		s.e.cfg.Paths.SiteDir,
 	}, readable)
 	if err != nil {
 		return nil, err

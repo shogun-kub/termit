@@ -14,13 +14,17 @@
 
 ## Установка
 
-```bash
-install -m 0755 termit-mn /usr/bin/termit-mn
+Одна команда: находит самый свежий релиз, сверяет его контрольную сумму, ставит бинарник и юнит,
+ставит prober, создаёт конфигурацию, запускает службу и печатает состояние.
 
-termit-mn init --domain mn.example.com --email you@example.com --mode invite
+```bash
+curl -fsSLO https://github.com/shogun-kub/termit/releases/latest/download/mn.sh
+sh mn.sh --domain mn.example.com --email you@example.com --admin-token-out /etc/termit/mn/admin.token
 ```
 
-`--mode` решает, как узел вступает:
+`--version v0.4.1` поставит указанный релиз вместо самого свежего; `--base-url` направит скрипт на
+зеркало, `file://`-URL или локальный каталог (там `--version` обязателен: зеркало не может ответить,
+какой релиз самый свежий). `--mode` передаётся в `init`:
 
 | Режим | Что происходит при вступлении узла |
 |---|---|
@@ -29,7 +33,7 @@ termit-mn init --domain mn.example.com --email you@example.com --mode invite
 | `open` | приглашение не нужно — разумно только в приватной сети |
 
 `termit-mn init` создаёт конфигурацию, базу, мастер-ключ и первый админ-токен и печатает секреты **один
-раз**:
+раз** (`--admin-token-out` пишет токен в файл вместо печати):
 
 ```
 domain:       mn.example.com
@@ -112,6 +116,8 @@ termit-mn admin rotate --token-out /etc/termit/mn/admin.token
 
 ## Первый запуск
 
+Скрипт ставит юнит и запускает службу. Вручную это те же шаги:
+
 ```bash
 install -m 0644 termit-mn.service /etc/systemd/system/
 systemctl daemon-reload
@@ -147,10 +153,10 @@ server:   mn.example.com
 listen:   :443
 api:      /6rfjdqfn5nno
 decoy:    portal
-version:  termit-mn v0.4.0 (commit …, built …, api 1, profile v1)
+version:  termit-mn v0.4.1 (commit …, built …, api 1, profile v1)
 uptime:   3h12m (started 2026-11-10 11:18)
 database: /var/lib/termit/mn/termit.db (412.0 KiB, schema 5)
-prober:   ready (/usr/lib/termit/bin/xray)
+prober:   ready (/usr/local/lib/termit/xray)
 queue:    0 due, next 2026-11-11 12:34 UTC
 cert:     2027-02-08T12:06:44Z (in 89 days)
 nodes:    3 (3 active)

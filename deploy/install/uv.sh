@@ -1,13 +1,15 @@
 #!/bin/sh
 # Termit node bootstrap.
 #
-# Installs one node on a Debian host: fetch a pinned release, verify its SHA-256 against the release's
+# Installs one node on a Debian host: fetch a release, verify its SHA-256 against the release's
 # SHA256SUMS, install the binary, then let `termit-uv init` converge the host and `termit-uv enroll` register it.
 #
-# Nothing here is interactive and nothing is piped from a branch: the version is an argument, the
-# checksum is checked before the binary is installed, and a mismatch aborts before anything is written.
+# Nothing here is interactive and nothing is piped from a branch: without --version the release is the
+# newest published one, the checksum is checked before the binary is installed, and a mismatch aborts
+# before anything is written.
 #
-#   uv.sh --version v0.3.1 --domain node1.example.net --email you@example.com \
+#   uv.sh --wizard
+#   uv.sh --version v0.4.1 --domain node1.example.net --email you@example.com \
 #         --mn https://mn.example.com --invite ABCD-EFGH-IJKL
 #
 # Re-running it is the upgrade path: the binary is replaced and `termit-uv init` converges, which never
@@ -23,6 +25,8 @@ CONFIG=/etc/termit/uv/config.yaml
 BASE_URL=${TERMIT_RELEASE_BASE:-https://github.com/shogun-kub/termit/releases/download}
 
 VERSION=
+LATEST=0
+VERSION_SET=0
 DOMAIN=
 EMAIL=
 MN_URL=
@@ -49,7 +53,6 @@ Usage: uv.sh --version VERSION [--domain NAME] [options]
 Install or upgrade one Termit node. Must run as root on Debian 13, amd64 or arm64.
 
 Required on a first install:
-  --version VERSION        release to install, e.g. v0.3.1 or v0.3.2p1
   --domain NAME            the node's public name; its A/AAAA record must already point here
   --mn URL                 management server URL, e.g. https://mn.example.com
   --invite CODE            invite code from `termit-mn invite create`
@@ -57,6 +60,8 @@ Required on a first install:
   With --wizard the last three are questions instead of flags.
 
 Options:
+  --version VERSION        release to install, e.g. v0.4.1 or v0.4.1p1
+                           (default: the newest published release)
   --email ADDRESS          ACME account contact
   --acme-ca URL            ACME directory; default is Let's Encrypt production
   --acme-skip-tls-verify   do not verify the ACME endpoint (lab only)
@@ -87,6 +92,7 @@ while [ $# -gt 0 ]; do
 	--version)
 		need "$@"
 		VERSION=$2
+		VERSION_SET=1
 		shift 2
 		;;
 	--domain)
@@ -181,7 +187,6 @@ while [ $# -gt 0 ]; do
 	esac
 done
 
-[ -n "$VERSION" ] || die "--version is required; this installer never guesses a release"
 [ "$(id -u)" = 0 ] || die "run this as root"
 [ "$(uname -s)" = Linux ] || die "this installs a Linux node; the current system is $(uname -s)"
 
@@ -194,6 +199,38 @@ esac
 # A local path is a file:// URL: the same code path, and the same checksum, for a mirror on a USB stick.
 case "$BASE_URL" in
 /*) BASE_URL="file://$BASE_URL" ;;
+esac
+
+# Without --version the release is the newest published one. `releases/latest` is a redirect to its tag,
+# so following it answers the question in one request, with no API token and no rate limit — and it
+# never returns a pre-release, which is what a participant should install. A mirror or a local directory
+# has no such redirect, and there the version has to be named.
+if [ "$VERSION_SET" = 0 ]; then
+	case "$BASE_URL" in
+	*/) BASE_URL=${BASE_URL%/} ;;
+	esac
+	# The base is the *download* directory; the redirect that names the newest release lives one level up.
+	case "$BASE_URL" in
+	*/download) LATEST_URL="${BASE_URL%/download}/latest" ;;
+	*) LATEST_URL="$BASE_URL/latest" ;;
+	esac
+	case "$BASE_URL" in
+	file://*) die "the newest release cannot be looked up in $BASE_URL; pass --version" ;;
+	esac
+	command -v curl >/dev/null 2>&1 ||
+		die "looking up the newest release needs curl; pass --version to name one"
+	tag=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "$LATEST_URL" 2>/dev/null) ||
+		die "cannot look up the newest release at $LATEST_URL; pass --version"
+	tag=${tag##*/}
+	case "$tag" in
+	v[0-9]*.[0-9]*.[0-9]*) VERSION=$tag LATEST=1 ;;
+	*) die "$LATEST_URL did not point at a release tag (got '$tag'); pass --version" ;;
+	esac
+fi
+
+case "$VERSION" in
+v[0-9]*.[0-9]*.[0-9]*) ;;
+*) die "--version wants a tag such as v0.4.1 or v0.4.1p1, not '$VERSION'" ;;
 esac
 
 ASSET="${PROGRAM}_${VERSION}_linux_${ARCH}"
@@ -230,7 +267,11 @@ else
 	say "checksum: from $(basename "$sums")"
 fi
 
-say "release:  $VERSION ($ARCH)"
+if [ "$LATEST" = 1 ]; then
+	say "release:  $VERSION ($ARCH, the newest published one; pin one with --version)"
+else
+	say "release:  $VERSION ($ARCH)"
+fi
 say "fetching: $BASE_URL/$VERSION/$ASSET"
 fetch "$BASE_URL/$VERSION/$ASSET" "$WORK/$ASSET" ||
 	die "cannot download $BASE_URL/$VERSION/$ASSET"

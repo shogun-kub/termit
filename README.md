@@ -67,17 +67,13 @@ server has its own page in [Running the server](docs/guide/using-mn.md).
 
 ```bash
 # on the server (Debian 13, ports 80/443 free, DNS pointing at it)
-install -m 0755 termit-mn /usr/bin/termit-mn
-termit-mn init --domain mn.example.com --email you@example.com --mode invite
-install -m 0644 termit-mn.service /etc/systemd/system/ && systemctl enable --now termit-mn
-termit-mn invite create --note "node-a"            # prints the code once
+curl -fsSLO https://github.com/shogun-kub/termit/releases/latest/download/mn.sh
+sh mn.sh --domain mn.example.com --email you@example.com   # --version v0.4.1 pins a release
+termit-mn invite create --note "node-a"                    # prints the code once
 
 # on the node (Debian 13, ports 80/443 free, DNS pointing at it)
-curl -fsSLO https://github.com/shogun-kub/termit/releases/download/v0.4.0/termit-uv_v0.4.0_linux_amd64
-curl -fsSLO https://github.com/shogun-kub/termit/releases/download/v0.4.0/SHA256SUMS
-sha256sum -c --ignore-missing SHA256SUMS
-install -m 0755 termit-uv_v0.4.0_linux_amd64 /usr/bin/termit-uv
-termit-uv wizard
+curl -fsSLO https://github.com/shogun-kub/termit/releases/latest/download/uv.sh
+sh uv.sh --wizard
 ```
 
 The wizard asks for the node's name, the server's address — including the API prefix that `init` printed —
@@ -109,7 +105,7 @@ Deliberate design choices worth knowing before you deploy it:
 
 ## Status
 
-`v0.4.0` is the newest release. M1–M5 are implemented and verified on a three-machine acceptance lab
+`v0.4.1` is the newest release. M1–M5 are implemented and verified on a three-machine acceptance lab
 (Debian 13 in unprivileged containers), and the release pipeline builds verified artifacts for
 linux/amd64 and linux/arm64. Since `0.4.0` the WARP tunnel runs inside the proxy core instead of a
 sidecar, so it needs no `/dev/net/tun`, and `warp.family` decides which address family leaves through it.
@@ -138,7 +134,7 @@ go test ./cmd/... ./internal/...                  # unit tests
 go vet ./cmd/... ./internal/...
 gofmt -l cmd internal deploy test                 # must print nothing
 
-go run ./deploy/release --version v0.4.0 --out dist   # the release directory, as CI builds it
+go run ./deploy/release --version v0.4.1 --out dist   # the release directory, as CI builds it
 ```
 
 Package patterns are explicit on purpose: `references/` holds third-party Go source inside this

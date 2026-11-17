@@ -186,7 +186,8 @@ binary beside the new one: it will not read a newer schema.
 On a node the bootstrap script is the short path — it replaces the binary and converges:
 
 ```bash
-sh uv.sh --version v0.4.0 --base-url https://github.com/shogun-kub/termit/releases/download --no-enroll
+sh uv.sh --no-enroll                     # the newest release
+sh uv.sh --version v0.4.1 --no-enroll    # or exactly this one
 ```
 
 By hand it is the same two steps:
@@ -289,15 +290,19 @@ On the MN:
 systemctl disable --now termit-mn
 rm -f /etc/systemd/system/termit-mn.service /etc/systemd/system/termit-mn-*.service \
       /etc/systemd/system/termit-mn-*.timer
-rm -rf /etc/termit/mn /var/lib/termit/mn
+rm -rf /etc/termit/mn /var/lib/termit/mn /usr/local/lib/termit
 systemctl daemon-reload
 ```
+
+`/usr/local/lib/termit` is the probe worker `mn.sh` installs; without it a reinstall is a server that
+cannot check a single node.
 
 The wildcard covers the four unit names the release ships beside the server's own — `termit-mn-firewall`,
 `-firewall-rollback`, `-guard` and `-blocklist`, six files with the two timers
 ([`OPERATIONS.md`](OPERATIONS.md) §13.6) — which a server that ever ran `termit-mn firewall on` has
 installed. Leaving them behind leaves a boot unit that does nothing and a timer that keeps trying.
 
-There is no uninstall command for the server: it owns two directories, the socket's own directory and one
-unit, and deleting a registry is not something an automated command should decide to do.
+There is no uninstall command for the server: it owns two data directories, the socket's own directory,
+the probe worker in `/usr/local/lib/termit` and its units, and deleting a registry is not something an
+automated command should decide to do.
 

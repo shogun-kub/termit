@@ -60,8 +60,19 @@ jobs:
           version="${{ steps.identity.outputs.version }}"
           # The published tags are the only record of what has been handed out, so the counter comes from
           # them: v0.3.2p1 was the first build of 0.3.2, v0.3.2p2 is this one. A fresh version starts at 1.
-          last=$(git tag --list "v${version}p*" | sed "s/^v${version}p//" | grep -E '^[0-9]+$' | sort -n | tail -1 || true)
+          # `version` already carries its `v`; a second one matches no tag and silently answers "p1".
+          last=$(git tag --list "${version}p*" | sed "s/^${version}p//" | grep -E '^[0-9]+$' | sort -n | tail -1 || true)
           echo "version=${version}p$(( ${last:-0} + 1 ))" >> "$GITHUB_OUTPUT"
+
+      - name: never publish over a version that exists
+        run: |
+          # A counter that lost its place would overwrite a published build, and a version that means
+          # two trees is worse than a missing one: stop before anything is built or uploaded.
+          tag="${{ steps.prerelease.outputs.version }}"
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            echo "::error::$tag is already published; the counter did not see it"
+            exit 1
+          fi
 
       - name: build the release
         run: go run ./deploy/release --version "${{ steps.prerelease.outputs.version }}" --out dist

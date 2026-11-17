@@ -67,17 +67,13 @@ WARP, а собственный трафик машины — никогда. О
 
 ```bash
 # на сервере (Debian 13, порты 80/443 свободны, DNS указывает на него)
-install -m 0755 termit-mn /usr/bin/termit-mn
-termit-mn init --domain mn.example.com --email you@example.com --mode invite
-install -m 0644 termit-mn.service /etc/systemd/system/ && systemctl enable --now termit-mn
-termit-mn invite create --note "node-a"            # печатает код один раз
+curl -fsSLO https://github.com/shogun-kub/termit/releases/latest/download/mn.sh
+sh mn.sh --domain mn.example.com --email you@example.com   # --version v0.4.1 закрепляет релиз
+termit-mn invite create --note "node-a"                    # печатает код один раз
 
 # на узле (Debian 13, порты 80/443 свободны, DNS указывает на него)
-curl -fsSLO https://github.com/shogun-kub/termit/releases/download/v0.4.0/termit-uv_v0.4.0_linux_amd64
-curl -fsSLO https://github.com/shogun-kub/termit/releases/download/v0.4.0/SHA256SUMS
-sha256sum -c --ignore-missing SHA256SUMS
-install -m 0755 termit-uv_v0.4.0_linux_amd64 /usr/bin/termit-uv
-termit-uv wizard
+curl -fsSLO https://github.com/shogun-kub/termit/releases/latest/download/uv.sh
+sh uv.sh --wizard
 ```
 
 Мастер спросит имя узла, адрес сервера — вместе с префиксом API, который напечатал `init`, — и код
@@ -109,7 +105,7 @@ termit-uv wizard
 
 ## Состояние
 
-`v0.4.0` — последний выпуск. M1–M5 реализованы и проверены на приёмочной лабе из трёх машин (Debian 13 в
+`v0.4.1` — последний выпуск. M1–M5 реализованы и проверены на приёмочной лабе из трёх машин (Debian 13 в
 непривилегированных контейнерах), конвейер релиза собирает проверенные артефакты под linux/amd64 и
 linux/arm64. С `0.4.0` туннель WARP живёт внутри ядра прокси, а не в отдельном сервисе, поэтому ему не
 нужен `/dev/net/tun`, а `warp.family` решает, какое семейство адресов выходит через него. Проходы за
@@ -138,7 +134,7 @@ go test ./cmd/... ./internal/...                  # юнит-тесты
 go vet ./cmd/... ./internal/...
 gofmt -l cmd internal deploy test                 # должно быть пусто
 
-go run ./deploy/release --version v0.4.0 --out dist   # каталог релиза, как его собирает CI
+go run ./deploy/release --version v0.4.1 --out dist   # каталог релиза, как его собирает CI
 ```
 
 Шаблоны пакетов указаны явно намеренно: `references/` содержит сторонний Go-код внутри дерева

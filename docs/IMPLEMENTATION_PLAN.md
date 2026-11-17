@@ -1769,3 +1769,54 @@ left to the trailing rule.
 `v0.4.0p6` on both production nodes: `family: ipv4`, `172.16.0.2/32` and `0.0.0.0/0` in the core's
 document, `::/0` named direct, and `warp status` answering `egress: on` with `104.28.222.18` and
 `104.28.193.183` — Cloudflare's IPv4, where the same nodes reported `2a09:…` a few hours earlier.
+
+### 11.10 Production pass, 0.4.1, 2026-11-17
+
+`0.4.1` is a small release — the wizard's install branch, the agent's write access to the page it
+re-renders, two installers that no longer demand a version, and the pages checked against a clean box —
+but it changes the network half of the agent, so it went out the same way `0.4.0` did: as a pre-release on
+the production mesh, with the final tag waiting for what the mesh answered.
+
+**The pre-release was built, and it caught a defect in the pipeline first.** `workflow_dispatch` on
+`release/v0.4.1` computed the pre-release number from a tag pattern with one `v` too many
+(`vv0.4.1p*`), found no build, and published over `v0.4.1p1`: the tag stayed on its commit and the assets
+were rebuilt from the branch tip. Every earlier pre-release had been published by pushing a tag, which runs
+the other job, so the counter had never been exercised. `37b84fb` fixes the pattern and refuses a version
+whose tag already exists before anything is built or uploaded; `v0.4.1p1` was rebuilt from its own tag and
+the assets replaced, and `v0.4.1p5` is the build this record is about.
+
+**Both nodes took `v0.4.1p5` with `sh uv.sh --version v0.4.1p5 --no-enroll`.** then5 came from `p4`, then4
+from `0.4.0p6`. On both, `init` reported eleven steps `present` and rewrote only the agent unit — the
+generators did not change between those builds — so `xray.json` and `config.yaml` kept their digests and
+`termit-xray` was never restarted (then5 still on its 08:01:37 EET start, then4 on 06:01:54 UTC). The
+rewritten unit is the one change that matters: `ReadWritePaths` now names the site tree, and the page the
+agent re-renders after a sync can finally be written.
+
+That claim was checked rather than assumed: on each node the same render (`termit-uv options --quiet`) was
+run inside the unit's own sandbox properties — `ProtectSystem=strict`, the unit's `ReadWritePaths`,
+`ProtectHome=yes` — and it exited 0 where, on the lab, the same command with the previous path list failed
+with the production's exact `read-only file system`. `termit-uv doctor` reports 19 ok on both nodes and
+TLS answers `200` on both names.
+
+**The server went from `0.3.2` to `v0.4.1p5`.** The database schema did not move (`SchemaVersion` was 5 in
+both trees), so the upgrade is reversible with the previous binary, and the unit shipped with the release
+is byte-identical to the installed one — `daemon-reload` was not needed. The order was `stop`, replace the
+binary, `start`; the service came back on `:443` with the same certificate, `termit-mn status` lists both
+nodes `active` with `failed cycles: 0`, a probe of one node returned `check_ok` with `changed: false`, and
+the API answers as it should from outside (`401 unauthorized` on `agent/sync`, a `400 url_invalid` problem
+document on `enroll`). The recorded backup holds the old binary, the unit, the configuration, the master
+key, the admin token and a consistent database snapshot.
+
+**Node and server talk again on the new builds.** `termit-uv sync` on both nodes answered `already in
+sync: 3 client(s), 1 peer(s)` without touching either core document, and the server now records both as
+`termit-uv v0.4.1p5 (37b84fb)`.
+
+**Still open, and said so rather than assumed:** the full daily agent cycle — sync, the transport-aware
+self-check, the page render — has not yet run on `p5` by the schedule; the next one is due a day later. What
+was exercised is the same code reached by hand, plus the server's own probe. If the cycle disagrees, it is
+the page render and the `warp` line in the self-check report that will say so, and the rollback is the
+previous binary plus `termit-uv init`.
+
+**One host detail worth recording:** the production server has no `curl`, and every installer and one-liner
+in the guide assumes it. The update was done with `wget` and `sha256sum -c`; installing the package or
+teaching the scripts a `wget` fallback is a decision, not yet made.

@@ -641,22 +641,23 @@ Two consequences of the target class:
 
 - **1 vCPU** means no busy loops, no per-request process spawns, and modest concurrency. The probe
   worker runs only on MN, never on a UV.
-- **Unprivileged LXC containers** (the common cheap-VPS shape) have no `/dev/net/tun`. WARP therefore
-  cannot be enabled there, and the agent must say so plainly instead of failing at runtime. This is
-  the same class of limitation as missing virtualization features for `warp-cli`; both are detected
-  in preflight.
+- **Unprivileged LXC containers** (the common cheap-VPS shape) have no `/dev/net/tun`. The `proxy`
+  transport therefore cannot run there; the default `wireguard` transport lives inside the core and
+  needs no device, which is why it is the default. A node whose transport cannot run must say so
+  plainly instead of failing at runtime: preflight and `termit-uv warp status` name the reason and the
+  node keeps serving on the direct path.
 
 ### 13.2 UV install
 
-```
-curl -fsSL https://get.termit.example/uv.sh | sudo bash -s -- \
-  --mn https://mn.example.com \
-  --domain node.example.com \
-  --invite ABCD-EFGH
+```bash
+# the newest published release; --version v0.4.1 pins one
+curl -fsSLO https://github.com/shogun-kub/termit/releases/latest/download/uv.sh
+sudo sh uv.sh --mn https://mn.example.com/6rfjdqfn5nno --domain node.example.com --invite ABCD-EFGH
 ```
 
-The bootstrap verifies a release checksum (and signature when configured), installs `termit-uv`,
-pinned `xray-core`, and `cloudflare-warp` when WARP is wanted — the default — then runs `termit-uv init`.
+The bootstrap resolves a release (the newest published one, or the one `--version` names), verifies its
+checksum, installs `termit-uv`, pinned `xray-core`, and the `cloudflare-warp` package only for the `proxy`
+transport, then runs `termit-uv init`.
 Non-interactive by design; `termit-uv doctor` for diagnosis, `termit-uv uninstall [--purge]` for removal. A host
 that cannot run WARP is not a failed install: `termit-uv init` records the refusal, keeps the mode the owner
 asked for, and leaves traffic on the direct path.
@@ -753,13 +754,13 @@ both then sync so the peers converge immediately.
 
 `termit-uv` runs as two systemd units: `termit-uv-agent` (the daily cycle, self-check and sync) and
 `termit-uv-renew` (the certificate timer). The agent is hardened with `NoNewPrivileges`,
-`ProtectSystem=strict`, `ReadWritePaths` limited to its config and state directories, a private
-`/tmp`, and `ProtectHome` — except when the configured MN CA file lives under `/root`, `/home` or
-`/run/user`, where `ProtectHome` would hide the very file the unit must read. The generator records
-that trade-off in the unit itself instead of leaving an unreadable CA to fail at the first sync. Xray
-runs under its own generated unit as the unprivileged `termit` user, with an empty capability set,
-`ProtectSystem=strict`, `SystemCallFilter=@system-service` and `MemoryDenyWriteExecute`. It reads one
-config file and owns nothing else.
+`ProtectSystem=strict`, `ReadWritePaths` limited to its config and state directories and the site tree it
+re-renders after a sync, a private `/tmp`, and `ProtectHome` — except when the configured MN CA file lives
+under `/root`, `/home` or `/run/user`, where `ProtectHome` would hide the very file the unit must read.
+The generator records that trade-off in the unit itself instead of leaving an unreadable CA to fail at the
+first sync. Xray runs under its own generated unit as the unprivileged `termit` user, with an empty
+capability set, `ProtectSystem=strict`, `SystemCallFilter=@system-service` and `MemoryDenyWriteExecute`. It
+reads one config file and owns nothing else.
 
 ### 13.3 MN install
 
