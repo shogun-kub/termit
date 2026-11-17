@@ -3,6 +3,45 @@ What each release changed, written for the people who run Termit. Newest first;
 carries every section back to the last release: the versions in between were handed out only as
 pre-releases, and whoever installs the release skipped them.
 
+## 0.4.0 — 2026-11-17
+
+WARP stops being a sidecar. The tunnel moves inside the core, and UDP stops being the one protocol that
+cannot use it.
+
+### Added
+
+- **`warp.transport`: `wireguard` or `proxy`.** `wireguard` is a WireGuard outbound inside Xray — one
+  process, no `cloudflare-warp` package, no loopback SOCKS port — and it carries UDP as well as TCP. It
+  runs in the core's userspace stack (`noKernelTun`), so the node still never touches host routing. A
+  fresh configuration writes `wireguard`; a file that predates the key reads as `proxy` and is left alone
+  until its operator runs `termit-uv init --warp-transport wireguard`.
+- **The node registers itself with Cloudflare.** `internal/uv/warp` speaks the WARP registration API
+  directly: a WireGuard key pair, the peer, the tunnel address and the three reserved bytes. The identity
+  lives in `/var/lib/termit/uv/warp.yaml`, `0600`, written once — a re-run of `init` reuses it — and it
+  never appears in a log line or in `warp status`.
+- **`termit-uv warp rotate`** replaces the identity on purpose, which is the only way to get a new device
+  on Cloudflare's side.
+- **`termit-uv warp status` says which transport is in use**, and on the wireguard one it probes the exit
+  through the node's own tunnel and reports the address Cloudflare sees.
+- **The install ends by proving the tunnel works.** With WARP on and the node registered, the last step
+  fetches Cloudflare's trace through the node itself and reports where the traffic came from. A tunnel that
+  is configured but exits directly is a warning naming that address — the failure this project exists to
+  avoid, caught at install time instead of on a phone.
+
+### Changed
+
+- **A blocked Cloudflare does not block the install.** Registration is a warning: the step reports why,
+  the core is written with direct egress, and the run succeeds. Cloudflare's API is unreachable from whole
+  networks — in Russia the range is routinely blocked — and an installer that a third-party service can
+  stop is an installer nobody finishes behind that block. `warp status` and `doctor` say the exit is direct
+  until `termit-uv init --only warp` succeeds.
+- **UDP goes through WARP on the wireguard transport**, which is what the split rule in 0.3.2 existed to
+  work around. The `proxy` transport keeps the split: SOCKS5 has no UDP ASSOCIATE, so a UDP flow handed
+  to it never returns.
+- **`termit-uv init --warp-transport`** flips a node between the two. Switching to `proxy` reinstalls
+  `cloudflare-warp`; switching to `wireguard` leaves the package installed but unused, because removing a
+  package is the operator's decision, not the installer's.
+
 ## 0.3.2 — 2026-11-16
 
 The owner's page catches up with what the node knows, and starts listing the devices it was already

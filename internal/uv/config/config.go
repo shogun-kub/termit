@@ -178,7 +178,29 @@ type Warp struct {
 	// Enabled is the switch this setting had before modes existed. It is read so an existing
 	// configuration still loads, and never written again.
 	Enabled *bool `yaml:"enabled,omitempty"`
+	// Transport is how proxied traffic reaches WARP: "proxy" hands it to warp-cli's loopback SOCKS5
+	// listener (TCP only), "wireguard" keeps a WireGuard tunnel inside the core (TCP and UDP). A
+	// configuration written before this key existed means proxy; fresh installs write wireguard.
+	Transport string `yaml:"transport,omitempty"`
 }
+
+// WARP transports.
+const (
+	WarpTransportProxy     = "proxy"
+	WarpTransportWireGuard = "wireguard"
+)
+
+// TransportOrDefault is the transport this configuration asks for, with the historical default filled
+// in: a file that predates the key must keep behaving exactly as it did.
+func (w Warp) TransportOrDefault() string {
+	if w.Transport == "" {
+		return WarpTransportProxy
+	}
+	return w.Transport
+}
+
+// UsesWireGuard reports whether the tunnel lives inside the core.
+func (w Warp) UsesWireGuard() bool { return w.TransportOrDefault() == WarpTransportWireGuard }
 
 // WARP modes.
 const (
@@ -226,6 +248,9 @@ func Default() *Config {
 	// is uniform with the mesh list the server renders. A configuration that predates the key keeps
 	// its links alone: the loader adds nothing.
 	c.HappFragment = proto.DefaultHappFragment
+	// A fresh node puts the WARP tunnel inside the core, where UDP takes the same path as TCP. An
+	// installed node keeps the transport it has: its configuration has no key, which reads as proxy.
+	c.Warp.Transport = WarpTransportWireGuard
 	return c
 }
 
@@ -350,6 +375,11 @@ func (c *Config) Validate() error {
 		if err := validateDomain(domain); err != nil {
 			problems = append(problems, fmt.Errorf("warp.selected: %w", err))
 		}
+	}
+	switch c.Warp.Transport {
+	case "", WarpTransportProxy, WarpTransportWireGuard:
+	default:
+		problems = append(problems, fmt.Errorf("warp.transport %q must be proxy or wireguard", c.Warp.Transport))
 	}
 	problems = append(problems, c.Security.validate()...)
 	problems = append(problems, c.Paths.validate()...)
@@ -500,6 +530,11 @@ func (p Paths) FirewallPath() string { return path.Join(p.StateDir, "firewall.js
 
 // BansPath is where the guard keeps its decisions; the kernel's sets are rebuilt from it.
 func (p Paths) BansPath() string { return path.Join(p.StateDir, "bans.json") }
+
+// WarpIdentityPath is the WARP registration the core's WireGuard outbound authenticates with. It is a
+// credential — 0600 in the state directory, removed with it — and it exists only on the wireguard
+// transport.
+func (p Paths) WarpIdentityPath() string { return path.Join(p.StateDir, "warp.yaml") }
 
 // BlocklistPath is the network list in force. The kernel's sets are rebuilt from it, so a failed load
 // costs a refresh, not the list.

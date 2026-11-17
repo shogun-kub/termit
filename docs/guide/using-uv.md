@@ -55,6 +55,7 @@ Useful variations:
 | verify against a digest you have | `--sha256 <hex>` (or `--checksum-file SHA256SUMS`) |
 | your own build, not a release | install the binary yourself and run `termit-uv init` |
 | opt out of WARP | `--no-warp`, later `termit-uv warp mode off` |
+| change how WARP carries traffic | `termit-uv init --warp-transport wireguard` (inside the core, TCP and UDP) or `proxy` (the `warp-cli` sidecar, TCP only) |
 
 The script never guesses a version, and refuses to install bytes it cannot verify. If it stops, the
 message names the file and the expected digest.

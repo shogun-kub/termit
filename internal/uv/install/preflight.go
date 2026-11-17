@@ -367,9 +367,14 @@ func (p *preflight) checkACME(ctx context.Context) Check {
 func (p *preflight) checkTun(context.Context) Check {
 	_, err := p.opts.Stat("/dev/net/tun")
 	warpWanted := p.opts.Config != nil && p.opts.Config.Warp.UsesWarp()
+	// The device is a fact about the proxy transport only: the WireGuard tunnel inside the core runs in
+	// userspace and needs none, which is what makes WARP work in an unprivileged container.
 	switch {
 	case err == nil:
 		return Check{Name: "tun", Status: StatusOK, Detail: "/dev/net/tun is available"}
+	case warpWanted && p.opts.Config.Warp.UsesWireGuard():
+		return Check{Name: "tun", Status: StatusOK,
+			Detail: "/dev/net/tun is missing, which the wireguard transport does not need"}
 	case warpWanted:
 		// A host without TUN is still a node. WARP is on by default, so this is the common case for
 		// a container; the install step reports the refusal, the route fails open to direct, and the

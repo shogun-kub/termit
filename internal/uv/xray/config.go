@@ -70,16 +70,48 @@ type WarpSpec struct {
 	FailOpen bool
 	// Socks is the sidecar's loopback address; empty means DefaultWarpSocks.
 	Socks string
+	// Transport says how proxied traffic reaches WARP. Empty means WarpTransportProxy, which is what a
+	// configuration written before the key existed expects. WarpTransportWireGuard puts the tunnel inside
+	// the core: no sidecar, no SOCKS5 hop, and UDP goes through WARP like TCP.
+	Transport string
+	// WireGuard is the identity the tunnel needs. It is ignored on the proxy transport and required on
+	// the wireguard one.
+	WireGuard *WireGuardIdentity
+}
+
+// WireGuardIdentity is everything a WireGuard outbound needs: the node's own key, the address Cloudflare
+// assigned inside the tunnel, and the peer to reach. The three reserved bytes are part of the identity,
+// not a constant: Cloudflare derives them from the device registration and rejects a handshake that
+// carries the wrong ones.
+type WireGuardIdentity struct {
+	SecretKey string
+	Addresses []string
+	PublicKey string
+	Endpoint  string
+	Reserved  []int
+	MTU       int
 }
 
 // Enabled reports whether traffic is supposed to leave through WARP.
 func (w WarpSpec) Enabled() bool { return w.Mode == "all" || w.Mode == "selected" }
+
+// UsesWireGuard reports whether the tunnel lives inside the core rather than in the warp-cli sidecar.
+func (w WarpSpec) UsesWireGuard() bool { return w.Transport == WarpTransportWireGuard }
 
 // Constants for the WARP sidecar. They are exported because the agent, the installer and the
 // `termit-uv warp` command all have to agree on the same address and probe.
 const (
 	// DefaultWarpSocks is warp-cli's proxy-mode SOCKS5 listener on loopback.
 	DefaultWarpSocks = "127.0.0.1:40000"
+	// WarpTransportProxy is the sidecar path: the core hands proxied traffic to warp-cli's SOCKS5
+	// listener. It carries TCP only, which is why UDP is routed direct on this transport.
+	WarpTransportProxy = "proxy"
+	// WarpTransportWireGuard keeps the tunnel inside the core. UDP and TCP take the same path, and no
+	// package, daemon or loopback port is involved.
+	WarpTransportWireGuard = "wireguard"
+	// DefaultWarpMTU is what the WireGuard tunnel uses unless configured. 1280 is the IPv6 minimum and
+	// leaves room for the WireGuard header and the outer UDP/IP headers inside a 1500-byte path.
+	DefaultWarpMTU = 1280
 	// WarpTag names the WARP outbound; the balancer selects it by tag.
 	WarpTag = "warp"
 	// WarpBalancerTag names the fail-open balancer.
@@ -136,14 +168,47 @@ func (s Spec) Validate() error {
 	default:
 		problems = append(problems, fmt.Errorf("warp mode %q must be off, all or selected", s.Warp.Mode))
 	}
-	if s.Warp.Enabled() {
-		socks := s.Warp.Socks
-		if socks == "" {
-			socks = DefaultWarpSocks
+	switch s.Warp.Transport {
+	case "", WarpTransportProxy:
+		if s.Warp.Enabled() {
+			socks := s.Warp.Socks
+			if socks == "" {
+				socks = DefaultWarpSocks
+			}
+			if _, _, err := net.SplitHostPort(socks); err != nil {
+				problems = append(problems, fmt.Errorf("warp socks address %q is not host:port", socks))
+			}
 		}
-		if _, _, err := net.SplitHostPort(socks); err != nil {
-			problems = append(problems, fmt.Errorf("warp socks address %q is not host:port", socks))
+	case WarpTransportWireGuard:
+		if !s.Warp.Enabled() {
+			// A wireguard transport with WARP off is not a contradiction worth refusing: the identity
+			// simply goes unused, and an operator who turns WARP back on does not have to re-register.
+			break
 		}
+		identity := s.Warp.WireGuard
+		switch {
+		case identity == nil:
+			problems = append(problems, errors.New("warp transport wireguard needs an identity"))
+		case identity.SecretKey == "":
+			problems = append(problems, errors.New("the wireguard identity has no secret key"))
+		case identity.PublicKey == "":
+			problems = append(problems, errors.New("the wireguard identity has no peer public key"))
+		case identity.Endpoint == "":
+			problems = append(problems, errors.New("the wireguard identity has no endpoint"))
+		case len(identity.Addresses) == 0:
+			problems = append(problems, errors.New("the wireguard identity has no tunnel address"))
+		}
+		if identity != nil {
+			// Cloudflare's header is three bytes or absent; any other length is rejected by the core.
+			if len(identity.Reserved) != 0 && len(identity.Reserved) != 3 {
+				problems = append(problems, fmt.Errorf("the wireguard reserved bytes are %d long, want 3", len(identity.Reserved)))
+			}
+			if identity.MTU != 0 && (identity.MTU < 576 || identity.MTU > 1500) {
+				problems = append(problems, fmt.Errorf("the wireguard mtu %d is out of range", identity.MTU))
+			}
+		}
+	default:
+		problems = append(problems, fmt.Errorf("warp transport %q must be proxy or wireguard", s.Warp.Transport))
 	}
 	if len(s.Clients) == 0 {
 		problems = append(problems, errors.New("at least one client is required"))
@@ -277,15 +342,59 @@ func Generate(spec Spec) ([]byte, error) {
 	return append(data, '\n'), nil
 }
 
-// warpOutbound is the SOCKS5 outbound to warp-cli's proxy-mode listener. Domains are forwarded, not
-// resolved here: the SOCKS request carries the name and the WARP client resolves it inside the
-// tunnel, so a lookup does not leak the node's address to the node's resolver.
+// warpOutbound is the egress itself: a WireGuard tunnel inside the core, or the SOCKS5 outbound to
+// warp-cli's proxy-mode listener. Domains are forwarded to the SOCKS sidecar, not resolved here: the
+// request carries the name and the WARP client resolves it inside the tunnel, so a lookup does not leak
+// the node's address to the node's resolver.
 func warpOutbound(w WarpSpec) outbound {
+	if w.UsesWireGuard() {
+		return wireGuardOutbound(w.WireGuard)
+	}
 	host, port := warpSocks(w)
 	return outbound{
 		Tag: WarpTag, Protocol: "socks",
 		Settings: socksSettings{Servers: []socksServer{{Address: host, Port: port}}},
 	}
+}
+
+// wireGuardOutbound is the userspace WireGuard transport. noKernelTun is not tuning: it keeps the core
+// from creating a TUN device and touching host routing, and it is what makes the outbound work in an
+// unprivileged container. The measured cost is a third of the kernel path's throughput on a one-vCPU
+// node, which is recorded in IMPLEMENTATION_PLAN.md §10.1.
+func wireGuardOutbound(identity *WireGuardIdentity) outbound {
+	mtu := identity.MTU
+	if mtu == 0 {
+		mtu = DefaultWarpMTU
+	}
+	peer := wireGuardPeer{
+		PublicKey:  identity.PublicKey,
+		Endpoint:   identity.Endpoint,
+		AllowedIPs: []string{"0.0.0.0/0", "::/0"},
+		Reserved:   identity.Reserved,
+	}
+	return outbound{
+		Tag: WarpTag, Protocol: "wireguard",
+		Settings: wireGuardSettings{
+			SecretKey: identity.SecretKey, Address: identity.Addresses,
+			Peers: []wireGuardPeer{peer}, MTU: mtu, NoKernelTun: true,
+		},
+	}
+}
+
+// wireGuardSettings is the core's WireGuard outbound shape. The field names are the core's, not ours.
+type wireGuardSettings struct {
+	SecretKey   string          `json:"secretKey"`
+	Address     []string        `json:"address"`
+	Peers       []wireGuardPeer `json:"peers"`
+	MTU         int             `json:"mtu,omitempty"`
+	NoKernelTun bool            `json:"noKernelTun"`
+}
+
+type wireGuardPeer struct {
+	PublicKey  string   `json:"publicKey"`
+	Endpoint   string   `json:"endpoint"`
+	AllowedIPs []string `json:"allowedIPs"`
+	Reserved   []int    `json:"reserved,omitempty"`
 }
 
 func warpSocks(w WarpSpec) (string, int) {
@@ -309,7 +418,26 @@ func warpSocks(w WarpSpec) (string, int) {
 // cannot carry UDP does not fail loudly — the flow simply never returns, and the first thing a client
 // sends is DNS. Splitting the rule keeps the address WARP is there to hide for TCP, and keeps UDP
 // working at the price of the node's own address. See docs/OPERATIONS.md.
+// warpRules are the routing decisions for proxied traffic. On the wireguard transport both protocols
+// take the tunnel, because the tunnel carries both. On the proxy transport TCP takes the WARP hop and
+// UDP goes direct: warp-cli in proxy mode answers UDP ASSOCIATE with "command not supported", and a
+// SOCKS5 proxy that cannot carry UDP does not fail loudly — the flow simply never returns, and the
+// first thing a client sends is DNS.
 func warpRules(w WarpSpec, balancerTag string) []rule {
+	if w.UsesWireGuard() {
+		tunnel := rule{Type: "field", Network: "tcp,udp"}
+		if w.Mode == "selected" {
+			domains := append([]string(nil), w.Selected...)
+			sort.Strings(domains)
+			tunnel.Domain = domains
+		}
+		if balancerTag != "" {
+			tunnel.BalancerTag = balancerTag
+		} else {
+			tunnel.OutboundTag = WarpTag
+		}
+		return []rule{tunnel}
+	}
 	proxied := rule{Type: "field", Network: "tcp"}
 	direct := rule{Type: "field", Network: "udp", OutboundTag: "direct"}
 	if w.Mode == "selected" {

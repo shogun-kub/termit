@@ -56,6 +56,12 @@ type stepEnv struct {
 	// warpHost overrides the platform facts the WARP step judges; tests set it, production leaves it
 	// nil so the real host is checked.
 	warpHost *warp.Host
+	// registrar creates the WARP identity on the wireguard transport. The zero value talks to
+	// Cloudflare; a test points its BaseURL at a local server.
+	registrar warp.Registrar
+	// probeWarp verifies that the tunnel carries traffic. It is a seam because the real one starts the
+	// core; tests answer with a trace.
+	probeWarp func(context.Context, *config.Config, *state.State) (warp.Trace, error)
 	// forced is true while a step that the run explicitly forced is executing. A step whose Run is
 	// not idempotent (renewing a certificate) needs to know the difference between "converge" and
 	// "do it again".

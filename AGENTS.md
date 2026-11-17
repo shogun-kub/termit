@@ -144,6 +144,11 @@ go run ./deploy/release --version v0.3.1 --out dist   # the release directory, a
 go run ./deploy/clean                 # drop the artifacts and the scratch; --dry-run lists them first
 go run ./deploy/clean --build-cache   # and the compiled output: the next build recompiles, nothing is
                                       # downloaded (the module cache is --module-cache, which is)
+# SonarQube Server: self-hosted and LAN-only, so CI cannot reach it. The scan runs on the lab MN —
+# /root/sonar/analyse.sh pulls `dev`, runs the coverage step below and the scanner (coordinates in
+# .spike-out/lab.md). The same two commands work anywhere with Go and a JRE.
+go test -coverprofile=coverage.out ./cmd/... ./internal/...
+SONAR_TOKEN=… sonar-scanner -Dsonar.host.url=<server>
 ```
 
 Windows: PowerShell equivalents or WSL; no `make`-only workflow. A `Makefile` may exist, but every

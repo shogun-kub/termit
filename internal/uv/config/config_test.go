@@ -412,3 +412,68 @@ func TestLocaleRejectsALanguageTheBuildDoesNotSpeak(t *testing.T) {
 		t.Error("an empty locale parsed as a language; the default is applied on load instead")
 	}
 }
+
+// TestWarpTransportDefaultsAndMigration is the switch between the two ways WARP carries traffic. The
+// rules it pins: a file written before the key existed keeps the proxy it was installed with, a fresh
+// one writes wireguard, and flipping the key changes nothing else about the file.
+func TestWarpTransportDefaultsAndMigration(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name      string
+		document  string
+		want      string
+		wireguard bool
+	}{
+		{
+			name:     "a configuration written before the key existed",
+			document: "schema_version: 1\ndomain: node.example.com\nemail: a@example.com\nwarp:\n  mode: all\n",
+			want:     config.WarpTransportProxy,
+		},
+		{
+			name:      "an explicit wireguard",
+			document:  "schema_version: 1\ndomain: node.example.com\nemail: a@example.com\nwarp:\n  mode: all\n  transport: wireguard\n",
+			want:      config.WarpTransportWireGuard,
+			wireguard: true,
+		},
+		{
+			name:     "an explicit proxy",
+			document: "schema_version: 1\ndomain: node.example.com\nemail: a@example.com\nwarp:\n  mode: off\n  transport: proxy\n",
+			want:     config.WarpTransportProxy,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cfg, err := config.Parse(strings.NewReader(tc.document))
+			if err != nil {
+				t.Fatalf("Parse: %v", err)
+			}
+			if got := cfg.Warp.TransportOrDefault(); got != tc.want {
+				t.Errorf("transport = %q, want %q", got, tc.want)
+			}
+			if got := cfg.Warp.UsesWireGuard(); got != tc.wireguard {
+				t.Errorf("UsesWireGuard = %v, want %v", got, tc.wireguard)
+			}
+			// The old file must not gain a key it did not have: a rewrite by an operator's editor is the
+			// only thing that should add one.
+			if strings.Contains(tc.document, "transport:") && cfg.Warp.Transport != tc.want {
+				t.Errorf("an explicit value was lost: %q", cfg.Warp.Transport)
+			}
+			if !strings.Contains(tc.document, "transport:") && cfg.Warp.Transport != "" {
+				t.Errorf("an absent key became %q", cfg.Warp.Transport)
+			}
+		})
+	}
+
+	// A fresh configuration starts on the transport that carries UDP, and refuses a value that is
+	// neither of the two.
+	fresh := config.Default()
+	if got := fresh.Warp.TransportOrDefault(); got != config.WarpTransportWireGuard {
+		t.Errorf("a fresh configuration uses %q, want wireguard", got)
+	}
+	broken := "schema_version: 1\ndomain: node.example.com\nemail: a@example.com\nwarp:\n  mode: all\n  transport: masque\n"
+	if _, err := config.Parse(strings.NewReader(broken)); err == nil ||
+		!strings.Contains(err.Error(), "must be proxy or wireguard") {
+		t.Fatalf("Parse = %v, want a refusal naming the two transports", err)
+	}
+}

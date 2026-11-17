@@ -1664,7 +1664,61 @@ watching the exit address of a request the node itself makes.
 - **The package removal is a one-way door on a running node.** Switching back to `proxy` reinstalls
   `cloudflare-warp`; the lab proves the round trip before a node in production takes it.
 
-### 11.7 Size
+### 11.7 Implemented, 2026-11-16
+
+Tasks 1–8 are in `dev`: the registration client, the identity file, `warp.transport`, the generator for
+both documents, `init --warp-transport` / `warp rotate` / a `warp status` that probes the exit,
+`internal/uv/tunnelprobe` for that probe, and the transport-switch test. The preflight no longer warns
+about a missing `/dev/net/tun` on the wireguard transport, because the userspace tunnel does not need one.
+
+Verified on the lab node (`termit-uv1`, an unprivileged container, no `/dev/net/tun`) against the real
+Cloudflare API:
+
+- registration succeeded — device `40d665d2…`, peer `engage.cloudflareclient.com:2408`, three reserved
+  bytes, the tunnel addresses, the identity on disk as `0600`;
+- `xray -test` accepted the generated document, and the route collapsed to one `tcp,udp` rule through the
+  balancer with a `wireguard` outbound whose `noKernelTun` is true;
+- `termit-uv warp status` reported `egress: on` with a `2a09:bac5:…` address — a WARP address, fetched
+  through the node's own tunnel;
+- **UDP through the tunnel answered**: a DNS query to `1.1.1.1:53` sent over SOCKS5 UDP through the node
+  to that tunnel came back with two answers. This is the thing 0.3.2 could not do.
+
+The install itself ends with the step that would have caught the 0.3.2 problem on the node instead of on a
+phone: `warp-egress` runs after the core is started, and when WARP is on and the node is registered it
+fetches Cloudflare's trace through the tunnel and reads the address. A wrong answer — the tunnel is
+configured but the exit is the node's own — is a warning naming that address, not a failed install, and
+`warp-egress ok` on the lab node is the same evidence a client would produce.
+
+Still open before a release: the acceptance-lab run, and the production pass that a `0.4.0` release needs.
+
+#### The acceptance lab, 2026-11-17
+
+`v0.4.0p1` reached the lab the way a tester gets it — the MN by hand against `SHA256SUMS`, the three nodes
+with `uv.sh --version v0.4.0p1 --no-enroll`. All four came up on the release binary and the upgrade
+converged the units, the certificate and the Xray document without touching identity or path.
+`termit-uv1`, which carries `warp.transport: wireguard`, ended its `init` with `warp-egress ok`.
+
+That run also found the defect this milestone could not ship with: **a sync rewrote a wireguard node as
+the proxy sidecar**. The agent's reconciler built the WARP half of the document itself, without the
+transport and without the registration, so the first sync after the install pointed the balancer at a
+SOCKS port nothing listens on; fail-open then took the traffic and the node exited directly — the failure
+`warp-egress` exists to catch, arriving a day late instead of at install time. `warp mode all` had the
+same shape: it refused on a wireguard node for the missing `/dev/net/tun`, which that transport does not
+need.
+
+Fixed in `d66f947`: `install.WarpSpecFor` is the only place that spec is built and the sync goes through
+it, and `warp mode` skips the sidecar — and its tun check — on the wireguard transport, registering the
+node when it has never been registered. `TestWarpSpecFor` covers the four combinations and
+`TestApplierKeepsTheWireGuardTunnel` pins the reconciler.
+
+`v0.4.0p2` (`7ea5e23`) re-ran the suite: **17 pass, 2 skip** (`TestDrillDiskFull` and
+`TestDrillClockSkew`, both limits of an unprivileged container), 346 s. On the lab node, `sync` keeps the
+wireguard outbound in the document, `warp mode off` and `all` round-trip it, and `init` ends with
+`warp-egress ok`.
+
+Still open before a release: the production pass on the two nodes.
+
+### 11.8 Size
 
 Two to three days of work: the registration client and the state file are the bulk of it, the generator
 change is small, and the lab pass is a half-day. It ships as `0.4.0` from a `release/v0.4.0` branch, with

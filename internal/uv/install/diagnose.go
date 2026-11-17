@@ -66,7 +66,7 @@ func Diagnose(ctx context.Context, opts DiagnoseOptions) []Check {
 	if opts.WarpHost != nil {
 		warpClient.Host = *opts.WarpHost
 	}
-	checks = append(checks, diagnoseWarp(ctx, cfg, warpClient))
+	checks = append(checks, diagnoseWarp(ctx, cfg, st, warpClient))
 	return checks
 }
 

@@ -238,6 +238,8 @@ func TestPreflightWarnsWhenWarpCannotRun(t *testing.T) {
 	t.Parallel()
 	cfg := config.Default()
 	cfg.Domain = "node.example.com"
+	// The warning is about the proxy transport; the tunnel inside the core needs no device.
+	cfg.Warp.Transport = config.WarpTransportProxy
 	cfg.Warp.Mode = config.WarpAll
 	opts := healthyChecks(t, &fakeExecutor{handler: func(cmd Cmd) (Result, error) { return okResult("yes") }}, cfg)
 	opts.Stat = func(name string) (os.FileInfo, error) {
@@ -250,6 +252,19 @@ func TestPreflightWarnsWhenWarpCannotRun(t *testing.T) {
 	report := RunPreflight(context.Background(), opts)
 	if got := statuses(report)["tun"]; got != StatusWarn {
 		t.Errorf("tun check = %q, want warn", got)
+	}
+
+	// The same host with the wireguard transport is fine: userspace needs no device.
+	cfg.Warp.Transport = config.WarpTransportWireGuard
+	opts = healthyChecks(t, &fakeExecutor{handler: func(cmd Cmd) (Result, error) { return okResult("yes") }}, cfg)
+	opts.Stat = func(name string) (os.FileInfo, error) {
+		if name == "/run/systemd/system" {
+			return fakeFileInfo{dir: true}, nil
+		}
+		return nil, os.ErrNotExist
+	}
+	if got := statuses(RunPreflight(context.Background(), opts))["tun"]; got != StatusOK {
+		t.Errorf("tun check on the wireguard transport = %q, want ok", got)
 	}
 	if !report.OK() {
 		t.Error("a host without TUN is a working node and must pass the preflight")
