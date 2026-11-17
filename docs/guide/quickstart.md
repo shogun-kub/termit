@@ -102,11 +102,16 @@ The code (for example `ABCD-EFGH-IJKL`) is printed **once**. Copy it now — you
 
 ## 3. The node
 
-Log in to the node as `root` and paste this single line. It downloads the installer, verifies the
-release, installs the node program, and then asks you questions.
+Log in to the node as `root` and paste this block. It downloads the version, checks the file against
+its published checksum, installs the node program, and then asks you questions.
 
 ```bash
-curl -fsSLO "https://github.com/shogun-kub/termit/releases/download/v0.4.0/uv.sh" && sh uv.sh --version v0.4.0 --wizard
+RELEASE=v0.4.0
+curl -fsSLO "https://github.com/shogun-kub/termit/releases/download/$RELEASE/termit-uv_${RELEASE}_linux_amd64"
+curl -fsSLO "https://github.com/shogun-kub/termit/releases/download/$RELEASE/SHA256SUMS"
+sha256sum -c --ignore-missing SHA256SUMS
+install -m 0755 "termit-uv_${RELEASE}_linux_amd64" /usr/bin/termit-uv
+termit-uv wizard
 ```
 
 The questions, in the order they come, and what to answer:
@@ -121,6 +126,7 @@ The questions, in the order they come, and what to answer:
 | `Harden this node (yes/no) [y/N]` | `y` if this machine is only a Termit node | `n` or `Enter` if other services you need run on it (the firewall would cut them off), or you already have your own firewall |
 | `Invite code from the server operator` | the code from step 2 | press `Enter` to skip and stay a standalone node for now |
 | `Management server URL` | `https://mn.example.com/6rfjdqfn5nno` — the full address, with the prefix from step 1 | — required if you typed an invite |
+| `Install this node now?` | `y`, or `Enter` | `n` keeps your answers and starts nothing; run `termit-uv wizard` again when you are ready |
 
 Yes/no questions take `y` or `n`, and the Russian `д` and `н` work too. `Enter` is the default answer: the capital letter in `[y/N]` says which one.
 
@@ -162,7 +168,7 @@ XHTTP. The app reads the link and adds the connection by itself; nothing else to
 | `no such host` or the node cannot reach the server | the address, the prefix or DNS is wrong | compare your address with `termit-mn status`; correct it in `/etc/termit/uv/config.yaml` |
 | the certificate step fails | the node's DNS record does not resolve yet, or port 80 is closed | check with `getent hosts node-a.example.com` from another machine, then run `termit-uv init` |
 | the installer stopped early | nothing is broken, half of it is done | run `termit-uv wizard` again — it keeps your answers |
-| `termit-uv status` says nothing about a subscription | the node is not approved yet | step 4 |
+| the node stays `pending` on the server | `invite+approval` is the default mode | step 4 |
 
 Anything else: `termit-uv doctor` prints a report you can read, and
 [When something goes wrong](troubleshooting.md) lists the usual failures.

@@ -103,11 +103,16 @@ termit-mn invite create --note node-a
 
 ## 3. Узел
 
-Войдите на узел как `root` и вставьте одну строку. Она скачивает установщик, проверяет релиз,
-устанавливает программу узла и переходит к вопросам.
+Войдите на узел как `root` и вставьте этот блок. Он скачивает версию, сверяет файл с опубликованной
+суммой, ставит программу узла и переходит к вопросам.
 
 ```bash
-curl -fsSLO "https://github.com/shogun-kub/termit/releases/download/v0.4.0/uv.sh" && sh uv.sh --version v0.4.0 --wizard
+RELEASE=v0.4.0
+curl -fsSLO "https://github.com/shogun-kub/termit/releases/download/$RELEASE/termit-uv_${RELEASE}_linux_amd64"
+curl -fsSLO "https://github.com/shogun-kub/termit/releases/download/$RELEASE/SHA256SUMS"
+sha256sum -c --ignore-missing SHA256SUMS
+install -m 0755 "termit-uv_${RELEASE}_linux_amd64" /usr/bin/termit-uv
+termit-uv wizard
 ```
 
 Вопросы по порядку и что на них отвечать:
@@ -122,6 +127,7 @@ curl -fsSLO "https://github.com/shogun-kub/termit/releases/download/v0.4.0/uv.sh
 | `Закрыть узел (да/нет) [y/N]` | `y`, если вы используете эту машину только как узел Termit | `n` или `Enter`, если на машине есть другие нужные вам сервисы (межсетевой экран закроет к ним доступ) или у вас уже настроен свой файрволл |
 | `Код приглашения от оператора сервера` | код из шага 2 | `Enter` — пропустить и остаться одиночным узлом |
 | `Адрес сервера управления` | `https://mn.example.com/6rfjdqfn5nno` — полный адрес, с префиксом из шага 1 | — обязателен, если ввели код приглашения |
+| `Устанавливать узел сейчас?` | `y` или `Enter` | `n` сохранит ответы и ничего не запустит; вернитесь к `termit-uv wizard`, когда будете готовы |
 
 На вопросы да/нет принимаются `y` и `n`, а также `д` и `н`. `Enter` — ответ по умолчанию: он с большой буквы в скобках, как `[y/N]`.
 
@@ -161,7 +167,7 @@ termit-uv status
 | `no such host` или узел не видит сервер | неверный адрес, префикс или DNS | сверьте адрес с `termit-mn status` и поправьте в `/etc/termit/uv/config.yaml` |
 | падает шаг с сертификатом | DNS-запись узла ещё не резолвится или порт 80 закрыт | проверьте с другой машины `getent hosts node-a.example.com`, затем запустите `termit-uv init` |
 | установщик остановился на середине | ничего не сломано, просто не всё сделано | запустите `termit-uv wizard` снова — ответы сохранены |
-| в `termit-uv status` нет строки про подписку | узел ещё не подтверждён | шаг 4 |
+| узел остаётся `pending` на сервере | это режим `invite+approval` по умолчанию | шаг 4 |
 
 Всё остальное: `termit-uv doctor` печатает отчёт, а [Если что-то пошло не так](troubleshooting.md)
 перечисляет обычные отказы.

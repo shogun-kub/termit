@@ -73,8 +73,11 @@ install -m 0644 termit-mn.service /etc/systemd/system/ && systemctl enable --now
 termit-mn invite create --note "node-a"            # prints the code once
 
 # on the node (Debian 13, ports 80/443 free, DNS pointing at it)
-curl -fsSLO https://github.com/shogun-kub/termit/releases/download/v0.4.0/uv.sh
-sh uv.sh --version v0.4.0 --wizard
+curl -fsSLO https://github.com/shogun-kub/termit/releases/download/v0.4.0/termit-uv_v0.4.0_linux_amd64
+curl -fsSLO https://github.com/shogun-kub/termit/releases/download/v0.4.0/SHA256SUMS
+sha256sum -c --ignore-missing SHA256SUMS
+install -m 0755 termit-uv_v0.4.0_linux_amd64 /usr/bin/termit-uv
+termit-uv wizard
 ```
 
 The wizard asks for the node's name, the server's address — including the API prefix that `init` printed —

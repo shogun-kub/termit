@@ -55,7 +55,7 @@ every code path. That is a contract, not a default.
 | `/run/termit/mn/admin.sock` | the admin socket (`0600`, directory `0750`) |
 | `/etc/termit/uv/config.yaml` | node configuration (public, `0644`: it holds no secret) |
 | `/var/lib/termit/uv/state.json` | node identity, seeds, credentials, schedule (`0600`) |
-| `/var/lib/termit/uv/certs/` | the node's `fullchain.pem` and `privkey.pem` (`0600`) |
+| `/var/lib/termit/uv/certs/` | the node's `fullchain.pem` (`0644`) and `privkey.pem` (`0600`) |
 | `/var/lib/termit/uv/install-journal.json` | the last install run, step by step |
 | `/var/www/termit/site/`, `/var/www/termit/acme/` | the decoy tree and the ACME webroot (nginx reads them) |
 | `/usr/lib/termit/bin/xray` | the pinned proxy core on a node |
@@ -95,9 +95,22 @@ Per host, before you start:
   pinned Xray release (or your mirror), and — when WARP is on — to Cloudflare's package repository and
   WARP endpoint. Nothing else.
 
-The MN's probe worker needs an `xray-core` binary of its own: `prober.xray_binary` in
-`/etc/termit/mn/config.yaml`. Without it every check is `unknown`, which never blocks a node — the
-mesh still works, the server just cannot vouch for it.
+The MN's probe worker needs an `xray-core` binary of its own — `prober.xray_binary` in
+`/etc/termit/mn/config.yaml` — because that is what opens a real connection to a node. It is not
+optional: without it `termit-mn status` says `prober: unavailable`, and enrollment refuses with
+`check_failed: the prober could not check this node; retry`. Install the same pinned core the nodes run:
+
+```bash
+apt-get install -y unzip
+curl -fsSLO https://github.com/XTLS/Xray-core/releases/download/v26.11.9/Xray-linux-64.zip
+unzip -o Xray-linux-64.zip -d /usr/local/lib/termit
+chmod 0755 /usr/local/lib/termit/xray
+sed -i 's|^  xray_binary: ""|  xray_binary: /usr/local/lib/termit/xray|' /etc/termit/mn/config.yaml
+systemctl restart termit-mn
+```
+
+`termit-mn status` then reads `prober: ready (/usr/local/lib/termit/xray)`. A node's own installation
+gets that binary as a step; the server does not have that step, which is why this one is by hand.
 
 ## 3. Install the management server
 
@@ -115,6 +128,8 @@ invite code, and prints them **once**:
 ```
 domain:       mn.example.com
 listen:       :443
+api prefix:   /6rfjdqfn5nno
+masking site: portal (what a prober gets for every path the API does not claim)
 config:       /etc/termit/mn/config.yaml
 database:     /var/lib/termit/mn/termit.db (schema 5)
 master key:   /etc/termit/mn/master.key (generated now)
@@ -125,6 +140,9 @@ admin token (shown once, store it now):
 
 first invite code (shown once, 1 use(s)):
   ABCD-EFGH-IJKL
+
+show a node the way in (the prefix is part of the URL; without it the node cannot reach the API):
+  termit-uv enroll --mn https://mn.example.com/6rfjdqfn5nno --invite <code>
 
 back up /etc/termit/mn/master.key together with the database: without it no pair credential can be derived.
 ```
@@ -191,10 +209,12 @@ termit-mn status
 ```
 server:   mn.example.com
 listen:   :443
+api:      /6rfjdqfn5nno
+decoy:    portal
 version:  termit-mn v0.4.0 (commit …, built …, api 1, profile v1)
 uptime:   3h12m (started 2026-11-10 11:18)
 database: /var/lib/termit/mn/termit.db (412.0 KiB, schema 5)
-prober:   ready (/usr/lib/termit/bin/xray)
+prober:   ready (/usr/local/lib/termit/xray)
 queue:    0 due, next 2026-11-11 12:34 UTC
 cert:     2027-02-08T12:06:44Z (in 89 days)
 nodes:    3 (3 active)
@@ -341,7 +361,6 @@ sh uv.sh --version v0.4.0 \
 | `--no-warp` / `--warp selected --warp-selected …` | the WARP decision (`all` is the default) |
 | `--mn URL` | the management server, prefix included; written to `mn.url` by `init` and used by `enroll` |
 | `--no-enroll` | install and converge, skip enrollment |
-| `--wizard` | install the binary, then run `termit-uv wizard` instead of converging from the flags |
 | `--dry-run` | verify the download, then run `termit-uv init --dry-run` without installing anything |
 
 Re-running the script with a new `--version` **is** the upgrade: the binary is replaced and `termit-uv init`
@@ -349,8 +368,9 @@ converges the rest, keeping the identity, the Xray path and the certificate. The
 on the command line and is visible in `ps` for the duration of the run; revoke it afterwards if that
 matters (`termit-mn invite revoke`).
 
-If you would rather be asked than remember flags, the wizard is the same installation with questions —
-`sh uv.sh --version v0.4.0 --wizard` installs the binary and hands over to it:
+If you would rather be asked than remember flags, the wizard is the same installation with questions. Put
+the binary on the host first — the release asset and `SHA256SUMS`, the way [the quickstart](guide/quickstart.md)
+does it — and run the wizard instead of the script:
 
 ```bash
 termit-uv wizard
@@ -833,7 +853,9 @@ cannot answer and a node whose certificate could not be read all leave the state
 - `GET {prefix}/healthz` on the MN — liveness plus build identity, `200`/`503`. The prefix is
   `api_prefix` from `/etc/termit/mn/config.yaml`, and `termit-mn status` prints it. Put it behind your
   usual external monitor.
-- `GET /metrics` on the MN — Prometheus text, **loopback only**. Scrape it from the same host:
+- `GET /metrics` on the MN — Prometheus text, **loopback only**. It lives on the same TLS listener as
+  everything else, at the root of the host (`https://127.0.0.1/metrics`) and not under the API prefix, and
+  it answers `403` to any other address. Scrape it from the same host:
   enrollments, syncs and check outcomes by result, a check-duration histogram, node counts by state,
   the scheduler's backlog, whether a probe worker exists, and the server certificate's expiry.
   `docs/PROTOCOL.md` §3.2 lists every family.
@@ -979,7 +1001,7 @@ In the order the input chain evaluates it:
 | `ip saddr @banned4 drop`, `ip6 saddr @banned6 drop` | what the guard banned |
 | `icmpv6 type { nd-*, packet-too-big, destination-unreachable, time-exceeded } accept` | without NDP and PMTU messages IPv6 stops working |
 | `tcp dport { 22, 80, 443 } accept` | what a node publishes — or, with `ssh_from`, port 22 only from the listed networks |
-| `meter scan4m { … } add @scan4 { … }` | counts attempts to everything else per source, in the kernel |
+| `meter scan4m { … } add @scan4 { … }` | counts attempts to everything else per source, in the kernel — present only when the guard is configured (§13.4), because the guard is what reads the set |
 | `counter drop` | with `default_deny`, everything else is refused |
 
 Two properties are worth knowing: **the table is one atomic transaction** — `firewall on` feeds the whole

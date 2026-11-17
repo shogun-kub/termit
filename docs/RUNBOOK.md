@@ -1,5 +1,7 @@
 # Runbook
 
+[English](RUNBOOK.md) · [Русский](RUNBOOK.ru.md)
+
 What to do when something is wrong: every command runs as `root`, and a link to
 [`OPERATIONS.md`](OPERATIONS.md) is there when you want to know why. Start at §1 and follow the row that
 matches what you see.
@@ -71,6 +73,7 @@ digest, deliberately. Take a backup of the database, then remove the `admin` row
 credential:
 
 ```bash
+apt-get install -y sqlite3                        # not part of a minimal Debian
 sqlite3 /var/lib/termit/mn/termit.db 'delete from admin;'
 systemctl restart termit-mn
 termit-mn init --config /etc/termit/mn/config.yaml --admin-token-out /etc/termit/mn/admin.token
@@ -237,6 +240,11 @@ termit-mn status
 credentials, so nodes keep syncing without re-enrolling. If the address of the server itself changes,
 the nodes' `mn.url` changes too (`termit-uv init` writes it, or edit `mn.url` and restart the agent).
 
+**A restore rolls the admin token back with the database.** The archive carries the digest the backup was
+taken with, so whichever token an `admin rotate` issued since then stops working — that is a credential in
+the registry, and the registry is the backup. Keep the token of the backup with the backup, and rotate
+after a restore if you no longer have it (§4).
+
 Back up on a schedule you can defend: daily is normal, and the database is small.
 
 ### 10.2 A node
@@ -265,19 +273,30 @@ termit-uv uninstall --purge       # also config, state, certificates and the ser
 
 What it does: removes the host firewall table if one is applied, disconnects the WARP tunnel, stops and
 disables the units, removes every path the install manifest recorded, restores the distribution's
-default nginx vhost, and reloads nginx so `:80` and `:443` are released. The table goes first, and on
-purpose: a default-deny table with no command left to remove it is a host nobody can repair without a
-console. What it deliberately keeps: **packages** (nginx may serve other sites; remove
-`cloudflare-warp` yourself if you want it gone), and — without `--purge` — the configuration and the
-state, so a reinstall keeps the same identity.
+default nginx vhost, and reloads nginx. The table goes first, and on purpose: a default-deny table with no
+command left to remove it is a host nobody can repair without a console. What it deliberately keeps:
+**packages** (nginx may serve other sites; remove `cloudflare-warp` yourself if you want it gone), and —
+without `--purge` — the configuration and the state, so a reinstall keeps the same identity.
+
+nginx itself keeps running, because it may serve other sites: the stock vhost takes `:80` back, while
+`:443` stays open with a vhost that no longer exists until nginx is restarted — `systemctl restart nginx`
+releases it. `systemctl daemon-reload` is worth running too: the hardening drop-in is gone from disk but
+systemd has it cached, and it says so.
 
 On the MN:
 
 ```bash
 systemctl disable --now termit-mn
-rm -f /etc/systemd/system/termit-mn.service
+rm -f /etc/systemd/system/termit-mn.service /etc/systemd/system/termit-mn-*.service \
+      /etc/systemd/system/termit-mn-*.timer
 rm -rf /etc/termit/mn /var/lib/termit/mn
+systemctl daemon-reload
 ```
+
+The wildcard covers the four units the release ships beside the server's own — `termit-mn-firewall`,
+`-firewall-rollback`, `-guard` and `-blocklist` ([`OPERATIONS.md`](OPERATIONS.md) §13.6) — which a server
+that ever ran `termit-mn firewall on` has installed. Leaving them behind leaves a boot unit that does
+nothing and a timer that keeps trying.
 
 There is no uninstall command for the server: it owns two directories and one unit, and deleting a
 registry is not something an automated command should decide to do.
