@@ -156,6 +156,11 @@ func checkCertificate(cfg *config.Config, now time.Time) state.SelfCheckItem {
 // and the detail says why, so nobody mistakes a container without TUN for a broken tunnel. WARP is
 // on and should work but does not: that is a failure, because the address the owner wanted to hide
 // is now exposed through the fail-open route.
+//
+// The host is judged only for the `proxy` transport: that one is warp-cli behind a tun device. The
+// wireguard transport lives inside the core and runs on a host with no device at all, which is what
+// an unprivileged container is, so asking for the device there would report a working tunnel as
+// unavailable.
 func checkWarp(ctx context.Context, cfg *config.Config, host *warp.Host, probe func(context.Context) (warp.Status, error)) state.SelfCheckItem {
 	item := state.SelfCheckItem{Name: "warp"}
 	if cfg == nil {
@@ -168,14 +173,16 @@ func checkWarp(ctx context.Context, cfg *config.Config, host *warp.Host, probe f
 		item.Detail = "off"
 		return item
 	}
-	judge := warp.Host{}
-	if host != nil {
-		judge = *host
-	}
-	if err := judge.Check(); err != nil {
-		item.OK = true
-		item.Detail = err.Error() + "; traffic exits directly"
-		return item
+	if !cfg.Warp.UsesWireGuard() {
+		judge := warp.Host{}
+		if host != nil {
+			judge = *host
+		}
+		if err := judge.Check(); err != nil {
+			item.OK = true
+			item.Detail = err.Error() + "; traffic exits directly"
+			return item
+		}
 	}
 	if probe == nil {
 		item.Unknown = true
