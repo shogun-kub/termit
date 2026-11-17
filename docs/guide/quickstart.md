@@ -84,7 +84,7 @@ The code (for example `ABCD-EFGH-IJKL`) is printed **once**. Copy it now — you
 
 Log in to the node as `root` and paste this single line. It downloads the installer, verifies the
 release, installs the node program, and then asks you questions. Without `--version` it installs the
-newest release; `sh uv.sh --version v0.4.0 --wizard` pins one instead.
+newest release; `sh uv.sh --version v0.4.1 --wizard` pins one instead.
 
 ```bash
 curl -fsSLO "https://github.com/shogun-kub/termit/releases/latest/download/uv.sh" && sh uv.sh --wizard

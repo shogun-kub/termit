@@ -15,7 +15,7 @@
 ## Установка
 
 Одна команда: находит самый свежий релиз, сверяет его контрольную сумму, ставит бинарник и юнит,
-кладёт рядом prober, создаёт конфигурацию, запускает службу и печатает состояние.
+ставит prober, создаёт конфигурацию, запускает службу и печатает состояние.
 
 ```bash
 curl -fsSLO https://github.com/shogun-kub/termit/releases/latest/download/mn.sh
@@ -33,7 +33,7 @@ sh mn.sh --domain mn.example.com --email you@example.com --admin-token-out /etc/
 | `open` | приглашение не нужно — разумно только в приватной сети |
 
 `termit-mn init` создаёт конфигурацию, базу, мастер-ключ и первый админ-токен и печатает секреты **один
-раз**:
+раз** (`--admin-token-out` пишет токен в файл вместо печати):
 
 ```
 domain:       mn.example.com
@@ -156,7 +156,7 @@ decoy:    portal
 version:  termit-mn v0.4.1 (commit …, built …, api 1, profile v1)
 uptime:   3h12m (started 2026-11-10 11:18)
 database: /var/lib/termit/mn/termit.db (412.0 KiB, schema 5)
-prober:   ready (/usr/lib/termit/bin/xray)
+prober:   ready (/usr/local/lib/termit/xray)
 queue:    0 due, next 2026-11-11 12:34 UTC
 cert:     2027-02-08T12:06:44Z (in 89 days)
 nodes:    3 (3 active)

@@ -68,8 +68,8 @@ server has its own page in [Running the server](docs/guide/using-mn.md).
 ```bash
 # on the server (Debian 13, ports 80/443 free, DNS pointing at it)
 curl -fsSLO https://github.com/shogun-kub/termit/releases/latest/download/mn.sh
-sh mn.sh --domain mn.example.com --email you@example.com     # --version v0.4.1 pins a release
-termit-mn invite create --note "node-a"                     # prints the code once
+sh mn.sh --domain mn.example.com --email you@example.com   # --version v0.4.1 pins a release
+termit-mn invite create --note "node-a"                    # prints the code once
 
 # on the node (Debian 13, ports 80/443 free, DNS pointing at it)
 curl -fsSLO https://github.com/shogun-kub/termit/releases/latest/download/uv.sh

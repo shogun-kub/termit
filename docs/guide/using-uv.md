@@ -64,8 +64,8 @@ Useful variations:
 | change how WARP carries traffic | `termit-uv init --warp-transport wireguard` (inside the core, TCP and UDP) or `proxy` (the `warp-cli` sidecar, TCP only) |
 | choose which family leaves through WARP | `termit-uv init --warp-family ipv4` (the default; the other family goes direct) or `ipv6` |
 
-The script never guesses a version, and refuses to install bytes it cannot verify. If it stops, the
-message names the file and the expected digest.
+The script refuses to install bytes it cannot verify. If it stops, the message names the file and the
+expected digest.
 
 ### Without the script
 

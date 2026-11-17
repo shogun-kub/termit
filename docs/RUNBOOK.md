@@ -302,6 +302,7 @@ The wildcard covers the four unit names the release ships beside the server's ow
 ([`OPERATIONS.md`](OPERATIONS.md) §13.6) — which a server that ever ran `termit-mn firewall on` has
 installed. Leaving them behind leaves a boot unit that does nothing and a timer that keeps trying.
 
-There is no uninstall command for the server: it owns two directories, the socket's own directory and one
-unit, and deleting a registry is not something an automated command should decide to do.
+There is no uninstall command for the server: it owns two data directories, the socket's own directory,
+the probe worker in `/usr/local/lib/termit` and its units, and deleting a registry is not something an
+automated command should decide to do.
 

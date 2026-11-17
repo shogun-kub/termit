@@ -127,7 +127,8 @@ Re-running it **is** the upgrade: the binary and the unit are replaced, `init` k
 made — domain, listen, master key, the nodes — the probe worker is brought up to the pinned release, and
 the service is restarted.
 
-By hand the steps are what the script does, in the same order:
+By hand, with the binary and the unit taken from a release and verified against its `SHA256SUMS` (§12),
+the steps are what the script does, in the same order:
 
 ```bash
 install -m 0755 termit-mn /usr/bin/termit-mn
@@ -394,9 +395,10 @@ sh uv.sh \
 
 Re-running the script **is** the upgrade: the binary is replaced and `termit-uv init` converges the
 rest, keeping the identity, the Xray path and the certificate. Without `--version` it takes the newest
-release, so an upgrade is `sh uv.sh --no-enroll`; naming the version is how you stay where you are. The
-invite code is passed on the command line and is visible in `ps` for the duration of the run; revoke it
-afterwards if that matters (`termit-mn invite revoke`).
+release, so an upgrade is `sh uv.sh --no-enroll`; `--version v0.4.1` installs exactly that one, which is
+also how a node that must not move is kept where it is. The invite code is passed on the command line and
+is visible in `ps` for the duration of the run; revoke it afterwards if that matters
+(`termit-mn invite revoke`).
 
 If you would rather be asked than remember flags, the wizard is the same installation with questions —
 `sh uv.sh --wizard` installs the binary (the newest release, or the one `--version` names) and hands over

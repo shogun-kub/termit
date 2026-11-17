@@ -652,12 +652,12 @@ Two consequences of the target class:
 ```bash
 # the newest published release; --version v0.4.1 pins one
 curl -fsSLO https://github.com/shogun-kub/termit/releases/latest/download/uv.sh
-sudo sh uv.sh --mn https://mn.example.com --domain node.example.com --invite ABCD-EFGH
+sudo sh uv.sh --mn https://mn.example.com/6rfjdqfn5nno --domain node.example.com --invite ABCD-EFGH
 ```
 
 The bootstrap resolves a release (the newest published one, or the one `--version` names), verifies its
-checksum (and signature when configured), installs `termit-uv`, pinned `xray-core`, and `cloudflare-warp`
-when WARP is wanted — the default — then runs `termit-uv init`.
+checksum, installs `termit-uv`, pinned `xray-core`, and the `cloudflare-warp` package only for the `proxy`
+transport, then runs `termit-uv init`.
 Non-interactive by design; `termit-uv doctor` for diagnosis, `termit-uv uninstall [--purge]` for removal. A host
 that cannot run WARP is not a failed install: `termit-uv init` records the refusal, keeps the mode the owner
 asked for, and leaves traffic on the direct path.

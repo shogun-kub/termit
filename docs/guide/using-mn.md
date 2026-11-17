@@ -15,7 +15,7 @@ that is [the interactive menu](menu.md).
 ## Install
 
 One command: it resolves the newest release, verifies its checksum, installs the binary and its unit,
-leaves the probe worker beside it, creates the configuration, starts the service and prints the status.
+installs the probe worker, creates the configuration, starts the service and prints the status.
 
 ```bash
 curl -fsSLO https://github.com/shogun-kub/termit/releases/latest/download/mn.sh
@@ -33,7 +33,7 @@ answer "newest"). `--mode` is passed through to `init`:
 | `open` | no invite needed — only sensible on a private network |
 
 `termit-mn init` creates the configuration, the database, the master key and the first admin token, and
-prints the secrets **once**:
+prints the secrets **once** (`--admin-token-out` sends the token to a file instead of printing it):
 
 ```
 domain:       mn.example.com
@@ -124,8 +124,6 @@ systemctl enable --now termit-mn
 journalctl -u termit-mn -n 30 --no-pager
 ```
 
-The first start issues the certificate before it serves TLS, so it takes as long as the ACME order does.
-
 The same release carries the server's hardening units (`termit-mn-firewall*`, `termit-mn-guard`,
 `termit-mn-blocklist*`). They are installed only if you decide to harden the server, and the firewall
 refuses to run without them: [Hardening a node](hardening.md) has the rest.
@@ -157,7 +155,7 @@ decoy:    portal
 version:  termit-mn v0.4.1 (commit …, built …, api 1, profile v1)
 uptime:   3h12m (started 2026-11-10 11:18)
 database: /var/lib/termit/mn/termit.db (412.0 KiB, schema 5)
-prober:   ready (/usr/lib/termit/bin/xray)
+prober:   ready (/usr/local/lib/termit/xray)
 queue:    0 due, next 2026-11-11 12:34 UTC
 cert:     2027-02-08T12:06:44Z (in 89 days)
 nodes:    3 (3 active)
