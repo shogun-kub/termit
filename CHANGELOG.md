@@ -3,7 +3,7 @@ What each release changed, written for the people who run Termit. Newest first;
 carries every section back to the last release: the versions in between were handed out only as
 pre-releases, and whoever installs the release skipped them.
 
-## 0.4.0 — 2026-11-16
+## 0.4.0 — 2026-11-17
 
 WARP stops being a sidecar. The tunnel moves inside the core, and UDP stops being the one protocol that
 cannot use it.
