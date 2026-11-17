@@ -1757,3 +1757,15 @@ the one the first pass had written off.
 
 The lesson is a rule in `AGENTS.md` §9 now: a release that touches the network is proved on the
 production nodes as a pre-release, and the final tag waits for that.
+
+#### The family, the same day
+
+`0.4.0` also lets the owner choose which family leaves through WARP: `ipv4` by default, because
+Cloudflare's IPv6 egress is what large services mark as unsafe, and a provider's own IPv6 is not the
+node's to fix. `warp.family` keeps the tunnel address of that family, gives the peer its default route
+and sends the other family direct — the way it went before WARP, and named in the document rather than
+left to the trailing rule.
+
+`v0.4.0p6` on both production nodes: `family: ipv4`, `172.16.0.2/32` and `0.0.0.0/0` in the core's
+document, `::/0` named direct, and `warp status` answering `egress: on` with `104.28.222.18` and
+`104.28.193.183` — Cloudflare's IPv4, where the same nodes reported `2a09:…` a few hours earlier.
