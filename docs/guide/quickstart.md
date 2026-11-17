@@ -118,9 +118,11 @@ The questions, in the order they come, and what to answer:
 | `Contact address for the certificate authority` | `you@example.com` | — you get a warning if the certificate is about to expire |
 | `Masking site` | press `Enter` (`portal`) | `product` gives a different-looking ordinary page at your node's address |
 | `Egress (all, selected, off)` | `all` — everything proxied leaves through Cloudflare | `off` if you do not want traffic to touch Cloudflare, or if your hoster blocks it; `selected` if only some sites should |
-| `Harden this node (yes/no)` | `yes` on a machine that exists only as this node | `no` if you already run your own firewall |
+| `Harden this node (yes/no) [y/N]` | `y` if this machine is only a Termit node | `n` or `Enter` if other services you need run on it (the firewall would cut them off), or you already have your own firewall |
 | `Invite code from the server operator` | the code from step 2 | press `Enter` to skip and stay a standalone node for now |
 | `Management server URL` | `https://mn.example.com/6rfjdqfn5nno` — the full address, with the prefix from step 1 | — required if you typed an invite |
+
+Yes/no questions take `y` or `n`, and the Russian `д` and `н` work too. `Enter` is the default answer: the capital letter in `[y/N]` says which one.
 
 Then the installer works on its own for a minute or two: it installs the proxy core, gets the
 certificate, builds the decoy page, starts the services and joins your server. The last lines tell you
