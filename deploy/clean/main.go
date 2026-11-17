@@ -46,6 +46,7 @@ var scratchKeep = map[string]bool{
 	"lintcache":      true,
 	"lab.md":         true, // lab coordinates: never in the repository, never regenerable
 	"mn-admin.token": true, // the lab's admin credential
+	"github-token":   true, // a personal access token for the GitHub API, for the logs of a failed release
 	"ssh":            true, // the lab's public key
 	"shotgen":        true, // a source file, not output
 }
