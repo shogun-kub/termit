@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/shogun-kub/termit/internal/uv/config"
 	"github.com/shogun-kub/termit/internal/uv/service"
 	"github.com/shogun-kub/termit/internal/uv/state"
 	"github.com/shogun-kub/termit/internal/uv/warp"
@@ -37,29 +38,11 @@ func (s *xrayConfigStep) spec() (xray.Spec, error) {
 	}
 	spec.Path = "/" + s.e.st.Identity.XHTTPPath + "/"
 	spec.BlockBitTorrent = s.e.cfg.Security.BitTorrentBlock
-	spec.Warp = xray.WarpSpec{
-		Mode:      s.e.cfg.Warp.Mode,
-		Selected:  s.e.cfg.Warp.Selected,
-		FailOpen:  s.e.cfg.Warp.FailOpenEnabled(),
-		Transport: s.e.cfg.Warp.TransportOrDefault(),
+	warpSpec, err := WarpSpecFor(s.e.cfg)
+	if err != nil {
+		return spec, err
 	}
-	// The wireguard transport is the core's own tunnel, so the identity is an input to the document. It
-	// is only required when WARP is meant to carry traffic: a node with the mode off keeps its
-	// registration on disk for the day the operator turns WARP back on.
-	if spec.Warp.Enabled() && spec.Warp.Transport == xray.WarpTransportWireGuard {
-		identity, err := warp.LoadIdentity(s.e.cfg.Paths.WarpIdentityPath())
-		switch {
-		case errors.Is(err, fs.ErrNotExist):
-			// No identity means no tunnel, and no tunnel must not mean no node: the route goes out
-			// directly, the warp step has already said why, and the fail-open behaviour the owner chose
-			// still applies once the node is registered.
-			spec.Warp.Mode = ""
-		case err != nil:
-			return spec, fmt.Errorf("warp identity: %w", err)
-		default:
-			spec.Warp.WireGuard = wireGuardIdentity(identity)
-		}
-	}
+	spec.Warp = warpSpec
 	spec.Clients = []xray.Client{{ID: s.e.st.Identity.SelfUUID, Email: ownerEmail}}
 	for _, user := range s.e.st.LocalUsers {
 		spec.Clients = append(spec.Clients, xray.Client{ID: user.ID, Email: localEmail(user)})
@@ -76,6 +59,37 @@ func (s *xrayConfigStep) spec() (xray.Spec, error) {
 			continue
 		}
 		spec.Clients = append(spec.Clients, xray.Client{ID: peer.UUID, Email: "peer-" + peer.ID + "@termit"})
+	}
+	return spec, nil
+}
+
+// WarpSpecFor builds the WARP half of the core document: the mode from the configuration and, on the
+// wireguard transport, the registration on disk. `init` and the agent's sync both go through it — the
+// sync used to build its own spec, which quietly turned a wireguard node back into the proxy sidecar.
+func WarpSpecFor(cfg *config.Config) (xray.WarpSpec, error) {
+	spec := xray.WarpSpec{
+		Mode:      cfg.Warp.Mode,
+		Selected:  cfg.Warp.Selected,
+		FailOpen:  cfg.Warp.FailOpenEnabled(),
+		Transport: cfg.Warp.TransportOrDefault(),
+	}
+	// The wireguard transport is the core's own tunnel, so the identity is an input to the document. It
+	// is only required when WARP is meant to carry traffic: a node with the mode off keeps its
+	// registration on disk for the day the operator turns WARP back on.
+	if !spec.Enabled() || spec.Transport != xray.WarpTransportWireGuard {
+		return spec, nil
+	}
+	identity, err := warp.LoadIdentity(cfg.Paths.WarpIdentityPath())
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		// No identity means no tunnel, and no tunnel must not mean no node: the route goes out
+		// directly, the warp step has already said why, and the fail-open behaviour the owner chose
+		// still applies once the node is registered.
+		spec.Mode = ""
+	case err != nil:
+		return spec, fmt.Errorf("warp identity: %w", err)
+	default:
+		spec.WireGuard = wireGuardIdentity(identity)
 	}
 	return spec, nil
 }

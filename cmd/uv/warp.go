@@ -177,18 +177,24 @@ removes the route, and direct traffic is never affected.`)
 	sort.Strings(cfg.Warp.Selected)
 
 	client := a.warpClient()
-	if mode != config.WarpOff {
+	switch {
+	case mode == config.WarpOff:
+		if client.Installed(context.Background()) {
+			if err := client.Disconnect(context.Background()); err != nil {
+				fmt.Fprintf(a.stderr, "termit-uv warp mode: %v\n", err)
+				return exitFailure
+			}
+		}
+	case cfg.Warp.UsesWireGuard():
+		// The tunnel lives in the core: there is no sidecar to install, start or connect, and no tun
+		// device to look for. The registration it does need is the `warp` step applyWarpRoute runs.
+	default:
 		if err := client.Host.Check(); err != nil {
 			// The intent is still worth recording: the node keeps its route and exits directly, and
 			// the moment the host gains a tun device a re-run of `termit-uv init` turns WARP on.
 			fmt.Fprintf(a.stdout, "WARP cannot run on this host: %v\n", err)
 			fmt.Fprintln(a.stdout, "the mode is recorded and traffic exits directly")
 		} else if err := client.Ensure(context.Background()); err != nil {
-			fmt.Fprintf(a.stderr, "termit-uv warp mode: %v\n", err)
-			return exitFailure
-		}
-	} else if client.Installed(context.Background()) {
-		if err := client.Disconnect(context.Background()); err != nil {
 			fmt.Fprintf(a.stderr, "termit-uv warp mode: %v\n", err)
 			return exitFailure
 		}
@@ -220,9 +226,15 @@ func (a *application) applyWarpRoute(cfg *config.Config, configPath string) int 
 		fmt.Fprintf(a.stderr, "termit-uv warp mode: %v\n", err)
 		return exitFailure
 	}
+	only := []string{"xray-config"}
+	if cfg.Warp.UsesWarp() && cfg.Warp.UsesWireGuard() {
+		// A node that has never been registered needs the `warp` step before the document can point
+		// at the tunnel; the step reports an unreachable Cloudflare as a warning, not a failure.
+		only = append(only, "warp")
+	}
 	report, err := installer.Run(context.Background(), install.RunOptions{
 		Command: "warp",
-		Only:    []string{"xray-config"},
+		Only:    only,
 		Force:   []string{"xray-config"},
 	})
 	if err != nil {
@@ -230,6 +242,7 @@ func (a *application) applyWarpRoute(cfg *config.Config, configPath string) int 
 		fmt.Fprintf(a.stderr, "termit-uv warp mode: %v\n", err)
 		return exitFailure
 	}
+	a.printSteps(report)
 	if _, err := a.exec.Run(context.Background(), install.Cmd{Name: "systemctl", Args: []string{"is-active", "--quiet", "termit-uv-agent"}}); err == nil {
 		// Same reason as the core's restart in the step: a deliberate restart must not be refused
 		// because an earlier one was too recent.
