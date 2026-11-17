@@ -14,13 +14,17 @@
 
 ## Установка
 
-```bash
-install -m 0755 termit-mn /usr/bin/termit-mn
+Одна команда: находит самый свежий релиз, сверяет его контрольную сумму, ставит бинарник и юнит,
+кладёт рядом prober, создаёт конфигурацию, запускает службу и печатает состояние.
 
-termit-mn init --domain mn.example.com --email you@example.com --mode invite
+```bash
+curl -fsSLO https://github.com/shogun-kub/termit/releases/latest/download/mn.sh
+sh mn.sh --domain mn.example.com --email you@example.com --admin-token-out /etc/termit/mn/admin.token
 ```
 
-`--mode` решает, как узел вступает:
+`--version v0.4.1` поставит указанный релиз вместо самого свежего; `--base-url` направит скрипт на
+зеркало, `file://`-URL или локальный каталог (там `--version` обязателен: зеркало не может ответить,
+какой релиз самый свежий). `--mode` передаётся в `init`:
 
 | Режим | Что происходит при вступлении узла |
 |---|---|
@@ -111,6 +115,8 @@ termit-mn admin rotate --token-out /etc/termit/mn/admin.token
 [руководстве по восстановлению](../../RUNBOOK.ru.md#админ-токен-потерян).
 
 ## Первый запуск
+
+Скрипт ставит юнит и запускает службу. Вручную это те же шаги:
 
 ```bash
 install -m 0644 termit-mn.service /etc/systemd/system/

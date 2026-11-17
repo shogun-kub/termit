@@ -67,14 +67,13 @@ WARP, а собственный трафик машины — никогда. О
 
 ```bash
 # на сервере (Debian 13, порты 80/443 свободны, DNS указывает на него)
-install -m 0755 termit-mn /usr/bin/termit-mn
-termit-mn init --domain mn.example.com --email you@example.com --mode invite
-install -m 0644 termit-mn.service /etc/systemd/system/ && systemctl enable --now termit-mn
-termit-mn invite create --note "node-a"            # печатает код один раз
+curl -fsSLO https://github.com/shogun-kub/termit/releases/latest/download/mn.sh
+sh mn.sh --domain mn.example.com --email you@example.com     # --version v0.4.1 закрепляет релиз
+termit-mn invite create --note "node-a"                     # печатает код один раз
 
 # на узле (Debian 13, порты 80/443 свободны, DNS указывает на него)
 curl -fsSLO https://github.com/shogun-kub/termit/releases/latest/download/uv.sh
-sh uv.sh --wizard                                  # --version v0.4.1 закрепляет конкретный релиз
+sh uv.sh --wizard
 ```
 
 Мастер спросит имя узла, адрес сервера — вместе с префиксом API, который напечатал `init`, — и код

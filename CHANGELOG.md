@@ -22,6 +22,10 @@ One defect in the wizard, and the pages that describe an installation checked ag
   now: without `--version` the script follows `releases/latest` to its tag, so a participant never has to
   look a version up, and a pre-release is never picked by accident. `--version v0.4.1` still pins one, and
   a mirror or a local path — which cannot answer "newest" — requires it.
+- **`mn.sh`, the same bootstrap for the server.** One command resolves the newest release, verifies it,
+  installs `termit-mn` and its systemd unit, leaves the probe worker the server cannot check nodes
+  without, creates the configuration, starts the service and prints its status. `--version` pins a
+  release, `--dry-run` prints the plan and changes nothing, `--no-prober` skips the worker.
 
 ### Fixed
 

@@ -14,13 +14,17 @@ that is [the interactive menu](menu.md).
 
 ## Install
 
-```bash
-install -m 0755 termit-mn /usr/bin/termit-mn
+One command: it resolves the newest release, verifies its checksum, installs the binary and its unit,
+leaves the probe worker beside it, creates the configuration, starts the service and prints the status.
 
-termit-mn init --domain mn.example.com --email you@example.com --mode invite
+```bash
+curl -fsSLO https://github.com/shogun-kub/termit/releases/latest/download/mn.sh
+sh mn.sh --domain mn.example.com --email you@example.com --admin-token-out /etc/termit/mn/admin.token
 ```
 
-`--mode` decides how a node joins:
+`--version v0.4.1` installs that release instead of the newest; `--base-url` points the script at a
+mirror, a `file://` URL or a local directory (where `--version` is required, because a mirror cannot
+answer "newest"). `--mode` is passed through to `init`:
 
 | Mode | What happens when a node enrols |
 |---|---|
@@ -111,12 +115,16 @@ token: if that is what you have lost, the recovery is in
 
 ## First start
 
+The script installs the unit and starts it. By hand the same steps are:
+
 ```bash
 install -m 0644 termit-mn.service /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now termit-mn
 journalctl -u termit-mn -n 30 --no-pager
 ```
+
+The first start issues the certificate before it serves TLS, so it takes as long as the ACME order does.
 
 The same release carries the server's hardening units (`termit-mn-firewall*`, `termit-mn-guard`,
 `termit-mn-blocklist*`). They are installed only if you decide to harden the server, and the firewall

@@ -67,14 +67,13 @@ server has its own page in [Running the server](docs/guide/using-mn.md).
 
 ```bash
 # on the server (Debian 13, ports 80/443 free, DNS pointing at it)
-install -m 0755 termit-mn /usr/bin/termit-mn
-termit-mn init --domain mn.example.com --email you@example.com --mode invite
-install -m 0644 termit-mn.service /etc/systemd/system/ && systemctl enable --now termit-mn
-termit-mn invite create --note "node-a"            # prints the code once
+curl -fsSLO https://github.com/shogun-kub/termit/releases/latest/download/mn.sh
+sh mn.sh --domain mn.example.com --email you@example.com     # --version v0.4.1 pins a release
+termit-mn invite create --note "node-a"                     # prints the code once
 
 # on the node (Debian 13, ports 80/443 free, DNS pointing at it)
 curl -fsSLO https://github.com/shogun-kub/termit/releases/latest/download/uv.sh
-sh uv.sh --wizard                                  # --version v0.4.1 pins a release
+sh uv.sh --wizard
 ```
 
 The wizard asks for the node's name, the server's address — including the API prefix that `init` printed —

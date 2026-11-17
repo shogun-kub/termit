@@ -36,26 +36,13 @@
 
 ## 1. Сервер
 
-Войдите на сервер как `root` и вставьте этот блок целиком. Первая строка спрашивает у GitHub, какой
-релиз сейчас самый свежий, — если нужна своя версия, поставьте её там (`RELEASE=v0.4.0`). Дальше блок
-скачивает этот релиз, сверяет файл с опубликованной контрольной суммой и устанавливает его.
+Войдите на сервер как `root` и вставьте одну строку. Она скачивает самый свежий релиз, сверяет файл с
+опубликованной контрольной суммой, ставит сервер и его systemd-юнит, кладёт рядом prober, нужный
+серверу, создаёт конфигурацию, запускает службу и печатает её состояние. `--version v0.4.1` поставит
+указанный релиз вместо самого свежего.
 
 ```bash
-# самый свежий релиз; чтобы поставить конкретный — впишите его вместо этой строки (RELEASE=v0.4.0)
-RELEASE=$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/shogun-kub/termit/releases/latest | sed 's|.*/||')
-curl -fsSLO "https://github.com/shogun-kub/termit/releases/download/$RELEASE/termit-mn_${RELEASE}_linux_amd64"
-curl -fsSLO "https://github.com/shogun-kub/termit/releases/download/$RELEASE/SHA256SUMS"
-sha256sum -c --ignore-missing SHA256SUMS
-install -m 0755 "termit-mn_${RELEASE}_linux_amd64" /usr/bin/termit-mn
-```
-
-Теперь создайте конфигурацию. Одна команда записывает настройки, базу данных и ваш админский пароль и
-печатает несколько строк, которые вам понадобятся:
-
-```bash
-install -d -m 0750 /etc/termit/mn
-termit-mn init --domain mn.example.com --email you@example.com \
-  --admin-token-out /etc/termit/mn/admin.token
+curl -fsSLO "https://github.com/shogun-kub/termit/releases/latest/download/mn.sh" && sh mn.sh --domain mn.example.com --email you@example.com --admin-token-out /etc/termit/mn/admin.token
 ```
 
 Что подставить вместо примеров:
@@ -65,21 +52,12 @@ termit-mn init --domain mn.example.com --email you@example.com \
 | `--domain` | имя сервера, то самое, что уже указывает на эту машину |
 | `--email` | ваш адрес; Let's Encrypt пишет на него только если сертификат скоро истечёт |
 
-В выводе важны две строки:
+В выводе важны два значения:
 
 - **`api prefix:`** — короткое случайное слово вроде `/6rfjdqfn5nno`. Запишите его. Узлу понадобится
   полный адрес `https://mn.example.com/6rfjdqfn5nno`, вместе с префиксом.
-- **`admin token`** — пароль для всех команд `termit-mn`. Он записывается в
-  `/etc/termit/mn/admin.token`, поэтому не остаётся в истории терминала.
-
-Запустите сервер:
-
-```bash
-curl -fsSLO "https://github.com/shogun-kub/termit/releases/download/$RELEASE/termit-mn.service"
-install -m 0644 termit-mn.service /etc/systemd/system/
-systemctl daemon-reload
-systemctl enable --now termit-mn
-```
+- **`admin token`** — пароль для всех команд `termit-mn`. `--admin-token-out` кладёт его в
+  `/etc/termit/mn/admin.token`, поэтому он не остаётся в истории терминала.
 
 Проверьте, что он жив:
 
@@ -88,8 +66,8 @@ export TERMIT_MN_ADMIN_TOKEN_FILE=/etc/termit/mn/admin.token
 termit-mn status
 ```
 
-Вы должны увидеть `server:` с вашим доменом, `api:` с префиксом и `uptime:`, отличный от `0s`, —
-значит, он работает. Если вместо этого ошибка, сервер ещё не запустился: `systemctl status termit-mn` и
+Вы должны увидеть `server:` с вашим доменом, `api:` с префиксом, `prober: ready` и `uptime:`, отличный
+от `0s`. Если вместо этого ошибка, сервер ещё не запустился: `systemctl status termit-mn` и
 `journalctl -u termit-mn -n 50`.
 
 ## 2. Создать код приглашения

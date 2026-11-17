@@ -104,8 +104,34 @@ binary as a step; the server does not have that step.
 
 ## 3. Install the management server
 
+The bootstrap script resolves a release, verifies it, installs the binary and its unit, gives it the probe
+worker, creates the configuration, starts the service and prints the status:
+
+```bash
+curl -fsSLO https://github.com/shogun-kub/termit/releases/latest/download/mn.sh
+sh mn.sh --domain mn.example.com --email you@example.com \
+  --admin-token-out /etc/termit/mn/admin.token
+```
+
+| Flag | Effect |
+|---|---|
+| `--domain` | the name the server answers on; required on a first install |
+| `--version` | `v0.4.1`, or a `v0.4.1p1` build; **the newest published release by default** |
+| `--email` / `--mode` / `--acme-ca` / `--acme-skip-tls-verify` / `--api-prefix` | passed to `termit-mn init` |
+| `--admin-token-out` | where `init` writes the admin token instead of printing it |
+| `--prober-version` / `--no-prober` | the probe worker's Xray-core release (default: the one the nodes run), or none |
+| `--base-url` / `--checksum-file` / `--sha256` | a mirror, a local `SHA256SUMS` or a pinned digest, as in `uv.sh` |
+| `--dry-run` | verify the downloads and print what would be done, change nothing |
+
+Re-running it **is** the upgrade: the binary and the unit are replaced, `init` keeps every decision already
+made — domain, listen, master key, the nodes — the probe worker is brought up to the pinned release, and
+the service is restarted.
+
+By hand the steps are what the script does, in the same order:
+
 ```bash
 install -m 0755 termit-mn /usr/bin/termit-mn
+install -m 0644 termit-mn.service /etc/systemd/system/
 
 termit-mn init --domain mn.example.com \
         --email you@example.com \
@@ -113,7 +139,8 @@ termit-mn init --domain mn.example.com \
 ```
 
 `termit-mn init` creates the configuration, the database, the master key, the first admin token and the first
-invite code, and prints them **once**:
+invite code, and prints them **once** (the `--admin-token-out` variant says where the token went instead of
+printing it):
 
 ```
 domain:       mn.example.com
@@ -168,10 +195,9 @@ message, because a world-readable token file is a leaked credential that looks l
 provisioned server keeps its only copy out of an operator's scrollback; if the write fails, `init` prints
 the token and exits non-zero rather than leaving a server with a credential nobody has seen.
 
-Then install the unit and start it:
+Then start it (the script does this at the end of its run):
 
 ```bash
-install -m 0644 deploy/systemd/termit-mn.service /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now termit-mn
 journalctl -u termit-mn -n 30 --no-pager
@@ -187,7 +213,8 @@ level=INFO msg="serving TLS" domain=mn.example.com listen=:443 not_after=…
 level=INFO msg="admin socket ready" path=/run/termit/mn/admin.sock
 ```
 
-Give it the probe worker now (§2 says why it is not optional) — the same pinned core the nodes run:
+The probe worker (§2 says why it is not optional) is the last thing the script installs. By hand it is
+the same pinned core the nodes run:
 
 ```bash
 apt-get install -y unzip
