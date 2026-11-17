@@ -1,28 +1,43 @@
 # Quickstart
 
-Two machines and about fifteen minutes: a server that keeps the registry and a node that carries the
-traffic. The long version — every flag, every failure — is in [How Termit works](overview.md),
-[Running the server](using-mn.md) and [Using a node](using-uv.md); this page is the shortest path to a
-phone that works.
+This page takes you from two empty servers to a working phone, in about fifteen minutes. It is written
+for someone who has never set up a proxy before: every command is followed by what it does, and every
+question the installer asks is explained.
 
-## Before you start
+You need two machines. One is the **server**: it keeps the list of who is in the network and never
+carries traffic. The other is the **node**: it is the machine your phone actually connects to. Do the
+server first — the node cannot join a server that does not exist yet.
+
+If anything is unclear, the long versions are [Using a node](using-uv.md) and
+[Running the server](using-mn.md).
+
+## What you need
 
 | | Server | Node |
 |---|---|---|
-| System | Debian 13, root over SSH | Debian 13, root over SSH |
-| DNS | `mn.example.com` points at it | `node-a.example.com` points at it |
-| Ports | 80 and 443 free, reachable from outside | 80 and 443 free, reachable from outside |
-| Size | 2 vCPU, 2 GB RAM | 1 vCPU, 1 GB RAM |
+| System | Debian 13, you are `root` over SSH | Debian 13, you are `root` over SSH |
+| Name | `mn.example.com` already points at it | `node-a.example.com` already points at it |
+| Network | ports 80 and 443 open to the internet | ports 80 and 443 open to the internet |
+| Size | 2 CPU, 2 GB RAM | 1 CPU, 1 GB RAM |
 
-The node joins the server, not the other way round — that is why the server comes first. Both
-certificates are issued by Let's Encrypt during the install, so the DNS records must already resolve
-when you start.
+"Already points at it" means the DNS record exists **before** you start. Both machines get a free
+certificate from Let's Encrypt during the install, and Let's Encrypt only gives one to a name that
+already resolves.
 
-Substitute your own names for `mn.example.com` and `node-a.example.com` throughout.
+Wherever you see `mn.example.com` or `node-a.example.com`, use your own names.
+
+## The order of work
+
+1. Set up the server.
+2. Create an invite code on the server.
+3. Set up the node — one command, then the installer asks questions.
+4. Approve the node on the server.
+5. Copy one link into your phone.
 
 ## 1. The server
 
-Download the release, verify it against the checksums it ships with, and install the binary:
+Log in to the server as `root` and paste this block. It downloads the version, checks the file against
+its published checksum, and installs it.
 
 ```bash
 RELEASE=v0.4.0
@@ -32,8 +47,8 @@ sha256sum -c --ignore-missing SHA256SUMS
 install -m 0755 "termit-mn_${RELEASE}_linux_amd64" /usr/bin/termit-mn
 ```
 
-Create the configuration, the database and the first admin token. The token goes straight into a file
-with mode `0600`, so the only copy is not in your scrollback:
+Now create the configuration. This one line writes the settings, the database and your admin password,
+and prints a few lines you will need:
 
 ```bash
 install -d -m 0750 /etc/termit/mn
@@ -41,11 +56,21 @@ termit-mn init --domain mn.example.com --email you@example.com \
   --admin-token-out /etc/termit/mn/admin.token
 ```
 
-`init` prints the **API prefix** it picked, for example `/6rfjdqfn5nno`. Write it down: a node is given
-`https://mn.example.com/6rfjdqfn5nno`, the full URL, not the bare host. The prefix is not a secret — it
-is the random path the API lives on, so a scanner that asks for `/api/v1` finds the masking site instead.
+What to put instead of the placeholders:
 
-Install the unit and start the server:
+| | |
+|---|---|
+| `--domain` | the server's name, the one that already points at this machine |
+| `--email` | your address; Let's Encrypt uses it only to warn you about an expiring certificate |
+
+Two lines of that output matter:
+
+- **`api prefix:`** — a short random word like `/6rfjdqfn5nno`. Write it down. The node will need the
+  full address `https://mn.example.com/6rfjdqfn5nno`, prefix included.
+- **`admin token`** — the password for every `termit-mn` command. It is written to
+  `/etc/termit/mn/admin.token`, so it does not sit in your terminal history.
+
+Start the server:
 
 ```bash
 curl -fsSLO "https://github.com/shogun-kub/termit/releases/download/$RELEASE/termit-mn.service"
@@ -54,93 +79,107 @@ systemctl daemon-reload
 systemctl enable --now termit-mn
 ```
 
-Check that it is alive, then mint an invite code for the node:
+Check that it is alive:
 
 ```bash
 export TERMIT_MN_ADMIN_TOKEN_FILE=/etc/termit/mn/admin.token
 termit-mn status
+```
+
+You should see `server:` with your domain, `api:` with the prefix, and an `uptime:` that is not
+`0s` — that means it is running. If you see an error instead, the server is not running yet:
+`systemctl status termit-mn` and `journalctl -u termit-mn -n 50`.
+
+## 2. Create an invite code
+
+An invite is a one-time ticket that lets exactly one node join. Create one per node:
+
+```bash
 termit-mn invite create --note node-a
 ```
 
-The invite code is shown once — `ABCD-EFGH-IJKL` in the examples.
+The code (for example `ABCD-EFGH-IJKL`) is printed **once**. Copy it now — you cannot look it up later.
 
-## 2. The node, with the wizard
+## 3. The node
 
-Install the binary the same way:
+Log in to the node as `root` and paste this single line. It downloads the installer, verifies the
+release, installs the node program, and then asks you questions.
 
 ```bash
-RELEASE=v0.4.0
-curl -fsSLO "https://github.com/shogun-kub/termit/releases/download/$RELEASE/termit-uv_${RELEASE}_linux_amd64"
-curl -fsSLO "https://github.com/shogun-kub/termit/releases/download/$RELEASE/SHA256SUMS"
-sha256sum -c --ignore-missing SHA256SUMS
-install -m 0755 "termit-uv_${RELEASE}_linux_amd64" /usr/bin/termit-uv
+curl -fsSLO "https://github.com/shogun-kub/termit/releases/download/v0.4.0/uv.sh" && sh uv.sh --version v0.4.0 --wizard
 ```
 
-Then let it ask the questions:
+The questions, in the order they come, and what to answer:
+
+| The installer asks | Type this | Choose something else when |
+|---|---|---|
+| `Language / Язык` | `en` or `ru` — the rest of the questions are in that language | never |
+| `Domain (a DNS name that points at this machine)` | `node-a.example.com` | — this one is required |
+| `Contact address for the certificate authority` | `you@example.com` | — you get a warning if the certificate is about to expire |
+| `Masking site` | press `Enter` (`portal`) | `product` gives a different-looking ordinary page at your node's address |
+| `Egress (all, selected, off)` | `all` — everything proxied leaves through Cloudflare | `off` if you do not want traffic to touch Cloudflare, or if your hoster blocks it; `selected` if only some sites should |
+| `Harden this node (yes/no)` | `yes` on a machine that exists only as this node | `no` if you already run your own firewall |
+| `Invite code from the server operator` | the code from step 2 | press `Enter` to skip and stay a standalone node for now |
+| `Management server URL` | `https://mn.example.com/6rfjdqfn5nno` — the full address, with the prefix from step 1 | — required if you typed an invite |
+
+Then the installer works on its own for a minute or two: it installs the proxy core, gets the
+certificate, builds the decoy page, starts the services and joins your server. The last lines tell you
+what happened.
+
+Every answer is remembered. If you disconnect in the middle, run `termit-uv wizard` again and it
+continues where it stopped.
+
+## 4. Approve the node
+
+Back on the server, the node is waiting for you (this is what the default `invite+approval` mode
+means):
 
 ```bash
-termit-uv wizard
-```
-
-| The wizard asks | Answer for this walkthrough |
-|---|---|
-| language | `en` or `ru` — everything after this is in it |
-| the node's domain | `node-a.example.com` |
-| contact address for ACME | `you@example.com` |
-| which masking site | `portal` (or `product`) — what a stranger sees at `https://node-a.example.com/` |
-| WARP | `all` (everything proxied leaves through Cloudflare), `selected`, or `off` |
-| host firewall and ban engine | `yes` if this box is the node and nothing else — see [Hardening a node](hardening.md) |
-| invite code | `ABCD-EFGH-IJKL` (empty installs a standalone node) |
-| management server | `https://mn.example.com/6rfjdqfn5nno` — with the prefix |
-
-Every answer is remembered, so an interrupted run continues where it stopped and `Enter` accepts what is
-already there. The wizard then installs Xray, writes the core's configuration, issues the certificate,
-renders the masking site, starts the services, enrols the node and, with WARP on, proves that the tunnel
-carries traffic.
-
-A one-command alternative, without questions, is in [Using a node](using-uv.md#install):
-
-```bash
-sh uv.sh --version "$RELEASE" --domain node-a.example.com --email you@example.com \
-  --mn https://mn.example.com/6rfjdqfn5nno --invite ABCD-EFGH-IJKL
-```
-
-## 3. Approve the node
-
-The default enrolment mode is `invite+approval`: the node registers itself and waits. Approve it:
-
-```bash
-termit-mn uv list                        # it shows up as pending
+termit-mn uv list
 termit-mn uv approve node-a.example.com
 ```
 
-(`termit-mn` with no arguments opens the same operations as a numbered menu, in Russian or English.)
+After this the node shows as `active` — go on to step 5.
 
-## 4. Connect a phone
+## 5. Connect your phone
+
+On the node, print the link:
 
 ```bash
 termit-uv status
 ```
 
-The `subscription:` line is a URL for your client, and it is the only credential you paste. Open it in
-HAPP, Hiddify, v2rayNG or any client that speaks VLESS + XHTTP + TLS; the profile is rendered by the
-node and points at the button you just approved. The same page also lists the node's peers, so a second
-device or a second node appears there without any extra step.
+Copy the line that starts with `subscription:` and open it in the app of your choice — HAPP, Hiddify,
+v2rayNG. The app reads the link and adds the connection by itself; nothing else to paste, no password.
 
-## 5. Keep these
+## If something does not work
 
-| What | Where | Why |
+| What you see | What it means | What to do |
+|---|---|---|
+| `invalid invite` or `code is spent` | the code was already used, or it expired | create a new one on the server: `termit-mn invite create --note node-a` |
+| `no such host` or the node cannot reach the server | the address, the prefix or DNS is wrong | compare your address with `termit-mn status`; correct it in `/etc/termit/uv/config.yaml` |
+| the certificate step fails | the node's DNS record does not resolve yet, or port 80 is closed | check with `getent hosts node-a.example.com` from another machine, then run `termit-uv init` |
+| the installer stopped early | nothing is broken, half of it is done | run `termit-uv wizard` again — it keeps your answers |
+| `termit-uv status` says nothing about a subscription | the node is not approved yet | step 4 |
+
+Anything else: `termit-uv doctor` prints a report you can read, and
+[When something goes wrong](troubleshooting.md) lists the usual failures.
+
+## Keep three things
+
+| What | Where | Why it matters |
 |---|---|---|
 | admin token | `/etc/termit/mn/admin.token` | every `termit-mn` command needs it; `termit-mn admin rotate` replaces it |
-| master key | `/etc/termit/mn/master.key` | without it the database cannot derive a single pair credential — it cannot be reset |
-| database | `/var/lib/termit/mn/termit.db` | the registry: nodes, peers, users, invites |
+| master key | `/etc/termit/mn/master.key` | without it the database cannot build a single password — and it cannot be reset |
+| database | `/var/lib/termit/mn/termit.db` | your network: the nodes, the links, the invites |
 
-Back the three up together, and nowhere near the server they belong to.
+Copy all three somewhere safe and away from the server. A backup of the database without the master key
+is a file you cannot use.
 
-## Where to go next
+## Next steps
 
-- [Using a node](using-uv.md) and [Running the server](using-mn.md) — every command, day to day.
-- [The interactive menu](menu.md) — the same operations from a numbered menu.
-- [Hardening a node](hardening.md) — the firewall, the ban engine and the way back.
-- [`docs/OPERATIONS.md`](../OPERATIONS.md) — upgrade, backup, restore, recovery, monitoring.
-- [When something goes wrong](troubleshooting.md) — the failures you are likely to meet.
+- [Using a node](using-uv.md) — every command, updating, changing settings, removing a node.
+- [Running the server](using-mn.md) — invites, approvals, blocking, backups.
+- [The interactive menu](menu.md) — the same operations as a numbered menu, if you prefer that to flags.
+- [Hardening a node](hardening.md) — a firewall and an automatic ban engine for the proxy ports.
+- [`docs/OPERATIONS.md`](../OPERATIONS.md) — running it for real: updates, backups, recovery.
