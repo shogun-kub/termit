@@ -290,9 +290,12 @@ On the MN:
 systemctl disable --now termit-mn
 rm -f /etc/systemd/system/termit-mn.service /etc/systemd/system/termit-mn-*.service \
       /etc/systemd/system/termit-mn-*.timer
-rm -rf /etc/termit/mn /var/lib/termit/mn
+rm -rf /etc/termit/mn /var/lib/termit/mn /usr/local/lib/termit
 systemctl daemon-reload
 ```
+
+`/usr/local/lib/termit` is the probe worker `mn.sh` installs; without it a reinstall is a server that
+cannot check a single node.
 
 The wildcard covers the four unit names the release ships beside the server's own — `termit-mn-firewall`,
 `-firewall-rollback`, `-guard` and `-blocklist`, six files with the two timers

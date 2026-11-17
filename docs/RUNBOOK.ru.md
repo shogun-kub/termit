@@ -298,9 +298,12 @@ nginx при этом продолжает работать, потому что
 systemctl disable --now termit-mn
 rm -f /etc/systemd/system/termit-mn.service /etc/systemd/system/termit-mn-*.service \
       /etc/systemd/system/termit-mn-*.timer
-rm -rf /etc/termit/mn /var/lib/termit/mn
+rm -rf /etc/termit/mn /var/lib/termit/mn /usr/local/lib/termit
 systemctl daemon-reload
 ```
+
+`/usr/local/lib/termit` — это prober, который ставит `mn.sh`; без него переустановленный сервер не сможет
+проверить ни одного узла.
 
 Шаблон со звёздочкой накрывает четыре имени юнитов, которые релиз кладёт рядом с серверным —
 `termit-mn-firewall`, `-firewall-rollback`, `-guard` и `-blocklist`, шесть файлов вместе с двумя
