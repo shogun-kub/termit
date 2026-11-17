@@ -5,7 +5,8 @@ pre-releases, and whoever installs the release skipped them.
 
 ## 0.4.1 — 2026-11-17
 
-One defect in the wizard, and the pages that describe an installation checked against a clean one.
+One defect in the wizard, one in the agent's sandbox, and the pages that describe an installation checked
+against a clean one.
 
 ### Added
 
@@ -39,6 +40,12 @@ One defect in the wizard, and the pages that describe an installation checked ag
   subcommand name as an argument, so the wizard asked every question and then failed with `termit-uv
   init: unexpected argument "init"`; the branch had no test, which is why nothing caught it. Both calls
   now pass exactly what the plain commands pass, and a test drives the install branch.
+- **The agent can write the page it re-renders after a sync.** The agent unit runs with
+  `ProtectSystem=strict` and granted writes to the config and state directories only, while the
+  subscription page it renders after every cycle lives under `/var/www/termit/site`. Each cycle logged
+  `agent: after the sync … read-only file system` and the page kept yesterday's mesh; a node whose owner
+  has no page never noticed. The site tree is writable now, and a test reads the generated unit so a
+  future edit cannot quietly take the write away again.
 - **The installation pages describe what a fresh box actually does.** Checked from empty machines to a
   two-node mesh: the node goes in with `uv.sh --wizard` again, the server's probe worker is described as
   what it is — a node cannot enroll without one — and the sample output shows the lines the commands

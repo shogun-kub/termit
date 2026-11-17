@@ -754,13 +754,13 @@ both then sync so the peers converge immediately.
 
 `termit-uv` runs as two systemd units: `termit-uv-agent` (the daily cycle, self-check and sync) and
 `termit-uv-renew` (the certificate timer). The agent is hardened with `NoNewPrivileges`,
-`ProtectSystem=strict`, `ReadWritePaths` limited to its config and state directories, a private
-`/tmp`, and `ProtectHome` — except when the configured MN CA file lives under `/root`, `/home` or
-`/run/user`, where `ProtectHome` would hide the very file the unit must read. The generator records
-that trade-off in the unit itself instead of leaving an unreadable CA to fail at the first sync. Xray
-runs under its own generated unit as the unprivileged `termit` user, with an empty capability set,
-`ProtectSystem=strict`, `SystemCallFilter=@system-service` and `MemoryDenyWriteExecute`. It reads one
-config file and owns nothing else.
+`ProtectSystem=strict`, `ReadWritePaths` limited to its config and state directories and the site tree it
+re-renders after a sync, a private `/tmp`, and `ProtectHome` — except when the configured MN CA file lives
+under `/root`, `/home` or `/run/user`, where `ProtectHome` would hide the very file the unit must read.
+The generator records that trade-off in the unit itself instead of leaving an unreadable CA to fail at the
+first sync. Xray runs under its own generated unit as the unprivileged `termit` user, with an empty
+capability set, `ProtectSystem=strict`, `SystemCallFilter=@system-service` and `MemoryDenyWriteExecute`. It
+reads one config file and owns nothing else.
 
 ### 13.3 MN install
 
