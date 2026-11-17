@@ -91,7 +91,12 @@ func (a *application) runSync(args []string) int {
 		// A check must answer the question without answering it by changing the answer: generate what
 		// the core would get, compare it with the file and with the running client set, and leave both
 		// alone.
-		result, err := a.applier(cfg, st).Preview(ctx, answer, st.LocalUsers)
+		applier, err := a.applier(cfg, st)
+		if err != nil {
+			fmt.Fprintf(stderr, "termit-uv sync: %v\n", err)
+			return exitFailure
+		}
+		result, err := applier.Preview(ctx, answer, st.LocalUsers)
 		if err != nil {
 			fmt.Fprintf(stderr, "termit-uv sync: %v\n", err)
 			return exitFailure
@@ -117,7 +122,11 @@ func (a *application) runSync(args []string) int {
 		return exitOK
 	}
 
-	applier := a.applier(cfg, st)
+	applier, err := a.applier(cfg, st)
+	if err != nil {
+		fmt.Fprintf(stderr, "termit-uv sync: %v\n", err)
+		return exitFailure
+	}
 	result, err := applier.Apply(ctx, answer, st.LocalUsers)
 	if err != nil {
 		fmt.Fprintf(stderr, "termit-uv sync: %v\n", err)

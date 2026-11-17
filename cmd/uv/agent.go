@@ -84,7 +84,11 @@ func (a *application) newLoop(cfg *config.Config) *agent.Loop {
 			})
 		},
 		Apply: func(ctx context.Context, st *state.State, answer proto.SyncResponse) (agent.Result, error) {
-			return a.applier(cfg, st).Apply(ctx, answer, st.LocalUsers)
+			applier, err := a.applier(cfg, st)
+			if err != nil {
+				return agent.Result{}, err
+			}
+			return applier.Apply(ctx, answer, st.LocalUsers)
 		},
 		// The page lists the mesh, so a cycle that reconciled it must not leave yesterday's peers on
 		// the page. A node whose owner never asked for the page has nothing to refresh.
@@ -110,10 +114,16 @@ func (r warpRunner) Run(ctx context.Context, name string, args ...string) (strin
 	return result.Stdout, result.Stderr, err
 }
 
-// applier builds the core reconciler for one state snapshot.
-func (a *application) applier(cfg *config.Config, st *state.State) agent.Applier {
+// applier builds the core reconciler for one state snapshot. The WARP half comes from the install
+// package so a sync writes the same document `init` does: a sync that built its own spec used to
+// replace a wireguard tunnel with the proxy sidecar, and the node then exited directly.
+func (a *application) applier(cfg *config.Config, st *state.State) (agent.Applier, error) {
 	path := "/" + st.Identity.XHTTPPath + "/"
 	binary := cfg.Paths.XrayBinary()
+	warpSpec, err := install.WarpSpecFor(cfg)
+	if err != nil {
+		return agent.Applier{}, err
+	}
 	return agent.Applier{
 		Binary:     binary,
 		ConfigPath: cfg.Paths.XrayConfig,
@@ -130,11 +140,7 @@ func (a *application) applier(cfg *config.Config, st *state.State) agent.Applier
 			WorkDir: cfg.Paths.StateDir,
 			Runner:  execRunner{},
 		},
-		Warp: xray.WarpSpec{
-			Mode:     cfg.Warp.Mode,
-			Selected: cfg.Warp.Selected,
-			FailOpen: cfg.Warp.FailOpenEnabled(),
-		},
+		Warp:            warpSpec,
 		BlockBitTorrent: cfg.Security.BitTorrentBlock,
 		Canary: agent.Canary{
 			Binary:    binary,
@@ -145,7 +151,7 @@ func (a *application) applier(cfg *config.Config, st *state.State) agent.Applier
 			UUID:      st.Identity.SelfUUID,
 			WorkDir:   cfg.Paths.StateDir,
 		},
-	}
+	}, nil
 }
 
 // printCycle renders one loop iteration for `termit-uv agent --once`.
