@@ -60,8 +60,9 @@ The reference documents go deeper, and assume you are comfortable with TLS, ACME
 
 ## Quick start
 
-The management server first — a node needs a server to join, not the other way round. Full walkthrough:
-[How Termit works](docs/guide/overview.md) → [Running the server](docs/guide/using-mn.md).
+The management server first — a node needs a server to join, not the other way round. The shortest path is
+[Quickstart](docs/guide/quickstart.md); the reasoning is in [How Termit works](docs/guide/overview.md), and the
+server has its own page in [Running the server](docs/guide/using-mn.md).
 
 ```bash
 # on the server (Debian 13, ports 80/443 free, DNS pointing at it)
@@ -71,13 +72,14 @@ install -m 0644 termit-mn.service /etc/systemd/system/ && systemctl enable --now
 termit-mn invite create --note "node-a"            # prints the code once
 
 # on the node (Debian 13, ports 80/443 free, DNS pointing at it)
-curl -fsSLO https://github.com/shogun-kub/termit/releases/download/v0.3.2/uv.sh
-sh uv.sh --version v0.3.2 --domain node-a.example.com --email you@example.com \
-  --mn https://mn.example.com --invite ABCD-EFGH-IJKL
+curl -fsSLO https://github.com/shogun-kub/termit/releases/download/v0.4.0/uv.sh
+sh uv.sh --version v0.4.0 --wizard
 ```
 
-Then `termit-uv status` prints the subscription URL to paste into a client, and `termit-mn status` shows the mesh.
-The installer verifies the release against its `SHA256SUMS` and refuses anything it cannot verify.
+The wizard asks for the node's name, the server's address — including the API prefix that `init` printed —
+and the invite code. Then `termit-uv status` prints the subscription URL to paste into a client, and
+`termit-mn status` shows the mesh. The installer verifies the release against its `SHA256SUMS` and refuses
+anything it cannot verify.
 
 ## What it is, and what it is not
 
@@ -103,13 +105,15 @@ Deliberate design choices worth knowing before you deploy it:
 
 ## Status
 
-`v0.3.2` is the newest release. M1–M5 are implemented and verified on a three-machine acceptance lab
+`v0.4.0` is the newest release. M1–M5 are implemented and verified on a three-machine acceptance lab
 (Debian 13 in unprivileged containers), and the release pipeline builds verified artifacts for
-linux/amd64 and linux/arm64. The pass behind the release is recorded in
-[`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) (M5.8): three production hosts — a
-management server in a container and two nodes behind real domains — with the host firewall confirmed and
-surviving a reboot, the ban engine and the blocklist active, WARP egress on, the owner's page reachable
-over TLS, and a phone app passing traffic through both nodes. `v0.3.1` and `v0.3.0` carry their own
+linux/amd64 and linux/arm64. Since `0.4.0` the WARP tunnel runs inside the proxy core instead of a
+sidecar, so it needs no `/dev/net/tun`, and `warp.family` decides which address family leaves through it.
+The passes behind the releases are recorded in [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md)
+(M5.8 for `0.3.2`, §11.9 for `0.4.0`): three production hosts — a management server in a container and two
+nodes behind real domains — with the host firewall confirmed and surviving a reboot, the ban engine and
+the blocklist active, WARP egress verified through Cloudflare's own trace, the owner's page reachable over
+TLS, and a phone app passing traffic through both nodes. `v0.3.2` and its predecessors carry their own
 sections of the same changelog. See [what is not here yet](#what-is-not-here-yet).
 
 ## Requirements
@@ -130,7 +134,7 @@ go test ./cmd/... ./internal/...                  # unit tests
 go vet ./cmd/... ./internal/...
 gofmt -l cmd internal deploy test                 # must print nothing
 
-go run ./deploy/release --version v0.3.2 --out dist   # the release directory, as CI builds it
+go run ./deploy/release --version v0.4.0 --out dist   # the release directory, as CI builds it
 ```
 
 Package patterns are explicit on purpose: `references/` holds third-party Go source inside this
@@ -150,13 +154,9 @@ tool's tests and `govulncheck`.
 
 ## What is not here yet
 
-- **The M5 rollout**: the host firewall, the ban engine and the blocklist shipped in `0.3.0`, are in `0.3.2` and checked on
-  the lab, a real reboot included, but they have not been applied to the production nodes yet
-  ([`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) M5.8). That pass is what turns `0.3.2`
-  into a full release.
-- **WARP against a real tunnel**: the lab has no `/dev/net/tun`, so the suite proves the refusal, the
-  generated route, fail-open and the switch back; installing, registering and connecting needs a KVM VM
-  or a privileged container.
+- **WARP through the `proxy` transport**: the lab has no `/dev/net/tun`, so the suite covers the default
+  `wireguard` transport, which needs no device; installing and connecting the `warp-cli` sidecar needs a
+  KVM VM or a privileged container.
 - **A Docker Compose harness** for development without lab hardware.
 
 ## Licence

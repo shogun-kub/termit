@@ -151,8 +151,8 @@ On the node, print the link:
 termit-uv status
 ```
 
-Copy the line that starts with `subscription:` and open it in the app of your choice — HAPP, Hiddify,
-v2rayNG. The app reads the link and adds the connection by itself; nothing else to paste, no password.
+Copy the line that starts with `subscribe:` and open it in HAPP, or any client that speaks VLESS with
+XHTTP. The app reads the link and adds the connection by itself; nothing else to paste, no password.
 
 ## If something does not work
 

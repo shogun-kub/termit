@@ -91,9 +91,9 @@ path to it is broken". For anything else: `journalctl -u termit-uv-agent` on the
 
 | Symptom | Likely cause | What to do |
 |---|---|---|
-| `termit-uv status` shows `warp: … direct` | WARP is down and fail-open is doing its job | `termit-uv warp status`, then `journalctl -u warp-cli`; traffic still works |
+| `termit-uv status` shows `warp: … direct` | WARP is down and fail-open is doing its job | `termit-uv warp status` names the reason; with `warp.transport: proxy` the sidecar logs are in `journalctl -u warp-cli`, with `wireguard` in the core's and the agent's |
 | `termit-uv warp status` shows `not-installed` | the node was installed with `--no-warp`, or the package was removed | `termit-uv init` or `termit-uv warp mode all` installs and registers it |
-| `termit-uv warp status` shows `unavailable` | the host cannot run WARP: no `/dev/net/tun`, or an architecture with no package | nothing to fix — the reason is printed; the node keeps working and exits directly |
+| `termit-uv warp status` shows `unavailable` | on `warp.transport: proxy` the host cannot run the sidecar: no `/dev/net/tun`, or an architecture with no package (the default `wireguard` transport needs no device) | nothing to fix — the reason is printed; the node keeps working and exits directly |
 | `termit-uv warp mode` → `start-limit-hit` | too many restarts in five minutes | `systemctl reset-failed termit-xray termit-uv-agent`, then retry |
 
 ## Subscriptions and clients

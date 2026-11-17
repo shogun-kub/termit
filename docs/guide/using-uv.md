@@ -28,9 +28,9 @@ is [the interactive menu](menu.md), and every entry prints the command it runs.
 Download the installer for a release, then run it — never pipe a URL into a shell:
 
 ```bash
-curl -fsSLO https://github.com/shogun-kub/termit/releases/download/v0.3.1/uv.sh
+curl -fsSLO https://github.com/shogun-kub/termit/releases/download/v0.4.0/uv.sh
 
-sh uv.sh --version v0.3.1 \
+sh uv.sh --version v0.4.0 \
   --domain node1.example.com --email you@example.com \
   --mn https://mn.example.com/6rfjdqfn5nno --invite ABCD-EFGH-IJKL
 ```
@@ -75,8 +75,8 @@ termit-uv init --domain node1.example.com --email you@example.com
 
 ## What `termit-uv init` does
 
-Thirteen steps, each idempotent: a step whose effect is already there does nothing, so re-running is
-the way to repair a partial install.
+Fourteen steps, each idempotent: a step whose effect is already there does nothing, so re-running
+is the way to repair a partial install.
 
 | Step | What it does |
 |---|---|
@@ -84,15 +84,16 @@ the way to repair a partial install.
 | `user` | creates the unprivileged `termit` user |
 | `dirs` | `/etc/termit/uv`, `/var/lib/termit/uv`, `/var/www/termit` |
 | `packages` | installs `nginx`, `ca-certificates`, `curl` |
-| `warp` | installs, registers and connects `cloudflare-warp`; skipped when WARP is off, explained when the host cannot run it |
+| `warp` | registers the node's WARP identity for the tunnel; with `--warp-transport proxy` it installs and connects `cloudflare-warp` instead; skipped when WARP is off |
 | `xray-binary` | downloads the pinned proxy core, verifies its SHA-256, installs it |
 | `identity` | generates the node's UUID, request path and decoy seed — **once, never again** |
 | `decoy` | generates the decoy site |
 | `xray-config` | writes the core configuration and validates it with `xray -test` |
 | `web` | writes the nginx vhost and validates it with `nginx -t` |
 | `units` | writes and enables the systemd units and the renewal timer |
-| `certificate` | issues the TLS certificate over HTTP-01 |
+| `certificate` | gets the free certificate from Let's Encrypt by answering its check on port 80 |
 | `start` | starts the core, nginx and the agent, and verifies they stay up |
+| `warp-egress` | fetches the Cloudflare trace through the node's own tunnel and says where it came out; a warning, never a failure |
 
 On success it prints a summary and the identity fingerprint. A failure names the step and the command
 that failed; `--only <step>` re-runs just that one.
@@ -259,7 +260,7 @@ installed are left alone, and no other nginx site is touched. The server keeps t
 | `/var/lib/termit/uv/` | journal of install runs |
 | `/usr/lib/termit/bin/xray` | the proxy core |
 | `/var/www/termit/` | the decoy site and the ACME challenge directory |
-| `/etc/nginx/sites-enabled/termit` | the generated vhost |
+| `/etc/nginx/sites-enabled/termit.conf` | the generated vhost, a link to `sites-available/termit.conf` |
 
 Units: `termit-xray.service`, `termit-uv-agent.service`, `termit-uv-renew.timer` (certificate) and
 `termit-uv-renew.service`. `systemctl status termit-uv-agent` and `journalctl -u termit-uv-agent`

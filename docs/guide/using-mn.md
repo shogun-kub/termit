@@ -146,7 +146,7 @@ server:   mn.example.com
 listen:   :443
 api:      /6rfjdqfn5nno
 decoy:    portal
-version:  termit-mn v0.3.1 (commit …, built …, api 1, profile v1)
+version:  termit-mn v0.4.0 (commit …, built …, api 1, profile v1)
 uptime:   3h12m (started 2026-11-10 11:18)
 database: /var/lib/termit/mn/termit.db (412.0 KiB, schema 5)
 prober:   ready (/usr/lib/termit/bin/xray)
@@ -203,7 +203,7 @@ What the states mean:
 | `pending` | enrolled, not admitted yet (`invite+approval`) | `termit-mn uv approve` |
 | `active` | checked and working | — |
 | `unavailable` | a check ran and genuinely failed (certificate, decoy, tunnel) | passing checks |
-| `blocked` | an operator blocked it | `termit-mn uv unblock`, or the node asking with `termit-uv unblock` |
+| `blocked` | two failed checks in a row, or an operator decision | `termit-mn uv unblock`, or the node asking with `termit-uv unblock` |
 | `removed` | out of the mesh; credentials stop working | re-enrolment (new record) |
 
 The state machine only moves on a verdict. A check that could not run — prober down, DNS broken on

@@ -91,9 +91,9 @@ termit-mn status                  # на сервере: prober, очередь,
 
 | Симптом | Вероятная причина | Что делать |
 |---|---|---|
-| `termit-uv status` показывает `warp: … direct` | WARP упал, fail-open делает своё дело | `termit-uv warp status`, затем `journalctl -u warp-cli`; трафик всё равно работает |
+| `termit-uv status` показывает `warp: … direct` | WARP упал, fail-open делает своё дело | `termit-uv warp status` называет причину; на `warp.transport: proxy` журнал сайдкара — `journalctl -u warp-cli`, на `wireguard` — журналы ядра и агента |
 | `termit-uv warp status` показывает `not-installed` | узел ставили с `--no-warp` или пакет удалили | `termit-uv init` или `termit-uv warp mode all` установит и зарегистрирует |
-| `termit-uv warp status` показывает `unavailable` | машина не умеет WARP: нет `/dev/net/tun` или нет пакета под архитектуру | чинить нечего — причина напечатана; узел работает и выходит напрямую |
+| `termit-uv warp status` показывает `unavailable` | на `warp.transport: proxy` машина не умеет сайдкар: нет `/dev/net/tun` или нет пакета под архитектуру (транспорту по умолчанию, `wireguard`, устройство не нужно) | чинить нечего — причина напечатана; узел работает и выходит напрямую |
 | `termit-uv warp mode` → `start-limit-hit` | слишком много перезапусков за пять минут | `systemctl reset-failed termit-xray termit-uv-agent`, затем повторить |
 
 ## Подписки и клиенты
@@ -110,7 +110,7 @@ termit-mn status                  # на сервере: prober, очередь,
 
 ## Как просить помощи
 
-Соберите это и вставьте в issue: он отвечает на девять вопросов из десяти и не содержит учётных данных:
+Соберите это и вставьте в issue: такой отчёт отвечает на девять вопросов из десяти и не содержит учётных данных:
 
 ```bash
 termit-uv version; termit-uv status; termit-uv doctor

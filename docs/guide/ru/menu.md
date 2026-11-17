@@ -28,7 +28,7 @@ termit-mn menu
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
 │  Termit — node                                                       │
-│  termit-uv v0.3.1 (commit …, built …, api 1)                         │
+│  termit-uv v0.4.0 (commit …, built …, api 1)                         │
 │                                                                      │
 │    domain        node-a.example.com                                  │
 │    identity      3f9c1a2b                                            │
@@ -56,6 +56,7 @@ termit-mn menu
 |---|---|---|
 | status | домен, отпечатки идентичности, сертификат, пиры, последняя и следующая синхронизация, WARP | `termit-uv status` |
 | doctor | диагностика хоста и узла; ничего не меняет | `termit-uv doctor` |
+| диагностика соединений | снимает счётчики TCP: теряет узел или путь? | `termit-uv net` |
 | install or converge | первый запуск спросит домен, email и WARP; последующие только перепроверяют | `termit-uv init …` |
 | setup wizard | вся первая установка в виде вопросов; ответы сохраняются между запусками | `termit-uv wizard` |
 | client options | закрытая страница со всеми ссылками для клиентов и её адрес | `termit-uv options` |
@@ -77,9 +78,10 @@ termit-mn menu
 | status | сервер, база, пробер, таблица узлов | `termit-mn status` |
 | nodes | список, показ, approve, reject, block, unblock, удаление | `termit-mn uv …` |
 | invites | создание, список и отзыв кодов | `termit-mn invite …` |
-| check now | вся сеть или один узел | `termit-mn check --all` / `termit-mn check <узел>` |
+| check now | вся сеть или один узел | `termit-mn check now --all` / `termit-mn check now <узел>` |
 | policy | показать пороги или изменить один | `termit-mn policy …` |
 | subscription | обновить токен подписки узла | `termit-mn sub rotate <узел>` |
+| admin token | заменить админский токен, которым вы работаете | `termit-mn admin rotate` |
 | backup | снять согласованный снимок | `termit-mn backup` |
 | help | все команды и флаги | `termit-mn help` |
 

@@ -32,7 +32,7 @@ Conventions used below:
 | UV | `termit-uv-guard.service` | — | the ban engine, when `security.guard.enabled` (§18.4) |
 | UV | `termit-uv-blocklist.timer` | — | the network blocklist refresh, when a URL is configured (§18.5) |
 | UV | `termit-uv-firewall.service` | — | puts a confirmed table back at boot (§18.7) |
-| UV | `warp-cli` (Cloudflare's unit) | `127.0.0.1:40000` | the WARP SOCKS5 sidecar, when WARP is on |
+| UV | the core's own WireGuard outbound (default), or `warp-cli` (Cloudflare's unit) on `warp.transport: proxy` | `127.0.0.1:40000` only in proxy mode | where proxied traffic leaves, when WARP is on |
 | MN | `termit-mn-guard.service`, `termit-mn-blocklist.timer`, `termit-mn-firewall.service` | — | the same three, shipped with the release (§18.6) |
 
 The table itself is applied by `firewall on` and never by a timer; the boot unit only puts back what was
@@ -84,9 +84,9 @@ Per host, before you start:
   stops at preflight and says which listener is in the way. On the MN they must be free too.
 - **A synchronised clock.** ACME proof and the TLS handshake both fail on a drifting clock; preflight
   warns when `timedatectl` says the clock is not synchronised.
-- **`/dev/net/tun` for WARP.** An unprivileged LXC container usually has none. That is not a failed
-  install: the node records the refusal, keeps the mode you asked for, and sends traffic directly
-  (§6).
+- **`/dev/net/tun` for the `proxy` transport.** An unprivileged LXC container usually has none.
+  That is not a failed install: the node records the refusal, keeps the mode you asked for, and sends
+  traffic directly (§6). The default `wireguard` transport runs inside the core and needs no device.
 - **Outbound access** to the ACME directory, to the node's management server, to `github.com` for the
   pinned Xray release (or your mirror), and — when WARP is on — to Cloudflare's package repository and
   WARP endpoint. Nothing else.
@@ -187,7 +187,7 @@ termit-mn status
 ```
 server:   mn.example.com
 listen:   :443
-version:  termit-mn 0.1.0 (commit …, built …, api 1, profile v1)
+version:  termit-mn v0.4.0 (commit …, built …, api 1, profile v1)
 uptime:   3h12m (started 2026-11-10 11:18)
 database: /var/lib/termit/mn/termit.db (412.0 KiB, schema 5)
 prober:   ready (/usr/lib/termit/bin/xray)
@@ -321,10 +321,10 @@ not something piped from a branch:
 termit-mn invite create --note "node1" --uses 1        # on the MN; prints the code once
 
 # on the fresh node, as root
-curl -fsSLO https://github.com/shogun-kub/termit/releases/download/v0.3.1/uv.sh
-sh uv.sh --version v0.3.1 \
+curl -fsSLO https://github.com/shogun-kub/termit/releases/download/v0.4.0/uv.sh
+sh uv.sh --version v0.4.0 \
   --domain node1.example.net --email you@example.com \
-  --mn https://mn.example.com --invite ABCD-EFGH-IJKL
+  --mn https://mn.example.com/6rfjdqfn5nno --invite ABCD-EFGH-IJKL
 ```
 
 `deploy/install/uv.sh` is that script. Flags worth knowing:
@@ -379,7 +379,7 @@ termit-uv enroll --invite ABCD-EFGH-IJKL
 | `user` | creates the unprivileged `termit` user |
 | `dirs` | `/etc/termit/uv`, `/var/lib/termit/uv`, `/var/www/termit` |
 | `packages` | installs `nginx`, `ca-certificates`, `curl` |
-| `warp` | installs, registers and connects `cloudflare-warp` (skipped when WARP is off, explained when the host cannot run it) |
+| `warp` | registers the node's WARP identity for the in-core tunnel; with `--warp-transport proxy` installs and connects `cloudflare-warp` instead (skipped when WARP is off) |
 | `xray-binary` | downloads the pinned release, verifies its SHA-256, installs it |
 | `identity` | generates the node's UUID, XHTTP path and decoy seed **once** |
 | `decoy` | generates the site |
@@ -388,6 +388,7 @@ termit-uv enroll --invite ABCD-EFGH-IJKL
 | `units` | writes and enables the three units and the timer |
 | `certificate` | issues the certificate over HTTP-01 through the webroot |
 | `start` | starts the core, nginx and the agent, and verifies they stay up |
+| `warp-egress` | fetches the Cloudflare trace through the node's own tunnel and says where it came out; a warning, never a failure |
 
 Useful flags: `--dry-run` (report, change nothing), `--only <steps>` / `--skip <steps>`,
 `--no-warp` (opt out of WARP), `--warp selected --warp-selected a.example,b.example`,
@@ -406,7 +407,7 @@ Preflight is the place to read when something is wrong; it prints one line per c
   root      ok    running as root
   ports     ok    :80 and :443 are free
   dns       ok    node1.example.net → 203.0.113.7
-  tun       warn  /dev/net/tun is missing, so WARP cannot run on this host
+  tun       ok    /dev/net/tun is missing, which the wireguard transport does not need
   disk      ok    8.6 GB free on /var/lib/termit/uv
 ```
 
@@ -486,7 +487,7 @@ that can be found and blocked. Proxied traffic leaves through Cloudflare's netwo
 own traffic (SSH, the decoy, ACME, the agent) never does.
 
 ```bash
-termit-uv warp status             # mode, what warp-cli says, what a real fetch through it reports
+termit-uv warp status             # mode, the transport's own state, and where a real fetch came out
 termit-uv warp status --json
 termit-uv warp mode off           # opt out: traffic exits from the node's address
 termit-uv warp mode all           # the default
@@ -505,7 +506,7 @@ Values you may see for the state: `on` (traffic exits through WARP), `direct` (W
 fail-open sent traffic out from the node's address), `blocked` (`warp.fail_open: false`: traffic is
 being refused rather than exposed), `off`, `not-installed` (the host can run WARP but the package is
 not there yet — `termit-uv init` installs it), `unavailable` (the host cannot run WARP at all, with the
-reason) and `unknown` (the self-check could not tell). A missing `warp-cli` is a state, not an error:
+reason) and `unknown` (the self-check could not tell). A missing `warp-cli` — proxy transport only — is a state, not an error:
 `termit-uv warp status` reports it and exits 0, which is what makes it usable on a node that was installed
 with `--no-warp`.
 
@@ -519,7 +520,8 @@ would rather lose connectivity than expose the address.
 
 `warp.transport` decides where the tunnel lives. `wireguard` is a WireGuard outbound inside the core —
 one process, no package, no loopback port — and it carries UDP as well as TCP. `proxy` is how 0.3.x
-installed the node: `warp-cli` in proxy mode, a SOCKS5 listener carrying TCP only.
+installed the node only as the opt-in `proxy` transport: `warp-cli` in proxy mode, a SOCKS5 listener
+carrying TCP only.
 
 ```bash
 termit-uv init --warp-transport wireguard   # registers the node, writes the identity, applies it
@@ -557,8 +559,9 @@ registration succeeding does not prove the tunnel works: the API answers over HT
 endpoint can be filtered. A wrong or failed answer is a warning naming the address, never a failed
 install — the node is a working node, it is just exiting directly.
 
-If the host cannot run WARP (no `/dev/net/tun`, unsupported architecture), `termit-uv init` and `termit-uv warp mode`
-say so with the exact reason and the node keeps working with direct egress. Nothing is silently
+If the host cannot run WARP — no `/dev/net/tun` or no package for the architecture, both of which only the
+`proxy` transport needs — `termit-uv init` and `termit-uv warp mode` say so with the exact reason and the
+node keeps working with direct egress. Nothing is silently
 degraded, and `termit-uv uninstall` disconnects the tunnel it left behind.
 
 A node behind a network that filters the WireGuard endpoint does not need a different release:
@@ -895,7 +898,7 @@ keep the previous binary next to the new one, since the old binary will not read
 On a node, the bootstrap script is the short path — it replaces the binary and converges:
 
 ```bash
-sh uv.sh --version v0.1.1 --base-url https://github.com/shogun-kub/termit/releases/download --no-enroll
+sh uv.sh --version v0.4.0 --base-url https://github.com/shogun-kub/termit/releases/download --no-enroll
 ```
 
 By hand it is the same two steps:
@@ -1064,9 +1067,9 @@ A useful alert set, in the order that matters:
 
 ## 15. Known limitations
 
-- **WARP acceptance needs a host with `/dev/net/tun`.** The mode, the route, the fail-open behaviour
-  and the refusal are tested; installing, registering and connecting the tunnel is on the release
-  checklist for a host where it can run.
+- **Accepting the `proxy` transport needs a host with `/dev/net/tun`.** The default `wireguard`
+  transport, fail-open, the route and the refusal are tested; installing and connecting the `warp-cli`
+  sidecar is on the release checklist for a host where it can run.
 - **The Docker Compose harness does not exist.** The lab is the acceptance gate.
 - **`termit-uv` has no self-update.** The node is upgraded by running the bootstrap script or by
   replacing the binary and re-running `termit-uv init`; nothing pulls a release on a timer, and nothing
@@ -1095,7 +1098,7 @@ A useful alert set, in the order that matters:
 | node `blocked` right after an upgrade | the certificate was replaced and the server still pinned the old leaf | the next sync reports the new leaf; `termit-uv sync` then `termit-uv unblock` if it stayed blocked |
 | `termit-uv doctor` → `services` failed | a unit is down | `systemctl status <unit>`; `termit-uv init` starts them again |
 | `termit-uv doctor` → `certificate` warn/fail | renewal is late or broken | `termit-uv renew-cert`; the journal of `termit-uv-renew.service` says why |
-| `termit-uv status` shows `warp: … direct` | WARP is down and fail-open is doing its job | `termit-uv warp status`, then `journalctl -u warp-cli`; traffic still works |
+| `termit-uv status` shows `warp: … direct` | WARP is down and fail-open is doing its job | `termit-uv warp status` names the reason; traffic still works |
 | `termit-uv warp status` shows `not-installed` | the node was installed with `--no-warp`, or the package was removed | `termit-uv init` (or `termit-uv warp mode all`) installs and registers it; `termit-uv warp status` exits 0 in this state |
 | `termit-uv warp mode` → `start-limit-hit` | too many restarts in five minutes | `systemctl reset-failed termit-xray termit-uv-agent` |
 | `termit-uv sync --check` exits 4 | the core's client set differs from the server's | `termit-uv sync` |
@@ -1160,7 +1163,7 @@ the provider, or move the node: no Termit setting fixes a lossy uplink.
 A release is one command, and CI runs the same one on a tag:
 
 ```bash
-go run ./deploy/release --version v0.3.1 --out dist
+go run ./deploy/release --version v0.4.0 --out dist
 ```
 
 It cross-compiles both binaries for `linux/amd64` and `linux/arm64` with `CGO_ENABLED=0 -trimpath`,
@@ -1184,7 +1187,7 @@ that is not a `vX.Y.Z` tag rather than sanitising it.
 Verify a directory the way an operator would:
 
 ```bash
-cd dist/v0.3.1 && sha256sum -c SHA256SUMS
+cd dist/v0.4.0 && sha256sum -c SHA256SUMS
 ```
 
 There are deliberately no tarballs: one artifact per platform, verified by digest, is what the
@@ -1192,9 +1195,9 @@ installer consumes, and a tarball would add an unpacking step that protects noth
 reproducible given the same toolchain, commit and `--date`:
 
 ```bash
-go run ./deploy/release --version v0.3.1 --out /tmp/a --commit "$(git rev-parse --short HEAD)" --date 2026-11-10T00:00:00Z
-go run ./deploy/release --version v0.3.1 --out /tmp/b --commit "$(git rev-parse --short HEAD)" --date 2026-11-10T00:00:00Z
-diff /tmp/a/v0.3.1/SHA256SUMS /tmp/b/v0.3.1/SHA256SUMS
+go run ./deploy/release --version v0.4.0 --out /tmp/a --commit "$(git rev-parse --short HEAD)" --date 2026-11-10T00:00:00Z
+go run ./deploy/release --version v0.4.0 --out /tmp/b --commit "$(git rev-parse --short HEAD)" --date 2026-11-10T00:00:00Z
+diff /tmp/a/v0.4.0/SHA256SUMS /tmp/b/v0.4.0/SHA256SUMS
 ```
 
 Publishing is a tag push on `main`, after the branch process in `AGENTS.md` §9 has put a tested tree
@@ -1469,8 +1472,9 @@ the same way.
 
 - It does not rate-limit proxied traffic. Your node's clients are not throttled — that would add latency
   to the one thing the node exists for.
-- It does not touch routing, NAT or WARP. Proxied traffic still leaves through the loopback WARP
-  sidecar, and direct traffic still goes direct.
+- It does not touch routing, NAT or WARP. Proxied traffic still leaves through the WARP tunnel — inside
+  the core by default, through the loopback sidecar on `warp.transport: proxy` — and direct traffic still
+  goes direct.
 - It does not survive a **configuration loss**. If the record file goes and the configuration still asks
   for a table, `termit-uv firewall on` is the only way back — the boot unit restores what was applied, it
   does not invent one.
