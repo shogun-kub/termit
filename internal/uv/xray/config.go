@@ -77,6 +77,10 @@ type WarpSpec struct {
 	// WireGuard is the identity the tunnel needs. It is ignored on the proxy transport and required on
 	// the wireguard one.
 	WireGuard *WireGuardIdentity
+	// Family is the address family the tunnel carries: "ipv4" or "ipv6". Empty means ipv4. Destinations
+	// of the other family are routed direct: Cloudflare's IPv6 egress is the one large services block,
+	// and which family a node uses is the owner's decision, not the generator's.
+	Family string
 }
 
 // WireGuardIdentity is everything a WireGuard outbound needs: the node's own key, the address Cloudflare
@@ -98,6 +102,43 @@ func (w WarpSpec) Enabled() bool { return w.Mode == "all" || w.Mode == "selected
 // UsesWireGuard reports whether the tunnel lives inside the core rather than in the warp-cli sidecar.
 func (w WarpSpec) UsesWireGuard() bool { return w.Transport == WarpTransportWireGuard }
 
+// FamilyOrDefault is the address family the tunnel carries; the default is IPv4.
+func (w WarpSpec) FamilyOrDefault() string {
+	if w.Family == "" {
+		return WarpFamilyIPv4
+	}
+	return w.Family
+}
+
+// familyRoute is the default route of the family the tunnel carries.
+func familyRoute(family string) string {
+	if family == WarpFamilyIPv6 {
+		return "::/0"
+	}
+	return "0.0.0.0/0"
+}
+
+// otherFamilyRoute is the default route of the family it does not.
+func otherFamilyRoute(family string) string {
+	if family == WarpFamilyIPv6 {
+		return "0.0.0.0/0"
+	}
+	return "::/0"
+}
+
+// familyAddresses keeps the tunnel addresses that belong to the family. Cloudflare hands out one of
+// each; the core needs only the chosen one, because the peer carries only that family's default route.
+func familyAddresses(addresses []string, family string) []string {
+	out := make([]string, 0, 1)
+	for _, address := range addresses {
+		isV6 := strings.Contains(address, ":")
+		if (family == WarpFamilyIPv6) == isV6 {
+			out = append(out, address)
+		}
+	}
+	return out
+}
+
 // Constants for the WARP sidecar. They are exported because the agent, the installer and the
 // `termit-uv warp` command all have to agree on the same address and probe.
 const (
@@ -112,6 +153,10 @@ const (
 	// DefaultWarpMTU is what the WireGuard tunnel uses unless configured. 1280 is the IPv6 minimum and
 	// leaves room for the WireGuard header and the outer UDP/IP headers inside a 1500-byte path.
 	DefaultWarpMTU = 1280
+	// WarpFamilyIPv4 and WarpFamilyIPv6 are the two address families the tunnel can carry. The default is
+	// IPv4: Cloudflare's IPv6 egress is what large services tend to mark as unsafe.
+	WarpFamilyIPv4 = "ipv4"
+	WarpFamilyIPv6 = "ipv6"
 	// WarpTag names the WARP outbound; the balancer selects it by tag.
 	WarpTag = "warp"
 	// WarpBalancerTag names the fail-open balancer.
@@ -180,6 +225,11 @@ func (s Spec) Validate() error {
 			}
 		}
 	case WarpTransportWireGuard:
+		switch s.Warp.Family {
+		case "", WarpFamilyIPv4, WarpFamilyIPv6:
+		default:
+			problems = append(problems, fmt.Errorf("warp family %q must be ipv4 or ipv6", s.Warp.Family))
+		}
 		if !s.Warp.Enabled() {
 			// A wireguard transport with WARP off is not a contradiction worth refusing: the identity
 			// simply goes unused, and an operator who turns WARP back on does not have to re-register.
@@ -205,6 +255,9 @@ func (s Spec) Validate() error {
 			}
 			if identity.MTU != 0 && (identity.MTU < 576 || identity.MTU > 1500) {
 				problems = append(problems, fmt.Errorf("the wireguard mtu %d is out of range", identity.MTU))
+			}
+			if len(identity.Addresses) > 0 && len(familyAddresses(identity.Addresses, s.Warp.FamilyOrDefault())) == 0 {
+				problems = append(problems, fmt.Errorf("the wireguard identity has no %s tunnel address", s.Warp.FamilyOrDefault()))
 			}
 		}
 	default:
@@ -348,7 +401,7 @@ func Generate(spec Spec) ([]byte, error) {
 // the node's address to the node's resolver.
 func warpOutbound(w WarpSpec) outbound {
 	if w.UsesWireGuard() {
-		return wireGuardOutbound(w.WireGuard)
+		return wireGuardOutbound(w.WireGuard, w.FamilyOrDefault())
 	}
 	host, port := warpSocks(w)
 	return outbound{
@@ -361,7 +414,11 @@ func warpOutbound(w WarpSpec) outbound {
 // from creating a TUN device and touching host routing, and it is what makes the outbound work in an
 // unprivileged container. The measured cost is a third of the kernel path's throughput on a one-vCPU
 // node, which is recorded in IMPLEMENTATION_PLAN.md §10.1.
-func wireGuardOutbound(identity *WireGuardIdentity) outbound {
+//
+// The tunnel carries one address family. Cloudflare supplies an address in each; the document keeps the
+// chosen one and gives the peer that family's default route, so the other family cannot silently ride
+// the same tunnel.
+func wireGuardOutbound(identity *WireGuardIdentity, family string) outbound {
 	mtu := identity.MTU
 	if mtu == 0 {
 		mtu = DefaultWarpMTU
@@ -369,13 +426,13 @@ func wireGuardOutbound(identity *WireGuardIdentity) outbound {
 	peer := wireGuardPeer{
 		PublicKey:  identity.PublicKey,
 		Endpoint:   identity.Endpoint,
-		AllowedIPs: []string{"0.0.0.0/0", "::/0"},
+		AllowedIPs: []string{familyRoute(family)},
 		Reserved:   identity.Reserved,
 	}
 	return outbound{
 		Tag: WarpTag, Protocol: "wireguard",
 		Settings: wireGuardSettings{
-			SecretKey: identity.SecretKey, Address: identity.Addresses,
+			SecretKey: identity.SecretKey, Address: familyAddresses(identity.Addresses, family),
 			Peers: []wireGuardPeer{peer}, MTU: mtu, NoKernelTun: true,
 		},
 	}
@@ -436,7 +493,14 @@ func warpRules(w WarpSpec, balancerTag string) []rule {
 		} else {
 			tunnel.OutboundTag = WarpTag
 		}
-		return []rule{tunnel}
+		// The tunnel carries one family, so the other one is named explicitly and sent the way it went
+		// before WARP existed. Leaving it to the trailing default would work by luck today and break the
+		// day a rule is added above it.
+		other := rule{
+			Type: "field", Network: "tcp,udp",
+			IP: []string{otherFamilyRoute(w.FamilyOrDefault())}, OutboundTag: "direct",
+		}
+		return []rule{other, tunnel}
 	}
 	proxied := rule{Type: "field", Network: "tcp"}
 	direct := rule{Type: "field", Network: "udp", OutboundTag: "direct"}

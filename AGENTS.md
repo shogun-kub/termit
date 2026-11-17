@@ -310,6 +310,14 @@ already passed CI and the lab.
   whoever installs this one skipped them. Write `CHANGELOG.md` (and `CHANGELOG.ru.md`, which stays in
   step) with a real date before tagging: the tool refuses a missing section and one that still says
   `unreleased`, so a release cannot publish a placeholder.
+- **A release that touches the network is proved on production before it is tagged.** Routing, the
+  transport, the firewall, the core's document and everything else under `internal/uv/xray`,
+  `internal/uv/warp` and the network half of `internal/uv/install` depend on networks we do not control,
+  and those networks change under us. For such a change a pre-release (`v<version>p<n>`) goes onto the
+  production nodes first, and what is observed there is the egress the node really uses — `warp status`,
+  the tunnel's exit, what a client sees — not the one the code intends. Only then does the final tag
+  exist. Purely local code (the decoy generator, the terminal interface, the docs) may ship on CI and the
+  lab alone.
 - **A tag points at a commit that has already been tested.** Retagging is allowed only while the release
   is unpublished; `v0.1.0` is published and stays where it is. Never retag a released commit — a version
   that means two different trees is worse than a wrong one.

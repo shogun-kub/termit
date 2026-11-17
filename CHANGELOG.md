@@ -19,6 +19,11 @@ cannot use it.
   directly: a WireGuard key pair, the peer, the tunnel address and the three reserved bytes. The identity
   lives in `/var/lib/termit/uv/warp.yaml`, `0600`, written once — a re-run of `init` reuses it — and it
   never appears in a log line or in `warp status`.
+- **`warp.family`: which address family leaves through WARP.** `ipv4` (the default) or `ipv6`. The tunnel
+  carries only the chosen family and gives the peer that family's default route; destinations of the other
+  family go `direct`, the way they travelled before WARP. IPv4 is the default because Cloudflare's IPv6
+  egress is what large services mark as unsafe, and the choice belongs to the owner: `termit-uv init
+  --warp-family ipv6`.
 - **`termit-uv warp rotate`** replaces the identity on purpose, which is the only way to get a new device
   on Cloudflare's side.
 - **`termit-uv warp status` says which transport is in use**, and on the wireguard one it probes the exit
@@ -41,6 +46,11 @@ cannot use it.
 - **`termit-uv init --warp-transport`** flips a node between the two. Switching to `proxy` reinstalls
   `cloudflare-warp`; switching to `wireguard` leaves the package installed but unused, because removing a
   package is the operator's decision, not the installer's.
+- **The registration pins Cloudflare's endpoint to an IPv4 address.** The name is dual-stack and the core
+  resolves it itself: on a host without IPv6 it can take the AAAA record, where the handshake never leaves
+  the node and the balancer quietly falls back to direct. The address is resolved once, at registration,
+  so the tunnel stops depending on which record the resolver hands out first. A node registered by an
+  older build gets the pinned address on its next `termit-uv warp rotate`.
 
 ## 0.3.2 — 2026-11-16
 

@@ -1723,3 +1723,49 @@ Still open before a release: the production pass on the two nodes.
 Two to three days of work: the registration client and the state file are the bulk of it, the generator
 change is small, and the lab pass is a half-day. It ships as `0.4.0` from a `release/v0.4.0` branch, with
 its own production pass recorded the way `M5.8` was.
+### 11.9 Production pass, 2026-11-17
+
+Both nodes took `v0.4.0` with `uv.sh --version v0.4.0`: the upgrade converged the units, the certificate
+and the document, and each `init` ended with `warp-egress`, the step this milestone added.
+
+- **One node runs the in-core tunnel.** `init --warp-transport wireguard` registered a fresh device,
+  wrote `transport: wireguard`, and `termit-uv warp status` answered `egress: on` with a `2a09:bac1:…`
+  address fetched through the tunnel — UDP now rides WARP on a production node, which is the point of
+  the milestone.
+- **The other cannot.** The same `init` registered and applied the route, and `warp-egress` then
+  reported the exit as the node's own address: that network drops the WireGuard handshake to
+  `engage.cloudflareclient.com:2408`, while `warp-cli`'s HTTPS tunnel works there. The step turned a
+  silent privacy regression into a named warning, and the node went back with
+  `init --warp-transport proxy` — `warp status` reported `on` again with a `2a09:bac5:…` address, so the
+  round trip is exercised on a live node.
+
+That is the answer to one of the risks above: the transport is a per-network choice, and `0.4.0` gives
+the operator the check and the switch instead of a default that lies.
+
+#### The endpoint, later the same day
+
+That pass found a second defect, and it was the one that mattered: the node written off as "cannot reach
+WARP" was fine. Cloudflare names its endpoint for both address families and the core resolves that name
+itself; on a host without a global IPv6 it took the AAAA record, the handshake died with
+`sendto: network is unreachable`, the observatory marked the outbound dead and the balancer fell back to
+`direct` — a node that looked healthy while exiting from its own address. The same identity and the same
+document, run by hand against an IPv4 endpoint, handshook in half a second.
+
+`8c15d16` resolves the endpoint once, at registration, and stores the address. `v0.4.0p4` carries it: both
+nodes rotated onto `162.159.192.1:2408` and reported `egress: on` with a Cloudflare address — including
+the one the first pass had written off.
+
+The lesson is a rule in `AGENTS.md` §9 now: a release that touches the network is proved on the
+production nodes as a pre-release, and the final tag waits for that.
+
+#### The family, the same day
+
+`0.4.0` also lets the owner choose which family leaves through WARP: `ipv4` by default, because
+Cloudflare's IPv6 egress is what large services mark as unsafe, and a provider's own IPv6 is not the
+node's to fix. `warp.family` keeps the tunnel address of that family, gives the peer its default route
+and sends the other family direct — the way it went before WARP, and named in the document rather than
+left to the trailing rule.
+
+`v0.4.0p6` on both production nodes: `family: ipv4`, `172.16.0.2/32` and `0.0.0.0/0` in the core's
+document, `::/0` named direct, and `warp status` answering `egress: on` with `104.28.222.18` and
+`104.28.193.183` — Cloudflare's IPv4, where the same nodes reported `2a09:…` a few hours earlier.
