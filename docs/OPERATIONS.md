@@ -972,7 +972,11 @@ Publishing is a tag push on `main`, after the branch process in `AGENTS.md` §9 
 executable and attaches everything to the GitHub release, `uv.sh` included — the install URLs in the
 documentation point at `releases/download/<version>/uv.sh`. The workflow marks the release
 `prerelease: true`; clearing that flag is the deliberate act that records the release's own production
-pass (`docs/IMPLEMENTATION_PLAN.md` M4.3 for `0.2.1`, M5.8 for `0.3.2`, §11.9 for `0.4.0`). A maintainer
+pass (`docs/IMPLEMENTATION_PLAN.md` M4.3 for `0.2.1`, M5.8 for `0.3.2`, §11.9 for `0.4.0`, §11.10 for
+`0.4.1`). Clearing the flag alone leaves `releases/latest` where it was: GitHub only moves that pointer
+when the release is edited with `make_latest` (`gh release edit <version> --latest`, or
+`make_latest: true` through the API), and until it moves `releases/latest/download/...` — the URL the
+guide installs from — still answers with the previous version. A maintainer
 can do the same by hand with `gh release create` and the files from `dist/<version>/`: the assets are plain
 files, so nothing depends on the workflow.
 
