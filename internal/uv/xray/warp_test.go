@@ -190,8 +190,8 @@ func TestWarpWireGuardPutsBothProtocolsThroughOneRule(t *testing.T) {
 		if out.Settings.MTU != 1280 {
 			t.Errorf("mtu = %d, want the configured 1280", out.Settings.MTU)
 		}
-		if len(out.Settings.Address) != 2 {
-			t.Errorf("addresses = %v, want the v4 and v6 tunnel addresses", out.Settings.Address)
+		if len(out.Settings.Address) != 1 || strings.Contains(out.Settings.Address[0], ":") {
+			t.Errorf("addresses = %v, want only the v4 tunnel address on the default family", out.Settings.Address)
 		}
 		if len(out.Settings.Peers) != 1 {
 			t.Fatalf("peers = %+v, want one", out.Settings.Peers)
@@ -203,24 +203,28 @@ func TestWarpWireGuardPutsBothProtocolsThroughOneRule(t *testing.T) {
 		if len(peer.Reserved) != 3 {
 			t.Errorf("reserved = %v, want the three bytes from the registration", peer.Reserved)
 		}
-		if len(peer.AllowedIPs) != 2 {
-			t.Errorf("allowedIPs = %v, want everything", peer.AllowedIPs)
+		if len(peer.AllowedIPs) != 1 || peer.AllowedIPs[0] != "0.0.0.0/0" {
+			t.Errorf("allowedIPs = %v, want the family's default route only", peer.AllowedIPs)
 		}
 	}
 	if !found {
 		t.Fatalf("no outbound %q in %+v", xray.WarpTag, doc.Outbounds)
 	}
 
-	// Rules: the API one, the loopback one, and a single catch-all that names both protocols.
-	if len(doc.Routing.Rules) != 3 {
+	// Rules: the API one, the loopback one, the family the tunnel does not carry, and a single catch-all
+	// that names both protocols.
+	if len(doc.Routing.Rules) != 4 {
 		t.Fatalf("rules = %+v", doc.Routing.Rules)
 	}
-	last := doc.Routing.Rules[2]
+	last := doc.Routing.Rules[3]
 	if last.Network != "tcp,udp" || last.BalancerTag != xray.WarpBalancerTag {
 		t.Errorf("the tunnel rule does not carry both protocols through the balancer: %+v", last)
 	}
 	if len(last.Domain) != 0 {
 		t.Errorf("all mode should not narrow the rule: %+v", last)
+	}
+	if other := doc.Routing.Rules[2]; other.OutboundTag != "direct" || len(other.IP) != 1 || other.IP[0] != "::/0" {
+		t.Errorf("the v6 destinations should leave directly on the default family: %+v", other)
 	}
 }
 
@@ -230,15 +234,77 @@ func TestWarpWireGuardSelectedNarrowsTheTunnel(t *testing.T) {
 		Mode: "selected", Selected: []string{"b.example.com", "a.example.com"}, FailOpen: true,
 		Transport: xray.WarpTransportWireGuard, WireGuard: testWarpIdentity(),
 	})
-	if len(doc.Routing.Rules) != 3 {
-		t.Fatalf("rules = %+v", doc.Routing.Rules)
+	if len(doc.Routing.Rules) != 4 {
+		t.Fatalf("rules = %+v, want api, loopback, the other family and the tunnel", doc.Routing.Rules)
 	}
-	last := doc.Routing.Rules[2]
+	index := -1
+	for i, r := range doc.Routing.Rules {
+		if r.BalancerTag == xray.WarpBalancerTag {
+			index = i
+		}
+	}
+	if index < 0 {
+		t.Fatalf("no rule through the balancer in %+v", doc.Routing.Rules)
+	}
+	last := doc.Routing.Rules[index]
 	if strings.Join(last.Domain, ",") != "a.example.com,b.example.com" {
 		t.Errorf("domains = %v, want a sorted list", last.Domain)
 	}
 	if last.Network != "tcp,udp" {
 		t.Errorf("a selected tunnel rule must still cover UDP: %+v", last)
+	}
+}
+
+// The tunnel carries one address family, chosen by the owner: Cloudflare's IPv6 egress is what large
+// services tend to block, so the default is IPv4, and the family it does not carry leaves the way it
+// did before WARP — direct, and decided before the tunnel rule rather than by the trailing default.
+func TestWarpFamilyPicksTheTunnelAddress(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name       string
+		family     string
+		wantAddr   string
+		wantRoute  string
+		wantDirect string
+	}{
+		{"the default is ipv4", "", "172.16.0.2/32", "0.0.0.0/0", "::/0"},
+		{"ipv6 carries the tunnel's v6 address", xray.WarpFamilyIPv6, "2606:4700:110:8d9c::2/128", "::/0", "0.0.0.0/0"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			doc := warpGenerate(t, xray.WarpSpec{
+				Mode: "all", FailOpen: true, Family: tc.family,
+				Transport: xray.WarpTransportWireGuard, WireGuard: testWarpIdentity(),
+			})
+			for _, out := range doc.Outbounds {
+				if out.Tag != xray.WarpTag {
+					continue
+				}
+				if len(out.Settings.Address) != 1 || out.Settings.Address[0] != tc.wantAddr {
+					t.Errorf("addresses = %v, want %s alone", out.Settings.Address, tc.wantAddr)
+				}
+				if len(out.Settings.Peers) != 1 || len(out.Settings.Peers[0].AllowedIPs) != 1 ||
+					out.Settings.Peers[0].AllowedIPs[0] != tc.wantRoute {
+					t.Errorf("allowedIPs = %v, want %s alone", out.Settings.Peers[0].AllowedIPs, tc.wantRoute)
+				}
+			}
+			directIndex, tunnelIndex := -1, -1
+			for i, r := range doc.Routing.Rules {
+				if r.OutboundTag == "direct" && len(r.IP) == 1 && r.IP[0] == tc.wantDirect {
+					directIndex = i
+				}
+				if r.BalancerTag == xray.WarpBalancerTag {
+					tunnelIndex = i
+				}
+			}
+			if directIndex < 0 {
+				t.Fatalf("no rule sending %s direct: %+v", tc.wantDirect, doc.Routing.Rules)
+			}
+			if tunnelIndex < 0 || directIndex > tunnelIndex {
+				t.Errorf("the family the tunnel does not carry must be decided before it: %+v", doc.Routing.Rules)
+			}
+		})
 	}
 }
 

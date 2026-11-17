@@ -182,6 +182,25 @@ type Warp struct {
 	// listener (TCP only), "wireguard" keeps a WireGuard tunnel inside the core (TCP and UDP). A
 	// configuration written before this key existed means proxy; fresh installs write wireguard.
 	Transport string `yaml:"transport,omitempty"`
+	// Family is the address family the tunnel carries: "ipv4" or "ipv6". Empty means ipv4, which is
+	// what a fresh configuration writes. Destinations of the other family go direct: Cloudflare's IPv6
+	// egress is what large services tend to block, and a provider's own IPv6 is often worse.
+	Family string `yaml:"family,omitempty"`
+}
+
+// WARP address families.
+const (
+	WarpFamilyIPv4 = "ipv4"
+	WarpFamilyIPv6 = "ipv6"
+)
+
+// FamilyOrDefault is the address family the tunnel carries. The default is IPv4: an egress through
+// Cloudflare's IPv6 is the one sites block, and the choice belongs to the owner.
+func (w Warp) FamilyOrDefault() string {
+	if w.Family == "" {
+		return WarpFamilyIPv4
+	}
+	return w.Family
 }
 
 // WARP transports.
@@ -251,6 +270,7 @@ func Default() *Config {
 	// A fresh node puts the WARP tunnel inside the core, where UDP takes the same path as TCP. An
 	// installed node keeps the transport it has: its configuration has no key, which reads as proxy.
 	c.Warp.Transport = WarpTransportWireGuard
+	c.Warp.Family = WarpFamilyIPv4
 	return c
 }
 
@@ -380,6 +400,11 @@ func (c *Config) Validate() error {
 	case "", WarpTransportProxy, WarpTransportWireGuard:
 	default:
 		problems = append(problems, fmt.Errorf("warp.transport %q must be proxy or wireguard", c.Warp.Transport))
+	}
+	switch c.Warp.Family {
+	case "", WarpFamilyIPv4, WarpFamilyIPv6:
+	default:
+		problems = append(problems, fmt.Errorf("warp.family %q must be ipv4 or ipv6", c.Warp.Family))
 	}
 	problems = append(problems, c.Security.validate()...)
 	problems = append(problems, c.Paths.validate()...)

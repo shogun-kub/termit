@@ -477,3 +477,28 @@ func TestWarpTransportDefaultsAndMigration(t *testing.T) {
 		t.Fatalf("Parse = %v, want a refusal naming the two transports", err)
 	}
 }
+
+// The family is the owner's choice, and the default is IPv4: Cloudflare's IPv6 egress is what large
+// services block, and a provider's own IPv6 is not the node's to fix.
+func TestWarpFamilyDefaultsToIPv4(t *testing.T) {
+	t.Parallel()
+	if got := config.Default().Warp.FamilyOrDefault(); got != config.WarpFamilyIPv4 {
+		t.Errorf("a fresh configuration uses %q, want ipv4", got)
+	}
+	if got := (config.Warp{}).FamilyOrDefault(); got != config.WarpFamilyIPv4 {
+		t.Errorf("an absent key means %q, want ipv4", got)
+	}
+	document := "schema_version: 1\ndomain: node.example.com\nemail: a@example.com\nwarp:\n  mode: all\n  family: ipv6\n"
+	cfg, err := config.Parse(strings.NewReader(document))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if cfg.Warp.FamilyOrDefault() != config.WarpFamilyIPv6 {
+		t.Errorf("family = %q, want the configured ipv6", cfg.Warp.Family)
+	}
+	broken := "schema_version: 1\ndomain: node.example.com\nemail: a@example.com\nwarp:\n  mode: all\n  family: ipv5\n"
+	if _, err := config.Parse(strings.NewReader(broken)); err == nil ||
+		!strings.Contains(err.Error(), "must be ipv4 or ipv6") {
+		t.Fatalf("Parse = %v, want a refusal naming the two families", err)
+	}
+}

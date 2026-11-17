@@ -72,6 +72,7 @@ func WarpSpecFor(cfg *config.Config) (xray.WarpSpec, error) {
 		Selected:  cfg.Warp.Selected,
 		FailOpen:  cfg.Warp.FailOpenEnabled(),
 		Transport: cfg.Warp.TransportOrDefault(),
+		Family:    cfg.Warp.FamilyOrDefault(),
 	}
 	// The wireguard transport is the core's own tunnel, so the identity is an input to the document. It
 	// is only required when WARP is meant to carry traffic: a node with the mode off keeps its
