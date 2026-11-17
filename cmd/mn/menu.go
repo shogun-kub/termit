@@ -296,7 +296,7 @@ func (m *menu) planCheck(ui *termui.UI) ([][]string, error) {
 		return nil, err
 	}
 	if whole {
-		return [][]string{{"check", "--all"}}, nil
+		return [][]string{{"check", "now", "--all"}}, nil
 	}
 	node, err := ui.Prompt(tr.T(i18n.MnPromptNode), "")
 	if err != nil {
@@ -305,7 +305,7 @@ func (m *menu) planCheck(ui *termui.UI) ([][]string, error) {
 	if node == "" {
 		return nil, errors.New(i18n.New(i18n.EN).T(i18n.MnErrNodeRequired))
 	}
-	return [][]string{{"check", node}}, nil
+	return [][]string{{"check", "now", node}}, nil
 }
 
 func (m *menu) planPolicy(ui *termui.UI) ([][]string, error) {
