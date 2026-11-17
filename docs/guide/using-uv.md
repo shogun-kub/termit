@@ -28,9 +28,9 @@ is [the interactive menu](menu.md), and every entry prints the command it runs.
 Download the installer for a release, then run it — never pipe a URL into a shell:
 
 ```bash
-curl -fsSLO https://github.com/shogun-kub/termit/releases/download/v0.4.0/uv.sh
+curl -fsSLO https://github.com/shogun-kub/termit/releases/download/v0.4.1/uv.sh
 
-sh uv.sh --version v0.4.0 \
+sh uv.sh --version v0.4.1 \
   --domain node1.example.com --email you@example.com \
   --mn https://mn.example.com/6rfjdqfn5nno --invite ABCD-EFGH-IJKL
 ```
@@ -45,14 +45,14 @@ reaches both: `init --mn` writes it to the configuration as `mn.url`, which is w
 every sync, and `enroll` uses it for the registration itself. Running `termit-uv enroll --mn URL`
 yourself later also records the URL when the configuration has none.
 
-`termit-uv wizard` is the same installation as questions instead of flags: it asks for the domain, the email, the masking site, the egress mode, whether to harden, the invite and the server, then runs `init` and `enroll` with those answers. Install the binary first — [the quickstart](quickstart.md) does just that — and run the wizard instead of `uv.sh`.
+`--wizard` replaces the flags with questions: the script installs the binary and hands the terminal to `termit-uv wizard`, which asks for the domain, the email, the server, the invite and the rest.
 
 Useful variations:
 
 | Goal | Flag |
 |---|---|
 | install and converge, join later | `--no-enroll` |
-| let it ask instead of passing flags | install the binary, then `termit-uv wizard` |
+| let it ask instead of passing flags | `--wizard` — installs the binary, then runs `termit-uv wizard` |
 | see what would happen, change nothing | `--dry-run` |
 | a mirror or a local directory instead of GitHub | `--base-url https://mirror.example.com/termit` |
 | verify against a digest you have | `--sha256 <hex>` (or `--checksum-file SHA256SUMS`) |

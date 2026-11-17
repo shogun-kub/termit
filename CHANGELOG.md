@@ -3,17 +3,32 @@ What each release changed, written for the people who run Termit. Newest first;
 carries every section back to the last release: the versions in between were handed out only as
 pre-releases, and whoever installs the release skipped them.
 
-## Unreleased
+## 0.4.1 — 2026-11-17
+
+One defect in the wizard, and the pages that describe an installation checked against a clean one.
 
 ### Added
 
 - **`docs/RUNBOOK.md`.** Upgrading, backup and restore, the recovery playbooks, uninstall and the triage
   table moved out of `OPERATIONS.md`, which is the reference now. When something is wrong there is one
   short page to open instead of a thousand lines.
+- **`docs/RUNBOOK.ru.md`.** The same runbook in Russian, section for section, with the Russian guide pages
+  pointing at it.
 - **`uv.sh --wizard`.** The installer can now stop after the binary and hand the terminal to
   `termit-uv wizard`, so a first installation is one command and a few questions instead of a command
   with four flags. Everything else the script does — checksum verification, the architecture check, the
   root check — still happens first.
+
+### Fixed
+
+- **`termit-uv wizard` could not install a node.** The install branch passed `init` and `enroll` the
+  subcommand name as an argument, so the wizard asked every question and then failed with `termit-uv
+  init: unexpected argument "init"`; the branch had no test, which is why nothing caught it. Both calls
+  now pass exactly what the plain commands pass, and a test drives the install branch.
+- **The installation pages describe what a fresh box actually does.** Checked from empty machines to a
+  two-node mesh: the node goes in with `uv.sh --wizard` again, the server's probe worker is described as
+  what it is — a node cannot enroll without one — and the sample output shows the lines the commands
+  really print.
 
 ## 0.4.0 — 2026-11-17
 

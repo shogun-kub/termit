@@ -28,7 +28,7 @@ a provisioning script is a hang, not a convenience.
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
 │  Termit — node                                                       │
-│  termit-uv v0.4.0 (commit …, built …, api 1)                         │
+│  termit-uv v0.4.1 (commit …, built …, api 1)                         │
 │                                                                      │
 │    domain        node-a.example.com                                  │
 │    identity      3f9c1a2b                                            │

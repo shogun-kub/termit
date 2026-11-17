@@ -40,7 +40,7 @@ Log in to the server as `root` and paste this block. It downloads the version, c
 its published checksum, and installs it.
 
 ```bash
-RELEASE=v0.4.0
+RELEASE=v0.4.1
 curl -fsSLO "https://github.com/shogun-kub/termit/releases/download/$RELEASE/termit-mn_${RELEASE}_linux_amd64"
 curl -fsSLO "https://github.com/shogun-kub/termit/releases/download/$RELEASE/SHA256SUMS"
 sha256sum -c --ignore-missing SHA256SUMS
@@ -102,16 +102,11 @@ The code (for example `ABCD-EFGH-IJKL`) is printed **once**. Copy it now — you
 
 ## 3. The node
 
-Log in to the node as `root` and paste this block. It downloads the version, checks the file against
-its published checksum, installs the node program, and then asks you questions.
+Log in to the node as `root` and paste this single line. It downloads the installer, verifies the
+release, installs the node program, and then asks you questions.
 
 ```bash
-RELEASE=v0.4.0
-curl -fsSLO "https://github.com/shogun-kub/termit/releases/download/$RELEASE/termit-uv_${RELEASE}_linux_amd64"
-curl -fsSLO "https://github.com/shogun-kub/termit/releases/download/$RELEASE/SHA256SUMS"
-sha256sum -c --ignore-missing SHA256SUMS
-install -m 0755 "termit-uv_${RELEASE}_linux_amd64" /usr/bin/termit-uv
-termit-uv wizard
+curl -fsSLO "https://github.com/shogun-kub/termit/releases/download/v0.4.1/uv.sh" && sh uv.sh --version v0.4.1 --wizard
 ```
 
 The questions, in the order they come, and what to answer:

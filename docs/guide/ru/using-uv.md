@@ -28,9 +28,9 @@ Termit](overview.md) — начните с той страницы: она об�
 Скачайте установщик релиза и запустите его — не передавайте URL в шелл через пайп:
 
 ```bash
-curl -fsSLO https://github.com/shogun-kub/termit/releases/download/v0.4.0/uv.sh
+curl -fsSLO https://github.com/shogun-kub/termit/releases/download/v0.4.1/uv.sh
 
-sh uv.sh --version v0.4.0 \
+sh uv.sh --version v0.4.1 \
   --domain node1.example.com --email you@example.com \
   --mn https://mn.example.com/6rfjdqfn5nno --invite ABCD-EFGH-IJKL
 ```
@@ -46,14 +46,14 @@ sh uv.sh --version v0.4.0 \
 синхронизации, — а `enroll` использует его при регистрации. Если запустить
 `termit-uv enroll --mn URL` вручную позже, адрес тоже сохранится в конфигурации, если его там ещё нет.
 
-`termit-uv wizard` — та же установка, но вопросами вместо флагов: он спрашивает домен, почту, сайт-приманку, режим выхода, нужно ли закрывать узел, код приглашения и адрес сервера, а затем запускает `init` и `enroll` с этими ответами. Сначала поставьте бинарник — [quickstart](quickstart.md) делает ровно это, — и запускайте мастер вместо `uv.sh`.
+`--wizard` заменяет флаги вопросами: скрипт ставит бинарник и передаёт терминал `termit-uv wizard`, а тот спрашивает домен, почту, сервер, инвайт и остальное.
 
 Полезные варианты:
 
 | Задача | Флаг |
 |---|---|
 | установить и настроить, вступить позже | `--no-enroll` |
-| пусть спросит вместо флагов | поставить бинарник, затем `termit-uv wizard` |
+| пусть спросит вместо флагов | `--wizard` — ставит бинарник и запускает `termit-uv wizard` |
 | посмотреть, что будет, ничего не меняя | `--dry-run` |
 | зеркало или локальный каталог вместо GitHub | `--base-url https://mirror.example.com/termit` |
 | сверить с известным вам дайджестом | `--sha256 <hex>` (или `--checksum-file SHA256SUMS`) |

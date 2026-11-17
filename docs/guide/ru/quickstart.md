@@ -40,7 +40,7 @@
 опубликованной контрольной суммой и устанавливает его.
 
 ```bash
-RELEASE=v0.4.0
+RELEASE=v0.4.1
 curl -fsSLO "https://github.com/shogun-kub/termit/releases/download/$RELEASE/termit-mn_${RELEASE}_linux_amd64"
 curl -fsSLO "https://github.com/shogun-kub/termit/releases/download/$RELEASE/SHA256SUMS"
 sha256sum -c --ignore-missing SHA256SUMS
@@ -103,16 +103,11 @@ termit-mn invite create --note node-a
 
 ## 3. Узел
 
-Войдите на узел как `root` и вставьте этот блок. Он скачивает версию, сверяет файл с опубликованной
-суммой, ставит программу узла и переходит к вопросам.
+Войдите на узел как `root` и вставьте одну строку. Она скачивает установщик, проверяет релиз,
+устанавливает программу узла и переходит к вопросам.
 
 ```bash
-RELEASE=v0.4.0
-curl -fsSLO "https://github.com/shogun-kub/termit/releases/download/$RELEASE/termit-uv_${RELEASE}_linux_amd64"
-curl -fsSLO "https://github.com/shogun-kub/termit/releases/download/$RELEASE/SHA256SUMS"
-sha256sum -c --ignore-missing SHA256SUMS
-install -m 0755 "termit-uv_${RELEASE}_linux_amd64" /usr/bin/termit-uv
-termit-uv wizard
+curl -fsSLO "https://github.com/shogun-kub/termit/releases/download/v0.4.1/uv.sh" && sh uv.sh --version v0.4.1 --wizard
 ```
 
 Вопросы по порядку и что на них отвечать:

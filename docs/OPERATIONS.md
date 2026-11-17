@@ -211,7 +211,7 @@ server:   mn.example.com
 listen:   :443
 api:      /6rfjdqfn5nno
 decoy:    portal
-version:  termit-mn v0.4.0 (commit …, built …, api 1, profile v1)
+version:  termit-mn v0.4.1 (commit …, built …, api 1, profile v1)
 uptime:   3h12m (started 2026-11-10 11:18)
 database: /var/lib/termit/mn/termit.db (412.0 KiB, schema 5)
 prober:   ready (/usr/local/lib/termit/xray)
@@ -345,8 +345,8 @@ not something piped from a branch:
 termit-mn invite create --note "node1" --uses 1        # on the MN; prints the code once
 
 # on the fresh node, as root
-curl -fsSLO https://github.com/shogun-kub/termit/releases/download/v0.4.0/uv.sh
-sh uv.sh --version v0.4.0 \
+curl -fsSLO https://github.com/shogun-kub/termit/releases/download/v0.4.1/uv.sh
+sh uv.sh --version v0.4.1 \
   --domain node1.example.net --email you@example.com \
   --mn https://mn.example.com/6rfjdqfn5nno --invite ABCD-EFGH-IJKL
 ```
@@ -361,6 +361,7 @@ sh uv.sh --version v0.4.0 \
 | `--no-warp` / `--warp selected --warp-selected …` | the WARP decision (`all` is the default) |
 | `--mn URL` | the management server, prefix included; written to `mn.url` by `init` and used by `enroll` |
 | `--no-enroll` | install and converge, skip enrollment |
+| `--wizard` | install the binary, then run `termit-uv wizard` instead of converging from the flags |
 | `--dry-run` | verify the download, then run `termit-uv init --dry-run` without installing anything |
 
 Re-running the script with a new `--version` **is** the upgrade: the binary is replaced and `termit-uv init`
@@ -368,9 +369,8 @@ converges the rest, keeping the identity, the Xray path and the certificate. The
 on the command line and is visible in `ps` for the duration of the run; revoke it afterwards if that
 matters (`termit-mn invite revoke`).
 
-If you would rather be asked than remember flags, the wizard is the same installation with questions. Put
-the binary on the host first — the release asset and `SHA256SUMS`, the way [the quickstart](guide/quickstart.md)
-does it — and run the wizard instead of the script:
+If you would rather be asked than remember flags, the wizard is the same installation with questions —
+`sh uv.sh --version v0.4.1 --wizard` installs the binary and hands over to it:
 
 ```bash
 termit-uv wizard
@@ -900,7 +900,7 @@ A useful alert set, in the order that matters:
 A release is one command, and CI runs the same one on a tag:
 
 ```bash
-go run ./deploy/release --version v0.4.0 --out dist
+go run ./deploy/release --version v0.4.1 --out dist
 ```
 
 It cross-compiles both binaries for `linux/amd64` and `linux/arm64` with `CGO_ENABLED=0 -trimpath`, stamps
@@ -922,7 +922,7 @@ a renamed asset is a broken installation, so the tool refuses a version that is 
 than sanitising it. Verify a directory the way an operator would:
 
 ```bash
-cd dist/v0.4.0 && sha256sum -c SHA256SUMS
+cd dist/v0.4.1 && sha256sum -c SHA256SUMS
 ```
 
 There are deliberately no tarballs: one artifact per platform, verified by digest, is what the installer
@@ -930,9 +930,9 @@ consumes, and a tarball adds an unpacking step that protects nothing. The build 
 same toolchain, commit and `--date`:
 
 ```bash
-go run ./deploy/release --version v0.4.0 --out /tmp/a --commit "$(git rev-parse --short HEAD)" --date 2026-11-10T00:00:00Z
-go run ./deploy/release --version v0.4.0 --out /tmp/b --commit "$(git rev-parse --short HEAD)" --date 2026-11-10T00:00:00Z
-diff /tmp/a/v0.4.0/SHA256SUMS /tmp/b/v0.4.0/SHA256SUMS
+go run ./deploy/release --version v0.4.1 --out /tmp/a --commit "$(git rev-parse --short HEAD)" --date 2026-11-10T00:00:00Z
+go run ./deploy/release --version v0.4.1 --out /tmp/b --commit "$(git rev-parse --short HEAD)" --date 2026-11-10T00:00:00Z
+diff /tmp/a/v0.4.1/SHA256SUMS /tmp/b/v0.4.1/SHA256SUMS
 ```
 
 Publishing is a tag push on `main`, after the branch process in `AGENTS.md` §9 has put a tested tree there:
@@ -945,7 +945,7 @@ can do the same by hand with `gh release create` and the files from `dist/<versi
 files, so nothing depends on the workflow.
 
 Before that tag exists, a `release/<version>` branch is built by hand:
-`gh workflow run release.yaml --ref release/v0.4.0 -f publish_prerelease=true`. The workflow numbers the
+`gh workflow run release.yaml --ref release/v0.4.1 -f publish_prerelease=true`. The workflow numbers the
 build itself: the pre-release is `v<version>p<n>`, `n` being one more than the highest `v<version>p*` tag
 that already exists, so the first build of `0.4.0` is `v0.4.0p1` and the counter never resets for that
 version. The artifacts carry that same version — installed with `sh uv.sh --version v0.4.0p1` — and the
@@ -954,7 +954,7 @@ testers get a build without anything being published from `dev` or `main`.
 
 A **release** body is longer. Versions handed out only as pre-releases were never installed by a
 participant, so the body of the next release counts back to the last one that was:
-`go run ./deploy/release --version v0.4.0 --notes --since v0.3.2` prints the `0.4.0` section and stops at
+`go run ./deploy/release --version v0.4.1 --notes --since v0.3.2` prints the `0.4.0` section and stops at
 `0.3.2`. The workflow works the `--since` value out itself — the newest GitHub release not flagged
 pre-release — so nobody has to remember which version participants last saw. `--since` refuses a version
 the changelog has no section for, and one that is not older than the release being cut: a typo must not
