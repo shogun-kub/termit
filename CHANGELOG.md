@@ -41,6 +41,11 @@ cannot use it.
 - **`termit-uv init --warp-transport`** flips a node between the two. Switching to `proxy` reinstalls
   `cloudflare-warp`; switching to `wireguard` leaves the package installed but unused, because removing a
   package is the operator's decision, not the installer's.
+- **The registration pins Cloudflare's endpoint to an IPv4 address.** The name is dual-stack and the core
+  resolves it itself: on a host without IPv6 it can take the AAAA record, where the handshake never leaves
+  the node and the balancer quietly falls back to direct. The address is resolved once, at registration,
+  so the tunnel stops depending on which record the resolver hands out first. A node registered by an
+  older build gets the pinned address on its next `termit-uv warp rotate`.
 
 ## 0.3.2 — 2026-11-16
 
