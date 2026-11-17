@@ -37,6 +37,7 @@ is a Russian version beside every page.
 
 | English | Русский | What it covers |
 |---|---|---|
+| [Quickstart](docs/guide/quickstart.md) | [Быстрый старт](docs/guide/ru/quickstart.md) | two machines to a working phone, the shortest path |
 | [How Termit works](docs/guide/overview.md) | [Как устроен Termit](docs/guide/ru/overview.md) | the idea, the diagrams, what you need, the order of installation |
 | [Using a node](docs/guide/using-uv.md) | [Как пользоваться узлом](docs/guide/ru/using-uv.md) | install, enrol, connect a phone, every command |
 | [Running the server](docs/guide/using-mn.md) | [Как запустить сервер](docs/guide/ru/using-mn.md) | install, invite nodes, watch and manage them |
