@@ -31,6 +31,7 @@ ACME_CA=
 WARP=all
 WARP_SET=0
 NO_ENROLL=0
+WIZARD=0
 DRY_RUN=0
 CHECKSUM_FILE=
 EXPECTED_SHA256=
@@ -53,6 +54,8 @@ Required on a first install:
   --mn URL                 management server URL, e.g. https://mn.example.com
   --invite CODE            invite code from `termit-mn invite create`
 
+  With --wizard the last three are questions instead of flags.
+
 Options:
   --email ADDRESS          ACME account contact
   --acme-ca URL            ACME directory; default is Let's Encrypt production
@@ -61,6 +64,7 @@ Options:
   --warp-selected LIST     domains that use WARP in selected mode
   --no-warp                opt out of WARP and exit directly
   --no-enroll              install only; run `termit-uv enroll` yourself
+  --wizard                 install, then ask every question instead of taking the flags above
   --dry-run                report what `termit-uv init` would change, touch nothing
   --base-url URL|PATH      release directory (default: the GitHub releases page)
   --checksum-file PATH     local SHA256SUMS, when the mirror does not serve one
@@ -132,6 +136,10 @@ while [ $# -gt 0 ]; do
 		;;
 	--no-enroll)
 		NO_ENROLL=1
+		shift
+		;;
+	--wizard)
+		WIZARD=1
 		shift
 		;;
 	--dry-run)
@@ -248,6 +256,15 @@ fi
 
 # `termit-uv init` is the convergence: on a first run it installs everything, on a re-run it changes only
 # what drifted and never regenerates the identity, the path or the certificate.
+if [ "$WIZARD" = 1 ]; then
+	if [ "$DRY_RUN" = 1 ]; then
+		say "dry run: the wizard would run next"
+		exit 0
+	fi
+	# The wizard asks what the flags above would have said, and hands the terminal to itself.
+	exec "$PROGRAM_BIN" wizard --config "$CONFIG"
+fi
+
 set -- init --config "$CONFIG"
 if [ -n "$DOMAIN" ]; then
 	set -- "$@" --domain "$DOMAIN"

@@ -3,6 +3,15 @@ What each release changed, written for the people who run Termit. Newest first;
 carries every section back to the last release: the versions in between were handed out only as
 pre-releases, and whoever installs the release skipped them.
 
+## Unreleased
+
+### Added
+
+- **`uv.sh --wizard`.** The installer can now stop after the binary and hand the terminal to
+  `termit-uv wizard`, so a first installation is one command and a few questions instead of a command
+  with four flags. Everything else the script does — checksum verification, the architecture check, the
+  root check — still happens first.
+
 ## 0.4.0 — 2026-11-17
 
 WARP stops being a sidecar. The tunnel moves inside the core, and UDP stops being the one protocol that

@@ -45,11 +45,14 @@ reaches both: `init --mn` writes it to the configuration as `mn.url`, which is w
 every sync, and `enroll` uses it for the registration itself. Running `termit-uv enroll --mn URL`
 yourself later also records the URL when the configuration has none.
 
+`--wizard` replaces the flags with questions: the script installs the binary and hands the terminal to `termit-uv wizard`, which asks for the domain, the email, the server, the invite and the rest.
+
 Useful variations:
 
 | Goal | Flag |
 |---|---|
 | install and converge, join later | `--no-enroll` |
+| let it ask instead of passing flags | `--wizard` — installs the binary, then runs `termit-uv wizard` |
 | see what would happen, change nothing | `--dry-run` |
 | a mirror or a local directory instead of GitHub | `--base-url https://mirror.example.com/termit` |
 | verify against a digest you have | `--sha256 <hex>` (or `--checksum-file SHA256SUMS`) |
