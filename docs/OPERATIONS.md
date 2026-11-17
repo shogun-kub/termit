@@ -533,6 +533,17 @@ the same flag with `proxy`, which reinstalls `cloudflare-warp` and restores the 
 is `/var/lib/termit/uv/warp.yaml`, `0600`, written once — a re-run of `init` reuses it, and `uninstall
 --purge` removes it with the rest of the state.
 
+**The tunnel carries one address family.** `warp.family` is `ipv4` (the default) or `ipv6`: the document
+keeps the tunnel address of that family and gives the peer that family's default route, and destinations
+of the other family are routed `direct` — the way they travelled before WARP existed. IPv4 is the default
+because Cloudflare's IPv6 egress is what large services tend to mark as unsafe, and because a provider's
+own IPv6 is not something the node can fix.
+
+```bash
+termit-uv init --warp-family ipv6   # exit through Cloudflare's IPv6 instead
+termit-uv warp status               # the address Cloudflare sees has the family in use
+```
+
 **Registration is a warning, not a gate.** Cloudflare's API is unreachable from whole networks — in
 Russia the range is routinely blocked — so a node that cannot register still installs: the step reports
 the reason, the core is written with direct egress, and the run succeeds. `termit-uv warp status` and
