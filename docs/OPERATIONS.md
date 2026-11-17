@@ -98,19 +98,9 @@ Per host, before you start:
 The MN's probe worker needs an `xray-core` binary of its own — `prober.xray_binary` in
 `/etc/termit/mn/config.yaml` — because that is what opens a real connection to a node. It is not
 optional: without it `termit-mn status` says `prober: unavailable`, and enrollment refuses with
-`check_failed: the prober could not check this node; retry`. Install the same pinned core the nodes run:
-
-```bash
-apt-get install -y unzip
-curl -fsSLO https://github.com/XTLS/Xray-core/releases/download/v26.11.9/Xray-linux-64.zip
-unzip -o Xray-linux-64.zip -d /usr/local/lib/termit
-chmod 0755 /usr/local/lib/termit/xray
-sed -i 's|^  xray_binary: ""|  xray_binary: /usr/local/lib/termit/xray|' /etc/termit/mn/config.yaml
-systemctl restart termit-mn
-```
-
-`termit-mn status` then reads `prober: ready (/usr/local/lib/termit/xray)`. A node's own installation
-gets that binary as a step; the server does not have that step, which is why this one is by hand.
+`check_failed: the prober could not check this node; retry`. §3 has the commands, and it belongs after
+`termit-mn init` because it edits the configuration `init` writes. A node's own installation gets that
+binary as a step; the server does not have that step.
 
 ## 3. Install the management server
 
@@ -195,6 +185,17 @@ to HTTP is worse than one that does not come up. Watch for:
 level=INFO msg="issued a certificate" domain=mn.example.com not_after=…
 level=INFO msg="serving TLS" domain=mn.example.com listen=:443 not_after=…
 level=INFO msg="admin socket ready" path=/run/termit/mn/admin.sock
+```
+
+Give it the probe worker now (§2 says why it is not optional) — the same pinned core the nodes run:
+
+```bash
+apt-get install -y unzip
+curl -fsSLO https://github.com/XTLS/Xray-core/releases/download/v26.11.9/Xray-linux-64.zip
+unzip -o Xray-linux-64.zip -d /usr/local/lib/termit
+chmod 0755 /usr/local/lib/termit/xray
+sed -i 's|^  xray_binary: ""|  xray_binary: /usr/local/lib/termit/xray|' /etc/termit/mn/config.yaml
+systemctl restart termit-mn
 ```
 
 Verify:
@@ -947,15 +948,15 @@ files, so nothing depends on the workflow.
 Before that tag exists, a `release/<version>` branch is built by hand:
 `gh workflow run release.yaml --ref release/v0.4.1 -f publish_prerelease=true`. The workflow numbers the
 build itself: the pre-release is `v<version>p<n>`, `n` being one more than the highest `v<version>p*` tag
-that already exists, so the first build of `0.4.0` is `v0.4.0p1` and the counter never resets for that
-version. The artifacts carry that same version — installed with `sh uv.sh --version v0.4.0p1` — and the
-body is the `0.4.0` section of the changelog, because a section per build would be noise. That is how
+that already exists, so the first build of `0.4.1` is `v0.4.1p1` and the counter never resets for that
+version. The artifacts carry that same version — installed with `sh uv.sh --version v0.4.1p1` — and the
+body is the `0.4.1` section of the changelog, because a section per build would be noise. That is how
 testers get a build without anything being published from `dev` or `main`.
 
 A **release** body is longer. Versions handed out only as pre-releases were never installed by a
 participant, so the body of the next release counts back to the last one that was:
-`go run ./deploy/release --version v0.4.1 --notes --since v0.3.2` prints the `0.4.0` section and stops at
-`0.3.2`. The workflow works the `--since` value out itself — the newest GitHub release not flagged
+`go run ./deploy/release --version v0.4.1 --notes --since v0.4.0` prints the `0.4.1` section and stops at
+`0.4.0`. The workflow works the `--since` value out itself — the newest GitHub release not flagged
 pre-release — so nobody has to remember which version participants last saw. `--since` refuses a version
 the changelog has no section for, and one that is not older than the release being cut: a typo must not
 silently publish everything or nothing.
