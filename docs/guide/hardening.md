@@ -161,7 +161,7 @@ Two differences: the server has no web access log to count 4xx answers (its admi
 instead, and the guard counts scans only), and its units are plain files in `deploy/systemd` rather than
 generated ones. That is why `termit-mn firewall on` refuses until the rollback timer is installed: an
 apply with no way back is worse than a refused command. The units travel beside `termit-mn` in the
-release, and `docs/OPERATIONS.md` §18.6 has the install lines.
+release, and `docs/OPERATIONS.md` §13.6 has the install lines.
 
 ## What it does not do
 

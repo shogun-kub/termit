@@ -45,7 +45,7 @@ path to it is broken". For anything else: `journalctl -u termit-uv-agent` on the
 | `termit-mn` refuses the token file: `owned by uid N` | the file belongs to somebody else, who could rewrite it | `chown` it to the user running the commands (`root` on a server), or create it as that user |
 | `termit-mn` refuses `--token` together with `--token-file` | two credentials at once | pass one: an explicit flag is never guessed over another |
 | a timer or script suddenly says `the admin token is not valid` | somebody rotated the token | read the new one from wherever it was written (`--token-out`), or rotate again from a shell that has it |
-| `termit-mn admin rotate` says `the admin token is not valid` | rotation needs the current token, and this one is no longer it | find the token that works; if none does, the recovery is the delete-the-row procedure in the operations guide |
+| `termit-mn admin rotate` says `the admin token is not valid` | rotation needs the current token, and this one is no longer it | find the token that works; if none does, the recovery is the delete-the-row procedure in the runbook |
 | after rotating, every node and timer still works but `termit-mn` does not | the rotation replaced the CLI credential, not the mesh: nodes use agent keys and subscriptions, not admin tokens | update only the admin token wherever it is stored |
 | a node says `the server has no API at https://…/enroll` | its `mn.url` is missing the server's `api_prefix` — the API is not at the bare host | copy the URL from `termit-mn status` (the `api:` line) or from the `init` output; `termit-uv sync --check` proves it |
 | every node lost contact at once, the server is up | the prefix was changed on the server and the nodes were not told | update `mn.url` on every node and restart the agent; `OPERATIONS.md` §3.1 has the order |
@@ -105,7 +105,7 @@ path to it is broken". For anything else: `journalctl -u termit-uv-agent` on the
 | client connects but no traffic | the peer's credential was rotated, or the node is `blocked` | `termit-mn uv show <node>`; a blocked node is out of every peer set |
 | client error `unknown version: 72`, and every connection fails | its core has no XHTTP and fell back to plain VLESS; the node answered `HTTP/1.1 400`, whose `H` (72) it read as a VLESS version | use a client on Xray (Happ, v2rayNG, v2rayN, NekoRay) or `podkop-engine`; stock sing-box, Hiddify and Streisand cannot speak this transport |
 | the client's own "URL test" fails but browsing works | the test URL is `cp.cloudflare.com`, which resets plain-HTTP `HEAD` requests | point the test at `https://www.gstatic.com/generate_204` |
-| connections succeed only part of the time, on every port, with a clean node | packets are dropped between the client's network and the node's provider | the node's `ss -tan state syn-recv` and `nstat` counters tell which direction; `OPERATIONS.md` §16.1 has the recipe |
+| connections succeed only part of the time, on every port, with a clean node | packets are dropped between the client's network and the node's provider | the node's `ss -tan state syn-recv` and `nstat` counters tell which direction; `RUNBOOK.md` §7 has the recipe |
 | a leaked subscription URL | it is a credential | `termit-mn sub rotate <node> --domain <MN>`; the old URL stops working immediately |
 
 ## Getting help

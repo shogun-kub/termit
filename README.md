@@ -50,7 +50,8 @@ The reference documents go deeper, and assume you are comfortable with TLS, ACME
 | Document | Contents |
 |---|---|
 | [`docs/DESCRIPTION.md`](docs/DESCRIPTION.md) | the design: architecture, credential model, state machine, protocol, invariants, security |
-| [`docs/OPERATIONS.md`](docs/OPERATIONS.md) | running it for real: sizing, upgrade, backup and restore, recovery playbooks, monitoring |
+| [`docs/RUNBOOK.md`](docs/RUNBOOK.md) | something is wrong: triage, the recovery playbooks, upgrade, backup and restore, uninstall |
+| [`docs/OPERATIONS.md`](docs/OPERATIONS.md) | the reference: what runs where, sizing, WARP, certificates, clients, monitoring |
 | [`docs/PROTOCOL.md`](docs/PROTOCOL.md) | the wire contract: endpoints, payloads, problem codes, subscription formats |
 | [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) | adversaries, mitigations, residual risk, and what is deliberately not defended |
 | [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) | milestones, acceptance criteria, risks |

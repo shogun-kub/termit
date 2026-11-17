@@ -1,8 +1,12 @@
 # Termit operations
 
-How to install, run, upgrade and repair a Termit mesh. This is the operator's document: the design is
-in [`DESCRIPTION.md`](DESCRIPTION.md), the wire contract in [`PROTOCOL.md`](PROTOCOL.md), the
-adversaries in [`THREAT_MODEL.md`](THREAT_MODEL.md).
+How Termit is put together and operated: what runs where, installation, the daily cycle, egress,
+certificates, clients, monitoring. The design is in [`DESCRIPTION.md`](DESCRIPTION.md), the wire contract in
+[`PROTOCOL.md`](PROTOCOL.md), the adversaries in [`THREAT_MODEL.md`](THREAT_MODEL.md).
+
+Procedures done under pressure — upgrading, backup and restore, recovery, uninstall, the triage table — are
+in [RUNBOOK.md](RUNBOOK.md). This document is the reference: what runs where, how it is set up, and why it
+behaves the way it does.
 
 If you are installing Termit for the first time, start with the guide instead — it is written for the
 person who owns one node: [how Termit works](guide/overview.md), [a node](guide/using-uv.md), [the
@@ -29,14 +33,14 @@ Conventions used below:
 | UV | `termit-xray.service` | `127.0.0.1:8443`, API on `127.0.0.1:10085` | the proxy core |
 | UV | `termit-uv-agent.service` | outbound only | the daily cycle: self-check, sync, core reconciliation |
 | UV | `termit-uv-renew.timer` | — | the daily certificate check |
-| UV | `termit-uv-guard.service` | — | the ban engine, when `security.guard.enabled` (§18.4) |
-| UV | `termit-uv-blocklist.timer` | — | the network blocklist refresh, when a URL is configured (§18.5) |
-| UV | `termit-uv-firewall.service` | — | puts a confirmed table back at boot (§18.7) |
+| UV | `termit-uv-guard.service` | — | the ban engine, when `security.guard.enabled` (§13.4) |
+| UV | `termit-uv-blocklist.timer` | — | the network blocklist refresh, when a URL is configured (§13.5) |
+| UV | `termit-uv-firewall.service` | — | puts a confirmed table back at boot (§13.7) |
 | UV | the tunnel: a WireGuard outbound inside the core, or `warp-cli` on `warp.transport: proxy` | `127.0.0.1:40000` in proxy mode only | where proxied traffic leaves, when WARP is on |
-| MN | `termit-mn-guard.service`, `termit-mn-blocklist.timer`, `termit-mn-firewall.service` | — | the same three, shipped with the release (§18.6) |
+| MN | `termit-mn-guard.service`, `termit-mn-blocklist.timer`, `termit-mn-firewall.service` | — | the same three, shipped with the release (§13.6) |
 
 The table itself is applied by `firewall on` and never by a timer; the boot unit only puts back what was
-applied and confirmed, and does nothing when there is no record (§18.7).
+applied and confirmed, and does nothing when there is no record (§13.7).
 
 Termit never touches host routing, and the one firewall it can create is a single opt-in table that exists
 only after `termit-uv firewall on` — so every other service on the box (SSH included) keeps working through
@@ -399,7 +403,7 @@ directory, for a lab), `--harden` (turn on the host firewall and the ban engine 
 `--harden` configures; it does not apply. It sets `security.firewall.enabled` and
 `security.guard.enabled`, which installs the guard's unit and makes `status` say what is left to do, and
 the table is still your `termit-uv firewall on` — the one command that undoes a mistake five minutes
-later (§18.2). The wizard asks the same question, unchecked, and passes the same flag; no install puts a
+later (§13.2). The wizard asks the same question, unchecked, and passes the same flag; no install puts a
 table on a host while nobody is watching. To undo the configuration: `termit-uv init --harden=false`.
 
 Preflight is the place to read when something is wrong; it prints one line per check with a hint:
@@ -824,212 +828,7 @@ Two overrides are worth understanding before you use them:
 `unknown` is not a state: it is the absence of a verdict. A prober that cannot run, a DNS resolver that
 cannot answer and a node whose certificate could not be read all leave the state untouched.
 
-## 10. Backup and restore
-
-### 10.1 The management server
-
-`termit-mn backup` writes an archive containing the database, the configuration, the server's certificate
-**and the master key**:
-
-```bash
-termit-mn backup                                    # → /var/lib/termit/mn/backups/termit-<ts>.tar.gz
-termit-mn backup --out /root/mn-backup.tar.gz
-```
-
-The archive holds the master key, which means it can re-derive **every pair credential in the mesh**.
-Treat it exactly like the key: encrypt it at rest, store it away from the server, and do not leave it
-in a world-readable directory. A backup without the master key restores the registry but cannot
-produce working credentials.
-
-Restore, on a fresh machine or after a disaster:
-
-```bash
-install -m 0755 termit-mn /usr/bin/termit-mn
-termit-mn restore --from /root/mn-backup.tar.gz        # --force to replace an existing database
-install -m 0644 deploy/systemd/termit-mn.service /etc/systemd/system/
-systemctl daemon-reload && systemctl enable --now termit-mn
-termit-mn status
-```
-
-`termit-mn restore` validates the archive before writing anything. The restored server keeps every node's
-credentials, so nodes keep syncing without re-enrolling. If the address of the server itself changes,
-the nodes' `mn.url` changes too (`termit-uv init` writes it, or edit `mn.url` and restart the agent).
-
-Back up on a schedule you can defend: daily is normal, and the database is small.
-
-### 10.2 A node
-
-A node's state file is its identity: the self UUID, the XHTTP path, the decoy seed, the agent key and
-the subscription token. Losing it means rebuilding the node (Scenario C) rather than restoring it.
-
-```bash
-tar -C / -czf /root/node1-state.tar.gz \
-    etc/termit/uv var/lib/termit/uv            # configuration, identity, certificate, journal
-```
-
-Restoring that archive onto the same machine brings the node back byte for byte, including its
-certificate, which is why it is worth keeping: a restore does not wait for an ACME order. Do not copy
-it to another machine and keep using it — two boxes with one identity fight over the record; use
-`termit-uv init --relocate` for that case.
-
-## 11. Upgrading
-
-Nodes and the server are separate binaries with separate records: upgrade the server first, then the
-nodes. Within `api_version: 1` the wire protocol is additive, so a mixed fleet keeps working.
-
-On the MN:
-
-```bash
-systemctl stop termit-mn
-install -m 0755 termit-mn.new /usr/bin/termit-mn
-systemctl start termit-mn
-journalctl -u termit-mn -n 20 --no-pager
-termit-mn status
-```
-
-The database migrates on start, forward only. **Take a backup before an upgrade**, and keep the previous
-binary beside the new one: it will not read a newer schema.
-
-On a node the bootstrap script is the short path — it replaces the binary and converges:
-
-```bash
-sh uv.sh --version v0.4.0 --base-url https://github.com/shogun-kub/termit/releases/download --no-enroll
-```
-
-By hand it is the same two steps:
-
-```bash
-install -m 0755 termit-uv.new /usr/bin/termit-uv
-termit-uv init                       # converges every step; no credential is regenerated
-termit-uv doctor
-```
-
-`termit-uv init` is the upgrade path for everything the node generates — units, vhost, core config, and the
-pinned Xray release when `xray.version` moved — and it never rewrites the identity, the certificate, the
-decoy seed or the credentials. Restart the agent afterwards so it picks up a configuration it read at start:
-
-```bash
-systemctl restart termit-uv-agent
-```
-
-A restart in the middle of a burst of restarts can hit systemd's start limit; `termit-uv init`,
-`termit-uv warp mode` and the agent's own restart run `systemctl reset-failed` first, so this is handled. If
-you restart by hand and see `start-limit-hit`, run `systemctl reset-failed termit-xray termit-uv-agent` and
-start again.
-
-## 12. Recovery playbooks
-
-### A node is `blocked` and is fine
-
-```bash
-termit-uv unblock                    # re-verifies DNS and the tunnel from the node's own address, then syncs
-```
-
-If it fails, it prints the server's reason: `dns_mismatch` means the record does not point at the box;
-`check_failed` means the tunnel did not answer through the decoy. Fix that and run it again.
-
-### A node was rebuilt on the same host
-
-```bash
-termit-uv init --domain node1.example.net --relocate --agent-key-file /root/agent-key
-termit-uv migrate --relocate
-```
-
-The second command tells the server about the new self UUID and certificate; without it the server keeps
-probing the old identity and the node stays `blocked` or `unavailable`.
-
-### A node moved to a new host
-
-```bash
-termit-uv init --domain node5.example.net --relocate --agent-key-file /root/agent-key
-termit-uv migrate --relocate --domain node5.example.net
-```
-
-The old record is reused, so peers keep the same pair credential and only the domain and path change in
-their lists at the next sync. The new domain must resolve to the new box and the box must serve the profile
-it claims, or the server refuses the move and leaves the record as it was.
-
-### The management server is gone
-
-Restore from backup (§10.1). With no backup the mesh cannot be rebuilt without re-enrolling every node:
-pair credentials derive from the master key, and the master key cannot be recovered from a node.
-
-### The admin token leaked
-
-Rotate it: the command replaces the credential it authenticated with, and the old one stops working the
-moment the new one is issued:
-
-```bash
-termit-mn admin rotate --token-out /etc/termit/mn/admin.token
-```
-
-It needs the current token — a rotation you could start without one would be a takeover, not a rotation —
-and only the authenticated admin's own row is touched. Before you run it, list what still carries the old
-token: every timer, cron entry and playbook that does will fail at its next run with `the admin token is not
-valid`. `--token-out` writes the new token `0600`; without it the token is printed once and nowhere else, so
-losing that output loses the rotation.
-
-### The admin token is lost
-
-Rotation needs the current token, so this is the one case with no online recovery: the server stores only a
-digest, deliberately. Take a backup of the database, then remove the `admin` row and let `init` mint a fresh
-credential:
-
-```bash
-sqlite3 /var/lib/termit/mn/termit.db 'delete from admin;'
-systemctl restart termit-mn
-termit-mn init --config /etc/termit/mn/config.yaml --admin-token-out /etc/termit/mn/admin.token
-```
-
-`init` on an installed server keeps every other decision — domain, listen, master key, the nodes — and only
-adds the missing admin. Treat it as an incident: whoever held the old token had the registry, and the digest
-in the database no longer matches it.
-
-### The clock drifted
-
-ACME and TLS fail first. `timedatectl status`; fix `systemd-timesyncd` or `chrony`, then `uv renew-cert
---force` if an order was half-finished.
-
-### The node reports drift
-
-```bash
-termit-uv sync --check        # exit 4 and a diff
-termit-uv sync                # converge now
-```
-
-Drift means the core's client set differs from the server's — what a manual edit or a missed sync looks
-like. The next cycle would fix it anyway; `termit-uv sync` does it now.
-
-## 13. Uninstalling
-
-On a node:
-
-```bash
-termit-uv uninstall --dry-run     # what would be removed
-termit-uv uninstall               # units, vhost, core, generated files; keeps config and state
-termit-uv uninstall --purge       # also config, state, certificates and the service user
-```
-
-What it does: removes the host firewall table if one is applied, disconnects the WARP tunnel, stops and
-disables the units, removes every path the install manifest recorded, restores the distribution's
-default nginx vhost, and reloads nginx so `:80` and `:443` are released. The table goes first, and on
-purpose: a default-deny table with no command left to remove it is a host nobody can repair without a
-console. What it deliberately keeps: **packages** (nginx may serve other sites; remove
-`cloudflare-warp` yourself if you want it gone), and — without `--purge` — the configuration and the
-state, so a reinstall keeps the same identity.
-
-On the MN:
-
-```bash
-systemctl disable --now termit-mn
-rm -f /etc/systemd/system/termit-mn.service
-rm -rf /etc/termit/mn /var/lib/termit/mn
-```
-
-There is no uninstall command for the server: it owns two directories and one unit, and deleting a
-registry is not something an automated command should decide to do.
-
-## 14. Monitoring
+## 10. Monitoring
 
 - `GET {prefix}/healthz` on the MN — liveness plus build identity, `200`/`503`. The prefix is
   `api_prefix` from `/etc/termit/mn/config.yaml`, and `termit-mn status` prints it. Put it behind your
@@ -1052,12 +851,12 @@ A useful alert set, in the order that matters:
 | no checks are happening | `termit_mn_prober_up == 0` for 5 minutes, or `termit_mn_check_queue_due > 0` and growing |
 | the scheduler is behind | `termit_mn_check_queue_oldest_due_seconds` above a few hours |
 | a node is blocked or unavailable | `termit_mn_nodes{state="blocked"}` above zero, or `termit-mn status` |
-| the server certificate is expiring | `termit_mn_certificate_expiry_timestamp_seconds - time() < 14 days`; restart the server inside the renewal window (§7, §15) |
+| the server certificate is expiring | `termit_mn_certificate_expiry_timestamp_seconds - time() < 14 days`; restart the server inside the renewal window (§7, §11) |
 | clocks under 14 days on a node | `termit-uv doctor` / `termit-uv status` on the node, or `openssl x509 -enddate` |
 | a burst of refusals | `rate(termit_mn_enrollments_total{result="refused"}[15m])` |
 | disk over 90% | the host's usual check; a full disk stops SQLite writes and ACME |
 
-## 15. Known limitations
+## 11. Known limitations
 
 - **Accepting the `proxy` transport needs a host with `/dev/net/tun`.** The default `wireguard`
   transport, fail-open, the route and the refusal are tested; installing and connecting the `warp-cli`
@@ -1069,82 +868,12 @@ A useful alert set, in the order that matters:
 - **Blocking is cooperative.** A node that ignores the server's answer keeps serving; see
   [`THREAT_MODEL.md`](THREAT_MODEL.md) §6.
 - **The host firewall survives a reboot only once it was confirmed.** `termit-uv-firewall.service`
-  restores what the record says was applied and confirmed (§18.7); a table that was applied and never
+  restores what the record says was applied and confirmed (§13.7); a table that was applied and never
   confirmed does not come back, and neither does one an operator took down. The bans survive on their
   own — `bans.json` outlives the reboot and the guard refills the kernel from it, as soon as the table
   exists again.
 
-## 16. Troubleshooting
-
-| Symptom | Likely cause | What to do |
-|---|---|---|
-| `termit-uv init` stops at `preflight` with `ports` failed | something already listens on 80/443 | `ss -H -ltnp`, stop it, re-run `termit-uv init` |
-| `dns` warn at preflight | the record does not resolve here yet | point the A/AAAA record at the box; the install does not need it, enrollment does |
-| `termit-uv enroll` → `dns_mismatch` | the domain resolves elsewhere, or the request came through a proxy | fix DNS; the check compares against the TCP peer |
-| `termit-uv enroll` → `rate_limited` | ten failed attempts in fifteen minutes from one address | wait, then retry; the window is per address |
-| `termit-uv enroll` → `domain_taken` | a record with that domain exists | `termit-mn uv show <domain>`; remove or relocate it first |
-| node stuck `pending` | `invite+approval` mode | `termit-mn uv approve <node>` |
-| node `unavailable` after a passing manual check | the prober cannot reach it | `termit-mn uv show` for the class; check `prober.xray_binary` and the server's own egress |
-| `termit-mn status` says `prober: unavailable — every check reports unknown` | no worker could be built | read the reason on the line; fix `prober.xray_binary`, restart `termit-mn`; nodes stay as they were, nothing is blocked |
-| `termit-mn status` shows a growing `queue: N due` | the scheduler is not completing passes | `journalctl -u termit-mn` for scheduler errors; a stuck probe worker shows up here before any node changes state |
-| node `blocked` right after an upgrade | the certificate was replaced and the server still pinned the old leaf | the next sync reports the new leaf; `termit-uv sync` then `termit-uv unblock` if it stayed blocked |
-| `termit-uv doctor` → `services` failed | a unit is down | `systemctl status <unit>`; `termit-uv init` starts them again |
-| `termit-uv doctor` → `certificate` warn/fail | renewal is late or broken | `termit-uv renew-cert`; the journal of `termit-uv-renew.service` says why |
-| `termit-uv status` shows `warp: … direct` | WARP is down and fail-open is doing its job | `termit-uv warp status` names the reason; traffic still works |
-| `termit-uv warp status` shows `not-installed` | there is no WARP identity: `--no-warp` was used, or the state was removed | `termit-uv init` (or `termit-uv warp mode all`) registers and puts it in the tunnel; the command exits 0 in this state |
-| `termit-uv warp mode` → `start-limit-hit` | too many restarts in five minutes | `systemctl reset-failed termit-xray termit-uv-agent` |
-| `termit-uv sync --check` exits 4 | the core's client set differs from the server's | `termit-uv sync` |
-| `mn` commands: `cannot reach the server at …` | `termit-mn` is not running, or the socket moved | `systemctl status termit-mn`; check `admin_socket` in the config |
-| `termit-mn serve` refuses to start: `cert: listen on :80` | something holds `:80` (nginx on the same host) | free the port, or set `acme.challenge_listen` to a free one and forward it |
-| `termit-mn serve` refuses: `cannot read the master key` | the key file is missing or unreadable | restore it from a backup; without it the registry is useless |
-| SQLite `database is locked` | the database is on a slow or network filesystem, or a second process opened it | keep it on local disk; admin commands go through the server, never direct |
-| subscription `404` | the token was rotated or mistyped | `termit-uv status` shows the current URL; `termit-mn sub rotate` issues a new one |
-
-When nothing obvious is wrong, the order is `termit-uv doctor` on the node, `termit-mn uv show` on the
-server, then both journals. A check that says `unknown` is a failure of the observer, not of the node — say
-so in the report instead of "fixing" the node.
-
-### 16.1 A node answers, but some connections time out
-
-A client or the prober connects only part of the time, the node's logs are clean, and `ss -s` shows
-`syn-recv` entries on the node. Termit reports no error because Termit is not wrong: the packets are being
-dropped between two networks. Work through these in order; each one removes a whole class of causes.
-
-1. **Control from the same host.** Ten connections to an unrelated well-known address (a resolver, a large
-   site). If those fail too, the local uplink is the problem and the node is not implicated.
-2. **Port sweep.** Twelve attempts each to `:443`, `:80`, `:22` and a closed port. If every port loses the
-   same fraction, the drop is keyed on the destination, not the port — no port-based filter.
-3. **Rate.** Measure after two idle minutes, then right after a burst of 40. The same loss at rest is not
-   a rate limit or a shaper reacting to you.
-4. **The node's counters**, twice 60 s apart while a stream of attempts runs from the other side:
-
-   ```bash
-   nstat -az | grep -E 'TcpExtListenDrops|TcpExtTCPSynRetrans|TcpExtTCPTimeouts'
-   ```
-
-   - `ListenDrops` grows → the node's listen queue dropped the SYN (backlog or a local firewall).
-   - `TCPSynRetrans` grows while `ListenDrops` stays at zero → the node received the SYN and retransmitted
-     SYN-ACKs, so it is the **answer** that is lost on the way back.
-   - nothing grows → the SYNs never reached the node.
-
-   `termit-uv net` does this for you: it samples the same counters for `--seconds` (default 30) and prints
-   the verdict with the raw deltas next to it, ready for a provider ticket. It opens no sockets, contacts no
-   host, and reports `skip` rather than `ok` when the sample saw no traffic — a quiet node and a healthy one
-   look identical. The kernel's counters include loopback, so the nginx→Xray hop is counted too; that hop
-   never loses handshakes, which makes the reported loss a conservative estimate rather than an inflated one.
-5. **Node hygiene**, which rules the host out rather than the path: `nft list ruleset` (any drop or rate
-   rule), the conntrack table if the module is loaded, `net.ipv4.tcp_syncookies` and `tcp_max_syn_backlog`.
-   An empty ruleset, no conntrack and `syncookies=1` mean the kernel is not the one dropping packets.
-
-Measured this way on a node losing a third of all new connections (2026-11): 12/12 from the same host to
-three unrelated destinations; on the node 8/12 to `:443`, 10/12 to `:80`, 8/12 to `:22`, and a closed port
-answering `RST` 9/12; the same loss after two idle minutes; under load our side retransmitted 36 SYNs for 9
-failed flows while the node answered `ListenDrops +0`, `TCPSynRetrans +61`, `TCPTimeouts +42`; idling, the
-node completed 35 handshakes a minute and retransmitted 5 SYN-ACKs. The provider's path was at fault in both
-directions — the kernel, the firewall and Termit were innocent. Take those numbers to the provider or move
-the node: no Termit setting fixes a lossy uplink.
-
-## 17. Building and publishing a release
+## 12. Building and publishing a release
 
 A release is one command, and CI runs the same one on a tag:
 
@@ -1162,8 +891,8 @@ repository, and writes `SHA256SUMS`:
 | `termit-mn_<version>_linux_<arch>` | the management server binary |
 | `uv.sh` | the bootstrap installer (§4) |
 | `termit-mn.service` | the unit from `deploy/systemd/`, so a server install needs no clone |
-| `termit-mn-firewall.service`, `termit-mn-firewall-rollback.service`, `.timer` | the server's boot unit and the rollback pair (§18.6) |
-| `termit-mn-guard.service`, `termit-mn-blocklist.service`, `.timer` | the server's ban engine and blocklist (§18.6) |
+| `termit-mn-firewall.service`, `termit-mn-firewall-rollback.service`, `.timer` | the server's boot unit and the rollback pair (§13.6) |
+| `termit-mn-guard.service`, `termit-mn-blocklist.service`, `.timer` | the server's ban engine and blocklist (§13.6) |
 | `SHA256SUMS` | covers every file above, in `sha256sum -c` format |
 
 The names are a contract with `uv.sh`, which fetches `<base>/<version>/<asset>` and `<base>/<version>/SHA256SUMS`;
@@ -1228,7 +957,7 @@ compiled output (gigabytes after a release cycle) and keeps the downloaded modul
 recompiles for a few seconds and downloads nothing. `--module-cache` drops the modules as well and costs a
 download; `--all` does both; `--toolchain` removes Go itself.
 
-## 18. The host firewall (opt-in)
+## 13. The host firewall (opt-in)
 
 Termit ships a firewall and never turns it on. One nftables table per component — `inet termit_uv` on a
 node, `inet termit_mn` on the server — exists only after an operator types `termit-uv firewall on`;
@@ -1237,7 +966,7 @@ leaves the host exactly as it was. That last sentence is a lab assertion, not a 
 compares `nft list ruleset` before and after. Nothing here is required for the tunnel to work — it is
 host hardening for a machine with a public address.
 
-### 18.1 What the table contains
+### 13.1 What the table contains
 
 In the order the input chain evaluates it:
 
@@ -1246,7 +975,7 @@ In the order the input chain evaluates it:
 | `iif lo accept` | loopback is not a decision |
 | `ct state established,related accept` | a connection already flowing is not re-judged |
 | `ct state invalid drop` | malformed state is never legitimate |
-| `ip saddr @blocked4 drop`, `ip6 saddr @blocked6 drop` | the downloaded list (§18.5) |
+| `ip saddr @blocked4 drop`, `ip6 saddr @blocked6 drop` | the downloaded list (§13.5) |
 | `ip saddr @banned4 drop`, `ip6 saddr @banned6 drop` | what the guard banned |
 | `icmpv6 type { nd-*, packet-too-big, destination-unreachable, time-exceeded } accept` | without NDP and PMTU messages IPv6 stops working |
 | `tcp dport { 22, 80, 443 } accept` | what a node publishes — or, with `ssh_from`, port 22 only from the listed networks |
@@ -1257,7 +986,7 @@ Two properties are worth knowing: **the table is one atomic transaction** — `f
 ruleset to `nft -f -`, which commits it or nothing, and re-applying replaces rather than merges — and
 **bans live in sets, not rules**, so adding or removing one element never leaves the chain half-written.
 
-### 18.2 Turning it on without locking yourself out
+### 13.2 Turning it on without locking yourself out
 
 ```bash
 termit-uv firewall on --dry-run              # print the rules; changes nothing
@@ -1287,7 +1016,7 @@ Port 22 is then refused from everywhere else even with `default_deny: false`: a 
 only when the rest is denied is not a restriction. `ssh_from` in the configuration does the same for every
 future `on`.
 
-### 18.3 The way back
+### 13.3 The way back
 
 ```bash
 termit-uv firewall off        # removes the table and the timer; the host is as it was
@@ -1297,7 +1026,7 @@ No confirmation, no argument, and it works from any state — after a rollback i
 have locked yourself out of, wait out the five minutes: the timer runs locally over systemd and needs no
 SSH.
 
-### 18.4 The ban engine
+### 13.4 The ban engine
 
 With `security.guard.enabled: true`, `init` installs and starts `termit-uv-guard.service`. It watches two
 signals and does one thing with them:
@@ -1334,7 +1063,7 @@ server (resolved from `mn.url`, cached for ten minutes) and your own `ssh_from` 
 refuses them too — a ban there cuts you off, not an attacker. To block an address in one of those ranges
 anyway, do it with `nft` directly and know what you are doing.
 
-### 18.5 The blocklist
+### 13.5 The blocklist
 
 A list of networks you never want to hear from again — a hosting provider, a scanner's range, an abusive
 subnet — comes in over a URL:
@@ -1370,7 +1099,7 @@ than an outdated one.
 `firewall on` loads the file too, so a table applied after a reboot comes back with its networks. With no
 table applied, a refresh writes the file and leaves the kernel alone.
 
-### 18.6 The management server
+### 13.6 The management server
 
 The server can carry the same table, with its own name and ports. The commands are the same with a
 different binary, minus the two things a server does not have: no access log to count 4xx answers (its
@@ -1406,9 +1135,9 @@ runs `termit-mn firewall refresh` daily; its interval is the timer file, not
 The guard and the refresh run as root because nft does, confined as the node's are: `ProtectSystem=strict`,
 writes only to `/var/lib/termit/mn`, and `RestrictAddressFamilies` **including `AF_NETLINK`** — without it
 every cycle fails with "Unable to initialize Netlink socket". The ban record and the blocklist live beside
-the database, so the backup in §10 carries them.
+the database, so the backup in `RUNBOOK.md` §10 carries them.
 
-### 18.7 What survives a reboot
+### 13.7 What survives a reboot
 
 The table is a kernel object, so a reboot empties it — but the record of what was applied does not.
 `termit-uv-firewall.service` runs at boot, before `network-pre.target`, and hands the decision to
@@ -1428,9 +1157,9 @@ Restoring a waiting apply **arms the rollback timer**, which writes the timer's 
 sandbox allows writes to the unit directory; both units say so in `ReadWritePaths`. Without that line the
 pending case fails at boot with `read-only file system` and the table does not come back (that was
 `0.3.0`); a confirmed apply was never affected, because it arms nothing. The server has the same unit as
-`deploy/systemd/termit-mn-firewall.service` (§18.6), enabled the same way.
+`deploy/systemd/termit-mn-firewall.service` (§13.6), enabled the same way.
 
-### 18.8 What it does not do
+### 13.8 What it does not do
 
 - It does not rate-limit proxied traffic. Your clients are not throttled — that would add latency to the
   one thing the node exists for.

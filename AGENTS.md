@@ -259,8 +259,8 @@ tests explicitly tagged for them.
 
 Unit tests for new logic, including failure and `unknown` branches. A golden-file update **only** when
 the generated config genuinely changed, with the reason in the commit. Documentation when behaviour,
-config keys or CLI flags change (`docs/DESCRIPTION.md`, `docs/OPERATIONS.md`, `docs/MN-API.md`,
-`--help`). For anything touching install, ACME, WARP or the Xray lifecycle: which lab scenario was run
+config keys or CLI flags change (`docs/DESCRIPTION.md`, `docs/OPERATIONS.md`, `docs/RUNBOOK.md`,
+`docs/MN-API.md`, `--help`). For anything touching install, ACME, WARP or the Xray lifecycle: which lab scenario was run
 and what it observed. Do not add a test needing the public internet or the lab to the default `go test`
 run.
 

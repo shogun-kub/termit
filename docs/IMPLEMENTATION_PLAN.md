@@ -1325,7 +1325,7 @@ and the cleanup leaves the node as it was found.
 
 **M5.7 — Docs and the §11 amendment (done).** Done: `DESCRIPTION.md` §11 invariant 1 (never touch
 routing; the table exists only after `firewall on`; the guard and the blocklist refresh only fill sets; the
-boot unit only puts back a confirmed apply), `OPERATIONS.md` §18 with the exact rules, the way back, the
+boot unit only puts back a confirmed apply), `OPERATIONS.md` §13 with the exact rules, the way back, the
 blocklist, the server's copy and what survives a reboot, `THREAT_MODEL.md` §5.6/§5.7 and the residual-risk
 line, `QUESTIONS.md` §0a, and the page a new operator needed:
 [`guide/hardening.md`](guide/hardening.md) and its [Russian mirror](guide/ru/hardening.md), linked from

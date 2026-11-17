@@ -107,7 +107,7 @@ termit-mn admin rotate --token-out /etc/termit/mn/admin.token
 Every script, timer and playbook that still carries the old token stops working at that moment. That is
 what rotation is for, and it is also the thing to check before running it. Rotating needs the current
 token: if that is what you have lost, the recovery is in
-[the operations guide](../OPERATIONS.md#the-admin-token-is-lost).
+[the runbook](../RUNBOOK.md#the-admin-token-is-lost).
 
 ## First start
 

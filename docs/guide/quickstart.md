@@ -184,4 +184,5 @@ is a file you cannot use.
 - [Running the server](using-mn.md) — invites, approvals, blocking, backups.
 - [The interactive menu](menu.md) — the same operations as a numbered menu, if you prefer that to flags.
 - [Hardening a node](hardening.md) — a firewall and an automatic ban engine for the proxy ports.
-- [`docs/OPERATIONS.md`](../OPERATIONS.md) — running it for real: updates, backups, recovery.
+- [`docs/RUNBOOK.md`](../RUNBOOK.md) — something is wrong, or you are upgrading: what to do, in order.
+- [`docs/OPERATIONS.md`](../OPERATIONS.md) — the reference: what runs where, sizes, WARP, certificates, clients.

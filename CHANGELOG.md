@@ -7,6 +7,9 @@ pre-releases, and whoever installs the release skipped them.
 
 ### Added
 
+- **`docs/RUNBOOK.md`.** Upgrading, backup and restore, the recovery playbooks, uninstall and the triage
+  table moved out of `OPERATIONS.md`, which is the reference now. When something is wrong there is one
+  short page to open instead of a thousand lines.
 - **`uv.sh --wizard`.** The installer can now stop after the binary and hand the terminal to
   `termit-uv wizard`, so a first installation is one command and a few questions instead of a command
   with four flags. Everything else the script does — checksum verification, the architecture check, the
@@ -233,7 +236,7 @@ that were measured on real networks, and the node can now say which side drops t
 - **The client matrix** in `docs/OPERATIONS.md` §8.1: the profile is XHTTP, so Xray-based clients and
   OpenWrt's `podkop-engine` work, stock sing-box does not, and `unknown version: 72` means "wrong
   client", not "broken node".
-- **A diagnosis recipe for a lossy path** in `docs/OPERATIONS.md` §16.1, which `termit-uv net` automates.
+- **A diagnosis recipe for a lossy path** in `docs/RUNBOOK.md` §7, which `termit-uv net` automates.
 - **`go run ./deploy/clean`** — drops the release artifacts and the scratch directory, with the caches
   split by what losing them costs.
 
