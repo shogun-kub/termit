@@ -641,22 +641,23 @@ Two consequences of the target class:
 
 - **1 vCPU** means no busy loops, no per-request process spawns, and modest concurrency. The probe
   worker runs only on MN, never on a UV.
-- **Unprivileged LXC containers** (the common cheap-VPS shape) have no `/dev/net/tun`. WARP therefore
-  cannot be enabled there, and the agent must say so plainly instead of failing at runtime. This is
-  the same class of limitation as missing virtualization features for `warp-cli`; both are detected
-  in preflight.
+- **Unprivileged LXC containers** (the common cheap-VPS shape) have no `/dev/net/tun`. The `proxy`
+  transport therefore cannot run there; the default `wireguard` transport lives inside the core and
+  needs no device, which is why it is the default. A node whose transport cannot run must say so
+  plainly instead of failing at runtime: preflight and `termit-uv warp status` name the reason and the
+  node keeps serving on the direct path.
 
 ### 13.2 UV install
 
-```
-curl -fsSL https://get.termit.example/uv.sh | sudo bash -s -- \
-  --mn https://mn.example.com \
-  --domain node.example.com \
-  --invite ABCD-EFGH
+```bash
+# the newest published release; --version v0.4.1 pins one
+curl -fsSLO https://github.com/shogun-kub/termit/releases/latest/download/uv.sh
+sudo sh uv.sh --mn https://mn.example.com --domain node.example.com --invite ABCD-EFGH
 ```
 
-The bootstrap verifies a release checksum (and signature when configured), installs `termit-uv`,
-pinned `xray-core`, and `cloudflare-warp` when WARP is wanted — the default — then runs `termit-uv init`.
+The bootstrap resolves a release (the newest published one, or the one `--version` names), verifies its
+checksum (and signature when configured), installs `termit-uv`, pinned `xray-core`, and `cloudflare-warp`
+when WARP is wanted — the default — then runs `termit-uv init`.
 Non-interactive by design; `termit-uv doctor` for diagnosis, `termit-uv uninstall [--purge]` for removal. A host
 that cannot run WARP is not a failed install: `termit-uv init` records the refusal, keeps the mode the owner
 asked for, and leaves traffic on the direct path.
