@@ -144,6 +144,12 @@ go run ./deploy/release --version v0.3.1 --out dist   # the release directory, a
 go run ./deploy/clean                 # drop the artifacts and the scratch; --dry-run lists them first
 go run ./deploy/clean --build-cache   # and the compiled output: the next build recompiles, nothing is
                                       # downloaded (the module cache is --module-cache, which is)
+# SonarQube Server: self-hosted and LAN-only, so CI cannot reach it — the scan is a manual step.
+# Run the coverage step on Linux: on Windows the *_linux.go files are not compiled and count as
+# uncovered. On this host the scanner is .spike-out/tools/sonar-scanner-*/bin, and SONAR_USER_HOME
+# must point somewhere writable (the sandbox denies ~/.sonar).
+go test -coverprofile=coverage.out ./cmd/... ./internal/...
+SONAR_TOKEN=… sonar-scanner -Dsonar.host.url=<server>
 ```
 
 Windows: PowerShell equivalents or WSL; no `make`-only workflow. A `Makefile` may exist, but every

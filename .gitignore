@@ -15,6 +15,7 @@ coverage.*
 # Local development state
 /.dev/
 /.spike-out/
+/.scannerwork/
 
 # Secrets and generated runtime files
 *.pem
