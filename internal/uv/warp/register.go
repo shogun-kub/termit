@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -39,6 +40,9 @@ type Registrar struct {
 	Client *http.Client
 	// Now is the clock for the identity's timestamp; tests set it.
 	Now func() time.Time
+	// Lookup resolves the endpoint host to the address the core should dial; tests set it so no test
+	// touches DNS.
+	Lookup func(ctx context.Context, host string) ([]net.IP, error)
 }
 
 // Register creates a device on Cloudflare's side and returns the identity the core needs. It never
@@ -101,7 +105,31 @@ func (r Registrar) Register(ctx context.Context) (*Identity, error) {
 	} else {
 		identity.RegisteredAt = time.Now().UTC()
 	}
+	identity.Endpoint = r.dialableEndpoint(ctx, identity.Endpoint)
 	return identity, nil
+}
+
+// dialableEndpoint turns Cloudflare's dual-stack name into an IPv4 address. The core resolves the
+// endpoint itself, and on a host without a global IPv6 it can take the AAAA record: the handshake then
+// dies with "network is unreachable", the balancer falls back to direct and the node silently stops
+// using WARP. Resolving once, here, keeps that decision out of the core and the document deterministic.
+func (r Registrar) dialableEndpoint(ctx context.Context, endpoint string) string {
+	host, port, err := net.SplitHostPort(endpoint)
+	if err != nil || net.ParseIP(host) != nil {
+		return endpoint
+	}
+	lookup := r.Lookup
+	if lookup == nil {
+		lookup = func(ctx context.Context, host string) ([]net.IP, error) {
+			return net.DefaultResolver.LookupIP(ctx, "ip4", host)
+		}
+	}
+	addrs, err := lookup(ctx, host)
+	if err != nil || len(addrs) == 0 {
+		// No IPv4 answer: keep the name and let the core decide, the way it did before.
+		return endpoint
+	}
+	return net.JoinHostPort(addrs[0].String(), port)
 }
 
 func (r Registrar) baseURL() string {

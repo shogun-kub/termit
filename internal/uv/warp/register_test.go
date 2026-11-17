@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -134,6 +136,71 @@ func TestRegistrarTurnsAnAnswerIntoAnIdentity(t *testing.T) {
 	if key, _ := sent["key"].(string); len(key) != 44 {
 		t.Errorf("key in the request = %q, want a base64 Curve25519 public key", key)
 	}
+}
+
+// Cloudflare names its endpoint for both address families. The core resolves that name itself and can
+// take the AAAA record on a host without IPv6, where the handshake dies with "network is unreachable"
+// and the balancer quietly falls back to direct — so the address is decided once, here.
+func TestRegistrarPinsTheEndpointToIpv4(t *testing.T) {
+	t.Parallel()
+	const named = `{
+  "id": "00000000-0000-0000-0000-000000000002",
+  "config": {
+    "client_id": "8BmS",
+    "peers": [{"public_key": "bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo=",
+               "endpoint": {"host": "engage.cloudflareclient.com:2408"}}],
+    "interface": {"addresses": {"v4": "172.16.0.2"}}
+  }
+}`
+	cases := []struct {
+		name   string
+		lookup func(context.Context, string) ([]net.IP, error)
+		want   string
+	}{
+		{
+			"an IPv4 answer becomes the endpoint",
+			func(context.Context, string) ([]net.IP, error) {
+				return []net.IP{net.ParseIP("162.159.192.1")}, nil
+			},
+			"162.159.192.1:2408",
+		},
+		{
+			"no IPv4 answer keeps the name for the core to resolve",
+			func(context.Context, string) ([]net.IP, error) { return nil, errors.New("no such host") },
+			"engage.cloudflareclient.com:2408",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			registrar, _ := registrarAnswer(t, http.StatusOK, named)
+			registrar.Lookup = tc.lookup
+			identity, err := registrar.Register(context.Background())
+			if err != nil {
+				t.Fatalf("Register: %v", err)
+			}
+			if identity.Endpoint != tc.want {
+				t.Errorf("endpoint = %q, want %q", identity.Endpoint, tc.want)
+			}
+		})
+	}
+
+	// An endpoint that is already an address must not be looked up at all.
+	t.Run("an address is left alone", func(t *testing.T) {
+		t.Parallel()
+		registrar, _ := registrarAnswer(t, http.StatusOK, registrationAnswer)
+		registrar.Lookup = func(context.Context, string) ([]net.IP, error) {
+			t.Error("the registrar looked up an endpoint that is already an address")
+			return nil, errors.New("unexpected")
+		}
+		identity, err := registrar.Register(context.Background())
+		if err != nil {
+			t.Fatalf("Register: %v", err)
+		}
+		if identity.Endpoint != "162.159.192.1:2408" {
+			t.Errorf("endpoint = %q", identity.Endpoint)
+		}
+	})
 }
 
 // A refusal must not echo the response body: a failed registration can carry a half-created device.
