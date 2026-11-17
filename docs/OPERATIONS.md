@@ -550,6 +550,11 @@ If the host cannot run WARP (no `/dev/net/tun`, unsupported architecture), `term
 say so with the exact reason and the node keeps working with direct egress. Nothing is silently
 degraded, and `termit-uv uninstall` disconnects the tunnel it left behind.
 
+A node behind a network that filters the WireGuard endpoint does not need a different release:
+`termit-uv init --warp-transport proxy` puts it back on the 0.3.x path, where the tunnel is Cloudflare's
+own client over HTTPS. The transport is a per-network decision, not a per-version one — the `0.4.0`
+production pass found one node of two in that position.
+
 ### 6.1 Refusing BitTorrent
 
 `security.bittorrent_block: true` makes the core look at the first bytes of every connection and
