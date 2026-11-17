@@ -102,7 +102,7 @@ Two binaries, one repository:
 | `:443/tcp` | `nginx` | TLS termination, the decoy site, and the proxy hop for the secret path |
 | `127.0.0.1:8443/tcp` | `xray` | VLESS+XHTTP, plaintext, loopback only |
 | `127.0.0.1:10085/tcp` | `xray` | management API (inbounds, users), loopback only |
-| `127.0.0.1:40000/tcp` | `warp-cli` (WARP on by default) | WARP SOCKS5 proxy |
+| `127.0.0.1:40000/tcp` | `warp-cli` (only on `warp.transport: proxy`) | WARP SOCKS5 proxy |
 
 The front is nginx because the routing decision is a **prefix** match. Xray's `fallbacks` compare the
 request path exactly, while an XHTTP client appends a per-request identifier to its configured path
@@ -535,14 +535,16 @@ asks the internet what address it is coming from, and a node whose address is th
 that can be probed and blocked. `termit-uv init --no-warp` (or `warp.mode: off`) opts out, and an existing
 configuration written before modes existed keeps the choice its old `warp.enabled` switch recorded.
 
-WARP is implemented as `warp-cli` in **proxy mode** (SOCKS5 on loopback). Proxy mode never touches
-host routing, which is exactly the "direct traffic intact" guarantee; full-tunnel WARP is rejected by
-design. The install step installs `cloudflare-warp` from Cloudflare's signed apt repository, registers
-the device, switches the client to proxy mode and connects; `termit-uv warp status` reports the mode, what
-`warp-cli` says and what a real fetch through the sidecar reports, and `termit-uv warp mode` changes it. If
-`warp-cli` cannot work on the box (no `/dev/net/tun`, unsupported arch), the step and the command
-refuse with that exact reason, the mode stays recorded, and the node keeps working with direct egress;
-nothing is silently degraded. `termit-uv uninstall` disconnects the tunnel and leaves the package installed.
+WARP has two transports and neither touches host routing, which is exactly the "direct traffic intact"
+guarantee; full-tunnel WARP is rejected by design. `wireguard` (the default) is a WireGuard outbound
+inside the core, carrying TCP and UDP, and it needs no device: the install step registers the node with
+Cloudflare's API over HTTPS and writes the identity to the state directory. `proxy` is `warp-cli` in
+**proxy mode** — a SOCKS5 listener on loopback carrying TCP only — installed from Cloudflare's signed apt
+repository, and it does need `/dev/net/tun`. `termit-uv warp status` reports the mode, the transport's own
+state and where a real fetch through the tunnel came out; `termit-uv warp mode` changes the mode. If the
+chosen transport cannot work on the box, the step and the command refuse with that exact reason, the mode
+stays recorded, and the node keeps working with direct egress; nothing is silently degraded.
+`termit-uv uninstall` disconnects the tunnel and leaves the package installed.
 
 ## 11. Safety invariants
 
@@ -584,8 +586,9 @@ Adopted ideas:
   (Xray's own fallback cannot do prefix routing — see `SPIKES.md` S1/S2.)
 - Certificates are files on disk that both the proxy and the web layer read; renewal is a deploy
   action, not a proxy feature.
-- WARP as a SOCKS5 sidecar (`warp-cli mode proxy`, port 40000) is the only WARP integration that
-  provably leaves direct traffic alone.
+- A WARP tunnel inside the core (WireGuard, userspace) is the integration that provably leaves direct
+  traffic alone; the older SOCKS5 sidecar (`warp-cli mode proxy`, port 40000) is kept for networks that
+  filter WireGuard, at the cost of UDP.
 - A versioned, opinionated default block list (ads, trackers, private ranges, SMTP/SMB ports,
   BitTorrent) is worth shipping as a preset, not as a blank rule editor.
 - A believable decoy needs randomized branding, a matching favicon, a `robots.txt`, and an endpoint
@@ -638,22 +641,23 @@ Two consequences of the target class:
 
 - **1 vCPU** means no busy loops, no per-request process spawns, and modest concurrency. The probe
   worker runs only on MN, never on a UV.
-- **Unprivileged LXC containers** (the common cheap-VPS shape) have no `/dev/net/tun`. WARP therefore
-  cannot be enabled there, and the agent must say so plainly instead of failing at runtime. This is
-  the same class of limitation as missing virtualization features for `warp-cli`; both are detected
-  in preflight.
+- **Unprivileged LXC containers** (the common cheap-VPS shape) have no `/dev/net/tun`. The `proxy`
+  transport therefore cannot run there; the default `wireguard` transport lives inside the core and
+  needs no device, which is why it is the default. A node whose transport cannot run must say so
+  plainly instead of failing at runtime: preflight and `termit-uv warp status` name the reason and the
+  node keeps serving on the direct path.
 
 ### 13.2 UV install
 
-```
-curl -fsSL https://get.termit.example/uv.sh | sudo bash -s -- \
-  --mn https://mn.example.com \
-  --domain node.example.com \
-  --invite ABCD-EFGH
+```bash
+# the newest published release; --version v0.4.1 pins one
+curl -fsSLO https://github.com/shogun-kub/termit/releases/latest/download/uv.sh
+sudo sh uv.sh --mn https://mn.example.com/6rfjdqfn5nno --domain node.example.com --invite ABCD-EFGH
 ```
 
-The bootstrap verifies a release checksum (and signature when configured), installs `termit-uv`,
-pinned `xray-core`, and `cloudflare-warp` when WARP is wanted — the default — then runs `termit-uv init`.
+The bootstrap resolves a release (the newest published one, or the one `--version` names), verifies its
+checksum, installs `termit-uv`, pinned `xray-core`, and the `cloudflare-warp` package only for the `proxy`
+transport, then runs `termit-uv init`.
 Non-interactive by design; `termit-uv doctor` for diagnosis, `termit-uv uninstall [--purge]` for removal. A host
 that cannot run WARP is not a failed install: `termit-uv init` records the refusal, keeps the mode the owner
 asked for, and leaves traffic on the direct path.
@@ -750,13 +754,13 @@ both then sync so the peers converge immediately.
 
 `termit-uv` runs as two systemd units: `termit-uv-agent` (the daily cycle, self-check and sync) and
 `termit-uv-renew` (the certificate timer). The agent is hardened with `NoNewPrivileges`,
-`ProtectSystem=strict`, `ReadWritePaths` limited to its config and state directories, a private
-`/tmp`, and `ProtectHome` — except when the configured MN CA file lives under `/root`, `/home` or
-`/run/user`, where `ProtectHome` would hide the very file the unit must read. The generator records
-that trade-off in the unit itself instead of leaving an unreadable CA to fail at the first sync. Xray
-runs under its own generated unit as the unprivileged `termit` user, with an empty capability set,
-`ProtectSystem=strict`, `SystemCallFilter=@system-service` and `MemoryDenyWriteExecute`. It reads one
-config file and owns nothing else.
+`ProtectSystem=strict`, `ReadWritePaths` limited to its config and state directories and the site tree it
+re-renders after a sync, a private `/tmp`, and `ProtectHome` — except when the configured MN CA file lives
+under `/root`, `/home` or `/run/user`, where `ProtectHome` would hide the very file the unit must read.
+The generator records that trade-off in the unit itself instead of leaving an unreadable CA to fail at the
+first sync. Xray runs under its own generated unit as the unprivileged `termit` user, with an empty
+capability set, `ProtectSystem=strict`, `SystemCallFilter=@system-service` and `MemoryDenyWriteExecute`. It
+reads one config file and owns nothing else.
 
 ### 13.3 MN install
 

@@ -135,8 +135,8 @@ func TestCheckMenuDefaultsToTheWholeMesh(t *testing.T) {
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
-	if got := strings.Join(plan[0], " "); got != "check --all" {
-		t.Errorf("runs %q, want check --all", got)
+	if got := strings.Join(plan[0], " "); got != "check now --all" {
+		t.Errorf("runs %q, want check now --all", got)
 	}
 
 	one, _, _ := newMenu("")
@@ -144,7 +144,7 @@ func TestCheckMenuDefaultsToTheWholeMesh(t *testing.T) {
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
-	if got := strings.Join(plan[0], " "); got != "check node1.example.com" {
+	if got := strings.Join(plan[0], " "); got != "check now node1.example.com" {
 		t.Errorf("runs %q, want one node", got)
 	}
 }

@@ -3,6 +3,54 @@ What each release changed, written for the people who run Termit. Newest first;
 carries every section back to the last release: the versions in between were handed out only as
 pre-releases, and whoever installs the release skipped them.
 
+## 0.4.1 — 2026-11-17
+
+One defect in the wizard, one in the agent's sandbox, and the pages that describe an installation checked
+against a clean one.
+
+### Added
+
+- **`docs/RUNBOOK.md`.** Upgrading, backup and restore, the recovery playbooks, uninstall and the triage
+  table moved out of `OPERATIONS.md`, which is the reference now. When something is wrong there is one
+  short page to open instead of a thousand lines.
+- **`docs/RUNBOOK.ru.md`.** The same runbook in Russian, section for section, with the Russian guide pages
+  pointing at it.
+- **`uv.sh --wizard`.** The installer can now stop after the binary and hand the terminal to
+  `termit-uv wizard`, so a first installation is one command and a few questions instead of a command
+  with four flags. Everything else the script does — checksum verification, the architecture check, the
+  root check — still happens first.
+- **The installer takes the newest release by default.** `sh uv.sh --wizard` is the whole installation
+  now: without `--version` the script follows `releases/latest` to its tag, so a participant never has to
+  look a version up, and a pre-release is never picked by accident. `--version v0.4.1` still pins one, and
+  a mirror or a local path — which cannot answer "newest" — requires it.
+- **`mn.sh`, the same bootstrap for the server.** One command resolves the newest release, verifies it,
+  installs `termit-mn` and its systemd unit, leaves the probe worker the server cannot check nodes
+  without, creates the configuration, starts the service and prints its status. `--version` pins a
+  release, `--dry-run` prints the plan and changes nothing, `--no-prober` skips the worker.
+
+### Fixed
+
+- **The self-check no longer asks the in-core tunnel for a device it does not use.** On a host without
+  `/dev/net/tun` — an unprivileged container, which is where the `wireguard` transport is supposed to
+  work — `termit-uv status` reported `warp: … unavailable … traffic exits directly` while
+  `termit-uv warp status` reported the tunnel up and its exit address. The device is judged only for the
+  `proxy` transport now, which is the one that needs it.
+
+- **`termit-uv wizard` could not install a node.** The install branch passed `init` and `enroll` the
+  subcommand name as an argument, so the wizard asked every question and then failed with `termit-uv
+  init: unexpected argument "init"`; the branch had no test, which is why nothing caught it. Both calls
+  now pass exactly what the plain commands pass, and a test drives the install branch.
+- **The agent can write the page it re-renders after a sync.** The agent unit runs with
+  `ProtectSystem=strict` and granted writes to the config and state directories only, while the
+  subscription page it renders after every cycle lives under `/var/www/termit/site`. Each cycle logged
+  `agent: after the sync … read-only file system` and the page kept yesterday's mesh; a node whose owner
+  has no page never noticed. The site tree is writable now, and a test reads the generated unit so a
+  future edit cannot quietly take the write away again.
+- **The installation pages describe what a fresh box actually does.** Checked from empty machines to a
+  two-node mesh: the node goes in with `uv.sh --wizard` again, the server's probe worker is described as
+  what it is — a node cannot enroll without one — and the sample output shows the lines the commands
+  really print.
+
 ## 0.4.0 — 2026-11-17
 
 WARP stops being a sidecar. The tunnel moves inside the core, and UDP stops being the one protocol that
@@ -224,7 +272,7 @@ that were measured on real networks, and the node can now say which side drops t
 - **The client matrix** in `docs/OPERATIONS.md` §8.1: the profile is XHTTP, so Xray-based clients and
   OpenWrt's `podkop-engine` work, stock sing-box does not, and `unknown version: 72` means "wrong
   client", not "broken node".
-- **A diagnosis recipe for a lossy path** in `docs/OPERATIONS.md` §16.1, which `termit-uv net` automates.
+- **A diagnosis recipe for a lossy path** in `docs/RUNBOOK.md` §7, which `termit-uv net` automates.
 - **`go run ./deploy/clean`** — drops the release artifacts and the scratch directory, with the caches
   split by what losing them costs.
 

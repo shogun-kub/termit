@@ -264,21 +264,35 @@ func (a *application) wireGuardStatus(cfg *config.Config, report *jsonWarp) int 
 		report.Detail = "proxied traffic exits directly"
 		return exitOK
 	}
-	identity, err := warp.LoadIdentity(cfg.Paths.WarpIdentityPath())
-	if err != nil {
-		report.State = "not-installed"
-		report.Detail = "no WARP identity: " + err.Error()
-		return exitOK
+	if identity, err := warp.LoadIdentity(cfg.Paths.WarpIdentityPath()); err == nil {
+		report.DeviceID = identity.DeviceID
+		report.Peer = identity.Endpoint
 	}
-	report.DeviceID = identity.DeviceID
-	report.Peer = identity.Endpoint
-	node, err := state.LoadInstalled(cfg.Paths.StatePath())
+	status, err := tunnelExit(context.Background(), cfg)
 	if err != nil {
 		report.State = "unknown"
-		report.Detail = "the node has no identity to probe with: " + err.Error()
+		report.Detail = err.Error()
 		return exitOK
 	}
-	body, err := tunnelprobe.Fetch(context.Background(), tunnelprobe.Options{
+	report.State = status.State
+	report.Detail = status.Detail
+	report.Trace = status.Trace
+	return exitOK
+}
+
+// tunnelExit asks the in-core tunnel where traffic leaves: the fetch a client would make, through the
+// node's own XHTTP path. It answers the two callers that need it — `warp status` and the agent's
+// self-check — so neither can drift from the other, and a failure to judge is an error, because
+// "could not tell" must never read as "the tunnel is down".
+func tunnelExit(ctx context.Context, cfg *config.Config) (warp.Status, error) {
+	if _, err := warp.LoadIdentity(cfg.Paths.WarpIdentityPath()); err != nil {
+		return warp.Status{State: "not-installed", Detail: "no WARP identity: " + err.Error()}, nil
+	}
+	node, err := state.LoadInstalled(cfg.Paths.StatePath())
+	if err != nil {
+		return warp.Status{}, fmt.Errorf("the node has no identity to probe with: %w", err)
+	}
+	body, err := tunnelprobe.Fetch(ctx, tunnelprobe.Options{
 		XrayBinary: cfg.Paths.XrayBinary(),
 		ProxyAddr:  fmt.Sprintf("%s:%d", xray.DefaultListen, xray.DefaultPort),
 		Path:       "/" + node.Identity.XHTTPPath + "/",
@@ -286,23 +300,17 @@ func (a *application) wireGuardStatus(cfg *config.Config, report *jsonWarp) int 
 		TargetURL:  xray.WarpProbeURL,
 	})
 	if err != nil {
-		report.State = "unknown"
-		report.Detail = "the probe through the tunnel failed: " + err.Error()
-		return exitOK
+		return warp.Status{}, fmt.Errorf("the probe through the tunnel failed: %w", err)
 	}
 	trace := warp.ParseTrace(body)
-	report.Trace = &trace
 	if trace.ThroughWarp() {
-		report.State = "on"
-		report.Detail = "via " + trace.IP
-		return exitOK
+		return warp.Status{Installed: true, State: "on", Detail: "via " + trace.IP, Trace: &trace}, nil
 	}
-	report.State = "direct"
-	report.Detail = "the tunnel exits at " + trace.IP
+	status := warp.Status{Installed: true, State: "direct", Detail: "the tunnel exits at " + trace.IP, Trace: &trace}
 	if !cfg.Warp.FailOpenEnabled() {
-		report.State = "blocked"
+		status.State = "blocked"
 	}
-	return exitOK
+	return status, nil
 }
 
 // runWarpRotate replaces the node's WARP registration on the wireguard transport. It is a deliberate

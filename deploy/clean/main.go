@@ -37,17 +37,24 @@ var artifactPatterns = []string{"*.exe", "*.test", "*.out", "coverage.*"}
 // next build fast, the lab's own notes and token, and the two small directories that hold source or a
 // public key rather than output.
 var scratchKeep = map[string]bool{
-	"tools":          true, // the portable Go toolchain
-	"gocache":        true, // build cache
-	"gomodcache":     true, // module cache
-	"gopath":         true, // installed tools, including golangci-lint
-	"golangci":       true, // the linter's own cache
-	".golangci":      true,
-	"lintcache":      true,
-	"lab.md":         true, // lab coordinates: never in the repository, never regenerable
-	"mn-admin.token": true, // the lab's admin credential
-	"ssh":            true, // the lab's public key
-	"shotgen":        true, // a source file, not output
+	"tools":            true, // the portable Go toolchain
+	"gocache":          true, // build cache
+	"gomodcache":       true, // module cache
+	"gopath":           true, // installed tools, including golangci-lint
+	"golangci":         true, // the linter's own cache
+	".golangci":        true,
+	"lintcache":        true,
+	"lab.md":           true, // lab coordinates: never in the repository, never regenerable
+	"lab-setup.md":     true, // how that lab is built from scratch, also local-only
+	"lab-termit.md":    true, // installing Termit on it, the way a participant would
+	"prod.md":          true, // the production mesh: coordinates, versions, what was observed there
+	"prod_known_hosts": true, // its host keys, pinned by OpenSSH
+	"mn-admin.token":   true, // the lab's admin credential
+	"github-token":     true, // a personal access token for the GitHub API, for the logs of a failed release
+	"gh.js":            true, // the small API client the notes above tell you to run
+	"sonar-token":      true, // the SonarQube token, for a scan by hand
+	"ssh":              true, // the lab's public key
+	"shotgen":          true, // a source file, not output
 }
 
 // buildCaches hold compiled output: removing them costs time, because the next build recompiles, but

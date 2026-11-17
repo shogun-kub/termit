@@ -54,13 +54,14 @@ func healthySelfCheckOptions(t *testing.T, now time.Time) agent.SelfCheckOptions
 	cfg.Domain = "one.example.com"
 	cfg.Paths.CertDir = t.TempDir()
 	writeCertificate(t, cfg.Paths.CertDir, now.Add(60*24*time.Hour))
+	// A converged node with WARP on: the proxy transport on a host that cannot run it, so the fixture
+	// does not depend on the machine it runs on. The in-core transport has its own cases.
+	cfg.Warp.Transport = config.WarpTransportProxy
 	return agent.SelfCheckOptions{
-		Config: cfg,
-		Now:    func() time.Time { return now },
-		Active: func(context.Context, string) (bool, error) { return true, nil },
-		Dial:   func(context.Context, string) error { return nil },
-		// A host that cannot run WARP, so the default configuration (WARP on) is a converged state
-		// and the test does not depend on the machine it runs on.
+		Config:   cfg,
+		Now:      func() time.Time { return now },
+		Active:   func(context.Context, string) (bool, error) { return true, nil },
+		Dial:     func(context.Context, string) error { return nil },
 		WarpHost: &warp.Host{GOOS: "windows", GOARCH: "amd64"},
 	}
 }
@@ -178,30 +179,35 @@ func TestSelfCheckWarp(t *testing.T) {
 	}
 
 	tests := []struct {
-		name    string
-		mode    string
-		host    *warp.Host
-		probe   func(context.Context) (warp.Status, error)
-		wantOK  bool
-		wantUnk bool
-		want    string
+		name      string
+		mode      string
+		transport string
+		host      *warp.Host
+		probe     func(context.Context) (warp.Status, error)
+		wantOK    bool
+		wantUnk   bool
+		want      string
 	}{
-		{"off", config.WarpOff, supported, healthy, true, false, "off"},
-		{"a host that cannot run it", config.WarpAll, &warp.Host{GOOS: "windows"}, nil, true, false, "traffic exits directly"},
-		{"a healthy tunnel", config.WarpAll, supported, healthy, true, false, "203.0.113.7"},
-		{"a tunnel that is down and fails open", config.WarpAll, supported, func(context.Context) (warp.Status, error) {
+		{"off", config.WarpOff, "", supported, healthy, true, false, "off"},
+		{"a host that cannot run it", config.WarpAll, "", &warp.Host{GOOS: "windows"}, nil, true, false, "traffic exits directly"},
+		{"a healthy tunnel", config.WarpAll, "", supported, healthy, true, false, "203.0.113.7"},
+		// The wireguard transport lives inside the core: a host without the device is where it runs.
+		{"an in-core tunnel on a host without the device", config.WarpAll, config.WarpTransportWireGuard,
+			&warp.Host{GOOS: "windows"}, healthy, true, false, "203.0.113.7"},
+		{"a tunnel that is down and fails open", config.WarpAll, "", supported, func(context.Context) (warp.Status, error) {
 			return warp.Status{Installed: true, State: "disconnected", Detail: "warp-cli reports disconnected"}, nil
 		}, false, false, "exits directly"},
-		{"a probe that cannot run", config.WarpAll, supported, func(context.Context) (warp.Status, error) {
+		{"a probe that cannot run", config.WarpAll, "", supported, func(context.Context) (warp.Status, error) {
 			return warp.Status{}, errors.New("no route")
-		}, false, true, "could not ask"},
-		{"no probe at all", config.WarpAll, supported, nil, false, true, "needs a probe"},
+		}, false, true, "could not check the tunnel"},
+		{"no probe at all", config.WarpAll, "", supported, nil, false, true, "needs a probe"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			opts := healthySelfCheckOptions(t, now)
 			opts.Config.Warp.Mode = tc.mode
+			opts.Config.Warp.Transport = tc.transport
 			opts.WarpHost = tc.host
 			opts.Warp = tc.probe
 			report := agent.RunSelfCheck(context.Background(), opts)

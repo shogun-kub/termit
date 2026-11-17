@@ -54,7 +54,8 @@ build tags.
 From `docs/DESCRIPTION.md` §11, restated because they are the easiest thing to break:
 
 1. **Never mutate host routing or firewall state.** No `ip route`, `ip rule`, iptables, nftables. WARP
-   only in `warp-cli` proxy mode (a loopback SOCKS5), never as a full tunnel.
+   only as the core's own userspace WireGuard outbound or as the `warp-cli` loopback SOCKS5 sidecar,
+   never as a host tunnel.
 2. **`unknown` is not `failed`.** A check that could not be performed (prober down, DNS error, missing
    binary, timeout) is `unknown` and changes **no state**. Only a genuine negative result may move a node
    to `unavailable` or `blocked`.
@@ -140,7 +141,7 @@ go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0   # on
 go run ./cmd/uv --help                # and: go run ./cmd/mn init --domain mn.localhost --data-dir ./.dev/mn
 gofmt -l cmd internal deploy test     # must print nothing
 goimports -l cmd internal deploy      # must print nothing
-go run ./deploy/release --version v0.3.1 --out dist   # the release directory, as CI builds it
+go run ./deploy/release --version v0.4.1 --out dist   # the release directory, as CI builds it
 go run ./deploy/clean                 # drop the artifacts and the scratch; --dry-run lists them first
 go run ./deploy/clean --build-cache   # and the compiled output: the next build recompiles, nothing is
                                       # downloaded (the module cache is --module-cache, which is)
@@ -181,9 +182,10 @@ are what the tests read. The key is a PuTTY `.ppk` that OpenSSH cannot read, so 
 than failing it: the lab is a manual gate, not part of `go test ./cmd/... ./internal/...`.
 
 Acceptance budget: UV = 1 vCPU / 1 GB RAM / 10 GB disk, MN = 2 vCPU / 2 GB. The containers are
-unprivileged LXC with **no `/dev/net/tun`**: WARP cannot be exercised there and must degrade with a clear
-reason (acceptance needs a KVM VM or a privileged container); everything else — TLS, ACME against a local
-directory, the mesh scenarios, resource usage — is testable.
+unprivileged LXC with **no `/dev/net/tun`**: the default `wireguard` WARP transport needs no device and can
+be exercised there; the opt-in `proxy` transport cannot, and must degrade with a clear reason (acceptance
+needs a KVM VM or a privileged container). Everything else — TLS, ACME against a local directory, the mesh
+scenarios, resource usage — is testable.
 
 Rules: tests are re-runnable and tolerate a previous failed run; never leave a machine needing manual
 repair (on failure dump the logs and a `termit-uv doctor` report into the output); never put lab
@@ -257,8 +259,8 @@ tests explicitly tagged for them.
 
 Unit tests for new logic, including failure and `unknown` branches. A golden-file update **only** when
 the generated config genuinely changed, with the reason in the commit. Documentation when behaviour,
-config keys or CLI flags change (`docs/DESCRIPTION.md`, `docs/OPERATIONS.md`, `docs/MN-API.md`,
-`--help`). For anything touching install, ACME, WARP or the Xray lifecycle: which lab scenario was run
+config keys or CLI flags change (`docs/DESCRIPTION.md`, `docs/OPERATIONS.md`, `docs/RUNBOOK.md`,
+`docs/MN-API.md`, `--help`). For anything touching install, ACME, WARP or the Xray lifecycle: which lab scenario was run
 and what it observed. Do not add a test needing the public internet or the lab to the default `go test`
 run.
 

@@ -25,15 +25,18 @@ Termit](overview.md) — начните с той страницы: она об�
 
 ## Установка
 
-Скачайте установщик релиза и запустите его — не передавайте URL в шелл через пайп:
+Скачайте установщик и запустите его — не передавайте URL в шелл через пайп:
 
 ```bash
-curl -fsSLO https://github.com/shogun-kub/termit/releases/download/v0.3.1/uv.sh
+curl -fsSLO https://github.com/shogun-kub/termit/releases/latest/download/uv.sh
 
-sh uv.sh --version v0.3.1 \
+sh uv.sh \
   --domain node1.example.com --email you@example.com \
   --mn https://mn.example.com/6rfjdqfn5nno --invite ABCD-EFGH-IJKL
 ```
+
+Без `--version` скрипт ставит самый свежий опубликованный релиз; `--version v0.4.1` закрепляет
+названный, а сборка `v<version>p<n>` — это способ тестировщика поставить предрелиз.
 
 `--mn` — это URL, который сервер напечатал при `termit-mn init`, **вместе с префиксом API**:
 `https://mn.example.com/6rfjdqfn5nno`, а не голый домен. Префикс — это путь, по которому живёт API, а
@@ -46,11 +49,14 @@ sh uv.sh --version v0.3.1 \
 синхронизации, — а `enroll` использует его при регистрации. Если запустить
 `termit-uv enroll --mn URL` вручную позже, адрес тоже сохранится в конфигурации, если его там ещё нет.
 
+`--wizard` заменяет флаги вопросами: скрипт ставит бинарник и передаёт терминал `termit-uv wizard`, а тот спрашивает домен, почту, сервер, инвайт и остальное.
+
 Полезные варианты:
 
 | Задача | Флаг |
 |---|---|
 | установить и настроить, вступить позже | `--no-enroll` |
+| пусть спросит вместо флагов | `--wizard` — ставит бинарник и запускает `termit-uv wizard` |
 | посмотреть, что будет, ничего не меняя | `--dry-run` |
 | зеркало или локальный каталог вместо GitHub | `--base-url https://mirror.example.com/termit` |
 | сверить с известным вам дайджестом | `--sha256 <hex>` (или `--checksum-file SHA256SUMS`) |
@@ -59,8 +65,7 @@ sh uv.sh --version v0.3.1 \
 | сменить, как WARP несёт трафик | `termit-uv init --warp-transport wireguard` (внутри ядра, TCP и UDP) или `proxy` (сайдкар `warp-cli`, только TCP) |
 | выбрать, какое семейство выходит через WARP | `termit-uv init --warp-family ipv4` (по умолчанию; другое семейство идёт напрямую) или `ipv6` |
 
-Версию скрипт не угадывает и непроверенные байты не ставит. Если он остановился — в сообщении есть
-файл и ожидаемый дайджест.
+Непроверенные байты скрипт не ставит. Если он остановился — в сообщении есть файл и ожидаемый дайджест.
 
 ### Без скрипта
 
@@ -73,7 +78,7 @@ termit-uv init --domain node1.example.com --email you@example.com
 
 ## Что делает `termit-uv init`
 
-Тринадцать шагов, каждый идемпотентен: если результат шага уже есть, он ничего не делает — поэтому
+Четырнадцать шагов, каждый идемпотентен: если результат шага уже есть, он ничего не делает — поэтому
 повторный запуск — это способ починить частичную установку.
 
 | Шаг | Что делает |
@@ -82,15 +87,16 @@ termit-uv init --domain node1.example.com --email you@example.com
 | `user` | создаёт непривилегированного пользователя `termit` |
 | `dirs` | `/etc/termit/uv`, `/var/lib/termit/uv`, `/var/www/termit` |
 | `packages` | ставит `nginx`, `ca-certificates`, `curl` |
-| `warp` | ставит, регистрирует и поднимает `cloudflare-warp`; пропускается, если WARP выключен, и объясняет отказ, если машина его не умеет |
+| `warp` | регистрирует WARP-идентичность узла для туннеля; с `--warp-transport proxy` вместо этого ставит и поднимает `cloudflare-warp`; пропускается, если WARP выключен |
 | `xray-binary` | скачивает закреплённое прокси-ядро, проверяет SHA-256, устанавливает |
 | `identity` | генерирует UUID узла, путь запроса и seed приманки — **один раз и навсегда** |
 | `decoy` | генерирует сайт-приманку |
 | `xray-config` | пишет конфигурацию ядра и проверяет её через `xray -test` |
 | `web` | пишет конфиг nginx для узла и проверяет его через `nginx -t` |
 | `units` | пишет и включает systemd-юниты и таймер продления |
-| `certificate` | выпускает TLS-сертификат по HTTP-01 |
+| `certificate` | получает бесплатный сертификат Let's Encrypt, отвечая на его проверку по порту 80 |
 | `start` | запускает ядро, nginx и агента и проверяет, что они держатся |
+| `warp-egress` | тянет trace Cloudflare через собственный туннель узла и говорит, откуда вышел; предупреждение, но не отказ |
 
 В конце печатаются сводка и отпечаток идентичности. Сообщение об ошибке называет шаг и команду;
 `--only <шаг>` перезапускает только его.
@@ -259,7 +265,7 @@ termit-uv warp mode selected --selected example.com,api.example.org
 | `/var/lib/termit/uv/` | журнал запусков установки |
 | `/usr/lib/termit/bin/xray` | прокси-ядро |
 | `/var/www/termit/` | сайт-приманка и каталог ACME-челленджа |
-| `/etc/nginx/sites-enabled/termit` | сгенерированный vhost |
+| `/etc/nginx/sites-enabled/termit.conf` | сгенерированный vhost, ссылка на `sites-available/termit.conf` |
 
 Юниты: `termit-xray.service`, `termit-uv-agent.service`, `termit-uv-renew.timer` (сертификат) и
 `termit-uv-renew.service`. `systemctl status termit-uv-agent` и

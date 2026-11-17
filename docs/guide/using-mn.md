@@ -14,13 +14,17 @@ that is [the interactive menu](menu.md).
 
 ## Install
 
-```bash
-install -m 0755 termit-mn /usr/bin/termit-mn
+One command: it resolves the newest release, verifies its checksum, installs the binary and its unit,
+installs the probe worker, creates the configuration, starts the service and prints the status.
 
-termit-mn init --domain mn.example.com --email you@example.com --mode invite
+```bash
+curl -fsSLO https://github.com/shogun-kub/termit/releases/latest/download/mn.sh
+sh mn.sh --domain mn.example.com --email you@example.com --admin-token-out /etc/termit/mn/admin.token
 ```
 
-`--mode` decides how a node joins:
+`--version v0.4.1` installs that release instead of the newest; `--base-url` points the script at a
+mirror, a `file://` URL or a local directory (where `--version` is required, because a mirror cannot
+answer "newest"). `--mode` is passed through to `init`:
 
 | Mode | What happens when a node enrols |
 |---|---|
@@ -29,7 +33,7 @@ termit-mn init --domain mn.example.com --email you@example.com --mode invite
 | `open` | no invite needed — only sensible on a private network |
 
 `termit-mn init` creates the configuration, the database, the master key and the first admin token, and
-prints the secrets **once**:
+prints the secrets **once** (`--admin-token-out` sends the token to a file instead of printing it):
 
 ```
 domain:       mn.example.com
@@ -107,9 +111,11 @@ termit-mn admin rotate --token-out /etc/termit/mn/admin.token
 Every script, timer and playbook that still carries the old token stops working at that moment. That is
 what rotation is for, and it is also the thing to check before running it. Rotating needs the current
 token: if that is what you have lost, the recovery is in
-[the operations guide](../OPERATIONS.md#the-admin-token-is-lost).
+[the runbook](../RUNBOOK.md#the-admin-token-is-lost).
 
 ## First start
+
+The script installs the unit and starts it. By hand the same steps are:
 
 ```bash
 install -m 0644 termit-mn.service /etc/systemd/system/
@@ -146,10 +152,10 @@ server:   mn.example.com
 listen:   :443
 api:      /6rfjdqfn5nno
 decoy:    portal
-version:  termit-mn v0.3.1 (commit …, built …, api 1, profile v1)
+version:  termit-mn v0.4.1 (commit …, built …, api 1, profile v1)
 uptime:   3h12m (started 2026-11-10 11:18)
 database: /var/lib/termit/mn/termit.db (412.0 KiB, schema 5)
-prober:   ready (/usr/lib/termit/bin/xray)
+prober:   ready (/usr/local/lib/termit/xray)
 queue:    0 due, next 2026-11-11 12:34 UTC
 cert:     2027-02-08T12:06:44Z (in 89 days)
 nodes:    3 (3 active)
@@ -203,7 +209,7 @@ What the states mean:
 | `pending` | enrolled, not admitted yet (`invite+approval`) | `termit-mn uv approve` |
 | `active` | checked and working | — |
 | `unavailable` | a check ran and genuinely failed (certificate, decoy, tunnel) | passing checks |
-| `blocked` | an operator blocked it | `termit-mn uv unblock`, or the node asking with `termit-uv unblock` |
+| `blocked` | two failed checks in a row, or an operator decision | `termit-mn uv unblock`, or the node asking with `termit-uv unblock` |
 | `removed` | out of the mesh; credentials stop working | re-enrolment (new record) |
 
 The state machine only moves on a verdict. A check that could not run — prober down, DNS broken on

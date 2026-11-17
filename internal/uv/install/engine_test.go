@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/shogun-kub/termit/internal/uv/config"
+	"github.com/shogun-kub/termit/internal/uv/service"
 	"github.com/shogun-kub/termit/internal/uv/state"
 	"github.com/shogun-kub/termit/internal/uv/warp"
 )
@@ -216,6 +217,16 @@ func TestEngineInstallsAndReusesState(t *testing.T) {
 	}
 	if !strings.Contains(string(index), "<form") {
 		t.Error("generated page has no sign-in form")
+	}
+	// The agent re-renders the subscription page into the site after a sync, and its unit runs with
+	// ProtectSystem=strict: a site the unit cannot write is a page that never gets updated, which is
+	// the EROFS warning the production nodes logged on every cycle.
+	agentUnit, err := os.ReadFile(filepath.Join(cfg.Paths.UnitDir, service.AgentUnitName))
+	if err != nil {
+		t.Fatalf("read the agent unit: %v", err)
+	}
+	if !strings.Contains(string(agentUnit), cfg.Paths.SiteDir) {
+		t.Errorf("the agent unit does not let the agent write %s:\n%s", cfg.Paths.SiteDir, agentUnit)
 	}
 	snippet, err := os.ReadFile(cfg.Paths.DecoySnippet)
 	if err != nil {

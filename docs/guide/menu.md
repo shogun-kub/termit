@@ -28,7 +28,7 @@ a provisioning script is a hang, not a convenience.
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
 │  Termit — node                                                       │
-│  termit-uv v0.3.1 (commit …, built …, api 1)                         │
+│  termit-uv v0.4.1 (commit …, built …, api 1)                         │
 │                                                                      │
 │    domain        node-a.example.com                                  │
 │    identity      3f9c1a2b                                            │
@@ -55,6 +55,7 @@ trusts. Closed stdin (a pipe that ran out) ends the session cleanly with status 
 |---|---|---|
 | status | domain, identity fingerprints, certificate, peers, last and next sync, WARP | `termit-uv status` |
 | doctor | host and node diagnostics; changes nothing | `termit-uv doctor` |
+| connection diagnostics | samples the TCP counters: is the node dropping, or the path? | `termit-uv net` |
 | install or converge | first run asks for domain, email and WARP; later runs only re-check | `termit-uv init …` |
 | setup wizard | the whole first installation as questions; remembers the answers between runs | `termit-uv wizard` |
 | client options | the private page with every client link, and its address | `termit-uv options` |
@@ -76,9 +77,10 @@ trusts. Closed stdin (a pipe that ran out) ends the session cleanly with status 
 | status | server, database, prober, node table | `termit-mn status` |
 | nodes | list, show, approve, reject, block, unblock, remove | `termit-mn uv …` |
 | invites | create, list, revoke codes | `termit-mn invite …` |
-| check now | the whole mesh, or one node | `termit-mn check --all` / `termit-mn check <node>` |
+| check now | the whole mesh, or one node | `termit-mn check now --all` / `termit-mn check now <node>` |
 | policy | show thresholds, or change one | `termit-mn policy …` |
 | subscription | rotate a node's subscription token | `termit-mn sub rotate <node>` |
+| admin token | replace the admin token you are using | `termit-mn admin rotate` |
 | backup | write a consistent snapshot | `termit-mn backup` |
 | help | every command and flag | `termit-mn help` |
 

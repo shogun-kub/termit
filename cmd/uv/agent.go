@@ -80,7 +80,7 @@ func (a *application) newLoop(cfg *config.Config) *agent.Loop {
 				Now:    a.now,
 				Active: activeUnit,
 				Dial:   dialLoopback,
-				Warp:   a.warpProbe(),
+				Warp:   a.warpProbe(cfg),
 			})
 		},
 		Apply: func(ctx context.Context, st *state.State, answer proto.SyncResponse) (agent.Result, error) {
@@ -98,9 +98,24 @@ func (a *application) newLoop(cfg *config.Config) *agent.Loop {
 	}
 }
 
-// warpProbe performs the end-to-end WARP check: a fetch through the sidecar that reports what
-// Cloudflare sees. No configuration is needed for it, which keeps the closure cheap.
-func (a *application) warpProbe() func(ctx context.Context) (warp.Status, error) {
+// warpProbe performs the end-to-end WARP check: a fetch that reports what Cloudflare sees. The two
+// transports answer it differently — the sidecar is asked, the in-core tunnel is proved by fetching
+// through it — and the self-check must not judge one of them by the other's rules.
+func (a *application) warpProbe(cfg *config.Config) func(ctx context.Context) (warp.Status, error) {
+	if cfg.Warp.UsesWireGuard() {
+		return func(ctx context.Context) (warp.Status, error) {
+			status, err := tunnelExit(ctx, cfg)
+			if err != nil {
+				return warp.Status{}, err
+			}
+			// The tunnel speaks its own words ("on"); the self-check judges the shared vocabulary the
+			// sidecar also answers in, so one verdict covers both transports.
+			if status.State == "on" {
+				status.State = "connected"
+			}
+			return status, nil
+		}
+	}
 	return func(ctx context.Context) (warp.Status, error) {
 		return a.warpClient().Status(ctx)
 	}

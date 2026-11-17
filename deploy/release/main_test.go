@@ -6,7 +6,23 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/shogun-kub/termit/internal/uv/config"
 )
+
+// The server's installer fetches its probe worker by version, and the node's Go pin is the other half
+// of the same decision: a release that moved one and not the other would install two different cores
+// on one mesh.
+func TestTheServerInstallerPinsTheSameXrayRelease(t *testing.T) {
+	t.Parallel()
+	body, err := os.ReadFile(filepath.Join("..", "install", "mn.sh"))
+	if err != nil {
+		t.Fatalf("read mn.sh: %v", err)
+	}
+	if !strings.Contains(string(body), "PROBER_VERSION="+config.DefaultXrayVersion) {
+		t.Errorf("mn.sh does not pin xray %s, which is what the node installs", config.DefaultXrayVersion)
+	}
+}
 
 func TestAssetNamesAreTheInstallerContract(t *testing.T) {
 	t.Parallel()

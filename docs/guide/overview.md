@@ -15,7 +15,7 @@ This page explains the idea and the order of installation. Then:
 | [The interactive menu](menu.md) | the same commands, chosen from a list, with the command line it runs printed for you |
 | [Hardening a node](hardening.md) | the host firewall, the ban engine and the blocklist — off until you ask |
 | [When something goes wrong](troubleshooting.md) | the failures you are most likely to meet, and what to do |
-| [Design](../DESCRIPTION.md) · [Operations](../OPERATIONS.md) · [Protocol](../PROTOCOL.md) | the full reference, for whoever runs the thing for real |
+| [Design](../DESCRIPTION.md) · [Runbook](../RUNBOOK.md) · [Operations](../OPERATIONS.md) · [Protocol](../PROTOCOL.md) | the full reference, for whoever runs the thing for real |
 
 ## The idea
 

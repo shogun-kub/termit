@@ -62,6 +62,7 @@ var extraFiles = []struct {
 	mode   os.FileMode
 }{
 	{"deploy/install/uv.sh", "uv.sh", 0o755},
+	{"deploy/install/mn.sh", "mn.sh", 0o755},
 	{"deploy/systemd/termit-mn.service", "termit-mn.service", 0o644},
 	{"deploy/systemd/termit-mn-firewall-rollback.service", "termit-mn-firewall-rollback.service", 0o644},
 	{"deploy/systemd/termit-mn-firewall-rollback.timer", "termit-mn-firewall-rollback.timer", 0o644},
