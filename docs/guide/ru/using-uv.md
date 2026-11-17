@@ -25,15 +25,18 @@ Termit](overview.md) — начните с той страницы: она об�
 
 ## Установка
 
-Скачайте установщик релиза и запустите его — не передавайте URL в шелл через пайп:
+Скачайте установщик и запустите его — не передавайте URL в шелл через пайп:
 
 ```bash
-curl -fsSLO https://github.com/shogun-kub/termit/releases/download/v0.4.1/uv.sh
+curl -fsSLO https://github.com/shogun-kub/termit/releases/latest/download/uv.sh
 
-sh uv.sh --version v0.4.1 \
+sh uv.sh \
   --domain node1.example.com --email you@example.com \
   --mn https://mn.example.com/6rfjdqfn5nno --invite ABCD-EFGH-IJKL
 ```
+
+Без `--version` скрипт ставит самый свежий опубликованный релиз; `--version v0.4.1` закрепляет
+названный, а сборка `v<version>p<n>` — это способ тестировщика поставить предрелиз.
 
 `--mn` — это URL, который сервер напечатал при `termit-mn init`, **вместе с префиксом API**:
 `https://mn.example.com/6rfjdqfn5nno`, а не голый домен. Префикс — это путь, по которому живёт API, а

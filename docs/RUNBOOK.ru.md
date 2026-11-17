@@ -193,7 +193,8 @@ termit-mn status
 На узле короткий путь — установочный скрипт: он заменяет бинарник и сводит конфигурацию:
 
 ```bash
-sh uv.sh --version v0.4.1 --base-url https://github.com/shogun-kub/termit/releases/download --no-enroll
+sh uv.sh --no-enroll                     # самый свежий релиз
+sh uv.sh --version v0.4.1 --no-enroll    # или ровно этот
 ```
 
 Вручную это те же два шага:

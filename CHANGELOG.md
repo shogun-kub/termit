@@ -18,8 +18,18 @@ One defect in the wizard, and the pages that describe an installation checked ag
   `termit-uv wizard`, so a first installation is one command and a few questions instead of a command
   with four flags. Everything else the script does — checksum verification, the architecture check, the
   root check — still happens first.
+- **The installer takes the newest release by default.** `sh uv.sh --wizard` is the whole installation
+  now: without `--version` the script follows `releases/latest` to its tag, so a participant never has to
+  look a version up, and a pre-release is never picked by accident. `--version v0.4.1` still pins one, and
+  a mirror or a local path — which cannot answer "newest" — requires it.
 
 ### Fixed
+
+- **The self-check no longer asks the in-core tunnel for a device it does not use.** On a host without
+  `/dev/net/tun` — an unprivileged container, which is where the `wireguard` transport is supposed to
+  work — `termit-uv status` reported `warp: … unavailable … traffic exits directly` while
+  `termit-uv warp status` reported the tunnel up and its exit address. The device is judged only for the
+  `proxy` transport now, which is the one that needs it.
 
 - **`termit-uv wizard` could not install a node.** The install branch passed `init` and `enroll` the
   subcommand name as an argument, so the wizard asked every question and then failed with `termit-uv

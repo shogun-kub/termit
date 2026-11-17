@@ -186,7 +186,8 @@ binary beside the new one: it will not read a newer schema.
 On a node the bootstrap script is the short path — it replaces the binary and converges:
 
 ```bash
-sh uv.sh --version v0.4.1 --base-url https://github.com/shogun-kub/termit/releases/download --no-enroll
+sh uv.sh --no-enroll                     # the newest release
+sh uv.sh --version v0.4.1 --no-enroll    # or exactly this one
 ```
 
 By hand it is the same two steps:

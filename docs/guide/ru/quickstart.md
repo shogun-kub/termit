@@ -36,11 +36,13 @@
 
 ## 1. Сервер
 
-Войдите на сервер как `root` и вставьте этот блок целиком. Он скачивает нужную версию, сверяет файл с
-опубликованной контрольной суммой и устанавливает его.
+Войдите на сервер как `root` и вставьте этот блок целиком. Первая строка спрашивает у GitHub, какой
+релиз сейчас самый свежий, — если нужна своя версия, поставьте её там (`RELEASE=v0.4.0`). Дальше блок
+скачивает этот релиз, сверяет файл с опубликованной контрольной суммой и устанавливает его.
 
 ```bash
-RELEASE=v0.4.1
+# самый свежий релиз; чтобы поставить конкретный — впишите его вместо этой строки (RELEASE=v0.4.0)
+RELEASE=$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/shogun-kub/termit/releases/latest | sed 's|.*/||')
 curl -fsSLO "https://github.com/shogun-kub/termit/releases/download/$RELEASE/termit-mn_${RELEASE}_linux_amd64"
 curl -fsSLO "https://github.com/shogun-kub/termit/releases/download/$RELEASE/SHA256SUMS"
 sha256sum -c --ignore-missing SHA256SUMS
@@ -104,10 +106,11 @@ termit-mn invite create --note node-a
 ## 3. Узел
 
 Войдите на узел как `root` и вставьте одну строку. Она скачивает установщик, проверяет релиз,
-устанавливает программу узла и переходит к вопросам.
+устанавливает программу узла и переходит к вопросам. Без `--version` ставится самый свежий релиз;
+`sh uv.sh --version v0.4.0 --wizard` закрепляет конкретный.
 
 ```bash
-curl -fsSLO "https://github.com/shogun-kub/termit/releases/download/v0.4.1/uv.sh" && sh uv.sh --version v0.4.1 --wizard
+curl -fsSLO "https://github.com/shogun-kub/termit/releases/latest/download/uv.sh" && sh uv.sh --wizard
 ```
 
 Вопросы по порядку и что на них отвечать:

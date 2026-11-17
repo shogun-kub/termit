@@ -338,16 +338,16 @@ proxy is told to send one, and a proxy that is trusted for one name only still s
 
 ## 4. Install a node
 
-The bootstrap script verifies a release checksum, installs the binary and then lets `termit-uv init` do the
-work. It never guesses a version and never installs an unverified binary — and it is a file you keep,
-not something piped from a branch:
+The bootstrap script resolves a release, verifies its checksum, installs the binary and then lets
+`termit-uv init` do the work. It never installs an unverified binary — and it is a file you keep, not
+something piped from a branch:
 
 ```bash
 termit-mn invite create --note "node1" --uses 1        # on the MN; prints the code once
 
 # on the fresh node, as root
-curl -fsSLO https://github.com/shogun-kub/termit/releases/download/v0.4.1/uv.sh
-sh uv.sh --version v0.4.1 \
+curl -fsSLO https://github.com/shogun-kub/termit/releases/latest/download/uv.sh
+sh uv.sh \
   --domain node1.example.net --email you@example.com \
   --mn https://mn.example.com/6rfjdqfn5nno --invite ABCD-EFGH-IJKL
 ```
@@ -356,8 +356,8 @@ sh uv.sh --version v0.4.1 \
 
 | Flag | Effect |
 |---|---|
-| `--version` | the release to install; **required** — the installer never picks one for you |
-| `--base-url` | release directory: an `https://` URL, a `file://` URL or a local path (a mirror, or a USB stick) |
+| `--version` | the release to install, `v0.4.1` or a `v0.4.1p1` build; **the newest published release by default** — `releases/latest` is followed for the tag, so a pre-release is never picked by accident |
+| `--base-url` | release directory: an `https://` URL, a `file://` URL or a local path (a mirror, or a USB stick); a mirror cannot answer "newest", so there `--version` is required |
 | `--checksum-file` / `--sha256` | verify against a local `SHA256SUMS` or an explicit digest, for a private build |
 | `--no-warp` / `--warp selected --warp-selected …` | the WARP decision (`all` is the default) |
 | `--mn URL` | the management server, prefix included; written to `mn.url` by `init` and used by `enroll` |
@@ -365,13 +365,15 @@ sh uv.sh --version v0.4.1 \
 | `--wizard` | install the binary, then run `termit-uv wizard` instead of converging from the flags |
 | `--dry-run` | verify the download, then run `termit-uv init --dry-run` without installing anything |
 
-Re-running the script with a new `--version` **is** the upgrade: the binary is replaced and `termit-uv init`
-converges the rest, keeping the identity, the Xray path and the certificate. The invite code is passed
-on the command line and is visible in `ps` for the duration of the run; revoke it afterwards if that
-matters (`termit-mn invite revoke`).
+Re-running the script **is** the upgrade: the binary is replaced and `termit-uv init` converges the
+rest, keeping the identity, the Xray path and the certificate. Without `--version` it takes the newest
+release, so an upgrade is `sh uv.sh --no-enroll`; naming the version is how you stay where you are. The
+invite code is passed on the command line and is visible in `ps` for the duration of the run; revoke it
+afterwards if that matters (`termit-mn invite revoke`).
 
 If you would rather be asked than remember flags, the wizard is the same installation with questions —
-`sh uv.sh --version v0.4.1 --wizard` installs the binary and hands over to it:
+`sh uv.sh --wizard` installs the binary (the newest release, or the one `--version` names) and hands over
+to it:
 
 ```bash
 termit-uv wizard

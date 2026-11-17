@@ -36,11 +36,13 @@ Wherever you see `mn.example.com` or `node-a.example.com`, use your own names.
 
 ## 1. The server
 
-Log in to the server as `root` and paste this block. It downloads the version, checks the file against
-its published checksum, and installs it.
+Log in to the server as `root` and paste this block. The first line asks GitHub which release is the
+newest — to install a version of your own, put it there instead (`RELEASE=v0.4.0`). The block then
+downloads that release, checks the file against its published checksum, and installs it.
 
 ```bash
-RELEASE=v0.4.1
+# the newest release; put a version there instead to install that one (RELEASE=v0.4.0)
+RELEASE=$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/shogun-kub/termit/releases/latest | sed 's|.*/||')
 curl -fsSLO "https://github.com/shogun-kub/termit/releases/download/$RELEASE/termit-mn_${RELEASE}_linux_amd64"
 curl -fsSLO "https://github.com/shogun-kub/termit/releases/download/$RELEASE/SHA256SUMS"
 sha256sum -c --ignore-missing SHA256SUMS
@@ -103,10 +105,11 @@ The code (for example `ABCD-EFGH-IJKL`) is printed **once**. Copy it now — you
 ## 3. The node
 
 Log in to the node as `root` and paste this single line. It downloads the installer, verifies the
-release, installs the node program, and then asks you questions.
+release, installs the node program, and then asks you questions. Without `--version` it installs the
+newest release; `sh uv.sh --version v0.4.0 --wizard` pins one instead.
 
 ```bash
-curl -fsSLO "https://github.com/shogun-kub/termit/releases/download/v0.4.1/uv.sh" && sh uv.sh --version v0.4.1 --wizard
+curl -fsSLO "https://github.com/shogun-kub/termit/releases/latest/download/uv.sh" && sh uv.sh --wizard
 ```
 
 The questions, in the order they come, and what to answer:
