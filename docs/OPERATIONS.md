@@ -409,15 +409,17 @@ termit-uv wizard
 ```
 
 The first question is the language (`ru` or `en`, Russian by default) because the menu and the page of
-client links are written in it; then the domain, the contact address, the masking site, the egress mode,
-whether to harden the node (unchecked — see below), the invite code and the management server URL. It then
-runs the same `init` with the same flags. Answers are kept in `wizard.yaml` beside the configuration, so an
-interrupted run continues where it stopped and `Enter` accepts what is already there (`--fresh` forgets
-them). On an installed node it asks nothing: it runs the pipeline in dry-run mode and, when every step
-reports its effect present, prints the status and exits. An installed node behind this build is the third
-case — the wizard names it and tells the operator to run `termit-uv init`, because converging is init's job
-and doing it from a questionnaire would hide the upgrade. The last thing a fresh install prints is the
-address of the [page with every link](#80-one-page-with-every-link).
+client links are written in it; then the domain, the contact address, the ACME directory (empty for the
+public one, then the question whether to verify a private CA's certificate), the masking site, the egress
+mode, whether to harden the node (unchecked — see below), the invite code and the management server URL. It
+then runs the same `init` with the same flags. Answers are kept in `wizard.yaml` beside the configuration,
+so an interrupted run continues where it stopped and `Enter` accepts what is already there (`--fresh`
+forgets them). On an installed node it asks nothing: it runs the pipeline in dry-run mode and, when every
+step reports its effect present, prints the status and exits — unless the registration never finished, in
+which case the kept code is spent and the enrollment retried. An installed node behind this build is the
+third case — the wizard names it and tells the operator to run `termit-uv init`, because converging is
+init's job and doing it from a questionnaire would hide the upgrade. The last thing a fresh install prints
+is the address of the [page with every link](#80-one-page-with-every-link).
 
 Without the script, the two commands it wraps are:
 

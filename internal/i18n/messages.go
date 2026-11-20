@@ -138,6 +138,10 @@ const (
 	WizardDomainNeeded   Key = "wizard.domain_needed"
 	WizardDomainShape    Key = "wizard.domain_shape"
 	WizardEmail          Key = "wizard.email"
+	WizardACMEIntro      Key = "wizard.acme_intro"
+	WizardACME           Key = "wizard.acme"
+	WizardACMEShape      Key = "wizard.acme_shape"
+	WizardACMESkip       Key = "wizard.acme_skip"
 	WizardTemplate       Key = "wizard.template"
 	WizardTemplateIntro  Key = "wizard.template_intro"
 	WizardTemplateBad    Key = "wizard.template_bad"
@@ -160,6 +164,7 @@ const (
 	WizardNothingChanged Key = "wizard.nothing_changed"
 	WizardInstallFailed  Key = "wizard.install_failed"
 	WizardEnrollFailed   Key = "wizard.enroll_failed"
+	WizardEnrollPending  Key = "wizard.enroll_pending"
 	WizardDone           Key = "wizard.done"
 	WizardHardenIntro    Key = "wizard.harden_intro"
 	WizardHarden         Key = "wizard.harden"
@@ -325,6 +330,10 @@ var messagesUVRU = map[Key]string{
 	WizardDomainNeeded:   "узлу нужен домен: на него выпускается сертификат",
 	WizardDomainShape:    "домен — это имя без пробелов и слэшей, например node.example.com",
 	WizardEmail:          "Адрес для центра сертификации (необязательно)",
+	WizardACMEIntro:      "Сертификат выпускает ACME-каталог. Обычно это публичный: %s. Оставьте следующий ответ пустым, чтобы использовать его; назовите другой каталог для частного центра — тестового стенда или корпоративного CA.",
+	WizardACME:           "Каталог ACME (пусто — публичный)",
+	WizardACMEShape:      "каталог ACME — это URL http(s)",
+	WizardACMESkip:       "Не проверять сертификат ACME-сервера? Только для частного CA, которому эта машина не доверяет",
 	WizardTemplate:       "Сайт-приманка",
 	WizardTemplateIntro:  "Страница, которую узел показывает посетителю, который не клиент: %s.",
 	WizardTemplateBad:    "%q не из тех, что умеет эта сборка",
@@ -346,7 +355,8 @@ var messagesUVRU = map[Key]string{
 	WizardConfirm:        "Устанавливать узел сейчас?",
 	WizardNothingChanged: "Ничего не изменено. Ответы сохранены: запустите `termit-uv wizard` снова, чтобы продолжить.",
 	WizardInstallFailed:  "установка не завершилась; ответы сохранены для следующего запуска",
-	WizardEnrollFailed:   "узел установлен, но в mesh пока не вошёл: исправьте приглашение и запустите `termit-uv enroll`",
+	WizardEnrollFailed:   "узел установлен, но регистрация не удалась: исправьте то, на что указывает ошибка выше, и запустите `termit-uv wizard` снова — он повторит регистрацию",
+	WizardEnrollPending:  "Узел установлен, но в сети его ещё нет. Завершаю регистрацию кодом, который вы дали:",
 	WizardDone:           "Готово",
 	WizardHardenIntro:    "Узел может закрыть себя: таблица nftables с SSH, портами 80 и 443 и остальным входящим трафиком закрытым, плюс движок банов. Она не включается сама — вы включите её одной командой, когда убедитесь, что доступ не потерян.",
 	WizardHarden:         "Закрыть узел (да/нет)",
@@ -510,6 +520,10 @@ var messagesUVEN = map[Key]string{
 	WizardDomainNeeded:   "this node needs a domain: it is what the certificate is issued for",
 	WizardDomainShape:    "a domain is a bare name such as node.example.com",
 	WizardEmail:          "Contact address for the certificate authority (optional)",
+	WizardACMEIntro:      "The certificate comes from an ACME directory. Most installations use the public one: %s. Leave the next answer empty for it, or name another directory for a private authority — a test lab or a company CA.",
+	WizardACME:           "ACME directory (empty = the public one)",
+	WizardACMEShape:      "an ACME directory is an http(s) URL",
+	WizardACMESkip:       "Do not verify the ACME server's certificate? Only for a private CA this host does not trust",
 	WizardTemplate:       "Masking site",
 	WizardTemplateIntro:  "The page the node serves to a visitor who is not a client: %s.",
 	WizardTemplateBad:    "%q is not one this build generates",
@@ -531,7 +545,8 @@ var messagesUVEN = map[Key]string{
 	WizardConfirm:        "Install this node now?",
 	WizardNothingChanged: "Nothing was changed. The answers are kept: run `termit-uv wizard` again to continue.",
 	WizardInstallFailed:  "the installation did not finish; the answers are kept for the next run",
-	WizardEnrollFailed:   "the node is installed but not in the mesh yet: fix the invite and run `termit-uv enroll`",
+	WizardEnrollFailed:   "the node is installed but the registration failed: fix what the error above names and run `termit-uv wizard` again, which retries it",
+	WizardEnrollPending:  "The node is installed but not in the mesh yet. Finishing the registration with the code you gave:",
 	WizardDone:           "Done",
 	WizardHardenIntro:    "The node can close itself: an nftables table that keeps SSH, ports 80 and 443 and drops the rest of the inbound traffic, plus the ban engine. It is not switched on from here — that is one command, run when you know your access survives.",
 	WizardHarden:         "Harden this node (yes/no)",

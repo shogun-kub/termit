@@ -18,6 +18,17 @@ there, and the installer runs on a box that has wget and no curl.
   resets the streak, a check that could not run (`unknown`) neither advances nor resets it, and admitting
   a node to active — `approve`, admin `unblock` — starts a clean one. `termit-mn check now` re-reads the
   policy first, so an on-demand check uses the same threshold as a scheduled pass.
+- **The wizard finishes a registration that did not go through.** A run whose `init` succeeded and whose
+  `enroll` failed left a node installed, outside the mesh, with the invite code in `wizard.yaml` — and the
+  next run said "already installed" and threw the code away, so the owner had to work out from `enroll`'s
+  error what to type. It retries the registration with the kept code, says why the previous attempt failed,
+  and only then calls the node finished.
+- **The wizard asks for the certificate authority.** A first installation behind a private ACME directory
+  — a test lab, a company CA — could not be done from the questions at all: `init` takes `--acme-ca`, the
+  wizard never asked for it, so the certificate step went to Let's Encrypt and failed at the last step with
+  nothing to show for the answers. It asks now, and the standard installation still answers nothing here
+  because the public directory is the default; the skip-verification question appears only when a private
+  one is named. What the wizard hands `init` is one function, tested flag by flag.
 - **`termit-mn policy set block_after_failed_cycles 4`**, listed by `policy show` with the other runtime
   values; the setting survives a restart and an empty value returns it to the configured default.
 - **The menu offers every command the CLI has.** The interactive menu used to be a selection: `termit-uv`
