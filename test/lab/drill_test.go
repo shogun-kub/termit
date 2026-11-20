@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 	"testing"
@@ -297,6 +298,281 @@ func TestDrillDNSFlipped(t *testing.T) {
 	}
 	if outcome := runCheckNow(t, ctx, l, domain); outcome.Event != "check_ok" {
 		t.Fatalf("the node is not checked after recovery: %+v", outcome)
+	}
+}
+
+// TestDrillGraceThreshold drives the configurable grace: the policy decides when a degraded node
+// leaves the mesh, and the count is cycles, not the attempts inside one.
+func TestDrillGraceThreshold(t *testing.T) {
+	l := drillLab(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
+	defer cancel()
+
+	victim := drillVictim(t, l)
+	domain := nodeDomain(t, ctx, victim)
+	makeActive(t, ctx, l, victim, domain)
+
+	// Three cycles, so the drill can tell "the second failure is still inside the grace" from "the
+	// third one blocks": with the default of two both readings give the same answer.
+	before := policyValue(t, ctx, l, "block_after_failed_cycles")
+	l.MustMNAdmin(t, ctx, "policy", "set", "block_after_failed_cycles", "3")
+	t.Cleanup(func() {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		restore := before
+		if restore == "" {
+			// An empty value clears the override; it has to survive the shell, so it goes quoted.
+			restore = "''"
+		}
+		_, _ = l.MNAdmin(cleanupCtx, "policy", "set", "block_after_failed_cycles", restore)
+		restoreHosts(t, cleanupCtx, l)
+	})
+
+	flipHosts(t, ctx, l, domain)
+	t.Cleanup(func() { restoreHosts(t, context.Background(), l) })
+
+	first := runCheckNow(t, ctx, l, domain)
+	if first.Event != "check_failed" || first.State != "unavailable" {
+		t.Fatalf("the first failed cycle = %+v, want unavailable", first)
+	}
+	second := runCheckNow(t, ctx, l, domain)
+	if second.Event != "check_failed" || second.State != "unavailable" {
+		t.Fatalf("the second failed cycle = %+v, want unavailable: the threshold is three cycles", second)
+	}
+
+	// A passing check resets the count, so the failures after it must start from one again.
+	restoreHosts(t, ctx, l)
+	if outcome := runCheckNow(t, ctx, l, domain); outcome.Event != "check_ok" {
+		t.Fatalf("the node did not recover with its name back: %+v", outcome)
+	}
+
+	flipHosts(t, ctx, l, domain)
+	for cycle := 1; cycle <= 2; cycle++ {
+		outcome := runCheckNow(t, ctx, l, domain)
+		if outcome.Event != "check_failed" || outcome.State != "unavailable" {
+			t.Fatalf("cycle %d after the reset = %+v, want unavailable: the count did not start over", cycle, outcome)
+		}
+	}
+	third := runCheckNow(t, ctx, l, domain)
+	if third.Event != "check_failed" || third.State != "blocked" {
+		t.Fatalf("the third failed cycle = %+v, want blocked", third)
+	}
+
+	restoreHosts(t, ctx, l)
+	unblockNode(t, ctx, victim)
+	victim.MustRun(t, ctx, "termit-uv sync")
+	if state := showState(t, ctx, l, domain); state != "active" {
+		t.Fatalf("the node is %s after the unblock", state)
+	}
+	if outcome := runCheckNow(t, ctx, l, domain); outcome.Event != "check_ok" {
+		t.Fatalf("the node is not checked after the unblock: %+v", outcome)
+	}
+}
+
+// policyValue reads one runtime override so a drill can put it back. An empty answer means the setting
+// comes from the configuration file and the drill clears whatever it sets.
+func policyValue(t *testing.T, ctx context.Context, l *lab.Lab, key string) string {
+	t.Helper()
+	out := l.MustMNAdmin(t, ctx, "policy", "show")
+	value := firstField(field(out, key))
+	if strings.HasPrefix(value, "(from") {
+		return ""
+	}
+	if value == "" {
+		t.Fatalf("the policy does not list %s:\n%s", key, out)
+	}
+	return value
+}
+
+// unblockNode asks the server to re-admit the node, retrying the cold handshake the way an operator
+// would; a node that really cannot come back still fails after the last attempt.
+func unblockNode(t *testing.T, ctx context.Context, m *lab.Machine) {
+	t.Helper()
+	var last string
+	for attempt := 1; attempt <= 3; attempt++ {
+		out, err := m.Run(ctx, "termit-uv unblock")
+		if err == nil {
+			return
+		}
+		last = out
+		t.Logf("unblock attempt %d did not go through: %v\n%s", attempt, err, lab.Tail(out, 5))
+		select {
+		case <-ctx.Done():
+			t.Fatalf("the node was not let back in: %s", last)
+		case <-time.After(5 * time.Second):
+		}
+	}
+	t.Fatalf("the node was never let back in:\n%s", last)
+}
+
+// TestDrillSubscriptionStates walks a node through the states a subscription must reflect: blocked
+// keeps the URL but leaves the peers' lists, removed answers 404, and an enrollment whose record is
+// gone has to be forgotten before the same domain can join again — pending answers 404 as well.
+func TestDrillSubscriptionStates(t *testing.T) {
+	l := drillLab(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
+	defer cancel()
+
+	victim := drillVictim(t, l)
+	domain := nodeDomain(t, ctx, victim)
+	makeActive(t, ctx, l, victim, domain)
+
+	witness := l.UV1
+	if nodeDomain(t, ctx, witness) == domain {
+		witness = l.UV2
+	}
+
+	url := subscriptionURL(t, ctx, victim)
+	if code := subscriptionStatus(t, ctx, victim, url+"/json"); code != http.StatusOK {
+		t.Fatalf("an active node's subscription = %d, want 200", code)
+	}
+	if body := subscriptionBody(t, ctx, victim); !strings.Contains(body, domain) {
+		t.Fatal("the active node's own list does not carry it")
+	}
+
+	t.Cleanup(func() { restoreSubscriptionDrill(t, l, victim, domain) })
+
+	// Blocked: the URL and its token keep working, because the node is still a member; the peers'
+	// lists drop it, and its own list no longer contains itself.
+	l.MustMNAdmin(t, ctx, "uv", "block", domain, "--reason", "drill-subscription-states")
+	if code := subscriptionStatus(t, ctx, victim, url+"/json"); code != http.StatusOK {
+		t.Fatalf("a blocked node's subscription = %d, want 200", code)
+	}
+	if body := subscriptionBody(t, ctx, victim); strings.Contains(body, domain) {
+		t.Fatal("a blocked node is still a peer of itself")
+	}
+	if body := subscriptionBody(t, ctx, witness); strings.Contains(body, domain) {
+		t.Fatal("a blocked node is still in the witness's list")
+	}
+
+	l.MustMNAdmin(t, ctx, "uv", "unblock", domain)
+	if body := subscriptionBody(t, ctx, victim); !strings.Contains(body, domain) {
+		t.Fatal("the unblocked node is not a peer of itself again")
+	}
+	if body := subscriptionBody(t, ctx, witness); !strings.Contains(body, domain) {
+		t.Fatal("the unblocked node did not come back to the witness's list")
+	}
+
+	// Removed: the token is not a capability any more, and the answer says nothing about which state
+	// the record is in — the same 404 an unknown token gets.
+	l.MustMNAdmin(t, ctx, "uv", "rm", domain)
+	if code := subscriptionStatus(t, ctx, victim, url+"/json"); code != http.StatusNotFound {
+		t.Fatalf("a removed node's subscription = %d, want 404", code)
+	}
+	if state := showState(t, ctx, l, domain); state != "removed" {
+		t.Fatalf("the record is %s after the removal", state)
+	}
+
+	// The enrollment whose answer never reached the node: the record is gone but the domain is still
+	// held, so the operator has to forget it before a new invite can be spent.
+	l.MustMNAdmin(t, ctx, "uv", "forget", domain)
+	invite := createInvite(t, ctx, l)
+	if out, err := victim.Run(ctx, "termit-uv enroll --force --no-sync --invite "+invite); err != nil {
+		t.Fatalf("re-enroll: %v\n%s", err, lab.Tail(out, 8))
+	}
+	if state := showState(t, ctx, l, domain); state != "pending" {
+		t.Fatalf("the re-enrolled node is %s, want pending", state)
+	}
+	url = subscriptionURL(t, ctx, victim)
+	if code := subscriptionStatus(t, ctx, victim, url+"/json"); code != http.StatusNotFound {
+		t.Fatalf("a pending node's subscription = %d, want 404", code)
+	}
+
+	l.MustMNAdmin(t, ctx, "uv", "approve", domain)
+	victim.MustRun(t, ctx, "termit-uv sync")
+	if outcome := runCheckNow(t, ctx, l, domain); outcome.Event != "check_ok" {
+		t.Fatalf("the re-admitted node does not pass a check: %+v", outcome)
+	}
+	if code := subscriptionStatus(t, ctx, victim, url+"/json"); code != http.StatusOK {
+		t.Fatalf("an approved node's subscription = %d, want 200", code)
+	}
+	witness.MustRun(t, ctx, "termit-uv sync")
+	if body := subscriptionBody(t, ctx, witness); !strings.Contains(body, domain) {
+		t.Fatal("the witness does not carry the re-admitted node")
+	}
+}
+
+// createInvite mints a one-use code. The code is printed once by the server and never logged here.
+func createInvite(t *testing.T, ctx context.Context, l *lab.Lab) string {
+	t.Helper()
+	out := l.MustMNAdmin(t, ctx, "invite", "create", "--uses", "1", "--note", "drill-subscription-states")
+	code := field(out, "code:")
+	if code == "" {
+		t.Fatalf("the invite has no code:\n%s", out)
+	}
+	return code
+}
+
+// subStatusFetcher prints the HTTP status of one URL. Python is part of both the node and the server
+// image, and it is already how the suite reads a subscription body.
+const subStatusFetcher = `import ssl, sys, urllib.error, urllib.request
+
+ca = sys.argv[2] if len(sys.argv) > 2 else ""
+context = ssl.create_default_context(cafile=ca) if ca else ssl.create_default_context()
+try:
+    with urllib.request.urlopen(sys.argv[1], context=context, timeout=15) as response:
+        print(response.status)
+except urllib.error.HTTPError as error:
+    print(error.code)
+`
+
+// subscriptionStatus fetches a subscription URL and reports the HTTP status, which is how a drill
+// tells a member's list from the 404 a pending, removed or unknown token gets.
+func subscriptionStatus(t *testing.T, ctx context.Context, m *lab.Machine, url string) int {
+	t.Helper()
+	ca := strings.TrimSpace(m.MustRun(t, ctx, `sed -n 's/^  ca_file: *//p' /etc/termit/uv/config.yaml`))
+	const script = "/tmp/termit-lab-substatus.py"
+	if err := m.WriteFile(ctx, []byte(subStatusFetcher), script, "0644"); err != nil {
+		t.Fatalf("%v", err)
+	}
+	out := strings.TrimSpace(m.MustRun(t, ctx, "python3 "+script+" "+url+" "+ca))
+	code, err := strconv.Atoi(out)
+	if err != nil {
+		t.Fatalf("%s: the subscription fetch answered %q", m.Name, out)
+	}
+	return code
+}
+
+// restoreSubscriptionDrill brings a node the drill removed or left pending back into the mesh, so a
+// failed run does not need a manual repair. It is safe on a converged lab.
+func restoreSubscriptionDrill(t *testing.T, l *lab.Lab, m *lab.Machine, domain string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Minute)
+	defer cancel()
+
+	show, _ := l.MNAdmin(ctx, "uv", "show", domain)
+	state := firstField(field(show, "state:"))
+	if state == "" || state == "removed" {
+		_, _ = l.MNAdmin(ctx, "uv", "forget", domain)
+		out, err := l.MNAdmin(ctx, "invite", "create", "--uses", "1", "--note", "drill-cleanup")
+		if err == nil {
+			if code := field(out, "code:"); code != "" {
+				if out, err := m.Run(ctx, "termit-uv enroll --force --no-sync --invite "+code); err != nil {
+					t.Logf("cleanup: enroll %s: %v\n%s", domain, err, lab.Tail(out, 8))
+				}
+			}
+		}
+		show, _ = l.MNAdmin(ctx, "uv", "show", domain)
+		state = firstField(field(show, "state:"))
+	}
+	if state == "pending" {
+		if out, err := l.MNAdmin(ctx, "uv", "approve", domain); err != nil {
+			t.Logf("cleanup: approve %s: %v\n%s", domain, err, lab.Tail(out, 5))
+		}
+	}
+	if state == "blocked" {
+		if out, err := l.MNAdmin(ctx, "uv", "unblock", domain); err != nil {
+			t.Logf("cleanup: unblock %s: %v\n%s", domain, err, lab.Tail(out, 5))
+		}
+	}
+	seen := map[*lab.Machine]bool{}
+	for _, machine := range []*lab.Machine{m, l.UV1, l.UV2, l.UV3} {
+		if machine == nil || seen[machine] {
+			continue
+		}
+		seen[machine] = true
+		if out, err := machine.Run(ctx, "termit-uv sync"); err != nil {
+			t.Logf("cleanup: %s sync: %v\n%s", machine.Name, err, lab.Tail(out, 5))
+		}
 	}
 }
 
