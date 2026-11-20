@@ -20,6 +20,13 @@ there, and the installer runs on a box that has wget and no curl.
   policy first, so an on-demand check uses the same threshold as a scheduled pass.
 - **`termit-mn policy set block_after_failed_cycles 4`**, listed by `policy show` with the other runtime
   values; the setting survives a restart and an empty value returns it to the configured default.
+- **The menu offers every command the CLI has.** The interactive menu used to be a selection: `termit-uv`
+  had no `unblock`, `migrate`, `firewall`, `bans`, `guard` or `warp rotate`, and `termit-mn` had no
+  `firewall`, `bans`, `guard`, `restore` or the nodes' `reissue`, `agentkey` and `forget`. All of them are
+  entries now, drawn from the same tables the commands are, so a blocked node can be let back in, a moved
+  one relocated, and a host defended from the menu as well as from the shell. What stays out is what has to
+  stay out: the long-running loops the units own, the rollback command the timer runs, `version` (in the
+  header), and `termit-mn init`, which you need before there is a server for the menu to talk to.
 
 ### Fixed
 

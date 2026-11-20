@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/shogun-kub/termit/internal/i18n"
+	"github.com/shogun-kub/termit/internal/menuplan"
 	"github.com/shogun-kub/termit/internal/termui"
 	"github.com/shogun-kub/termit/internal/uv/config"
 	"github.com/shogun-kub/termit/internal/uv/state"
@@ -200,6 +201,16 @@ func (a *application) menuEntries() []menuEntry {
 			plan:     a.planEnroll,
 		},
 		{
+			labelKey: i18n.MenuUnblockLabel,
+			hintKey:  i18n.MenuUnblockHint,
+			plan:     fixed("unblock"),
+		},
+		{
+			labelKey: i18n.MenuMigrateLabel,
+			hintKey:  i18n.MenuMigrateHint,
+			plan:     a.planMigrate,
+		},
+		{
 			labelKey: i18n.MenuSyncLabel,
 			hintKey:  i18n.MenuSyncHint,
 			plan:     fixed("sync"),
@@ -223,6 +234,21 @@ func (a *application) menuEntries() []menuEntry {
 			labelKey: i18n.MenuWarpLabel,
 			hintKey:  i18n.MenuWarpHint,
 			plan:     a.planWarp,
+		},
+		{
+			labelKey: i18n.MenuFirewallLabel,
+			hintKey:  i18n.MenuFirewallHint,
+			plan:     a.planFirewall,
+		},
+		{
+			labelKey: i18n.MenuBansLabel,
+			hintKey:  i18n.MenuBansHint,
+			plan:     a.planBans,
+		},
+		{
+			labelKey: i18n.MenuGuardLabel,
+			hintKey:  i18n.MenuGuardHint,
+			plan:     fixed("guard", "status"),
 		},
 		{
 			labelKey: i18n.MenuCertificateLabel,
@@ -378,6 +404,7 @@ func (a *application) planWarp(ui *termui.UI) ([][]string, error) {
 		{Label: tr.T(i18n.SubWarpAllLabel), Hint: tr.T(i18n.SubWarpAllHint)},
 		{Label: tr.T(i18n.SubWarpOffLabel), Hint: tr.T(i18n.SubWarpOffHint)},
 		{Label: tr.T(i18n.SubWarpSelectedLabel), Hint: tr.T(i18n.SubWarpSelectedHint)},
+		{Label: tr.T(i18n.SubWarpRotateLabel), Hint: tr.T(i18n.SubWarpRotateHint)},
 	})
 	if err != nil || choice == "" {
 		return nil, err
@@ -389,7 +416,7 @@ func (a *application) planWarp(ui *termui.UI) ([][]string, error) {
 		return [][]string{{"warp", "mode", "all"}}, nil
 	case "3":
 		return [][]string{{"warp", "mode", "off"}}, nil
-	default:
+	case "4":
 		domains, err := ui.Prompt(tr.T(i18n.PromptWarpDomains), "")
 		if err != nil {
 			return nil, err
@@ -398,7 +425,47 @@ func (a *application) planWarp(ui *termui.UI) ([][]string, error) {
 			return nil, errors.New("at least one domain is required")
 		}
 		return [][]string{{"warp", "mode", "selected", "--selected", domains}}, nil
+	default:
+		rotate, err := ui.Confirm(tr.T(i18n.PromptWarpRotate), false)
+		if err != nil {
+			return nil, err
+		}
+		if !rotate {
+			return nil, nil
+		}
+		return [][]string{{"warp", "rotate"}}, nil
 	}
+}
+
+// planFirewall and planBans are the two groups the server's menu draws as well.
+func (a *application) planFirewall(ui *termui.UI) ([][]string, error) {
+	return menuplan.Choose(ui, a.translator(), menuplan.Firewall())
+}
+
+func (a *application) planBans(ui *termui.UI) ([][]string, error) {
+	return menuplan.Choose(ui, a.translator(), menuplan.Bans())
+}
+
+// planMigrate moves the node to another domain. The configured domain is the default, so a move already
+// written into the configuration needs no answer at all.
+func (a *application) planMigrate(ui *termui.UI) ([][]string, error) {
+	tr := a.translator()
+	current := ""
+	if cfg, err := config.Load(a.menuConfigPath()); err == nil {
+		current = cfg.Domain
+	}
+	domain, err := ui.Prompt(tr.T(i18n.PromptNewDomain), current)
+	if err != nil {
+		return nil, err
+	}
+	if domain == "" {
+		return nil, errors.New(i18n.New(i18n.EN).T(i18n.ErrDomainRequired))
+	}
+	argv := []string{"migrate", "--relocate"}
+	if domain != current {
+		argv = append(argv, "--domain", domain)
+	}
+	return [][]string{argv}, nil
 }
 
 // planCertificate renews the certificate, forcing a reissue when asked.

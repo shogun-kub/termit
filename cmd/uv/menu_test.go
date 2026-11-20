@@ -119,6 +119,8 @@ func TestMenuEntriesRunTheCommandsTheyName(t *testing.T) {
 		"sync now":        "sync",
 		"check drift":     "sync --check",
 		"print vless URI": "uri",
+		"lift a block":    "unblock",
+		"guard":           "guard status",
 		"help":            "help",
 	}
 	seen := map[string]bool{}
@@ -255,6 +257,97 @@ func TestDevicesRemovePassesTheLabel(t *testing.T) {
 	}
 	if got := strings.Join(plan[0], " "); got != "device remove old-phone" {
 		t.Errorf("plan = %q", got)
+	}
+}
+
+// A move already written into the configuration is one answer — the default — because the domain the
+// prompt offers is the one in the file.
+func TestMigrateDefaultsToTheConfiguredDomain(t *testing.T) {
+	t.Parallel()
+	app, _ := menuApp(t, "\n", false)
+	cfg := config.Default()
+	cfg.Domain = "node1.example.com"
+	if err := cfg.Save(app.configPath); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	plan, err := entryNamed(t, app, "move to another domain").plan(termui.New(app.in, &strings.Builder{}, termui.Style{}))
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if got := strings.Join(plan[0], " "); got != "migrate --relocate" {
+		t.Errorf("plan = %q, want the configured domain to need no flag", got)
+	}
+}
+
+func TestMigrateNamesTheNewDomain(t *testing.T) {
+	t.Parallel()
+	app, _ := menuApp(t, "node2.example.com\n", false)
+	plan, err := entryNamed(t, app, "move to another domain").plan(termui.New(app.in, &strings.Builder{}, termui.Style{}))
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if got := strings.Join(plan[0], " "); got != "migrate --relocate --domain node2.example.com" {
+		t.Errorf("plan = %q", got)
+	}
+}
+
+func TestMigrateRequiresADomain(t *testing.T) {
+	t.Parallel()
+	// No configuration and no answer: there is no domain to move the node to.
+	app, _ := menuApp(t, "\n", false)
+	if _, err := entryNamed(t, app, "move to another domain").plan(
+		termui.New(app.in, &strings.Builder{}, termui.Style{})); err == nil {
+		t.Fatal("an empty domain was accepted")
+	}
+}
+
+// A new Cloudflare device stops the old one, so the menu asks first and a "no" runs nothing.
+func TestWarpRotateAsksBeforeReplacingTheDevice(t *testing.T) {
+	t.Parallel()
+	app, _ := menuApp(t, "5\ny\n", false)
+	plan, err := entryNamed(t, app, "egress (WARP)").plan(termui.New(app.in, &strings.Builder{}, termui.Style{}))
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if got := strings.Join(plan[0], " "); got != "warp rotate" {
+		t.Errorf("plan = %q", got)
+	}
+
+	declined, _ := menuApp(t, "5\nn\n", false)
+	plan, err = entryNamed(t, declined, "egress (WARP)").plan(
+		termui.New(declined.in, &strings.Builder{}, termui.Style{}))
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if plan != nil {
+		t.Errorf("declining the rotation produced %q", plan)
+	}
+}
+
+// The host table and the ban list are sub-menus; each answer has to reach its command unchanged.
+func TestSecurityEntriesDrawTheirSubMenus(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		entry  string
+		answer string
+		want   string
+	}{
+		{entry: "firewall", answer: "2\n", want: "firewall on"},
+		{entry: "bans", answer: "1\n", want: "bans list"},
+		{entry: "bans", answer: "3\n203.0.113.7\n", want: "bans block 203.0.113.7"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.want, func(t *testing.T) {
+			t.Parallel()
+			app, _ := menuApp(t, tc.answer, false)
+			plan, err := entryNamed(t, app, tc.entry).plan(termui.New(app.in, &strings.Builder{}, termui.Style{}))
+			if err != nil {
+				t.Fatalf("plan: %v", err)
+			}
+			if got := strings.Join(plan[0], " "); got != tc.want {
+				t.Errorf("plan = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/shogun-kub/termit/internal/i18n"
+	"github.com/shogun-kub/termit/internal/menuplan"
 	"github.com/shogun-kub/termit/internal/mn/config"
 	"github.com/shogun-kub/termit/internal/termui"
 	"github.com/shogun-kub/termit/internal/version"
@@ -200,6 +201,12 @@ func (m *menu) entries() []menuEntry {
 		{labelKey: i18n.MnEntryAdminLabel, hintKey: i18n.MnEntryAdminHint, plan: m.planAdminToken},
 		// These two take no admin flags: `backup` writes a local snapshot, `help` prints the usage.
 		{labelKey: i18n.MnEntryBackupLabel, hintKey: i18n.MnEntryBackupHint, plan: fixedMn("backup"), local: true},
+		{labelKey: i18n.MnEntryRestoreLabel, hintKey: i18n.MnEntryRestoreHint, plan: m.planRestore, local: true},
+		// The hardening surface is local too: these commands read the host, not the API, so the admin
+		// flags the menu carries would be refused by their flag sets.
+		{labelKey: i18n.MnEntryFirewallLabel, hintKey: i18n.MnEntryFirewallHint, plan: m.planFirewall, local: true},
+		{labelKey: i18n.MnEntryBansLabel, hintKey: i18n.MnEntryBansHint, plan: m.planBans, local: true},
+		{labelKey: i18n.MnEntryGuardLabel, hintKey: i18n.MnEntryGuardHint, plan: fixedMn("guard", "status"), local: true},
 		{labelKey: i18n.MnEntryHelpLabel, hintKey: i18n.MnEntryHelpHint, plan: fixedMn("help"), local: true},
 	}
 }
@@ -219,6 +226,9 @@ func (m *menu) planNodes(ui *termui.UI) ([][]string, error) {
 		{Label: tr.T(i18n.MnNodesBlockLabel), Hint: tr.T(i18n.MnNodesBlockHint)},
 		{Label: tr.T(i18n.MnNodesUnblockLabel), Hint: tr.T(i18n.MnNodesUnblockHint)},
 		{Label: tr.T(i18n.MnNodesRemoveLabel), Hint: tr.T(i18n.MnNodesRemoveHint)},
+		{Label: tr.T(i18n.MnNodesReissueLabel), Hint: tr.T(i18n.MnNodesReissueHint)},
+		{Label: tr.T(i18n.MnNodesAgentKeyLabel), Hint: tr.T(i18n.MnNodesAgentKeyHint)},
+		{Label: tr.T(i18n.MnNodesForgetLabel), Hint: tr.T(i18n.MnNodesForgetHint)},
 	})
 	if err != nil || choice == "" {
 		return nil, err
@@ -226,6 +236,7 @@ func (m *menu) planNodes(ui *termui.UI) ([][]string, error) {
 	verb := map[string]string{
 		"1": "list", "2": "show", "3": "approve", "4": "reject",
 		"5": "block", "6": "unblock", "7": "rm",
+		"8": "reissue", "9": "agentkey", "10": "forget",
 	}[choice]
 	if verb == "" {
 		return nil, fmt.Errorf("%q is not one of the choices", choice)
@@ -241,13 +252,28 @@ func (m *menu) planNodes(ui *termui.UI) ([][]string, error) {
 		return nil, errors.New(i18n.New(i18n.EN).T(i18n.MnErrNodeRequired))
 	}
 	argv := []string{"uv", verb, node}
-	if verb == "rm" || verb == "block" {
+	switch verb {
+	case "rm", "block":
 		reason, err := ui.Prompt(tr.T(i18n.MnPromptReason), "")
 		if err != nil {
 			return nil, err
 		}
 		if reason != "" {
 			argv = append(argv, "--reason", reason)
+		}
+	case "reissue", "forget":
+		// Both break something: a new key stops the old one, and a forgotten record stops the node
+		// itself from syncing until it enrolls again.
+		question := i18n.PromptReissue
+		if verb == "forget" {
+			question = i18n.PromptForget
+		}
+		sure, err := ui.Confirm(tr.T(question), false)
+		if err != nil {
+			return nil, err
+		}
+		if !sure {
+			return nil, nil
 		}
 	}
 	return [][]string{argv}, nil
@@ -333,6 +359,39 @@ func (m *menu) planPolicy(ui *termui.UI) ([][]string, error) {
 		return nil, err
 	}
 	return [][]string{{"policy", "set", key, value}}, nil
+}
+
+// planFirewall and planBans are the two groups the node's menu draws as well; `planRestore` is the one
+// destructive local command, so it asks for the archive and then says what it replaces.
+func (m *menu) planFirewall(ui *termui.UI) ([][]string, error) {
+	return menuplan.Choose(ui, m.translator(), menuplan.Firewall())
+}
+
+func (m *menu) planBans(ui *termui.UI) ([][]string, error) {
+	return menuplan.Choose(ui, m.translator(), menuplan.Bans())
+}
+
+// planRestore replaces the server's database and certificates from an archive. The running server holds
+// the database open, so the first thing the menu says is that it has to be stopped: the command cannot
+// stop it, and a restore under a live server is a corrupt database.
+func (m *menu) planRestore(ui *termui.UI) ([][]string, error) {
+	tr := m.translator()
+	archive, err := ui.Prompt(tr.T(i18n.PromptArchive), "")
+	if err != nil {
+		return nil, err
+	}
+	if archive == "" {
+		return nil, errors.New("an archive path is required")
+	}
+	sure, err := ui.Confirm(tr.T(i18n.PromptRestore), false)
+	if err != nil {
+		return nil, err
+	}
+	if !sure {
+		return nil, nil
+	}
+	// --force because the point of a restore is to replace what is there.
+	return [][]string{{"restore", "--from", archive, "--force"}}, nil
 }
 
 // planAdminToken rotates the credential the menu itself is running on. It asks first, and says what

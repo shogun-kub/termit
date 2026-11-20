@@ -40,7 +40,7 @@ termit-mn menu
 │    …                                                                 │
 │    q   quit                                                          │
 │                                                                      │
-│  choose [1-16, q]:                                                   │
+│  choose [1-21, q]:                                                   │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -61,11 +61,16 @@ termit-mn menu
 | setup wizard | вся первая установка в виде вопросов; ответы сохраняются между запусками | `termit-uv wizard` |
 | client options | закрытая страница со всеми ссылками для клиентов и её адрес | `termit-uv options` |
 | join the mesh | спросит адрес сервера и код приглашения | `termit-uv enroll …` |
+| lift a block | попросить сервер проверить узел и вернуть его в строй | `termit-uv unblock` |
+| move to another domain | перенести узел на новый домен (сценарий C) | `termit-uv migrate --relocate …` |
 | sync now | получить список пиров сейчас, не дожидаясь суточной синхронизации | `termit-uv sync` |
 | check drift | показать, совпадает ли работающее ядро с сервером | `termit-uv sync --check` |
 | devices | список, добавление и удаление собственных устройств узла | `termit-uv device …` |
 | print vless URI | URI собственного устройства этого узла | `termit-uv uri` |
-| egress (WARP) | показать или переключить `all`, `off`, `selected` | `termit-uv warp …` |
+| egress (WARP) | показать, переключить `all`, `off`, `selected` или сменить устройство | `termit-uv warp …` |
+| firewall | таблица хоста: состояние, on, off, confirm, refresh, restore | `termit-uv firewall …` |
+| bans | кого заблокировал страж и ваши собственные постоянные блокировки | `termit-uv bans …` |
+| guard | работает ли движок блокировок и сколько он заблокировал | `termit-uv guard status` |
 | certificate | продлить сейчас; при желании — принудительно перевыпустить | `termit-uv renew-cert [--force]` |
 | decoy site | перегенерировать сайт-приманку, при желании с другим архетипом | `termit-uv renew-site …` |
 | uninstall | спрашивает дважды и называет, что заберёт `--purge` | `termit-uv uninstall [--purge]` |
@@ -76,13 +81,17 @@ termit-mn menu
 | Пункт | Что делает | Какую команду запускает |
 |---|---|---|
 | status | сервер, база, пробер, таблица узлов | `termit-mn status` |
-| nodes | список, показ, approve, reject, block, unblock, удаление | `termit-mn uv …` |
+| nodes | список, показ, approve, reject, block, unblock, удаление, reissue, agent key, forget | `termit-mn uv …` |
 | invites | создание, список и отзыв кодов | `termit-mn invite …` |
 | check now | вся сеть или один узел | `termit-mn check now --all` / `termit-mn check now <узел>` |
 | policy | показать пороги или изменить один | `termit-mn policy …` |
 | subscription | обновить токен подписки узла | `termit-mn sub rotate <узел>` |
 | admin token | заменить админский токен, которым вы работаете | `termit-mn admin rotate` |
 | backup | снять согласованный снимок | `termit-mn backup` |
+| restore from a snapshot | вернуть базу и сертификаты; спросит архив и напомнит, что сервер должен быть остановлен | `termit-mn restore --from … --force` |
+| firewall | таблица хоста: состояние, on, off, confirm, refresh, restore | `termit-mn firewall …` |
+| bans | кого заблокировал страж и ваши собственные постоянные блокировки | `termit-mn bans …` |
+| guard | работает ли движок блокировок и сколько он заблокировал | `termit-mn guard status` |
 | help | все команды и флаги | `termit-mn help` |
 
 Меню сервера — это надстройка над админ-CLI, поэтому ему нужно то же, что и админ-CLI: работающий
@@ -95,12 +104,20 @@ termit-mn menu --token-file /etc/termit/mn/admin.token
 В шапке написано, на каком именно админ-токене работает сессия (`admin token from --token-file …`, из
 `TERMIT_MN_ADMIN_TOKEN` или из `TERMIT_MN_ADMIN_TOKEN_FILE`), а если его нет — сказано прямо, и
 админ-действия откажутся работать — так скажет сам CLI. `--config` и `--socket` работают так же.
+Локальные команды — `backup`, `restore`, `firewall`, `bans`, `guard` — читают хост, а не API, ни одного
+из этих флагов не принимают, и меню их им не передаёт.
 
 Меню узла по той же причине принимает `--config`: `termit-uv menu --config /path/to/config.yaml`
 смотрит и действует на тот узел, а не на узел по умолчанию.
 
 Запуска сервера в меню намеренно нет. `termit-mn serve` запускает systemd-юнит, а лог собирает journald;
-меню, запускающее долгоживущий сервер в переднем плане, спрятало бы этот лог за экраном меню.
+меню, запускающее долгоживущий сервер в переднем плане, спрятало бы этот лог за экраном меню. По той же
+причине в меню нет ещё четырёх команд: `termit-uv agent` и `guard run` — это циклы, которыми владеют
+юниты; `firewall rollback` — команда таймера отката, и её собственная справка так и говорит; `version`
+написана в шапке каждого экрана. `termit-mn init` тоже не в меню: меню разговаривает с работающим
+сервером, а когда нужна эта команда, сервера ещё нет. Всё остальное, что принимает бинарник, в меню
+есть, и `help` печатает полный список, — а поскольку каждый пункт запускает ту командную строку,
+которую печатает, пункт не может сделать того, чего не может CLI.
 
 ## Цвет
 

@@ -46,6 +46,7 @@ func TestServerMenuEntriesMapToCommands(t *testing.T) {
 	want := map[string]string{
 		"status": "status",
 		"backup": "backup",
+		"guard":  "guard status",
 		"help":   "help",
 	}
 	seen := map[string]bool{}
@@ -84,6 +85,9 @@ func TestNodeMenuAsksForTheNodeItActsOn(t *testing.T) {
 			"uv block node1.example.com --reason certificate is broken"},
 		"remove records a reason": {"7\nnode1.example.com\nhardware gone\n",
 			"uv rm node1.example.com --reason hardware gone"},
+		"reissue":   {"8\nnode1.example.com\ny\n", "uv reissue node1.example.com"},
+		"agent key": {"9\nnode1.example.com\n", "uv agentkey node1.example.com"},
+		"forget":    {"10\nnode1.example.com\ny\n", "uv forget node1.example.com"},
 	}
 	for name, tc := range cases {
 		m, _, _ := newMenu("")
@@ -102,6 +106,104 @@ func TestNodeMenuRefusesAnEmptyNode(t *testing.T) {
 	m, _, _ := newMenu("")
 	if _, err := planOf(t, m, "nodes", "2\n\n"); err == nil {
 		t.Fatal("an empty node was accepted")
+	}
+}
+
+// A reissued key and a forgotten record both break something, so a "no" has to run nothing at all.
+func TestReissueAndForgetAskFirst(t *testing.T) {
+	t.Parallel()
+	cases := map[string]string{
+		"reissue": "8\nnode1.example.com\nn\n",
+		"forget":  "10\nnode1.example.com\nn\n",
+	}
+	for name, answers := range cases {
+		m, _, _ := newMenu("")
+		plan, err := planOf(t, m, "nodes", answers)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if plan != nil {
+			t.Errorf("%s: declining produced %q", name, plan)
+		}
+	}
+}
+
+// The archive is the one thing a restore cannot guess, and --force is the difference between a restore
+// and a refusal, so both are part of the command the menu builds.
+func TestRestoreNamesTheArchiveAndForces(t *testing.T) {
+	t.Parallel()
+	m, _, _ := newMenu("")
+	plan, err := planOf(t, m, "restore from a snapshot", "backup.tar.gz\ny\n")
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if got := strings.Join(plan[0], " "); got != "restore --from backup.tar.gz --force" {
+		t.Errorf("plan = %q", got)
+	}
+}
+
+func TestRestoreRequiresAnArchive(t *testing.T) {
+	t.Parallel()
+	m, _, _ := newMenu("")
+	if _, err := planOf(t, m, "restore from a snapshot", "\n"); err == nil {
+		t.Fatal("an empty archive path was accepted")
+	}
+}
+
+// The hardening commands read the host, not the API: their flag sets never declare --token or --socket,
+// so the menu must not hand them the admin flags it carries. It marks them local instead.
+func TestHardeningEntriesTakeNoAdminFlags(t *testing.T) {
+	t.Parallel()
+	m, _, _ := newMenu("")
+	want := map[string]bool{
+		"restore from a snapshot": true,
+		"firewall":                true,
+		"bans":                    true,
+		"guard":                   true,
+		"status":                  false,
+		"nodes":                   false,
+	}
+	seen := map[string]bool{}
+	for _, entry := range m.entries() {
+		label := entry.labelOf(m.translator())
+		expected, ok := want[label]
+		if !ok {
+			continue
+		}
+		seen[label] = true
+		if entry.local != expected {
+			t.Errorf("%s: local = %v, want %v", label, entry.local, expected)
+		}
+	}
+	for label := range want {
+		if !seen[label] {
+			t.Errorf("the menu has no %q entry", label)
+		}
+	}
+}
+
+// Both hardening sub-menus are drawn from the shared table, so this only proves the server wires them to
+// the same commands the node does.
+func TestServerMenuDrawsTheHardeningSubMenus(t *testing.T) {
+	t.Parallel()
+	cases := map[string]struct {
+		entry   string
+		answers string
+		want    string
+	}{
+		"firewall on":      {"firewall", "2\n", "firewall on"},
+		"bans list":        {"bans", "1\n", "bans list"},
+		"bans unblock one": {"bans", "5\n203.0.113.7\n", "bans unblock 203.0.113.7"},
+	}
+	for name, tc := range cases {
+		m, _, _ := newMenu("")
+		plan, err := planOf(t, m, tc.entry, tc.answers)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if got := strings.Join(plan[0], " "); got != tc.want {
+			t.Errorf("%s: runs %q, want %q", name, got, tc.want)
+		}
 	}
 }
 

@@ -854,9 +854,14 @@ library, and it can be driven by a script, which is also how it is tested. Colou
 terminal and obeys `NO_COLOR`/`TERM=dumb`; the screen is never cleared without colour, so a captured
 session reads as sections rather than one overwritten page.
 
-Deliberately absent: starting `termit-mn serve` from the menu (the unit owns the log), and any state of its
-own (a dropped SSH session loses nothing). Interactive prompts stay out of the install path — the menu
-builds flags, it does not replace them, which is why `uv.sh`, `termit-uv init` and `termit-mn init` remain scriptable.
+Deliberately absent: the long-running loops — starting `termit-mn serve`, `termit-uv agent` or `guard run`
+from the menu would hide a log behind a menu screen, and the units own them; `firewall rollback`, which the
+rollback timer runs and whose own help says it is not for interactive use; `version` and `menu`, which the
+header and the command itself already answer; and `termit-mn init`, which is the command you need before
+there is a server for the menu to talk to. Everything else in both binaries has an entry, so the menu and
+the CLI cannot drift into disagreeing about what exists — and any state of its own is absent too (a dropped
+SSH session loses nothing). Interactive prompts stay out of the install path — the menu builds flags, it
+does not replace them, which is why `uv.sh`, `termit-uv init` and `termit-mn init` remain scriptable.
 
 ### The admin credential, from a file — done
 
