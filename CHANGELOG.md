@@ -45,6 +45,11 @@ there, and the installer runs on a box that has wget and no curl.
   release up at `releases/latest`, and that lookup went through curl — which Debian 13 does not install,
   so the one command a new participant starts with refused to run. They now follow the redirect with
   whichever downloader the host has, and ask for `--version` only when it has neither.
+- **`mn.sh` upgrades without repeating the domain.** Its own header said re-running it is the upgrade, but a
+  run without `--domain` stopped before it looked at the configuration it was upgrading, so every update
+  began by retyping the name the installed file already holds. An upgrade reads it from
+  `/etc/termit/mn/config.yaml` and says where it came from; a first install still requires the flag, and a
+  name given by hand is still an explicit decision.
 - **`mn.sh` updates the package lists before it installs `unzip`.** A fresh image has no lists, so
   `apt-get install unzip` failed with `unable to locate package` — which reads like a missing package
   rather than a missing update — and the install aborted with the prober's message on the one command

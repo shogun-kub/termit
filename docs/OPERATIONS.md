@@ -113,9 +113,13 @@ sh mn.sh --domain mn.example.com --email you@example.com \
   --admin-token-out /etc/termit/mn/admin.token
 ```
 
+Re-running the script is the upgrade, and an upgrade needs no flags: the domain comes from the installed
+configuration, the release is resolved again, the binary and the unit are replaced, `termit-mn init` keeps
+every decision already made, and the service is restarted.
+
 | Flag | Effect |
 |---|---|
-| `--domain` | the name the server answers on; required on a first install |
+| `--domain` | the name the server answers on; required on a first install, read from the installed configuration on an upgrade |
 | `--version` | `v0.4.1`, or a `v0.4.1p1` build; **the newest published release by default** |
 | `--email` / `--mode` / `--acme-ca` / `--acme-skip-tls-verify` / `--api-prefix` | passed to `termit-mn init` |
 | `--admin-token-out` | where `init` writes the admin token instead of printing it |
