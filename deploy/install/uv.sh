@@ -46,6 +46,20 @@ die() {
 	exit 1
 }
 
+# latest_tag prints the tag the `releases/latest` redirect points at, with whichever downloader the host
+# has. GNU wget stops at the first redirect and calls that an error, so only its headers are read and its
+# exit status is ignored; an empty answer is the caller's to report.
+latest_tag() {
+	if command -v curl >/dev/null 2>&1; then
+		curl -fsSLI -o /dev/null -w '%{url_effective}' "$LATEST_URL" 2>/dev/null
+	elif command -v wget >/dev/null 2>&1; then
+		wget -qS --max-redirect=0 -O /dev/null "$LATEST_URL" 2>&1 |
+			sed -n 's/^[[:space:]]*Location: //p' | tail -n 1
+	else
+		return 1
+	fi
+}
+
 usage() {
 	cat <<'EOF'
 Usage: uv.sh --version VERSION [--domain NAME] [options]
@@ -217,10 +231,9 @@ if [ "$VERSION_SET" = 0 ]; then
 	case "$BASE_URL" in
 	file://*) die "the newest release cannot be looked up in $BASE_URL; pass --version" ;;
 	esac
-	command -v curl >/dev/null 2>&1 ||
-		die "looking up the newest release needs curl; pass --version to name one"
-	tag=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "$LATEST_URL" 2>/dev/null) ||
-		die "cannot look up the newest release at $LATEST_URL; pass --version"
+	tag=$(latest_tag) ||
+		die "cannot look up the newest release at $LATEST_URL (needs curl or wget); pass --version"
+	[ -n "$tag" ] || die "cannot look up the newest release at $LATEST_URL; pass --version"
 	tag=${tag##*/}
 	case "$tag" in
 	v[0-9]*.[0-9]*.[0-9]*) VERSION=$tag LATEST=1 ;;
