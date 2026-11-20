@@ -235,26 +235,44 @@ func (u *UI) Prompt(label, def string) (string, error) {
 	return answer, nil
 }
 
-// Confirm asks a yes/no question. An empty answer takes the default.
+// Required asks for a value the command cannot do without. An empty answer is not a cancel: it says the
+// value is required and asks again, because dropping the operator back at the main menu loses the whole
+// position over one keystroke. Ctrl-C is the way out of a value nobody can supply.
+func (u *UI) Required(label, def string) (string, error) {
+	for {
+		answer, err := u.Prompt(label, def)
+		if err != nil {
+			return "", err
+		}
+		if answer != "" {
+			return answer, nil
+		}
+		u.State("warn", "this value is required")
+	}
+}
+
+// Confirm asks a yes/no question. An empty answer takes the default, and an answer that is neither yes nor
+// no asks again rather than silently meaning one of them — a typo must not answer for the operator.
 func (u *UI) Confirm(label string, def bool) (bool, error) {
 	suffix := "y/N"
 	if def {
 		suffix = "Y/n"
 	}
-	fmt.Fprintf(u.out, "%s [%s]: ", label, suffix)
-	answer, err := u.readLine()
-	if err != nil {
-		return def, err
-	}
-	switch strings.ToLower(strings.TrimSpace(answer)) {
-	case "":
-		return def, nil
-	case "y", "yes", "д", "да":
-		return true, nil
-	case "n", "no", "н", "нет":
-		return false, nil
-	default:
-		return def, nil
+	for {
+		fmt.Fprintf(u.out, "%s [%s]: ", label, suffix)
+		answer, err := u.readLine()
+		if err != nil {
+			return def, err
+		}
+		switch strings.ToLower(strings.TrimSpace(answer)) {
+		case "":
+			return def, nil
+		case "y", "yes", "д", "да":
+			return true, nil
+		case "n", "no", "н", "нет":
+			return false, nil
+		}
+		u.State("warn", fmt.Sprintf("%q is not one of the choices", strings.TrimSpace(answer)))
 	}
 }
 

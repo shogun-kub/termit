@@ -82,10 +82,6 @@ const (
 	MnPromptRotateAdmin  Key = "mn.prompt.rotate_admin"
 	MnPromptTokenFile    Key = "mn.prompt.token_file"
 	MnPromptPublicName   Key = "mn.prompt.public_name"
-	MnErrNodeRequired    Key = "mn.err.node_required"
-	MnErrCodeRequired    Key = "mn.err.code_required"
-	MnErrSettingRequired Key = "mn.err.setting_required"
-	MnErrDomainRequired  Key = "mn.err.domain_required"
 )
 
 var messagesMNRU = map[Key]string{
@@ -162,20 +158,16 @@ var messagesMNRU = map[Key]string{
 	MnSubRotateLabel: "сменить токен",
 	MnSubRotateHint:  "напечатать новый токен; старый URL перестанет работать",
 
-	MnPromptNode:         "ID или домен узла",
-	MnPromptReason:       "Причина, она попадёт в историю состояния",
-	MnPromptNote:         "Заметка, чтобы помнить, для кого он",
-	MnPromptInviteCode:   "Код приглашения для отзыва",
-	MnPromptCheckAll:     "Проверить все узлы вместо одного?",
-	MnPromptSetting:      "Настройка, например check_interval",
-	MnPromptValue:        "Значение, пусто — снять переопределение",
-	MnPromptRotateAdmin:  "Сменить admin-токен? Все скрипты и таймеры с ним перестанут работать",
-	MnPromptTokenFile:    "Записать новый токен в файл (пусто — напечатать один раз)",
-	MnPromptPublicName:   "Публичное имя сервера для URL (пусто — не включать)",
-	MnErrNodeRequired:    "нужен ID или домен узла",
-	MnErrCodeRequired:    "нужен код",
-	MnErrSettingRequired: "нужно имя настройки",
-	MnErrDomainRequired:  "нужен домен",
+	MnPromptNode:        "ID или домен узла",
+	MnPromptReason:      "Причина, она попадёт в историю состояния",
+	MnPromptNote:        "Заметка, чтобы помнить, для кого он",
+	MnPromptInviteCode:  "Код приглашения для отзыва",
+	MnPromptCheckAll:    "Проверить все узлы вместо одного?",
+	MnPromptSetting:     "Настройка, например check_interval",
+	MnPromptValue:       "Значение, пусто — снять переопределение",
+	MnPromptRotateAdmin: "Сменить admin-токен? Все скрипты и таймеры с ним перестанут работать",
+	MnPromptTokenFile:   "Записать новый токен в файл (пусто — напечатать один раз)",
+	MnPromptPublicName:  "Публичное имя сервера для URL (пусто — не включать)",
 }
 
 var messagesMNEN = map[Key]string{
@@ -252,18 +244,14 @@ var messagesMNEN = map[Key]string{
 	MnSubRotateLabel: "rotate",
 	MnSubRotateHint:  "print a new token; the old URL stops working",
 
-	MnPromptNode:         "Node id or domain",
-	MnPromptReason:       "Reason, recorded with the state change",
-	MnPromptNote:         "Note, so you remember who it is for",
-	MnPromptInviteCode:   "Invite code to revoke",
-	MnPromptCheckAll:     "Check every node instead of one?",
-	MnPromptSetting:      "Setting, for example check_interval",
-	MnPromptValue:        "Value, empty to clear the override",
-	MnPromptRotateAdmin:  "Rotate the admin token? Every script and timer using it stops working now",
-	MnPromptTokenFile:    "Write the new token to this file (empty to print it once)",
-	MnPromptPublicName:   "Server's public name, for the URL (empty to leave it out)",
-	MnErrNodeRequired:    "a node id or domain is required",
-	MnErrCodeRequired:    "a code is required",
-	MnErrSettingRequired: "a setting name is required",
-	MnErrDomainRequired:  "a domain is required",
+	MnPromptNode:        "Node id or domain",
+	MnPromptReason:      "Reason, recorded with the state change",
+	MnPromptNote:        "Note, so you remember who it is for",
+	MnPromptInviteCode:  "Invite code to revoke",
+	MnPromptCheckAll:    "Check every node instead of one?",
+	MnPromptSetting:     "Setting, for example check_interval",
+	MnPromptValue:       "Value, empty to clear the override",
+	MnPromptRotateAdmin: "Rotate the admin token? Every script and timer using it stops working now",
+	MnPromptTokenFile:   "Write the new token to this file (empty to print it once)",
+	MnPromptPublicName:  "Server's public name, for the URL (empty to leave it out)",
 }

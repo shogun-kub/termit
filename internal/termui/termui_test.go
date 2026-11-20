@@ -149,10 +149,12 @@ func TestConfirmReadsTheAnswer(t *testing.T) {
 		"no":                        {"n\n", true, false},
 		"empty takes default true":  {"\n", true, true},
 		"empty takes default false": {"\n", false, false},
-		"nonsense takes default":    {"maybe\n", true, true},
+		// A typo must not answer for the operator: it asks again, and the second answer decides.
+		"nonsense asks again":   {"maybe\ny\n", false, true},
+		"typo of no asks again": {"nope\nn\n", true, false},
 	}
 	for name, tc := range cases {
-		ui, _ := session(t, tc.answer, Style{})
+		ui, out := session(t, tc.answer, Style{})
 		got, err := ui.Confirm("Install?", tc.def)
 		if err != nil {
 			t.Fatalf("%s: Confirm: %v", name, err)
@@ -160,6 +162,41 @@ func TestConfirmReadsTheAnswer(t *testing.T) {
 		if got != tc.want {
 			t.Errorf("%s: got %v, want %v", name, got, tc.want)
 		}
+		if strings.HasPrefix(name, "nonsense") || strings.HasPrefix(name, "typo") {
+			if !strings.Contains(out.String(), "is not one of the choices") {
+				t.Errorf("%s: the menu did not say what it disliked:\n%s", name, out.String())
+			}
+		}
+	}
+}
+
+// A required value is asked again instead of dropping the operator back at the main menu; only a value
+// ends the loop.
+func TestRequiredAsksUntilItGetsAValue(t *testing.T) {
+	t.Parallel()
+	ui, out := session(t, "\n  \nnode1.example.com\n", Style{})
+	answer, err := ui.Required("Domain", "")
+	if err != nil {
+		t.Fatalf("Required: %v", err)
+	}
+	if answer != "node1.example.com" {
+		t.Errorf("answer = %q", answer)
+	}
+	if got := strings.Count(out.String(), "this value is required"); got != 2 {
+		t.Errorf("the warning appeared %d times, want 2:\n%s", got, out.String())
+	}
+}
+
+// The default is a value: pressing Enter on a prompt that offers one is answered, not re-asked.
+func TestRequiredAcceptsTheDefault(t *testing.T) {
+	t.Parallel()
+	ui, _ := session(t, "\n", Style{})
+	answer, err := ui.Required("Label", "phone")
+	if err != nil {
+		t.Fatalf("Required: %v", err)
+	}
+	if answer != "phone" {
+		t.Errorf("answer = %q, want the default", answer)
 	}
 }
 

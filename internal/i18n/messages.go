@@ -118,17 +118,15 @@ const (
 	PromptTemplate     Key = "prompt.template"
 	PromptPurge        Key = "prompt.purge"
 	PromptSure         Key = "prompt.sure"
-	ErrDomainRequired  Key = "err.domain_required"
 
 	// Prompts for the recovery, relocation and hardening entries.
-	PromptAddress      Key = "prompt.address"
-	PromptNewDomain    Key = "prompt.new_domain"
-	PromptWarpRotate   Key = "prompt.warp_rotate"
-	PromptArchive      Key = "prompt.archive"
-	PromptRestore      Key = "prompt.restore"
-	PromptReissue      Key = "prompt.reissue"
-	PromptForget       Key = "prompt.forget"
-	ErrAddressRequired Key = "err.address_required"
+	PromptAddress    Key = "prompt.address"
+	PromptNewDomain  Key = "prompt.new_domain"
+	PromptWarpRotate Key = "prompt.warp_rotate"
+	PromptArchive    Key = "prompt.archive"
+	PromptRestore    Key = "prompt.restore"
+	PromptReissue    Key = "prompt.reissue"
+	PromptForget     Key = "prompt.forget"
 
 	// The wizard.
 	WizardTitle          Key = "wizard.title"
@@ -309,16 +307,14 @@ var messagesUVRU = map[Key]string{
 	PromptTemplate:     "Шаблон: product или portal (пусто — оставить текущий)",
 	PromptPurge:        "Удалить также конфигурацию, состояние, сертификаты и служебного пользователя?",
 	PromptSure:         "Точно удалить %s?",
-	ErrDomainRequired:  "домен обязателен",
 
-	PromptAddress:      "Адрес (IP или подсеть)",
-	PromptNewDomain:    "Новый домен (пусто — оставить текущий)",
-	PromptWarpRotate:   "Заменить устройство в Cloudflare? Старое перестанет работать.",
-	PromptArchive:      "Путь к архиву резервной копии",
-	PromptRestore:      "Заменить базу и сертификаты этим архивом? Сначала остановите termit-mn serve.",
-	PromptReissue:      "Выпустить узлу новую идентичность? Старый ключ перестанет работать сразу.",
-	PromptForget:       "Забыть запись об узле? Домен можно будет зарегистрировать заново.",
-	ErrAddressRequired: "адрес обязателен",
+	PromptAddress:    "Адрес (IP или подсеть)",
+	PromptNewDomain:  "Новый домен (пусто — оставить текущий)",
+	PromptWarpRotate: "Заменить устройство в Cloudflare? Старое перестанет работать.",
+	PromptArchive:    "Путь к архиву резервной копии",
+	PromptRestore:    "Заменить базу и сертификаты этим архивом? Сначала остановите termit-mn serve.",
+	PromptReissue:    "Выпустить узлу новую идентичность? Старый ключ перестанет работать сразу.",
+	PromptForget:     "Забыть запись об узле? Домен можно будет зарегистрировать заново.",
 
 	WizardTitle:          "Termit — первая установка",
 	WizardHint:           "Enter принимает значение в скобках; пустой ответ без значения означает «не сейчас».",
@@ -496,16 +492,14 @@ var messagesUVEN = map[Key]string{
 	PromptTemplate:     "Archetype: product or portal (empty keeps the current one)",
 	PromptPurge:        "Also delete configuration, state, certificates and the service user?",
 	PromptSure:         "Really remove %s?",
-	ErrDomainRequired:  "a domain is required",
 
-	PromptAddress:      "Address (IP or prefix)",
-	PromptNewDomain:    "New domain (empty keeps the configured one)",
-	PromptWarpRotate:   "Replace the Cloudflare device? The old one stops working.",
-	PromptArchive:      "Path to the backup archive",
-	PromptRestore:      "Replace the database and the certificates with this archive? Stop termit-mn serve first.",
-	PromptReissue:      "Reissue this node's identity? The old key stops working at once.",
-	PromptForget:       "Forget this node's record? The domain can then be enrolled again.",
-	ErrAddressRequired: "an address is required",
+	PromptAddress:    "Address (IP or prefix)",
+	PromptNewDomain:  "New domain (empty keeps the configured one)",
+	PromptWarpRotate: "Replace the Cloudflare device? The old one stops working.",
+	PromptArchive:    "Path to the backup archive",
+	PromptRestore:    "Replace the database and the certificates with this archive? Stop termit-mn serve first.",
+	PromptReissue:    "Reissue this node's identity? The old key stops working at once.",
+	PromptForget:     "Forget this node's record? The domain can then be enrolled again.",
 
 	WizardTitle:          "Termit — first installation",
 	WizardHint:           "Enter accepts the value in brackets; an empty answer with no value means \"not now\".",

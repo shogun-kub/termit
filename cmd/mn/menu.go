@@ -244,13 +244,11 @@ func (m *menu) planNodes(ui *termui.UI) ([][]string, error) {
 	if verb == "list" {
 		return [][]string{{"uv", "list"}}, nil
 	}
-	node, err := ui.Prompt(tr.T(i18n.MnPromptNode), "")
+	node, err := ui.Required(tr.T(i18n.MnPromptNode), "")
 	if err != nil {
 		return nil, err
 	}
-	if node == "" {
-		return nil, errors.New(i18n.New(i18n.EN).T(i18n.MnErrNodeRequired))
-	}
+
 	argv := []string{"uv", verb, node}
 	switch verb {
 	case "rm", "block":
@@ -304,13 +302,11 @@ func (m *menu) planInvites(ui *termui.UI) ([][]string, error) {
 		}
 		return [][]string{argv}, nil
 	default:
-		code, err := ui.Prompt(tr.T(i18n.MnPromptInviteCode), "")
+		code, err := ui.Required(tr.T(i18n.MnPromptInviteCode), "")
 		if err != nil {
 			return nil, err
 		}
-		if code == "" {
-			return nil, errors.New(i18n.New(i18n.EN).T(i18n.MnErrCodeRequired))
-		}
+
 		return [][]string{{"invite", "revoke", code}}, nil
 	}
 }
@@ -324,13 +320,11 @@ func (m *menu) planCheck(ui *termui.UI) ([][]string, error) {
 	if whole {
 		return [][]string{{"check", "now", "--all"}}, nil
 	}
-	node, err := ui.Prompt(tr.T(i18n.MnPromptNode), "")
+	node, err := ui.Required(tr.T(i18n.MnPromptNode), "")
 	if err != nil {
 		return nil, err
 	}
-	if node == "" {
-		return nil, errors.New(i18n.New(i18n.EN).T(i18n.MnErrNodeRequired))
-	}
+
 	return [][]string{{"check", "now", node}}, nil
 }
 
@@ -347,13 +341,11 @@ func (m *menu) planPolicy(ui *termui.UI) ([][]string, error) {
 	if choice == "1" {
 		return [][]string{{"policy", "show"}}, nil
 	}
-	key, err := ui.Prompt(tr.T(i18n.MnPromptSetting), "")
+	key, err := ui.Required(tr.T(i18n.MnPromptSetting), "")
 	if err != nil {
 		return nil, err
 	}
-	if key == "" {
-		return nil, errors.New(i18n.New(i18n.EN).T(i18n.MnErrSettingRequired))
-	}
+
 	value, err := ui.Prompt(tr.T(i18n.MnPromptValue), "")
 	if err != nil {
 		return nil, err
@@ -376,13 +368,11 @@ func (m *menu) planBans(ui *termui.UI) ([][]string, error) {
 // stop it, and a restore under a live server is a corrupt database.
 func (m *menu) planRestore(ui *termui.UI) ([][]string, error) {
 	tr := m.translator()
-	archive, err := ui.Prompt(tr.T(i18n.PromptArchive), "")
+	archive, err := ui.Required(tr.T(i18n.PromptArchive), "")
 	if err != nil {
 		return nil, err
 	}
-	if archive == "" {
-		return nil, errors.New("an archive path is required")
-	}
+
 	sure, err := ui.Confirm(tr.T(i18n.PromptRestore), false)
 	if err != nil {
 		return nil, err
@@ -427,13 +417,11 @@ func (m *menu) planSubscription(ui *termui.UI) ([][]string, error) {
 	if choice != "1" {
 		return nil, fmt.Errorf("%q is not one of the choices", choice)
 	}
-	node, err := ui.Prompt(tr.T(i18n.MnPromptNode), "")
+	node, err := ui.Required(tr.T(i18n.MnPromptNode), "")
 	if err != nil {
 		return nil, err
 	}
-	if node == "" {
-		return nil, errors.New(i18n.New(i18n.EN).T(i18n.MnErrNodeRequired))
-	}
+
 	domain, err := ui.Prompt(tr.T(i18n.MnPromptPublicName), "")
 	if err != nil {
 		return nil, err

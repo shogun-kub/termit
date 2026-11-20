@@ -47,7 +47,9 @@ a provisioning script is a hang, not a convenience.
 Answer with the number or with the label — `3` and `install or converge` are the same answer, because
 the label is what you are looking at. An empty line takes the default shown in brackets, `q` quits, and
 an answer that matches nothing re-asks instead of exiting: a menu that dies on a typo is a menu nobody
-trusts. Closed stdin (a pipe that ran out) ends the session cleanly with status 0.
+trusts. The questions a step asks follow the same rule: a value the command cannot work without is asked
+again when it is left empty, and a yes/no answer that is neither is asked again too, so a typo never
+answers for you. Closed stdin (a pipe that ran out) ends the session cleanly with status 0.
 
 ## Node menu (`termit-uv`)
 

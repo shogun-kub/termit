@@ -308,12 +308,9 @@ func (a *application) planInstall(ui *termui.UI) ([][]string, error) {
 		return [][]string{{"init"}}, nil
 	}
 	ui.Say(tr.T(i18n.MenuNoConfig))
-	domain, err := ui.Prompt(tr.T(i18n.PromptDomain), "")
+	domain, err := ui.Required(tr.T(i18n.PromptDomain), "")
 	if err != nil {
 		return nil, err
-	}
-	if domain == "" {
-		return nil, errors.New(i18n.New(i18n.EN).T(i18n.ErrDomainRequired))
 	}
 	email, err := ui.Prompt(tr.T(i18n.PromptEmail), "")
 	if err != nil {
@@ -349,12 +346,9 @@ func (a *application) planEnroll(ui *termui.UI) ([][]string, error) {
 		}
 		mn = answer
 	}
-	invite, err := ui.Prompt(tr.T(i18n.PromptInvite), "")
+	invite, err := ui.Required(tr.T(i18n.PromptInvite), "")
 	if err != nil {
 		return nil, err
-	}
-	if invite == "" {
-		return nil, errors.New("an invite code is required")
 	}
 	return [][]string{{"enroll", "--invite", invite, "--mn", mn}}, nil
 }
@@ -375,21 +369,15 @@ func (a *application) planDevices(ui *termui.UI) ([][]string, error) {
 	case "1":
 		return [][]string{{"device", "list"}}, nil
 	case "2":
-		label, err := ui.Prompt(tr.T(i18n.PromptDeviceLabel), "phone")
+		label, err := ui.Required(tr.T(i18n.PromptDeviceLabel), "phone")
 		if err != nil {
 			return nil, err
-		}
-		if label == "" {
-			return nil, errors.New("a label is required")
 		}
 		return [][]string{{"device", "add", "--label", label}}, nil
 	default:
-		label, err := ui.Prompt(tr.T(i18n.PromptDeviceRemove), "")
+		label, err := ui.Required(tr.T(i18n.PromptDeviceRemove), "")
 		if err != nil {
 			return nil, err
-		}
-		if label == "" {
-			return nil, errors.New("a label is required")
 		}
 		return [][]string{{"device", "remove", label}}, nil
 	}
@@ -417,12 +405,9 @@ func (a *application) planWarp(ui *termui.UI) ([][]string, error) {
 	case "3":
 		return [][]string{{"warp", "mode", "off"}}, nil
 	case "4":
-		domains, err := ui.Prompt(tr.T(i18n.PromptWarpDomains), "")
+		domains, err := ui.Required(tr.T(i18n.PromptWarpDomains), "")
 		if err != nil {
 			return nil, err
-		}
-		if domains == "" {
-			return nil, errors.New("at least one domain is required")
 		}
 		return [][]string{{"warp", "mode", "selected", "--selected", domains}}, nil
 	default:
@@ -454,12 +439,9 @@ func (a *application) planMigrate(ui *termui.UI) ([][]string, error) {
 	if cfg, err := config.Load(a.menuConfigPath()); err == nil {
 		current = cfg.Domain
 	}
-	domain, err := ui.Prompt(tr.T(i18n.PromptNewDomain), current)
+	domain, err := ui.Required(tr.T(i18n.PromptNewDomain), current)
 	if err != nil {
 		return nil, err
-	}
-	if domain == "" {
-		return nil, errors.New(i18n.New(i18n.EN).T(i18n.ErrDomainRequired))
 	}
 	argv := []string{"migrate", "--relocate"}
 	if domain != current {

@@ -101,11 +101,16 @@ func TestNodeMenuAsksForTheNodeItActsOn(t *testing.T) {
 	}
 }
 
-func TestNodeMenuRefusesAnEmptyNode(t *testing.T) {
+// A node is the value the whole sub-menu acts on, so an empty answer asks again rather than giving up.
+func TestNodeMenuAsksAgainForAnEmptyNode(t *testing.T) {
 	t.Parallel()
 	m, _, _ := newMenu("")
-	if _, err := planOf(t, m, "nodes", "2\n\n"); err == nil {
-		t.Fatal("an empty node was accepted")
+	plan, err := planOf(t, m, "nodes", "2\n\nnode1.example.com\n")
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if got := strings.Join(plan[0], " "); got != "uv show node1.example.com" {
+		t.Errorf("plan = %q", got)
 	}
 }
 
@@ -142,11 +147,15 @@ func TestRestoreNamesTheArchiveAndForces(t *testing.T) {
 	}
 }
 
-func TestRestoreRequiresAnArchive(t *testing.T) {
+func TestRestoreAsksAgainForAnEmptyArchive(t *testing.T) {
 	t.Parallel()
 	m, _, _ := newMenu("")
-	if _, err := planOf(t, m, "restore from a snapshot", "\n"); err == nil {
-		t.Fatal("an empty archive path was accepted")
+	plan, err := planOf(t, m, "restore from a snapshot", "\nbackup.tar.gz\ny\n")
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if got := strings.Join(plan[0], " "); got != "restore --from backup.tar.gz --force" {
+		t.Errorf("plan = %q", got)
 	}
 }
 

@@ -185,12 +185,17 @@ func TestInstallPassesNoWarpWhenDeclined(t *testing.T) {
 	}
 }
 
-func TestInstallRequiresADomain(t *testing.T) {
+// An empty domain is asked again rather than dropped: the operator keeps the flow, and the value arrives
+// on the second try.
+func TestInstallAsksAgainForAnEmptyDomain(t *testing.T) {
 	t.Parallel()
-	app, _ := menuApp(t, "\n", false)
-	entry := entryNamed(t, app, "install or converge")
-	if _, err := entry.plan(termui.New(app.in, &strings.Builder{}, termui.Style{})); err == nil {
-		t.Fatal("an empty domain was accepted")
+	app, _ := menuApp(t, "\nnode1.example.com\nme@example.com\n\n", false)
+	plan, err := entryNamed(t, app, "install or converge").plan(termui.New(app.in, &strings.Builder{}, termui.Style{}))
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if got := strings.Join(plan[0], " "); got != "init --domain node1.example.com --email me@example.com" {
+		t.Errorf("plan = %q", got)
 	}
 }
 
@@ -214,12 +219,17 @@ func TestInstallConvergesAnInstalledNodeWithoutQuestions(t *testing.T) {
 	}
 }
 
-func TestEnrollRequiresAnInvite(t *testing.T) {
+// The invite is the one value enroll cannot do without, so an empty answer asks again instead of ending
+// the entry.
+func TestEnrollAsksAgainForAnEmptyInvite(t *testing.T) {
 	t.Parallel()
-	app, _ := menuApp(t, "https://mn.example.com\n\n", false)
-	entry := entryNamed(t, app, "join the mesh")
-	if _, err := entry.plan(termui.New(app.in, &strings.Builder{}, termui.Style{})); err == nil {
-		t.Fatal("an empty invite code was accepted")
+	app, _ := menuApp(t, "\n\nABCD-EFGH-IJKL\n", false)
+	plan, err := entryNamed(t, app, "join the mesh").plan(termui.New(app.in, &strings.Builder{}, termui.Style{}))
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if got := strings.Join(plan[0], " "); got != "enroll --invite ABCD-EFGH-IJKL --mn https://mn.example.com" {
+		t.Errorf("plan = %q", got)
 	}
 }
 
@@ -291,13 +301,16 @@ func TestMigrateNamesTheNewDomain(t *testing.T) {
 	}
 }
 
-func TestMigrateRequiresADomain(t *testing.T) {
+// With no configuration there is no default domain, so the empty answer is refused and asked again.
+func TestMigrateAsksAgainForAnEmptyDomain(t *testing.T) {
 	t.Parallel()
-	// No configuration and no answer: there is no domain to move the node to.
-	app, _ := menuApp(t, "\n", false)
-	if _, err := entryNamed(t, app, "move to another domain").plan(
-		termui.New(app.in, &strings.Builder{}, termui.Style{})); err == nil {
-		t.Fatal("an empty domain was accepted")
+	app, _ := menuApp(t, "\nnode2.example.com\n", false)
+	plan, err := entryNamed(t, app, "move to another domain").plan(termui.New(app.in, &strings.Builder{}, termui.Style{}))
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if got := strings.Join(plan[0], " "); got != "migrate --relocate --domain node2.example.com" {
+		t.Errorf("plan = %q", got)
 	}
 }
 

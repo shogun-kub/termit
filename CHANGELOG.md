@@ -56,6 +56,11 @@ there, and the installer runs on a box that has wget and no curl.
 - **The install pages start with `wget`.** Debian 13 installs wget and not curl, so every snippet that
   began with curl failed on a fresh machine. curl stays as the alternative in the text, and the
   requirement tables name the download tool next to the other prerequisites.
+- **The menu asks again instead of giving up.** A value a command cannot work without — a domain, an
+  address, an archive path, an invite code — used to end the entry and drop the operator back at the main
+  menu when the answer was empty; it is asked again now, so one stray Enter no longer costs the whole
+  flow. A yes/no answer that is neither asks again too: until now a typo quietly meant the default, which
+  on "send proxied traffic through WARP?" was "yes".
 
 ## 0.4.1 — 2026-11-17
 

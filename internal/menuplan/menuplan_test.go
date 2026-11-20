@@ -43,12 +43,17 @@ func TestChooseAppendsTheValueItAskedFor(t *testing.T) {
 	}
 }
 
-// An empty answer is refused rather than turned into a command with no argument.
-func TestChooseRefusesAnEmptyAddress(t *testing.T) {
+// An address is what the command acts on, so an empty answer asks again instead of running a command
+// with nothing to act on.
+func TestChooseAsksAgainForAnEmptyAddress(t *testing.T) {
 	t.Parallel()
-	screen, _ := ui("3", "")
-	if _, err := menuplan.Choose(screen, i18n.New(i18n.EN), menuplan.Bans()); err == nil {
-		t.Fatal("an empty address produced a plan")
+	screen, _ := ui("3", "", "203.0.113.7")
+	plan, err := menuplan.Choose(screen, i18n.New(i18n.EN), menuplan.Bans())
+	if err != nil {
+		t.Fatalf("Choose: %v", err)
+	}
+	if len(plan) != 1 || strings.Join(plan[0], " ") != "bans block 203.0.113.7" {
+		t.Fatalf("plan = %q, want `bans block 203.0.113.7`", plan)
 	}
 }
 

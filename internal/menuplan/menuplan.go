@@ -4,7 +4,6 @@
 package menuplan
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/shogun-kub/termit/internal/i18n"
@@ -66,12 +65,9 @@ func Choose(ui *termui.UI, tr i18n.Translator, options []Option) ([][]string, er
 	}
 	argv := append([]string(nil), options[index].Argv...)
 	if ask := options[index].Ask; ask != "" {
-		value, err := ui.Prompt(tr.T(ask), "")
+		value, err := ui.Required(tr.T(ask), "")
 		if err != nil {
 			return nil, err
-		}
-		if value == "" {
-			return nil, errors.New(i18n.New(i18n.EN).T(i18n.ErrAddressRequired))
 		}
 		argv = append(argv, value)
 	}
