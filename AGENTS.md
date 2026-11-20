@@ -310,7 +310,11 @@ already passed CI and the lab.
   an annotated tag `v<version>` on `main`. Pushing the tag runs the final build and publishes the GitHub
   Release. The release stays marked pre-release until that release's own production pass is recorded in
   `docs/IMPLEMENTATION_PLAN.md` (M4.3 for `0.2.1`, M5.8 for `0.3.2`); flipping the flag is a deliberate,
-  recorded act.
+  recorded act. **Flipping `prerelease` does not move the "latest" pointer.** A release published as a
+  pre-release keeps `make_latest` on the previous one, so `releases/latest` — and therefore `uv.sh` and
+  `mn.sh` without `--version` — go on offering the old build. Patch the release with `make_latest: "true"`
+  after the flip; the API answers immediately and the `github.com/.../releases/latest` redirect lags
+  minutes behind it while its cache expires.
 - **The release body is the changelog, from that version back to the last release** — `go run
   ./deploy/release --version v<version> --notes` prints the section, and for a release (never for a
   `v<version>p<n>` build) the extra `--since <last released version>` makes it print every section down
