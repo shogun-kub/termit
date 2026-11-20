@@ -3,6 +3,53 @@ What each release changed, written for the people who run Termit. Newest first;
 carries every section back to the last release: the versions in between were handed out only as
 pre-releases, and whoever installs the release skipped them.
 
+## 0.4.2 — 2026-11-20
+
+The grace period does what its key promised, the subscription stops answering for nodes that are not
+there, and the installer runs on a box that has wget and no curl.
+
+### Added
+
+- **A grace period that counts what it says it counts.** `policy.block_after_failed_cycles` (1–30,
+  default 2 — one grace check) is the number of consecutive failed checks that block a node; before this
+  the scheduler ignored the value and blocked on the second failure whatever it said. The streak counts
+  *cycles*, not attempts: the retries inside one check are already one verdict, so a burst of technical
+  repeats in a short period no longer blocks a node faster than the setting allows. A check that passes
+  resets the streak, a check that could not run (`unknown`) neither advances nor resets it, and admitting
+  a node to active — `approve`, admin `unblock` — starts a clean one. `termit-mn check now` re-reads the
+  policy first, so an on-demand check uses the same threshold as a scheduled pass.
+- **`termit-mn policy set block_after_failed_cycles 4`**, listed by `policy show` with the other runtime
+  values; the setting survives a restart and an empty value returns it to the configured default.
+
+### Fixed
+
+- **`uv.sh` and `mn.sh` run on a stock Debian 13.** Without `--version` both scripts look the newest
+  release up at `releases/latest`, and that lookup went through curl — which Debian 13 does not install,
+  so the one command a new participant starts with refused to run. They now follow the redirect with
+  whichever downloader the host has, and ask for `--version` only when it has neither.
+- **`mn.sh` updates the package lists before it installs `unzip`.** A fresh image has no lists, so
+  `apt-get install unzip` failed with `unable to locate package` — which reads like a missing package
+  rather than a missing update — and the install aborted with the prober's message on the one command
+  documented for a clean box.
+- **The probe credential survives a sync and the next configuration write.** The probe UUID arrives in
+  every sync answer, but only enrollment stored it: a later `init`, `warp mode` or `device add` rebuilt
+  the configuration from the state and silently dropped `probe@termit`. The server's next check then
+  timed out and the node looked as if it had broken by itself.
+- **The wizard no longer calls a node outdated when Cloudflare is blocked.** `warp` registers with
+  Cloudflare and `warp-egress` measures where the tunnel exits, so on a network that blocks the WARP API
+  — the network this project exists for — neither step can ever report its effect present, and
+  `termit-uv wizard` sent the owner to run `init` on a converged node forever. Both now count as steps
+  that say nothing either way, next to `preflight` and `start`.
+
+### Changed
+
+- **The subscription answers 404 for a pending or a removed node**, the same answer an unknown token
+  gets: a token that cannot work no longer looks like a working one. A blocked node keeps its URL — its
+  peers have already dropped the credential — and the address list stays the thing a client acts on.
+- **The install pages start with `wget`.** Debian 13 installs wget and not curl, so every snippet that
+  began with curl failed on a fresh machine. curl stays as the alternative in the text, and the
+  requirement tables name the download tool next to the other prerequisites.
+
 ## 0.4.1 — 2026-11-17
 
 One defect in the wizard, one in the agent's sandbox, and the pages that describe an installation checked
