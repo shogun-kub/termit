@@ -8,7 +8,8 @@
 #   mn.sh --domain mn.example.com --email you@example.com
 #
 # Re-running it is the upgrade: the binary and the unit are replaced, `termit-mn init` keeps every
-# decision already made — domain, listen, master key, the nodes — and the service is restarted.
+# decision already made — domain, listen, master key, the nodes — and the service is restarted. Only the
+# first run needs `--domain`; an upgrade reads the name out of the configuration it is upgrading.
 set -eu
 
 PROGRAM=termit-mn
@@ -70,6 +71,7 @@ Install or upgrade one Termit management server. Must run as root on Debian 13, 
 
 Required on a first install:
   --domain NAME            the name this server answers on; its A/AAAA record must already point here
+                           (an upgrade reads it from the installed configuration instead)
 
 Options:
   --version VERSION        release to install, e.g. v0.4.1 or v0.4.1p1
@@ -177,7 +179,6 @@ while [ $# -gt 0 ]; do
 	esac
 done
 
-[ -n "$DOMAIN" ] || die "--domain is required: it is the name the server answers on"
 [ "$(id -u)" = 0 ] || die "run this as root"
 [ "$(uname -s)" = Linux ] || die "this installs a Linux server; the current system is $(uname -s)"
 
@@ -186,6 +187,16 @@ x86_64 | amd64) ARCH=amd64 ;;
 aarch64 | arm64) ARCH=arm64 ;;
 *) die "unsupported architecture $(uname -m); Termit ships linux/amd64 and linux/arm64" ;;
 esac
+
+# An upgrade is the ordinary second run, so the name comes from the configuration when the operator does
+# not repeat it: --domain is the first-install answer, not a ritual before every update. A name that was
+# given is still an explicit decision — `termit-mn init` refuses to rename an installed server and says so.
+if [ -z "$DOMAIN" ] && [ -f "$CONFIG" ]; then
+	DOMAIN=$(sed -n 's/^domain:[[:space:]]*//p' "$CONFIG" | head -n 1 | sed 's/^"//; s/"$//; s/[[:space:]]*$//')
+	[ -n "$DOMAIN" ] || die "$CONFIG has no domain; pass --domain"
+	say "domain:  $DOMAIN (from $CONFIG)"
+fi
+[ -n "$DOMAIN" ] || die "--domain is required on a first install: it is the name the server answers on"
 
 # A local path is a file:// URL: the same code path, and the same checksum, for a mirror on a USB stick.
 case "$BASE_URL" in

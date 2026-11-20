@@ -176,6 +176,10 @@ export TERMIT_LAB_PSCP='C:\Program Files\PuTTY\pscp.exe'
 go test -tags=lab ./test/lab -v -timeout 30m
 ```
 
+Run it with `-count=1`. `go test` caches a passing result and keys it on the package files and the
+environment the test reads — both unchanged between two runs of a gate — so a cached run prints the
+previous pass in seconds and proves nothing about the build in front of you.
+
 Concrete coordinates for this machine live in the gitignored `.spike-out/lab.md`; the variables above
 are what the tests read. The key is a PuTTY `.ppk` that OpenSSH cannot read, so the harness calls
 `plink`/`pscp` (M0.5) and pins each machine by fingerprint. A missing variable skips the suite rather

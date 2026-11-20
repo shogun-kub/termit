@@ -51,7 +51,19 @@ const (
 	MenuHelpLabel        Key = "menu.help.label"
 	MenuHelpHint         Key = "menu.help.hint"
 
-	// The sub-menus: the device list and the egress switch.
+	// The recovery and hardening entries: a blocked node, a moved node, and the host's own defences.
+	MenuUnblockLabel  Key = "menu.unblock.label"
+	MenuUnblockHint   Key = "menu.unblock.hint"
+	MenuMigrateLabel  Key = "menu.migrate.label"
+	MenuMigrateHint   Key = "menu.migrate.hint"
+	MenuFirewallLabel Key = "menu.firewall.label"
+	MenuFirewallHint  Key = "menu.firewall.hint"
+	MenuBansLabel     Key = "menu.bans.label"
+	MenuBansHint      Key = "menu.bans.hint"
+	MenuGuardLabel    Key = "menu.guard.label"
+	MenuGuardHint     Key = "menu.guard.hint"
+
+	// The sub-menus: the device list, the egress switch, and the two groups both binaries share.
 	SubDevicesListLabel   Key = "sub.devices.list.label"
 	SubDevicesListHint    Key = "sub.devices.list.hint"
 	SubDevicesAddLabel    Key = "sub.devices.add.label"
@@ -66,6 +78,32 @@ const (
 	SubWarpOffHint        Key = "sub.warp.off.hint"
 	SubWarpSelectedLabel  Key = "sub.warp.selected.label"
 	SubWarpSelectedHint   Key = "sub.warp.selected.hint"
+	SubWarpRotateLabel    Key = "sub.warp.rotate.label"
+	SubWarpRotateHint     Key = "sub.warp.rotate.hint"
+
+	// The host table and the ban list. Both binaries run the same commands, so both menus draw these.
+	SubFirewallStatusLabel  Key = "sub.firewall.status.label"
+	SubFirewallStatusHint   Key = "sub.firewall.status.hint"
+	SubFirewallOnLabel      Key = "sub.firewall.on.label"
+	SubFirewallOnHint       Key = "sub.firewall.on.hint"
+	SubFirewallOffLabel     Key = "sub.firewall.off.label"
+	SubFirewallOffHint      Key = "sub.firewall.off.hint"
+	SubFirewallConfirmLabel Key = "sub.firewall.confirm.label"
+	SubFirewallConfirmHint  Key = "sub.firewall.confirm.hint"
+	SubFirewallRefreshLabel Key = "sub.firewall.refresh.label"
+	SubFirewallRefreshHint  Key = "sub.firewall.refresh.hint"
+	SubFirewallRestoreLabel Key = "sub.firewall.restore.label"
+	SubFirewallRestoreHint  Key = "sub.firewall.restore.hint"
+	SubBansListLabel        Key = "sub.bans.list.label"
+	SubBansListHint         Key = "sub.bans.list.hint"
+	SubBansOffendersLabel   Key = "sub.bans.offenders.label"
+	SubBansOffendersHint    Key = "sub.bans.offenders.hint"
+	SubBansBlockLabel       Key = "sub.bans.block.label"
+	SubBansBlockHint        Key = "sub.bans.block.hint"
+	SubBansUnbanLabel       Key = "sub.bans.unban.label"
+	SubBansUnbanHint        Key = "sub.bans.unban.hint"
+	SubBansUnblockLabel     Key = "sub.bans.unblock.label"
+	SubBansUnblockHint      Key = "sub.bans.unblock.hint"
 
 	// Prompts the menu asks before it builds a command line.
 	PromptDomain       Key = "prompt.domain"
@@ -80,7 +118,15 @@ const (
 	PromptTemplate     Key = "prompt.template"
 	PromptPurge        Key = "prompt.purge"
 	PromptSure         Key = "prompt.sure"
-	ErrDomainRequired  Key = "err.domain_required"
+
+	// Prompts for the recovery, relocation and hardening entries.
+	PromptAddress    Key = "prompt.address"
+	PromptNewDomain  Key = "prompt.new_domain"
+	PromptWarpRotate Key = "prompt.warp_rotate"
+	PromptArchive    Key = "prompt.archive"
+	PromptRestore    Key = "prompt.restore"
+	PromptReissue    Key = "prompt.reissue"
+	PromptForget     Key = "prompt.forget"
 
 	// The wizard.
 	WizardTitle          Key = "wizard.title"
@@ -92,6 +138,10 @@ const (
 	WizardDomainNeeded   Key = "wizard.domain_needed"
 	WizardDomainShape    Key = "wizard.domain_shape"
 	WizardEmail          Key = "wizard.email"
+	WizardACMEIntro      Key = "wizard.acme_intro"
+	WizardACME           Key = "wizard.acme"
+	WizardACMEShape      Key = "wizard.acme_shape"
+	WizardACMESkip       Key = "wizard.acme_skip"
 	WizardTemplate       Key = "wizard.template"
 	WizardTemplateIntro  Key = "wizard.template_intro"
 	WizardTemplateBad    Key = "wizard.template_bad"
@@ -114,6 +164,7 @@ const (
 	WizardNothingChanged Key = "wizard.nothing_changed"
 	WizardInstallFailed  Key = "wizard.install_failed"
 	WizardEnrollFailed   Key = "wizard.enroll_failed"
+	WizardEnrollPending  Key = "wizard.enroll_pending"
 	WizardDone           Key = "wizard.done"
 	WizardHardenIntro    Key = "wizard.harden_intro"
 	WizardHarden         Key = "wizard.harden"
@@ -198,6 +249,17 @@ var messagesUVRU = map[Key]string{
 	MenuHelpLabel:        "справка",
 	MenuHelpHint:         "все команды и флаги",
 
+	MenuUnblockLabel:  "снять блокировку",
+	MenuUnblockHint:   "попросить сервер проверить узел и вернуть его в строй",
+	MenuMigrateLabel:  "переехать на другой домен",
+	MenuMigrateHint:   "перенести узел на новый домен (сценарий C)",
+	MenuFirewallLabel: "межсетевой экран",
+	MenuFirewallHint:  "таблица хоста: состояние, включить, выключить, подтвердить",
+	MenuBansLabel:     "блокировки",
+	MenuBansHint:      "кого заблокировал страж и что заблокировали вы",
+	MenuGuardLabel:    "движок блокировок",
+	MenuGuardHint:     "работает ли страж и сколько он заблокировал",
+
 	SubDevicesListLabel:   "список",
 	SubDevicesListHint:    "имена и префиксы UUID",
 	SubDevicesAddLabel:    "добавить",
@@ -212,6 +274,31 @@ var messagesUVRU = map[Key]string{
 	SubWarpOffHint:        "выход с собственного адреса узла",
 	SubWarpSelectedLabel:  "selected",
 	SubWarpSelectedHint:   "только перечисленные домены",
+	SubWarpRotateLabel:    "rotate",
+	SubWarpRotateHint:     "новое устройство в Cloudflare; старое перестаёт работать",
+
+	SubFirewallStatusLabel:  "состояние",
+	SubFirewallStatusHint:   "что применено, что подтверждено и где конфигурация расходится",
+	SubFirewallOnLabel:      "включить",
+	SubFirewallOnHint:       "применить таблицу; сначала взводится пятиминутный таймер отката",
+	SubFirewallOffLabel:     "выключить",
+	SubFirewallOffHint:      "убрать таблицу и оставить хост как было",
+	SubFirewallConfirmLabel: "подтвердить",
+	SubFirewallConfirmHint:  "оставить применённое: таймер отката встаёт на место",
+	SubFirewallRefreshLabel: "обновить блок-лист",
+	SubFirewallRefreshHint:  "забрать сетевой блок-лист и загрузить его в таблицу",
+	SubFirewallRestoreLabel: "восстановить",
+	SubFirewallRestoreHint:  "вернуть таблицу последнего подтверждённого on (это делает загрузочный юнит)",
+	SubBansListLabel:        "список",
+	SubBansListHint:         "кого блокируют сейчас и почему",
+	SubBansOffendersLabel:   "рецидивисты",
+	SubBansOffendersHint:    "на ком лестница кончилась: решать вам",
+	SubBansBlockLabel:       "заблокировать навсегда",
+	SubBansBlockHint:        "постоянная блокировка адреса по вашей команде",
+	SubBansUnbanLabel:       "снять блокировку",
+	SubBansUnbanHint:        "снять блокировку; проступок остаётся в записи",
+	SubBansUnblockLabel:     "снять свою блокировку",
+	SubBansUnblockHint:      "снять постоянную блокировку, поставленную командой block",
 
 	PromptDomain:       "Домен (имя в DNS, указывающее на эту машину)",
 	PromptEmail:        "Адрес для центра сертификации",
@@ -225,7 +312,14 @@ var messagesUVRU = map[Key]string{
 	PromptTemplate:     "Шаблон: product или portal (пусто — оставить текущий)",
 	PromptPurge:        "Удалить также конфигурацию, состояние, сертификаты и служебного пользователя?",
 	PromptSure:         "Точно удалить %s?",
-	ErrDomainRequired:  "домен обязателен",
+
+	PromptAddress:    "Адрес (IP или подсеть)",
+	PromptNewDomain:  "Новый домен (пусто — оставить текущий)",
+	PromptWarpRotate: "Заменить устройство в Cloudflare? Старое перестанет работать.",
+	PromptArchive:    "Путь к архиву резервной копии",
+	PromptRestore:    "Заменить базу и сертификаты этим архивом? Сначала остановите termit-mn serve.",
+	PromptReissue:    "Выпустить узлу новую идентичность? Старый ключ перестанет работать сразу.",
+	PromptForget:     "Забыть запись об узле? Домен можно будет зарегистрировать заново.",
 
 	WizardTitle:          "Termit — первая установка",
 	WizardHint:           "Enter принимает значение в скобках; пустой ответ без значения означает «не сейчас».",
@@ -236,6 +330,10 @@ var messagesUVRU = map[Key]string{
 	WizardDomainNeeded:   "узлу нужен домен: на него выпускается сертификат",
 	WizardDomainShape:    "домен — это имя без пробелов и слэшей, например node.example.com",
 	WizardEmail:          "Адрес для центра сертификации (необязательно)",
+	WizardACMEIntro:      "Сертификат выпускает ACME-каталог. Обычно это публичный: %s. Оставьте следующий ответ пустым, чтобы использовать его; назовите другой каталог для частного центра — тестового стенда или корпоративного CA.",
+	WizardACME:           "Каталог ACME (пусто — публичный)",
+	WizardACMEShape:      "каталог ACME — это URL http(s)",
+	WizardACMESkip:       "Не проверять сертификат ACME-сервера? Только для частного CA, которому эта машина не доверяет",
 	WizardTemplate:       "Сайт-приманка",
 	WizardTemplateIntro:  "Страница, которую узел показывает посетителю, который не клиент: %s.",
 	WizardTemplateBad:    "%q не из тех, что умеет эта сборка",
@@ -257,7 +355,8 @@ var messagesUVRU = map[Key]string{
 	WizardConfirm:        "Устанавливать узел сейчас?",
 	WizardNothingChanged: "Ничего не изменено. Ответы сохранены: запустите `termit-uv wizard` снова, чтобы продолжить.",
 	WizardInstallFailed:  "установка не завершилась; ответы сохранены для следующего запуска",
-	WizardEnrollFailed:   "узел установлен, но в mesh пока не вошёл: исправьте приглашение и запустите `termit-uv enroll`",
+	WizardEnrollFailed:   "узел установлен, но регистрация не удалась: исправьте то, на что указывает ошибка выше, и запустите `termit-uv wizard` снова — он повторит регистрацию",
+	WizardEnrollPending:  "Узел установлен, но в сети его ещё нет. Завершаю регистрацию кодом, который вы дали:",
 	WizardDone:           "Готово",
 	WizardHardenIntro:    "Узел может закрыть себя: таблица nftables с SSH, портами 80 и 443 и остальным входящим трафиком закрытым, плюс движок банов. Она не включается сама — вы включите её одной командой, когда убедитесь, что доступ не потерян.",
 	WizardHarden:         "Закрыть узел (да/нет)",
@@ -340,6 +439,17 @@ var messagesUVEN = map[Key]string{
 	MenuHelpLabel:        "help",
 	MenuHelpHint:         "every command and flag",
 
+	MenuUnblockLabel:  "lift a block",
+	MenuUnblockHint:   "ask the server to verify this node and let it back in",
+	MenuMigrateLabel:  "move to another domain",
+	MenuMigrateHint:   "relocate this node to a new domain (Scenario C)",
+	MenuFirewallLabel: "firewall",
+	MenuFirewallHint:  "the host table: status, on, off, confirm",
+	MenuBansLabel:     "bans",
+	MenuBansHint:      "what the guard banned, and what you blocked yourself",
+	MenuGuardLabel:    "guard",
+	MenuGuardHint:     "whether the ban engine runs, and how much it banned",
+
 	SubDevicesListLabel:   "list",
 	SubDevicesListHint:    "labels and UUID prefixes",
 	SubDevicesAddLabel:    "add",
@@ -354,6 +464,31 @@ var messagesUVEN = map[Key]string{
 	SubWarpOffHint:        "exit from this node's own address",
 	SubWarpSelectedLabel:  "selected",
 	SubWarpSelectedHint:   "only the domains you list",
+	SubWarpRotateLabel:    "rotate",
+	SubWarpRotateHint:     "a new Cloudflare device; the old one stops working",
+
+	SubFirewallStatusLabel:  "status",
+	SubFirewallStatusHint:   "what is applied, what was confirmed, and where the configuration disagrees",
+	SubFirewallOnLabel:      "on",
+	SubFirewallOnHint:       "apply the table; a five-minute rollback timer is armed first",
+	SubFirewallOffLabel:     "off",
+	SubFirewallOffHint:      "remove the table and leave the host as it was",
+	SubFirewallConfirmLabel: "confirm",
+	SubFirewallConfirmHint:  "keep what `on` applied by standing the rollback timer down",
+	SubFirewallRefreshLabel: "refresh",
+	SubFirewallRefreshHint:  "fetch the network blocklist and load it into the table",
+	SubFirewallRestoreLabel: "restore",
+	SubFirewallRestoreHint:  "put back the table the last confirmed `on` applied; the boot unit runs this",
+	SubBansListLabel:        "list",
+	SubBansListHint:         "what is banned now, and why",
+	SubBansOffendersLabel:   "offenders",
+	SubBansOffendersHint:    "sources the ladder ran out of rungs for; the decision is yours",
+	SubBansBlockLabel:       "block",
+	SubBansBlockHint:        "ban an address permanently, by your own command",
+	SubBansUnbanLabel:       "unban",
+	SubBansUnbanHint:        "lift a ban; the offence stays on record",
+	SubBansUnblockLabel:     "unblock",
+	SubBansUnblockHint:      "lift the permanent block your own `block` put there",
 
 	PromptDomain:       "Domain (a DNS name that points at this machine)",
 	PromptEmail:        "Email for the certificate authority",
@@ -367,7 +502,14 @@ var messagesUVEN = map[Key]string{
 	PromptTemplate:     "Archetype: product or portal (empty keeps the current one)",
 	PromptPurge:        "Also delete configuration, state, certificates and the service user?",
 	PromptSure:         "Really remove %s?",
-	ErrDomainRequired:  "a domain is required",
+
+	PromptAddress:    "Address (IP or prefix)",
+	PromptNewDomain:  "New domain (empty keeps the configured one)",
+	PromptWarpRotate: "Replace the Cloudflare device? The old one stops working.",
+	PromptArchive:    "Path to the backup archive",
+	PromptRestore:    "Replace the database and the certificates with this archive? Stop termit-mn serve first.",
+	PromptReissue:    "Reissue this node's identity? The old key stops working at once.",
+	PromptForget:     "Forget this node's record? The domain can then be enrolled again.",
 
 	WizardTitle:          "Termit — first installation",
 	WizardHint:           "Enter accepts the value in brackets; an empty answer with no value means \"not now\".",
@@ -378,6 +520,10 @@ var messagesUVEN = map[Key]string{
 	WizardDomainNeeded:   "this node needs a domain: it is what the certificate is issued for",
 	WizardDomainShape:    "a domain is a bare name such as node.example.com",
 	WizardEmail:          "Contact address for the certificate authority (optional)",
+	WizardACMEIntro:      "The certificate comes from an ACME directory. Most installations use the public one: %s. Leave the next answer empty for it, or name another directory for a private authority — a test lab or a company CA.",
+	WizardACME:           "ACME directory (empty = the public one)",
+	WizardACMEShape:      "an ACME directory is an http(s) URL",
+	WizardACMESkip:       "Do not verify the ACME server's certificate? Only for a private CA this host does not trust",
 	WizardTemplate:       "Masking site",
 	WizardTemplateIntro:  "The page the node serves to a visitor who is not a client: %s.",
 	WizardTemplateBad:    "%q is not one this build generates",
@@ -399,7 +545,8 @@ var messagesUVEN = map[Key]string{
 	WizardConfirm:        "Install this node now?",
 	WizardNothingChanged: "Nothing was changed. The answers are kept: run `termit-uv wizard` again to continue.",
 	WizardInstallFailed:  "the installation did not finish; the answers are kept for the next run",
-	WizardEnrollFailed:   "the node is installed but not in the mesh yet: fix the invite and run `termit-uv enroll`",
+	WizardEnrollFailed:   "the node is installed but the registration failed: fix what the error above names and run `termit-uv wizard` again, which retries it",
+	WizardEnrollPending:  "The node is installed but not in the mesh yet. Finishing the registration with the code you gave:",
 	WizardDone:           "Done",
 	WizardHardenIntro:    "The node can close itself: an nftables table that keeps SSH, ports 80 and 443 and drops the rest of the inbound traffic, plus the ban engine. It is not switched on from here — that is one command, run when you know your access survives.",
 	WizardHarden:         "Harden this node (yes/no)",

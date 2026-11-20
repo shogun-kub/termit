@@ -25,7 +25,9 @@ sh mn.sh --domain mn.example.com --email you@example.com --admin-token-out /etc/
 
 `--version v0.4.1` installs that release instead of the newest; `--base-url` points the script at a
 mirror, a `file://` URL or a local directory (where `--version` is required, because a mirror cannot
-answer "newest"). `--mode` is passed through to `init`:
+answer "newest"). Re-running the script is the upgrade, and it needs no flags: the domain is read from the
+installed configuration, the newest release is resolved again, and the service is restarted. `--mode` is
+passed through to `init`:
 
 | Mode | What happens when a node enrols |
 |---|---|

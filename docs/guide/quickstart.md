@@ -99,6 +99,7 @@ The questions, in the order they come, and what to answer:
 | `Language / Язык` | `en` or `ru` — the rest of the questions are in that language | never |
 | `Domain (a DNS name that points at this machine)` | `node-a.example.com` | — this one is required |
 | `Contact address for the certificate authority` | `you@example.com` | — you get a warning if the certificate is about to expire |
+| `ACME directory (empty = the public one)` | `Enter` — Let's Encrypt | a test lab or a company certificate authority: its directory URL, e.g. `https://ca.example.net/acme/dir`. You are then asked whether to skip verifying its certificate |
 | `Masking site` | press `Enter` (`portal`) | `product` gives a different-looking ordinary page at your node's address |
 | `Egress (all, selected, off)` | `all` — everything proxied leaves through Cloudflare | `off` if you do not want traffic to touch Cloudflare, or if your hoster blocks it; `selected` if only some sites should |
 | `Harden this node (yes/no) [y/N]` | `y` if this machine is only a Termit node | `n` or `Enter` if other services you need run on it (the firewall would cut them off), or you already have your own firewall |
@@ -113,7 +114,8 @@ certificate, builds the decoy page, starts the services and joins your server. T
 what happened.
 
 Every answer is remembered. If you disconnect in the middle, run `termit-uv wizard` again and it
-continues where it stopped.
+continues where it stopped; if the node got installed but the registration did not go through, it retries
+that step with the code it kept.
 
 ## 4. Approve the node
 

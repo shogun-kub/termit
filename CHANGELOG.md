@@ -3,6 +3,87 @@ What each release changed, written for the people who run Termit. Newest first;
 carries every section back to the last release: the versions in between were handed out only as
 pre-releases, and whoever installs the release skipped them.
 
+## 0.4.2 — 2026-11-20
+
+The grace period does what its key promised, the subscription stops answering for nodes that are not
+there, and the installer runs on a box that has wget and no curl.
+
+### Added
+
+- **A grace period that counts what it says it counts.** `policy.block_after_failed_cycles` (1–30,
+  default 2 — one grace check) is the number of consecutive failed checks that block a node; before this
+  the scheduler ignored the value and blocked on the second failure whatever it said. The streak counts
+  *cycles*, not attempts: the retries inside one check are already one verdict, so a burst of technical
+  repeats in a short period no longer blocks a node faster than the setting allows. A check that passes
+  resets the streak, a check that could not run (`unknown`) neither advances nor resets it, and admitting
+  a node to active — `approve`, admin `unblock` — starts a clean one. `termit-mn check now` re-reads the
+  policy first, so an on-demand check uses the same threshold as a scheduled pass.
+- **The guard can no longer ban the node's own WARP endpoint.** The never-ban set was the management server
+  and `ssh_from`; the public address a WARP node's tunnel dials was not in it, so the kernel's scan meter
+  could hand the guard the node's own upstream — an hour without the tunnel at the first rung, a day at the
+  second. The endpoint is pinned in `warp.yaml` at registration, and it now joins the never-ban set from
+  there whatever `warp.mode` says: a node that turned WARP off keeps the identity, and turning it back on
+  must not start by banning the peer. `bans block` refuses it for the same reason it refuses the rest.
+- **The wizard finishes a registration that did not go through.** A run whose `init` succeeded and whose
+  `enroll` failed left a node installed, outside the mesh, with the invite code in `wizard.yaml` — and the
+  next run said "already installed" and threw the code away, so the owner had to work out from `enroll`'s
+  error what to type. It retries the registration with the kept code, says why the previous attempt failed,
+  and only then calls the node finished.
+- **The wizard asks for the certificate authority.** A first installation behind a private ACME directory
+  — a test lab, a company CA — could not be done from the questions at all: `init` takes `--acme-ca`, the
+  wizard never asked for it, so the certificate step went to Let's Encrypt and failed at the last step with
+  nothing to show for the answers. It asks now, and the standard installation still answers nothing here
+  because the public directory is the default; the skip-verification question appears only when a private
+  one is named. What the wizard hands `init` is one function, tested flag by flag.
+- **`termit-mn policy set block_after_failed_cycles 4`**, listed by `policy show` with the other runtime
+  values; the setting survives a restart and an empty value returns it to the configured default.
+- **The menu offers every command the CLI has.** The interactive menu used to be a selection: `termit-uv`
+  had no `unblock`, `migrate`, `firewall`, `bans`, `guard` or `warp rotate`, and `termit-mn` had no
+  `firewall`, `bans`, `guard`, `restore` or the nodes' `reissue`, `agentkey` and `forget`. All of them are
+  entries now, drawn from the same tables the commands are, so a blocked node can be let back in, a moved
+  one relocated, and a host defended from the menu as well as from the shell. What stays out is what has to
+  stay out: the long-running loops the units own, the rollback command the timer runs, `version` (in the
+  header), and `termit-mn init`, which you need before there is a server for the menu to talk to.
+
+### Fixed
+
+- **`uv.sh` and `mn.sh` run on a stock Debian 13.** Without `--version` both scripts look the newest
+  release up at `releases/latest`, and that lookup went through curl — which Debian 13 does not install,
+  so the one command a new participant starts with refused to run. They now follow the redirect with
+  whichever downloader the host has, and ask for `--version` only when it has neither.
+- **`mn.sh` upgrades without repeating the domain.** Its own header said re-running it is the upgrade, but a
+  run without `--domain` stopped before it looked at the configuration it was upgrading, so every update
+  began by retyping the name the installed file already holds. An upgrade reads it from
+  `/etc/termit/mn/config.yaml` and says where it came from; a first install still requires the flag, and a
+  name given by hand is still an explicit decision.
+- **`mn.sh` updates the package lists before it installs `unzip`.** A fresh image has no lists, so
+  `apt-get install unzip` failed with `unable to locate package` — which reads like a missing package
+  rather than a missing update — and the install aborted with the prober's message on the one command
+  documented for a clean box.
+- **The probe credential survives a sync and the next configuration write.** The probe UUID arrives in
+  every sync answer, but only enrollment stored it: a later `init`, `warp mode` or `device add` rebuilt
+  the configuration from the state and silently dropped `probe@termit`. The server's next check then
+  timed out and the node looked as if it had broken by itself.
+- **The wizard no longer calls a node outdated when Cloudflare is blocked.** `warp` registers with
+  Cloudflare and `warp-egress` measures where the tunnel exits, so on a network that blocks the WARP API
+  — the network this project exists for — neither step can ever report its effect present, and
+  `termit-uv wizard` sent the owner to run `init` on a converged node forever. Both now count as steps
+  that say nothing either way, next to `preflight` and `start`.
+
+### Changed
+
+- **The subscription answers 404 for a pending or a removed node**, the same answer an unknown token
+  gets: a token that cannot work no longer looks like a working one. A blocked node keeps its URL — its
+  peers have already dropped the credential — and the address list stays the thing a client acts on.
+- **The install pages start with `wget`.** Debian 13 installs wget and not curl, so every snippet that
+  began with curl failed on a fresh machine. curl stays as the alternative in the text, and the
+  requirement tables name the download tool next to the other prerequisites.
+- **The menu asks again instead of giving up.** A value a command cannot work without — a domain, an
+  address, an archive path, an invite code — used to end the entry and drop the operator back at the main
+  menu when the answer was empty; it is asked again now, so one stray Enter no longer costs the whole
+  flow. A yes/no answer that is neither asks again too: until now a typo quietly meant the default, which
+  on "send proxied traffic through WARP?" was "yes".
+
 ## 0.4.1 — 2026-11-17
 
 One defect in the wizard, one in the agent's sandbox, and the pages that describe an installation checked
