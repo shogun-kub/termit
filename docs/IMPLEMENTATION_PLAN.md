@@ -2105,3 +2105,50 @@ previous binary plus `termit-uv init`.
 **One host detail worth recording:** the production server has no `curl`, and every installer and one-liner
 in the guide assumes it. The update was done with `wget` and `sha256sum -c`; installing the package or
 teaching the scripts a `wget` fallback is a decision, not yet made.
+
+### 11.11 Production pass, 0.4.2, 2026-11-20
+
+`0.4.2` is the release that makes a first installation work on the machine a participant actually has:
+the installers resolve a release with `wget`, `mn.sh` upgrades without being handed the domain it already
+knows, the wizard asks for the certificate authority and finishes a registration the first run did not, the
+menu covers every command, and the guard no longer treats the node's own WARP endpoint as a scanner. Only
+the last two touch a running node, but the installers are the first thing a participant meets, so the
+release went to the production mesh as a pre-release before any tag existed.
+
+**The pre-release this record is about is `v0.4.2p3`.** `p1` was the release branch's first build; `p2`
+carried the flagless `mn.sh`; `p3` added the never-ban entry for the tunnel endpoint. The lab gated `p3`
+(`19 pass, 2 skip` — `clock skew` by design, and `disk full` refused by its own precondition when the
+filesystem stopped at 28 KB free rather than claim a drill it could not set up).
+
+**The server took `v0.4.2p3` with `sh mn.sh --version v0.4.2p3` and no other argument**, which is the
+behaviour this release adds: the script printed `domain: … (from /etc/termit/mn/config.yaml)`, replaced the
+binary and the unit, re-ran `init` and restarted the service. The database schema did not move (5 in both
+trees, so the previous binary still reads it), the shipped unit is byte-identical to the installed one, and
+`init` rewrote the configuration only to normalise it — it added the `locale`, the guard's default
+thresholds and `default_deny: true`, and dropped quotes the YAML did not need; every operator decision
+(domain, prefix, `ssh_from`, blocklist URL, subscription) came back unchanged. `status` lists both nodes
+`active` with no failed cycles, `healthz` answers `"build":"v0.4.2p3"` with `schema_version: 5`, and
+`agent/sync` still answers `401` without a key.
+
+**Both nodes took `v0.4.2p3` with `sh uv.sh --version v0.4.2p3 --no-enroll`.** Each `init` reported eleven
+steps `present` and three `ok`; `xray.json` and `config.yaml` kept their digests, the units were already up
+to date, and `termit-xray` was never restarted (one node still on its 2026-11-17 08:01:37 EET start, the
+other on 06:01:54 UTC). `warp status` reports `egress: on` through Cloudflare on both, `doctor` says 19 ok,
+and the certificate and the decoy answer `200` to a request from outside the node. The firewall table
+survived the upgrade untouched — still confirmed from three days earlier, SSH still restricted to the
+operator's own address, 145 blocklist networks in force — which is the invariant that matters: an upgrade
+never touches host firewall state.
+
+**The never-ban change was proved where it matters.** On both nodes `termit-uv bans block 162.159.192.1`
+now exits 2 with the refusal, and neither ban list holds a Cloudflare address, while the guessable-SSH and
+blocklist machinery is unchanged. The node's own tunnel endpoint is read from `warp.yaml` whatever
+`warp.mode` says, so a node that turns WARP off and on again cannot start by banning its peer.
+
+**Still open, and said rather than assumed:** the daily agent cycle has not yet run on `p3`; the next
+self-check reports to the server within the hour, and until it does the server's `AGENT` column still names
+the previous build. The refusal message from `bans block` lists loopback, the private ranges, the
+management server and `ssh_from` — it does not yet mention the WARP endpoint it now also refuses, which is
+a one-line correction owed to the next release. Also worth recording: this workstation could not open a
+public TLS connection during the pass (Windows `schannel: AcquireCredentialsHandle failed`), so the
+external `200`s above were taken from the server host with `wget`; the nodes' own end-to-end checks are the
+server's probes and their own `warp status`.
