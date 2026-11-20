@@ -2,12 +2,15 @@ package main
 
 import (
 	"context"
+	"net"
 	"net/netip"
 	"time"
 
 	"github.com/shogun-kub/termit/internal/firewall"
 	"github.com/shogun-kub/termit/internal/hardencmd"
+	"github.com/shogun-kub/termit/internal/uv/config"
 	"github.com/shogun-kub/termit/internal/uv/service"
+	"github.com/shogun-kub/termit/internal/uv/warp"
 )
 
 // uvHarden is the node's half of the shared security commands: its table, its ports, its units, and the
@@ -55,9 +58,35 @@ func (h *uvHarden) Open(path string) (*hardencmd.Component, error) {
 		},
 		Never: func(ctx context.Context) []netip.Prefix {
 			extra := append([]netip.Prefix(nil), ssh...)
-			return append(extra, addresses.Get(ctx, cfg.MN.URL)...)
+			extra = append(extra, addresses.Get(ctx, cfg.MN.URL)...)
+			if endpoint, ok := warpEndpoint(cfg); ok {
+				extra = append(extra, endpoint)
+			}
+			return extra
 		},
 	}, nil
+}
+
+// warpEndpoint is the peer this node's tunnel dials. The guard must never ban it, whatever warp.mode
+// says: the address is the node's own upstream, the identity pins it at registration, and a node that
+// banned it would defend itself into an hour without egress — then a day, when the ladder repeats. It is
+// read from the identity rather than resolved, so the answer cannot drift with DNS and costs no lookup.
+func warpEndpoint(cfg *config.Config) (netip.Prefix, bool) {
+	identity, err := warp.LoadIdentity(cfg.Paths.WarpIdentityPath())
+	if err != nil || identity.Endpoint == "" {
+		return netip.Prefix{}, false
+	}
+	host, _, err := net.SplitHostPort(identity.Endpoint)
+	if err != nil {
+		return netip.Prefix{}, false
+	}
+	addr, err := netip.ParseAddr(host)
+	if err != nil {
+		// A name that is not an address would need a resolver; the registrar pins the address, so the
+		// only way here is a hand-edited file, and leaving it out is the conservative answer.
+		return netip.Prefix{}, false
+	}
+	return netip.PrefixFrom(addr, addr.BitLen()), true
 }
 
 // env is the shared command's view of this process.

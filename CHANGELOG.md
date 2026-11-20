@@ -18,6 +18,12 @@ there, and the installer runs on a box that has wget and no curl.
   resets the streak, a check that could not run (`unknown`) neither advances nor resets it, and admitting
   a node to active — `approve`, admin `unblock` — starts a clean one. `termit-mn check now` re-reads the
   policy first, so an on-demand check uses the same threshold as a scheduled pass.
+- **The guard can no longer ban the node's own WARP endpoint.** The never-ban set was the management server
+  and `ssh_from`; the public address a WARP node's tunnel dials was not in it, so the kernel's scan meter
+  could hand the guard the node's own upstream — an hour without the tunnel at the first rung, a day at the
+  second. The endpoint is pinned in `warp.yaml` at registration, and it now joins the never-ban set from
+  there whatever `warp.mode` says: a node that turned WARP off keeps the identity, and turning it back on
+  must not start by banning the peer. `bans block` refuses it for the same reason it refuses the rest.
 - **The wizard finishes a registration that did not go through.** A run whose `init` succeeded and whose
   `enroll` failed left a node installed, outside the mesh, with the invite code in `wizard.yaml` — and the
   next run said "already installed" and threw the code away, so the owner had to work out from `enroll`'s

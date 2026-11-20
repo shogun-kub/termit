@@ -1124,9 +1124,10 @@ guard refills them on its next pass. `unban` lifts a ban but keeps the offence, 
 longer ban — it is not a way to forget what happened.
 
 **Never banned, whichever signal fires**: loopback, the private and link-local ranges, the management
-server (resolved from `mn.url`, cached for ten minutes) and your own `ssh_from` networks. `bans block`
-refuses them too — a ban there cuts you off, not an attacker. To block an address in one of those ranges
-anyway, do it with `nft` directly and know what you are doing.
+server (resolved from `mn.url`, cached for ten minutes), your own `ssh_from` networks, and the WARP
+endpoint the node's tunnel dials (read from `warp.yaml`, whether WARP is on or off — banning it would cut
+the node's own egress). `bans block` refuses them too — a ban there cuts you off, not an attacker. To
+block an address in one of those ranges anyway, do it with `nft` directly and know what you are doing.
 
 ### 13.5 The blocklist
 
