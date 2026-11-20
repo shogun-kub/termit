@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/shogun-kub/termit/internal/uv/config"
+	"github.com/shogun-kub/termit/internal/uv/install"
+	"github.com/shogun-kub/termit/internal/uv/state"
 )
 
 // wizardApp is an application whose wizard input is the given script and whose configuration path is a
@@ -168,6 +170,23 @@ func TestWizardHandsInstallTheFlagsWithoutTheSubcommand(t *testing.T) {
 	app.in = strings.NewReader("en\n\n\n\nportal\noff\nn\n\ny\n")
 	if code := app.run([]string{"wizard", "--config", configPath}); code == exitUsage {
 		t.Fatalf("the wizard handed init an argument it does not parse:\n%v", app.stderr)
+	}
+}
+
+// A node with WARP on always plans warp-egress: its Check is a measurement, not a file. Treating that
+// plan as work told every such owner to run init forever, which is what this test pins down.
+func TestStepSatisfiedTreatsMeasuringStepsAsDone(t *testing.T) {
+	t.Parallel()
+	for _, name := range []string{"preflight", "start", "warp", "warp-egress"} {
+		if !stepSatisfied(install.StepReport{Name: name, Status: state.StepPlanned}) {
+			t.Errorf("%s is treated as work although it only measures", name)
+		}
+	}
+	if stepSatisfied(install.StepReport{Name: "warp-egress", Status: state.StepFailed}) {
+		t.Error("a failed step counts as satisfied")
+	}
+	if stepSatisfied(install.StepReport{Name: "xray-config", Status: state.StepPlanned}) {
+		t.Error("a planned step with a real effect counts as satisfied")
 	}
 }
 

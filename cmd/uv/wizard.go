@@ -519,22 +519,33 @@ func (a *application) initComplete(cfg *config.Config, configPath string) (bool,
 		return false, err
 	}
 	for _, step := range report.Steps {
-		switch {
-		case step.Status == state.StepPresent:
-		case nonEffectSteps[step.Name] && step.Status == state.StepPlanned:
-			// A step that never reports its effect as present says nothing either way. A failure in it
-			// is a different matter and falls through: a node whose host checks fail is not installed.
-		default:
+		if !stepSatisfied(step) {
 			return false, nil
 		}
 	}
 	return true, nil
 }
 
+// stepSatisfied reports whether one step of a dry run says the node is already installed. A step that
+// never reports its effect as present says nothing either way; a failure in it falls through, because a
+// node whose host checks fail is not installed.
+func stepSatisfied(step install.StepReport) bool {
+	switch {
+	case step.Status == state.StepPresent:
+		return true
+	case nonEffectSteps[step.Name] && step.Status == state.StepPlanned:
+		return true
+	}
+	return false
+}
+
 // nonEffectSteps are the steps whose Check never reports the effect as present, by design: preflight
-// verifies the host on every run, and start restarts the agent on every run because init is also the
-// upgrade path. Neither tells us whether the node is installed.
-var nonEffectSteps = map[string]bool{"preflight": true, "start": true}
+// verifies the host on every run, start restarts the agent on every run because init is also the upgrade
+// path, warp registers with Cloudflare when that is possible at all, and warp-egress measures where the
+// tunnel exits — a measurement, not a file. None of them tells us whether the node is installed: a
+// network that blocks WARP is the very case this project exists for, and it must not make the wizard
+// tell the owner to run init forever.
+var nonEffectSteps = map[string]bool{"preflight": true, "start": true, "warp": true, "warp-egress": true}
 
 // wizardDraftPath keeps the answers beside the configuration they belong to, not in the state
 // directory: a `--config` elsewhere is a node whose answers should travel with it.
