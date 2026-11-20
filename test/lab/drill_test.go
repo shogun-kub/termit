@@ -394,7 +394,9 @@ func restoreCertificate(t *testing.T, ctx context.Context, m *lab.Machine, certP
 // the test does not need a second SSH channel.
 func installExpiredCertificate(t *testing.T, ctx context.Context, l *lab.Lab, m *lab.Machine, domain, certPath, keyPath string) {
 	t.Helper()
-	caFile := strings.TrimSpace(l.MN.MustRun(t, ctx, "sed -n 's/^  ca_file: *//p' /etc/termit/mn/config.yaml"))
+	// The key may be written as an explicit empty string, which YAML keeps as two quote characters:
+	// treat that as "not configured" rather than as a path called "".
+	caFile := strings.Trim(strings.TrimSpace(l.MN.MustRun(t, ctx, "sed -n 's/^  ca_file: *//p' /etc/termit/mn/config.yaml")), `"'`)
 	if caFile == "" {
 		t.Skip("the lab has no private CA configured; an expired leaf cannot be minted")
 	}
