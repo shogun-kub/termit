@@ -135,6 +135,7 @@ func (a *application) runSync(args []string) int {
 
 	st.Peers = agent.PeersFrom(answer)
 	agent.RememberSubscription(st, answer)
+	agent.RememberProbe(st, answer)
 	now := a.now().UTC()
 	st.Schedule.LastSyncAt = now
 	st.Schedule.LastResult = "ok"
