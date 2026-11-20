@@ -20,6 +20,9 @@ type Policy struct {
 	Jitter time.Duration
 	// Retries is the in-cycle retry policy: three attempts, ten minutes apart, by default.
 	Retries RetryPolicy
+	// BlockAfter is how many consecutive failed cycles move a node to blocked; one cycle is one
+	// check, whatever the retry count inside it. Zero means the default (two strikes, one grace check).
+	BlockAfter int
 	// Batch is how many due nodes one pass takes.
 	Batch int
 	// Workers is how many nodes are probed at once.
@@ -29,11 +32,12 @@ type Policy struct {
 // DefaultPolicy is the documented default: a check a day, at most an hour of spread.
 func DefaultPolicy() Policy {
 	return Policy{
-		Interval: 24 * time.Hour,
-		Jitter:   time.Hour,
-		Retries:  RetryPolicy{Attempts: 3, Gap: 10},
-		Batch:    50,
-		Workers:  4,
+		Interval:   24 * time.Hour,
+		Jitter:     time.Hour,
+		Retries:    RetryPolicy{Attempts: 3, Gap: 10},
+		Batch:      50,
+		Workers:    4,
+		BlockAfter: DefaultBlockAfter,
 	}
 }
 
@@ -95,7 +99,7 @@ type Runner struct {
 // CheckOne runs one cycle for one node: up to Policy.Retries.Attempts probes, the aggregate turned into
 // one event, and the node's next check scheduled whatever the result.
 func (r *Runner) CheckOne(ctx context.Context, node store.UV) (Cycle, error) {
-	r.applyDefaults()
+	r.refreshPolicy(ctx)
 	return r.check(ctx, node, r.Policy.Retries)
 }
 
@@ -103,7 +107,7 @@ func (r *Runner) CheckOne(ctx context.Context, node store.UV) (Cycle, error) {
 // what a diagnostic needs. Waiting ten minutes between attempts is right for the nightly cycle and
 // absurd for a command someone is watching.
 func (r *Runner) CheckNow(ctx context.Context, node store.UV) (Cycle, error) {
-	r.applyDefaults()
+	r.refreshPolicy(ctx)
 	return r.check(ctx, node, RetryPolicy{Attempts: 1, Gap: r.Policy.Retries.Gap})
 }
 
@@ -198,8 +202,20 @@ func (r *Runner) finish(ctx context.Context, cycle Cycle, event Event, result pr
 	cycle.Result = result
 	cycle.Event = event
 
-	outcome := Transition(State(cycle.Node.State), event)
-	cycle.Outcome = outcome
+	// One cycle is one count: the retry attempts inside it never move the streak on their own.
+	streak := cycle.Node.FailedCycles
+	switch event {
+	case EventCheckFailed:
+		streak++
+	case EventCheckOK:
+		streak = 0
+	}
+	// EventCheckUnknown keeps the streak: a check that could not run is neither progress towards the
+	// block nor a reason to forgive the failures already counted.
+
+	cycle.Outcome = Transition(State(cycle.Node.State), event,
+		Tally{Streak: streak, BlockAfter: r.Policy.BlockAfter})
+	outcome := cycle.Outcome
 	now := r.Now().UTC()
 
 	if outcome.Changed && r.Store != nil {
@@ -208,11 +224,7 @@ func (r *Runner) finish(ctx context.Context, cycle Cycle, event Event, result pr
 		}
 	}
 	if r.Store != nil {
-		failed := 0
-		if event == EventCheckFailed {
-			failed = 1
-		}
-		if err := r.Store.SetFailedCycles(ctx, cycle.Node.ID, failed); err != nil {
+		if err := r.Store.SetFailedCycles(ctx, cycle.Node.ID, streak); err != nil {
 			return cycle, err
 		}
 		if err := r.Store.ScheduleCheck(ctx, cycle.Node.ID, r.nextDue(now, cycle.Node.ID), now); err != nil {
@@ -340,16 +352,25 @@ func (r *Runner) applyDefaults() {
 	if r.Policy.Retries.Attempts <= 0 {
 		r.Policy.Retries = DefaultPolicy().Retries
 	}
+	if r.Policy.BlockAfter <= 0 {
+		r.Policy.BlockAfter = DefaultBlockAfter
+	}
 }
 
-// Pass checks every node that is due, once. It is what Run loops over, and what a test drives directly.
-func (r *Runner) Pass(ctx context.Context) ([]Cycle, error) {
+// refreshPolicy pulls the operator's runtime overrides and fills in the defaults. Every way into a
+// cycle goes through it, so `check now` uses the same thresholds the scheduler would.
+func (r *Runner) refreshPolicy(ctx context.Context) {
 	if r.PolicyFn != nil {
 		if updated := r.PolicyFn(ctx); updated.Interval > 0 {
 			r.Policy = updated
 		}
 	}
 	r.applyDefaults()
+}
+
+// Pass checks every node that is due, once. It is what Run loops over, and what a test drives directly.
+func (r *Runner) Pass(ctx context.Context) ([]Cycle, error) {
+	r.refreshPolicy(ctx)
 	if r.Store == nil {
 		return nil, errors.New("sched: a store is required")
 	}

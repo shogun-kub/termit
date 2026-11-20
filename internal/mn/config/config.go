@@ -155,7 +155,8 @@ type Enrollment struct {
 
 // Policy holds the scheduler thresholds an operator may tune without a rebuild.
 type Policy struct {
-	// BlockAfterFailedCycles is how many consecutive failed cycles move a node to blocked.
+	// BlockAfterFailedCycles is how many consecutive failed cycles move a node to blocked. A cycle is
+	// one check: the retries inside it are attempts and count once. 2 means one grace check.
 	BlockAfterFailedCycles int `yaml:"block_after_failed_cycles"`
 	// ProbeRetries is how many attempts one cycle makes before it counts as failed.
 	ProbeRetries int `yaml:"probe_retries"`

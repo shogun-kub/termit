@@ -40,6 +40,15 @@ func (h *Handler) subscription(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A subscription is a member's list. A pending node has not been admitted and a removed one is out
+	// for good (DESCRIPTION §7.1), so both get the answer an unknown token gets: the response says
+	// nothing about which of the two it was.
+	if owner.State != store.StateActive && owner.State != store.StateUnavailable && owner.State != store.StateBlocked {
+		writeProblem(w, http.StatusNotFound, proto.NewProblem(http.StatusNotFound,
+			"subscription_not_found", "Not Found", "no subscription for this token"))
+		return
+	}
+
 	peers, err := h.peers(r, owner)
 	if err != nil {
 		h.opts.Logger.Error("subscription peers", "err", err)

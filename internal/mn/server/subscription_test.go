@@ -12,8 +12,52 @@ import (
 	"github.com/shogun-kub/termit/internal/cred"
 	"github.com/shogun-kub/termit/internal/mn/secret"
 	"github.com/shogun-kub/termit/internal/mn/server"
+	"github.com/shogun-kub/termit/internal/mn/store"
 	"github.com/shogun-kub/termit/internal/proto"
 )
+
+// TestSubscriptionIsOnlyForMembers pins the state gate: a pending node has not been admitted and a
+// removed one is out of the mesh for good, so neither gets a list — while a blocked node keeps its URL
+// and its place in the peer sets for the day it is unblocked (DESCRIPTION §7.1, QUESTIONS Q6.5).
+func TestSubscriptionIsOnlyForMembers(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		state store.State
+		want  int
+	}{
+		{store.StateActive, http.StatusOK},
+		{store.StateUnavailable, http.StatusOK},
+		{store.StateBlocked, http.StatusOK},
+		{store.StatePending, http.StatusNotFound},
+		{store.StateRemoved, http.StatusNotFound},
+	} {
+		t.Run(string(tc.state), func(t *testing.T) {
+			t.Parallel()
+			fx := newFixture(t)
+			token := "subscription-token-for-tests"
+			sealed, err := secret.Seal(masterKey, token)
+			if err != nil {
+				t.Fatalf("Seal: %v", err)
+			}
+			ctx := context.Background()
+			if err := fx.store.SetSubTokenHash(ctx, fx.nodeID, secret.Digest(token), sealed); err != nil {
+				t.Fatalf("SetSubTokenHash: %v", err)
+			}
+			if _, err := fx.store.SetUVState(ctx, fx.nodeID, tc.state, "test", "test", testNow); err != nil {
+				t.Fatalf("SetUVState: %v", err)
+			}
+
+			request := httptest.NewRequest(http.MethodGet, "/sub/"+token, nil)
+			request.RemoteAddr = "203.0.113.10:5555"
+			recorder := httptest.NewRecorder()
+			fx.handler.ServeHTTP(recorder, request)
+			if recorder.Code != tc.want {
+				t.Errorf("subscription for a %s node = %d, want %d: %s",
+					tc.state, recorder.Code, tc.want, recorder.Body)
+			}
+		})
+	}
+}
 
 // TestSubscriptionAllowsAClientsRefreshes pins the subscription limit apart from the enrollment one.
 // A subscription client refreshes at launch and on demand; the token is unguessable, so the counter

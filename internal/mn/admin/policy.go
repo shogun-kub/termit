@@ -14,8 +14,9 @@ import (
 // configuration file and needs a restart, on purpose: this list is the set of knobs that are worth
 // turning while watching a mesh.
 var policyKeys = map[string]string{
-	"check_interval": "how often a node is checked, as a Go duration (24h, 90m)",
-	"probe_retries":  "how many attempts one cycle makes (1–10)",
+	"check_interval":            "how often a node is checked, as a Go duration (24h, 90m)",
+	"probe_retries":             "how many attempts one cycle makes (1–10)",
+	"block_after_failed_cycles": "how many consecutive failed checks move a node to blocked (1–30; 2 means one grace check)",
 }
 
 // showPolicy answers with the current runtime overrides and what they mean.
@@ -64,6 +65,11 @@ func (s *Service) setPolicy(ctx context.Context, raw json.RawMessage) (any, *Err
 	case "probe_retries":
 		retries, err := strconv.Atoi(args.Value)
 		if err != nil || retries < 1 || retries > 10 {
+			return nil, &Error{Code: CodeBadRequest, Detail: help}
+		}
+	case "block_after_failed_cycles":
+		cycles, err := strconv.Atoi(args.Value)
+		if err != nil || cycles < 1 || cycles > 30 {
 			return nil, &Error{Code: CodeBadRequest, Detail: help}
 		}
 	}

@@ -212,6 +212,30 @@ func TestApproveAndReject(t *testing.T) {
 	}
 }
 
+// TestApprovalStartsACleanStreak: a pending node may fail checks while it waits, and admission must not
+// carry that streak into the active state — otherwise the first failure after approval blocks it.
+func TestApprovalStartsACleanStreak(t *testing.T) {
+	t.Parallel()
+	client, db := start(t)
+	ctx := context.Background()
+	if err := db.CreateUV(ctx, store.UV{ID: "uv_1", Domain: "one.example.com", SelfUUID: "u1",
+		State: store.StatePending, CreatedAt: testNow, CredentialEpoch: 1}); err != nil {
+		t.Fatalf("CreateUV: %v", err)
+	}
+	if err := db.SetFailedCycles(ctx, "uv_1", 3); err != nil {
+		t.Fatalf("SetFailedCycles: %v", err)
+	}
+	var decision struct {
+		Node admin.NodeView `json:"node"`
+	}
+	if err := call(ctx, client, "uv.approve", map[string]string{"id": "uv_1"}, &decision); err != nil {
+		t.Fatalf("uv.approve: %v", err)
+	}
+	if decision.Node.FailedCycles != 0 {
+		t.Errorf("failed cycles after approval = %d, want 0", decision.Node.FailedCycles)
+	}
+}
+
 func TestClientReportsAMissingSocket(t *testing.T) {
 	t.Parallel()
 	client := admin.Client{Network: "tcp", Address: "127.0.0.1:1", Token: testToken, Timeout: time.Second}

@@ -407,7 +407,7 @@ func (s *Service) setUVState(ctx context.Context, raw json.RawMessage, to store.
 	// The operator's intent goes through the same table as the machine's: a command that the table
 	// calls a no-op must not move anything, and a move the table forbids is refused here rather than
 	// silently accepted.
-	outcome := sched.Transition(sched.State(node.State), event)
+	outcome := sched.Transition(sched.State(node.State), event, sched.Tally{})
 	if !outcome.Changed {
 		if string(node.State) == string(to) {
 			return map[string]any{"node": view(node), "changed": false}, nil
@@ -423,6 +423,11 @@ func (s *Service) setUVState(ctx context.Context, raw json.RawMessage, to store.
 		return nil, &Error{Code: CodeInternal, Detail: err.Error()}
 	}
 	if to == store.StateActive {
+		// A node admitted afresh starts with a clean streak: failures from before an approval or an
+		// operator unblock must not count towards the next block.
+		if err := s.Store.SetFailedCycles(ctx, node.ID, 0); err != nil {
+			return nil, &Error{Code: CodeInternal, Detail: err.Error()}
+		}
 		if err := s.Store.ApproveUV(ctx, node.ID, now); err != nil {
 			return nil, &Error{Code: CodeInternal, Detail: err.Error()}
 		}
