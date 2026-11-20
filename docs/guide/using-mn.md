@@ -14,11 +14,12 @@ that is [the interactive menu](menu.md).
 
 ## Install
 
-One command: it resolves the newest release, verifies its checksum, installs the binary and its unit,
-installs the probe worker, creates the configuration, starts the service and prints the status.
+Download the installer and run it: it resolves the newest release, verifies its checksum, installs the
+binary and its unit, installs the probe worker, creates the configuration, starts the service and prints
+the status. `wget` is part of a standard Debian 13 install; `curl -fsSLO <same URL>` works too:
 
 ```bash
-curl -fsSLO https://github.com/shogun-kub/termit/releases/latest/download/mn.sh
+wget -q https://github.com/shogun-kub/termit/releases/latest/download/mn.sh
 sh mn.sh --domain mn.example.com --email you@example.com --admin-token-out /etc/termit/mn/admin.token
 ```
 

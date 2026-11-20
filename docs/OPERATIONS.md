@@ -108,7 +108,7 @@ The bootstrap script resolves a release, verifies it, installs the binary and it
 worker, creates the configuration, starts the service and prints the status:
 
 ```bash
-curl -fsSLO https://github.com/shogun-kub/termit/releases/latest/download/mn.sh
+wget -q https://github.com/shogun-kub/termit/releases/latest/download/mn.sh
 sh mn.sh --domain mn.example.com --email you@example.com \
   --admin-token-out /etc/termit/mn/admin.token
 ```
@@ -218,8 +218,8 @@ The probe worker (§2 says why it is not optional) is the last thing the script 
 the same pinned core the nodes run:
 
 ```bash
-apt-get install -y unzip
-curl -fsSLO https://github.com/XTLS/Xray-core/releases/download/v26.11.9/Xray-linux-64.zip
+apt-get update && apt-get install -y unzip
+wget -q https://github.com/XTLS/Xray-core/releases/download/v26.11.9/Xray-linux-64.zip
 unzip -o Xray-linux-64.zip -d /usr/local/lib/termit
 chmod 0755 /usr/local/lib/termit/xray
 sed -i 's|^  xray_binary: ""|  xray_binary: /usr/local/lib/termit/xray|' /etc/termit/mn/config.yaml
@@ -374,7 +374,7 @@ something piped from a branch:
 termit-mn invite create --note "node1" --uses 1        # on the MN; prints the code once
 
 # on the fresh node, as root
-curl -fsSLO https://github.com/shogun-kub/termit/releases/latest/download/uv.sh
+wget -q https://github.com/shogun-kub/termit/releases/latest/download/uv.sh
 sh uv.sh \
   --domain node1.example.net --email you@example.com \
   --mn https://mn.example.com/6rfjdqfn5nno --invite ABCD-EFGH-IJKL

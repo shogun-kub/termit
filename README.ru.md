@@ -67,14 +67,17 @@ WARP, а собственный трафик машины — никогда. О
 
 ```bash
 # на сервере (Debian 13, порты 80/443 свободны, DNS указывает на него)
-curl -fsSLO https://github.com/shogun-kub/termit/releases/latest/download/mn.sh
+wget -q https://github.com/shogun-kub/termit/releases/latest/download/mn.sh
 sh mn.sh --domain mn.example.com --email you@example.com   # --version v0.4.1 закрепляет релиз
 termit-mn invite create --note "node-a"                    # печатает код один раз
 
 # на узле (Debian 13, порты 80/443 свободны, DNS указывает на него)
-curl -fsSLO https://github.com/shogun-kub/termit/releases/latest/download/uv.sh
+wget -q https://github.com/shogun-kub/termit/releases/latest/download/uv.sh
 sh uv.sh --wizard
 ```
+
+`wget` входит в стандартную установку Debian 13; если у вас есть `curl`, `curl -fsSLO <тот же URL>`
+работает так же, и сами установщики качают любым из них.
 
 Мастер спросит имя узла, адрес сервера — вместе с префиксом API, который напечатал `init`, — и код
 приглашения. Дальше `termit-uv status` печатает URL подписки для клиента, а `termit-mn status` показывает
@@ -121,6 +124,7 @@ linux/arm64. С `0.4.0` туннель WARP живёт внутри ядра п�
 | | |
 |---|---|
 | Среда | Debian 13 (trixie), amd64 или arm64, systemd, root |
+| Чем скачивать | `wget` (входит в Debian 13; `curl -fsSLO <url>` тоже работает, если установлен) |
 | Порты | 80 и 443 доступны из интернета на каждой машине |
 | DNS | по имени на каждый узел и на сервер, каждое указывает на нужную машину |
 | Сертификат | выпускается автоматически по ACME (по умолчанию Let's Encrypt) |

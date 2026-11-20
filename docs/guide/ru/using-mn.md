@@ -14,11 +14,12 @@
 
 ## Установка
 
-Одна команда: находит самый свежий релиз, сверяет его контрольную сумму, ставит бинарник и юнит,
-ставит prober, создаёт конфигурацию, запускает службу и печатает состояние.
+Скачайте установщик и запустите его: он находит самый свежий релиз, сверяет его контрольную сумму,
+ставит бинарник и юнит, ставит prober, создаёт конфигурацию, запускает службу и печатает состояние.
+`wget` есть в стандартной установке Debian 13; `curl -fsSLO <тот же URL>` тоже подойдёт:
 
 ```bash
-curl -fsSLO https://github.com/shogun-kub/termit/releases/latest/download/mn.sh
+wget -q https://github.com/shogun-kub/termit/releases/latest/download/mn.sh
 sh mn.sh --domain mn.example.com --email you@example.com --admin-token-out /etc/termit/mn/admin.token
 ```
 

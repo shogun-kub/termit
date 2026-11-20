@@ -36,13 +36,14 @@
 
 ## 1. Сервер
 
-Войдите на сервер как `root` и вставьте одну строку. Она скачивает самый свежий релиз, сверяет файл с
-опубликованной контрольной суммой, ставит сервер и его systemd-юнит, ставит нужный серверу prober,
-создаёт конфигурацию, запускает службу и печатает её состояние. `--version v0.4.1` поставит
-указанный релиз вместо самого свежего.
+Войдите на сервер как `root` и выполните эти команды. Они скачивают самый свежий релиз через `wget`
+(он есть в стандартной установке Debian 13; `curl -fsSLO <тот же URL>` тоже подойдёт), сверяют файл с
+опубликованной контрольной суммой, ставят сервер и его systemd-юнит, ставят нужный серверу prober,
+создают конфигурацию, запускают службу и печатают её состояние. `--version v0.4.1` поставит указанный
+релиз вместо самого свежего.
 
 ```bash
-curl -fsSLO "https://github.com/shogun-kub/termit/releases/latest/download/mn.sh" && sh mn.sh --domain mn.example.com --email you@example.com --admin-token-out /etc/termit/mn/admin.token
+wget -q "https://github.com/shogun-kub/termit/releases/latest/download/mn.sh" && sh mn.sh --domain mn.example.com --email you@example.com --admin-token-out /etc/termit/mn/admin.token
 ```
 
 Что подставить вместо примеров:
@@ -83,12 +84,13 @@ termit-mn invite create --note node-a
 
 ## 3. Узел
 
-Войдите на узел как `root` и вставьте одну строку. Она скачивает установщик, проверяет релиз,
-устанавливает программу узла и переходит к вопросам. Без `--version` ставится самый свежий релиз;
+Войдите на узел как `root` и выполните эти команды. Они скачивают установщик через `wget` (он есть в
+стандартной установке Debian 13; `curl -fsSLO <тот же URL>` тоже подойдёт), проверяют релиз, ставят
+программу узла и переходят к вопросам. Без `--version` ставится самый свежий релиз;
 `sh uv.sh --version v0.4.1 --wizard` закрепляет конкретный.
 
 ```bash
-curl -fsSLO "https://github.com/shogun-kub/termit/releases/latest/download/uv.sh" && sh uv.sh --wizard
+wget -q "https://github.com/shogun-kub/termit/releases/latest/download/uv.sh" && sh uv.sh --wizard
 ```
 
 Вопросы по порядку и что на них отвечать:
