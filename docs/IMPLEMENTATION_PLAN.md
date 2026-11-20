@@ -1438,9 +1438,11 @@ These are not separate milestones; they must be updated in the milestone that to
 
 ## 5. Explicitly deferred (post-v1)
 
-- REALITY as a second profile; Hysteria2/TUIC; MTProto.
-- Multi-vantage probing; federation between MNs; node reputation.
-- Web admin UI; traffic accounting and quotas; Telegram bot.
+- REALITY as a second profile; Hysteria2/TUIC; MTProto (§10.4).
+- Multi-vantage probing (§10.6); federation between independent MNs; MN replication in one mesh
+  (§10.2); node reputation.
+- One machine running both the MN and a node (§10.5).
+- Web admin UI; traffic accounting and quotas (§10.3); Telegram bot.
 - IPv6-only nodes; non-Debian distributions (an explicit portability milestone, not a side effect).
 - Hot certificate reload without a restart (depends on Xray capabilities).
 
@@ -1551,6 +1553,284 @@ Acceptance, when it is picked up: a UDP probe through the tunnel reports `warp=o
 own SSH/ACME/decoy traffic still leaves from its own address, `wgcf`-equivalent credentials survive a
 restart and are never logged, fail-open still moves traffic to `direct` when WARP stops answering, and no
 `ip rule`/`ip route` change exists on the host.
+
+### 10.2 Several MNs in one mesh
+
+Today one MN is the only authority: it owns the SQLite registry, derives every pair credential from its
+`master_key`, probes every node and renders every subscription. A second MN in the same mesh is therefore
+a second authority, not a mirror, and the work is an ownership rule plus replication — not a load
+balancer in front of one database. It stays out because v1 is explicitly a single coordinating server
+(`DESCRIPTION.md` §3 rules out federation between MNs), because the credential derivation in
+`DESCRIPTION.md` §6.2 is a contract a second writer must not silently change, and because one MN is
+already the most valuable target in the mesh: every extra copy carries the same power. This item is
+replication inside one cooperative mesh — several MNs over the same node set. Federation of independent
+groups that only share some nodes is a different thing (§5) and is not covered here.
+
+What replicates: node records (`uv_id`, domain, profile, state, failure streak, certificate pin,
+agent-key hash), `credential_epoch`, policy that changes pairs, verdicts with their timestamps, and the
+schedule. What does not: the `master_key`. It is moved once, out of band, when the mesh is formed, or
+replaced by a threshold scheme below — sending it through a relay, even encrypted, makes every relay a
+candidate for the whole mesh.
+
+| key model | consequence |
+|---|---|
+| shared `master_key` | any MN derives any pair; simplest; one compromised MN is the whole mesh, which a single MN already is |
+| threshold (2-of-N) | no single MN derives; changes `DESCRIPTION.md` §6.2, so a new `credential_epoch` and a migration; new pairs need two MNs reachable |
+
+That choice comes before any code, because it decides whether replication is additive or a credential
+migration.
+
+Authority:
+
+- Every node has exactly one **home MN**, fixed at enrollment. Only the home MN accepts
+  enroll/unblock/relocate/policy for that node, and only it writes the row; replicas apply events and
+  never write a node they do not home. A node id is global: two homes may not own the same one, a replica
+  never creates one, and a conflict is refused rather than merged. Moving a node is an explicit handoff —
+  the new home issues a new agent key, the id and the pair credentials survive, the epoch is checked —
+  never an implicit failover.
+- `credential_epoch` is replicated, and a bump takes effect only when every configured MN has
+  acknowledged it. A bump during a partition is a mesh-wide split no node can detect from the inside;
+  gating it on quorum is the whole safety argument.
+
+Transport, two paths, one envelope:
+
+- **Direct**: MN↔MN over HTTPS with pinned static keys — no new CA and no new service.
+- **Indirect**: through mesh nodes. A UV already has an always-on process and is already trusted to reach
+  a management endpoint, so it carries opaque envelopes from its home MN to another MN, with a bounded
+  queue, a TTL, an ack and a per-MN quota. The envelope is end-to-end encrypted and signed — `mn_id`,
+  `seq`, `schema_version` and payload, X25519 + AEAD, Ed25519 — so a relay reads ciphertext, cannot forge
+  or replay (sequence window) and cannot alter it without a signature failure. A relay that drops costs
+  liveness only. The node does not become a general relay: only envelopes addressed to configured MNs,
+  only below a size cap, removed on ack. Encryption and signatures come from the standard library plus
+  the `x/crypto` already in the module, so this adds no dependency.
+- Replication needs its own interval, not the daily sync: a state change that takes 24 h to reach the
+  other half of the mesh is not replication. On the indirect path that means a short poll or long-poll
+  between UV and its home MN — a new always-on network behaviour on the node, and part of the cost.
+
+Replication itself is an append-only event log per MN, applied idempotently by `(mn_id, seq)`; a new or
+gapped peer takes a schema-versioned snapshot and resumes. SQLite stays single-writer: do not share the
+file and do not add a replication service. Byte-level tools (Litestream, rqlite) solve single-writer
+failover and bring a dependency plus merge semantics the state machine does not have.
+
+Decide before implementing: whether replicas may enroll (no — invites and approval stay at the home);
+whether a UV may sync to a replica while its home is down (read-only desired state, checks written to
+the home only — a stale subscription beats a wrong one); how the admin CLI names "the mesh" when the
+local MN is a replica; and what a node does with two reachable homes (there is no split brain because
+there is one home, but the failover story must be written down).
+
+Acceptance: two MNs and two UVs. A node enrolled on A appears on B and in a subscription B renders; a
+block on A reaches B and the peer's next sync. Cut the direct link and the same event arrives through a
+UV relay with the same three results. A replayed envelope changes nothing; a tampered one is rejected and
+logged. A partition admits no replica enrollment and no epoch bump; a schema mismatch refuses replication
+but keeps serving the last good snapshot. The lab needs a second MN machine — the spare fourth container
+is a UV — so the suite grows before this ships.
+
+### 10.3 Traffic limits per node
+
+Nothing counts bytes today: MN knows a node answers checks and nothing else. VPS plans cap traffic, so a
+node can be suspended by its provider without warning — which removes a working exit and, because the
+next failed check is up to a day away, leaves peers pointing at a dead endpoint. A cap the node enforces
+itself keeps it reachable for SSH, ACME, sync and the decoy, and takes it out of rotation before the
+provider does. It is out because `DESCRIPTION.md` §3 lists traffic accounting and quotas as non-goals and
+§5.10 keeps rate limiting out; a quota is also a new state in the lifecycle, not a config flag.
+
+The operator has to say what the provider bills; the node cannot know it:
+
+| source | counts | matches the bill | cost |
+|---|---|---|---|
+| interface, `/sys/class/net/<if>/statistics/{rx,tx}_bytes` | every byte, proxy or not | yes — what the hypervisor or veth counts | none; the interface is config (default: the default route's) |
+| Xray `stats` + `policy.system` | proxied bytes, per user if wanted | no — misses TLS/nginx overhead and retransmits | resets on restart; needs a persisted offset |
+| provider API | exactly the bill | exactly | one integration per provider, secrets, network calls — out of scope |
+
+Default to enforcing on interface **egress** (`tx_bytes`): proxy responses dominate it and most VPS bill
+outbound. `rx+tx`, inbound-only and 95th-percentile plans exist, so the direction is a config value, not
+an assumption. A byte through WARP still crosses the interface (the WireGuard tunnel is node-side), so it
+is counted once whichever egress it takes. Xray's split is still reported, so the owner can see how much
+was the mesh rather than their own downloads.
+
+The awkward parts, which are the actual work:
+
+- **Period.** Billing months start on the provider's day, not the first: a day-of-month plus the resident
+  time zone, with a manual reset. A rolling 30-day window needs daily buckets; a calendar month needs one
+  counter and a start date.
+- **Headroom.** A cap at 100% leaves nothing for the agent, ACME or the owner's SSH, and those are
+  exactly what must never be cut. Stop proxying at a configured reserve below the limit; direct traffic
+  and the decoy stay up.
+- **Enforcement and state.** Peers must stop being handed the node, but the node must not look "failed".
+  The honest shape is a new self-reported state (`limited`) — out of peers' configs like `blocked`, and
+  automatically `active` when the period resets, unlike `blocked`, which needs an unblock. That is a
+  state-machine change, and the reason this is not a small patch.
+- **Lag.** Daily sync is too slow to report; enforcement is local, the report rides the next sync, and a
+  one-minute local poll is plenty for a multi-GiB cap.
+- **Restarts and reboots.** Xray counters reset with the process; persist an offset and notice the reset
+  (a counter below the last seen). Interface counters reset on reboot; persist a baseline and add the
+  delta, treating a drop as a new baseline rather than negative traffic.
+
+Acceptance: on the lab, a 50 MiB cap stops proxying at the reserve while SSH, the decoy, ACME and the
+agent keep working; restarting the core does not lose the reported total; the next period returns the
+node to `active` with no operator action; the peer set drops it while limited and gets it back;
+`termit-mn status` shows the number and the period. This is a quota, not per-second rate limiting
+(§5.10).
+
+### 10.4 More protocols and protocol options
+
+V1 is one profile: VLESS over XHTTP `packet-up` inside TLS that nginx terminates, with the parameters
+frozen in `internal/proto/profile.go`, one `xray-core` probe worker on MN, and one URI builder plus one
+sing-box renderer for the two subscription forms. This is not accidental — the path, mode, fingerprint
+and padding were measured, and every component is shaped around that one profile. `DESCRIPTION.md` §3
+rules a second protocol out for v1.
+
+The request has two sizes, and the smaller one may be enough:
+
+- **Options inside the profile** — XHTTP mode, ALPN, mux/padding, path shape. A small enumerated set,
+  validated at enrollment and versioned; free-form values are refused because a client that cannot parse
+  the URI fails silently, and because some values are already known-bad here: an `h2` ALPN cannot cross
+  nginx's HTTP/1.1 hop, and a `chrome` hello was frozen on a measured path. These change the URI builder,
+  the generator and the prober together.
+- **A second protocol** — REALITY, Trojan/VMess/Shadowsocks, Hysteria2/TUIC. The profile becomes
+  `{kind, version, params}` with a codec per kind. REALITY first: same core, same VLESS payload, and
+  already named as a later profile in `DESCRIPTION.md` §3. Shadowsocks and Trojan are also xray-core
+  protocols. Hysteria2/TUIC are UDP, need another client on MN and another listener on UV; MTProto is a
+  different product.
+
+Constraints, in the order they decide the design:
+
+1. **The credential model is VLESS-shaped.** Pair access is a UUID derived per pair; Shadowsocks and
+   Hysteria2 use passwords, REALITY keeps the UUID. Each kind needs its own pair-secret derivation with
+   a distinct domain separator, or the mesh cannot express "A may use B" portably. Changing
+   `DESCRIPTION.md` §6.2 is a new `credential_epoch` and a migration.
+2. **Port 443 is shared with the decoy and ACME.** nginx owns TCP/443 today. REALITY wants the core on
+   443 and takes the client-facing handshake from nginx, so the decoy becomes REALITY's fallback and the
+   certificate flow changes. QUIC protocols use UDP/443 and do not collide with nginx, but need their
+   own probe path.
+3. **The prober is one binary.** MN's `xray-core` speaks every xray-core protocol; Hysteria2/TUIC need a
+   second pinned client with its own upgrade path and failure modes. The narrow `Probe(ctx, url)` seam
+   survives, but each transport is a new implementation behind it.
+4. **Clients differ.** Stock sing-box already cannot read the XHTTP profile; a second protocol widens
+   that matrix. The subscription must tell a client what it can parse — profile version, per-form
+   rendering, or an explicit refusal — instead of emitting a URI that opens and fails.
+5. **No host firewall or routing changes and no second daemon.** That rules out TUN designs and anything
+   needing a port forward, and it applies to every new protocol.
+
+Order if picked up: options first (small, no credential change), then REALITY (same core, one topology
+change), then the other xray-core protocols, and only then a UDP protocol with its own client. Never
+expose raw Xray JSON: a per-kind schema with validation is the only thing that keeps the generator,
+parser and prober from drifting apart.
+
+Acceptance: a second kind end to end on the lab — URI build/parse round-trip, generated document golden
+plus `xray -test`, an MN probe through it, both subscription forms, a client that does not support it
+getting a clear refusal, and the decoy/ACME/direct-traffic invariants unchanged. A profile-version test
+must show an old MN and a new UV (and the reverse) refusing the mismatch instead of writing a config
+that cannot work.
+
+### 10.5 The MN and a node on one machine
+
+Today the two roles are two machines by design: the node's nginx owns `:80` and `:443`, while the MN has
+its own TLS listener on `:443` and its ACME challenge listener on `:80` (`docs/OPERATIONS.md` §1). For a
+two- or three-person mesh that second box is the most expensive part of the deployment, and the natural
+request is one VPS that runs both binaries.
+
+It stays out of v1 because it is a topology change, not a packaging one: the invariants are written
+against "one process owns the ports and the certificate" (`DESCRIPTION.md` §11), and nothing here
+weakens them — but the ownership rule has to be decided first.
+
+Constraints, in the order they decide the design:
+
+1. **One owner per port.** nginx is the only `:80`/`:443` listener, and it routes by SNI/Host — the
+   node's name to the local core, the MN's name to the MN on a loopback port — or the MN moves to its
+   own port and every server URL and firewall rule changes. The first keeps the client shape and is the
+   recommended direction.
+2. **Two certificates, one ACME listener.** Both names need a leaf on the same address, and two ACME
+   clients would fight over the challenge. The handler must be shared (one nginx `/.well-known/`
+   location, forwarded to whichever role is renewing), while each role keeps renewing and pinning its
+   own leaf: the MN pins every node's leaf, the node pins nothing.
+3. **The decoy has two owners.** The node's decoy is an nginx tree under `/var/www/termit`; the MN
+   serves its own from memory (`internal/mn/server/decoy.go`). Combined, SNI decides which site a
+   visitor gets, and that is a fingerprint decision as much as routing: the two sites must not share a
+   template seed or look like one deployment serving two names.
+4. **The MN still never proxies.** Two systemd units, two service users, two state directories
+   (`/var/lib/termit/mn`, `/var/lib/termit/uv`); the node keeps its own core and WARP, and the MN
+   process stays traffic-free. No shared daemon.
+5. **Firewall and ban ownership.** The node's optional table is `inet termit_uv`, the MN's is
+   `inet termit_mn`; combined they must not both claim `input`, the node's `firewall on` must not cut
+   the MN's ACME or admin socket, and the ban engine must never ban the MN's own loopback traffic.
+6. **The failures become one.** A box that is down or whose subnet is blocked now takes the registry
+   with it: one address costs the whole mesh, not one path. That is a policy choice (right for two
+   people, wrong for six) and belongs in the install documentation next to the command.
+7. **Lifecycle, not just install.** Two installers and two upgrade paths, and `termit-uv uninstall
+   --purge` must leave the MN's vhost, certificate and units alone and restore only its own. The MN has
+   no uninstall command today (it is done by hand, `docs/RUNBOOK.md` §11), so a combined box needs one
+   that leaves the node serving. The backup story becomes two archives and one master key, and the
+   resource budget is the sum of `DESCRIPTION.md` §13.1, which a 1 GB node box does not meet.
+
+Acceptance: one box from a clean image — both names served over TLS, `termit-mn status` and
+`termit-uv doctor` green, exactly one process per port, a client through the node reaching the internet
+while the MN's own traffic never enters the tunnel, a subscription and an admin command working across
+the shared challenge listener, `uninstall --purge` of either role leaving the other serving, and the
+coupling stated in the guide. The co-located node's probe comes from a second vantage (§10.6): a check
+that leaves from the same box is a self-check, not evidence that the node is reachable from outside.
+
+### 10.6 A second vantage for the MN's own node
+
+Today the home MN is the only observer: its probe decides a node's state, and its own vantage is assumed
+to be the internet's. Two cases that this plan now makes common break that assumption. A node co-located
+with its MN (§10.5) can only be reached through hairpin NAT or loopback, so the check stops measuring
+external reachability. An MN whose path to one node is blocked, while every other node is fine, has no
+way to say "this is my vantage, not the node" — and by `DESCRIPTION.md` §7.2 a timeout is a verdict, so
+the node is blocked.
+
+The fix is to let another MN, on a different network, perform the probe and hand the verdict back: a
+second vantage. It is deferred with the rest of multi-vantage probing (§5), but its wire shape belongs in
+the plan now, because §10.5 cannot honestly claim external validation without it.
+
+It is a delegation, not a federation. A node keeps one home MN (§10.2) and only the home MN decides and
+writes state; a peer observes and answers, it never writes a row.
+
+**Verdict rule**, generalising the retry aggregation `runCycle` already does ("failed only if every
+attempt concluded"):
+
+- an `ok` from any vantage is `ok`;
+- `failed` only when every vantage that formed a verdict says failed;
+- no vantage could form one — peer down, its DNS broken, its prober unavailable — is `unknown`, and
+  `unknown` changes nothing (invariant 2).
+
+Shape:
+
+- **Config**: `prober.peers: [{name, url, key, delegate: [domains]}]`. The list is explicit: an automatic
+  "delegate my own domain" rule would hard-code the topology, and §10.5 is not the only reason to
+  delegate.
+- **Protocol**: one call, `POST {prefix}/peer/probe` with `{uv_id, target{domain, port, sni, path, mode,
+  uuid, pin}}`, answered with the `Result` the local prober would have produced (`ok`, class, latency,
+  timestamp). The peer key is a bearer credential like an agent key: random, stored as a digest,
+  rotatable, TLS pinned to the peer. A result older than one cycle is not a verdict.
+- **Code**: `internal/mn/probe/peer.go` implementing the existing `Prober` seam, so the transition
+  table, the grace streak and the `unknown` rule are untouched; `cmd/mn/serve.go` picks the local worker
+  or the peer per node.
+- **Freshness and staleness**: the peer's answer is an observation with a timestamp, not a state. The
+  format is a list even while one vantage is used, so N vantages need no rework.
+
+Decisions that come before any code:
+
+1. **How many negatives block.** With one delegated vantage, a compromised or simply misconfigured peer
+   can block any node it can reach. Options: accept it (the mesh is cooperative, as with a hostile UV),
+   require unanimity once there are two or more vantages, or let a single peer's failure move a node only
+   to `unavailable` while `blocked` needs the node's own self-check to fail as well. This is the same
+   trust question as §10.2's shared master key and must be answered with it.
+2. **What the peer learns.** A probe target is the probe UUID, the secret path and the certificate pin —
+   the ability to connect to a node it does not own. Under a shared master key (§10.2) a peer derives
+   pair credentials anyway, so this is not new power; without replication it is, and must be stated.
+   Whether the probe UUID becomes rotatable (today `uv reissue` rotates only the agent key) is open.
+3. **Who picks the peer.** Explicit selection is honest; automatic selection from the list is convenient
+   and hides the topology. A dead peer leaves the node unverified but `active` — correct by invariant 2,
+   and invisible to the operator unless `termit-mn status` says "no external vantage" per node.
+4. **Visibility of the vantage.** Every served verdict should name the vantage that produced it, in
+   `uv show` and in the metrics, or a disagreement between two MNs cannot be investigated after the fact.
+
+Acceptance, on a lab with two MNs on different networks: a node co-located with its home MN is checked
+only by the peer and reaches `active` on the peer's `ok`; stopping the peer leaves the node `active` and
+`status` reports no vantage; a peer `failed` while the node's self-check is `ok` follows the rule chosen
+in decision 1, recorded in the guide; a stale result never moves the node; the state-machine tests are
+unchanged, because no transition was added.
 
 ## 11. Planned: WARP over WireGuard inside the core (0.4.0)
 
