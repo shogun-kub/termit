@@ -243,8 +243,10 @@ certificate" means numerically.
 adjustable on MN".
 **Rec** Per-check failure → 3 attempts 10 min apart; only then mark `unavailable` (stays in peers'
 configs). Re-check every 6 h in `unavailable`. Mark `blocked` (removed from peers' configs, data
-preserved) after 3 consecutive failed check cycles, i.e. ~24–30 h of failure. All intervals, attempt
-counts, and thresholds configurable on MN per group.
+preserved) when the consecutive failed checks reach `policy.block_after_failed_cycles` — default 2,
+i.e. ~24–30 h of failure. The streak counts cycles, not attempts, is reset by a successful check and
+is untouched by a check that could not run. All intervals, attempt counts and thresholds configurable
+on MN; per-group thresholds are not implemented in v1.
 
 **Q6.4** Scenario C requires the request source IP to equal the domain's A record. Confirm the
 stricter variant: MN additionally requires that the domain resolve to the source IP **and** that the
@@ -255,9 +257,14 @@ both must agree.
 Scenario C.
 
 **Q6.5** What exactly does a **blocked** UV still receive? Its subscription, or nothing?
-**Rec** It keeps its subscription (read-only, including peers) but is excluded from everyone else's
-configs; `termit-uv status` shows `blocked` and points to `termit-uv unblock`.
+**Rec** It keeps its subscription URL, but the node is excluded from everyone else's configs and its
+own node is absent from its list — the peers it reads no longer contain its pair credential, so the
+URL buys no traffic. It is kept because an unblock restores access without reissuing anything, and
+`termit-uv status` shows `blocked` and points to `termit-uv unblock`. A `pending` or `removed` node
+receives nothing: the subscription answers `404`, like an unknown token.
 **Why** Scenario B says MN "offers him his subscription again", implying it was never destroyed.
+Keeping the URL for a member who may come back is not the same as letting a node that is not a member
+read the mesh, which is why the state gate is at `pending` and `removed`.
 
 ## 7. Sync protocol
 

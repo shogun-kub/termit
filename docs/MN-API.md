@@ -365,8 +365,9 @@ never carries the TLS fields.
 
 Both:
 
-- answer `404 subscription_not_found` for an unknown, revoked or rotated token — the same answer for
-  every failure, so a guesser learns nothing from the difference;
+- answer `404 subscription_not_found` for an unknown, revoked or rotated token, and for a node that is
+  `pending` or `removed` — the same answer for every failure, so a guesser learns nothing from the
+  difference;
 - carry `ETag`, and honour `If-None-Match` with `304 Not Modified`;
 - carry `Cache-Control: no-store`: a subscription is a capability, not public content;
 - contain only nodes in `active` or `unavailable` state, with the owner's own node carrying its self
@@ -509,7 +510,7 @@ target.
 | `sub.rotate` | `{"id": ...}` | a new subscription token, shown once |
 | `check.now` | `{"id": ...}` | one cycle for that node: event, state, attempts, reason |
 | `policy.show` | — | the current thresholds |
-| `policy.set` | `{"key": ..., "value": ...}`; keys are `check_interval` (a Go duration, `24h`) and `probe_retries` (1–10); an empty value clears the override | the value after the change |
+| `policy.set` | `{"key": ..., "value": ...}`; keys are `check_interval` (a Go duration, `24h`), `probe_retries` (1–10) and `block_after_failed_cycles` (1–30, default 2); an empty value clears the override | the value after the change |
 | `admin.rotate` | — | a new admin token, shown once; the old one stops working immediately |
 
 `admin.rotate` rotates the credential that authenticated the call and nothing else: a token entitled to

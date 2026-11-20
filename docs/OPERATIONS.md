@@ -852,6 +852,7 @@ Every one of these is audited on the server.
 | replace a node's agent key | `termit-mn uv reissue <node>` | the old key stops working immediately; the new one is shown once |
 | check now | `termit-mn check now <node>` or `termit-mn check now --all` | one cycle, on demand |
 | tune the schedule | `termit-mn policy set check_interval 12h` | runtime override; `policy show` lists the keys |
+| tune the grace | `termit-mn policy set block_after_failed_cycles 4` | how many consecutive failed checks block a node (1–30, default 2 = one grace check); attempts inside a cycle count once |
 | **node blocked itself** | `termit-uv unblock` (on the node) | Scenario B: the server re-verifies DNS and the tunnel before re-admitting |
 | **node moved host** | `termit-uv migrate --relocate --domain new.example.net` | Scenario C |
 | **node rebuilt, state lost** | `termit-uv init --relocate --agent-key-file <file>` then `termit-uv migrate --relocate` | reuses the record; mints a new identity |
@@ -874,7 +875,7 @@ Two overrides are worth understanding before you use them:
 | `pending` | enrolled, waiting for an operator | `termit-mn uv approve` |
 | `active` | checks pass, in every subscription | — |
 | `unavailable` | one failed cycle; still in subscriptions, labelled degraded | a passing check |
-| `blocked` | two failed cycles in a row, or an operator decision | `termit-uv unblock` from the node, or `termit-mn uv unblock` |
+| `blocked` | the configured number of consecutive failed checks (default two), or an operator decision | `termit-uv unblock` from the node, or `termit-mn uv unblock` |
 | `removed` | out of the mesh for good | a new enrollment |
 
 `unknown` is not a state: it is the absence of a verdict. A prober that cannot run, a DNS resolver that

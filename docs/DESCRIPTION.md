@@ -281,10 +281,10 @@ that a wrong client produces.
 
 | State | In others' configs | Subscription | Meaning |
 |---|---|---|---|
-| `pending` | no | self only | enrolled, waiting for invite validation / admin approval |
+| `pending` | no | none (the URL answers `404`) | enrolled, waiting for invite validation / admin approval |
 | `active` | yes | full | checks pass |
 | `unavailable` | yes | full, marked degraded | checks failed, within grace |
-| `blocked` | no | full (read-only) | checks kept failing |
+| `blocked` | no | URL still valid; the node is absent from it and peers no longer accept it | checks kept failing |
 | `removed` | no | none | admin removed; credentials destroyed |
 
 ### 7.2 Transitions
@@ -311,9 +311,12 @@ Rules (all thresholds configurable on MN, defaults in parentheses):
 - **Check cadence**: one cycle per UV per ~24 h, random minute, never earlier than 2 h after
   enrollment. MN may override `next_sync_after` in the sync response.
 - **Retries inside a cycle**: 3 attempts, 10 min apart (adjustable), before a cycle counts as failed.
+  Attempts never count towards a block: one cycle is one check, however many attempts it took.
 - **Active → unavailable**: first failed cycle. Stays in peers' configs.
 - **Unavailable → active**: any successful cycle.
-- **Unavailable → blocked**: the next failed cycle (i.e. two consecutive failed cycles, ≈24–30 h).
+- **Unavailable → blocked**: when the consecutive failure streak reaches
+  `policy.block_after_failed_cycles` (default 2, i.e. one grace check; ≈24–30 h at the daily cadence).
+  A successful cycle resets the streak; a check that could not run neither advances nor resets it.
   Peers drop it at their next sync (convergence ≤ 24 h + jitter).
 - **Blocked → active**: only an explicit, successful unblock request (Scenario B) or an admin action.
   No automatic un-blocking, to avoid flapping.
@@ -781,7 +784,7 @@ termit-mn invite create --note "berlin box" --uses 1
 termit-mn uv list                      # state, last seen, agent version
 termit-mn uv approve uv_…   |  termit-mn uv block uv_…  |  termit-mn uv unblock uv_…  |  termit-mn uv rm uv_…
 termit-mn check now uv_…    |  termit-mn check now --all
-termit-mn policy show       |  termit-mn policy set check_interval 12h   # or probe_retries 3
+termit-mn policy show       |  termit-mn policy set check_interval 12h   # or probe_retries 3, block_after_failed_cycles 4
 termit-mn sub show uv_…     |  termit-mn sub rotate uv_…
 termit-mn status            # state counts, per-node last/next check, effective interval
 ```
