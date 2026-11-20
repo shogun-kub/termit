@@ -119,9 +119,10 @@ Decisions are in `/var/lib/termit/uv/bans.json` and survive a reboot; the kernel
 guard refills them on its next pass. `unban` is not amnesia: the next offence earns the longer ban.
 
 **Never banned, whichever signal fires:** loopback, the private and link-local ranges, the management
-server (resolved from `mn.url`, cached for ten minutes) and your own `ssh_from` networks. `bans block`
-refuses them too — banning those cuts you off. A wrong key answers `404`, which is a 4xx and therefore
-counts: if a client of yours bans itself, `bans unban` is the answer.
+server (resolved from `mn.url`, cached for ten minutes), your own `ssh_from` networks, and the WARP
+endpoint the tunnel dials. `bans block` refuses them too — banning those cuts you off. A wrong key
+answers `404`, which is a 4xx and therefore counts: if a client of yours bans itself, `bans unban` is the
+answer.
 
 ## The blocklist
 

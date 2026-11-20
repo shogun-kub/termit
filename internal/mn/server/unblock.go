@@ -115,7 +115,7 @@ func (h *Handler) unblock(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	outcome := sched.Transition(sched.State(node.State), sched.EventUnblock)
+	outcome := sched.Transition(sched.State(node.State), sched.EventUnblock, sched.Tally{})
 	if outcome.Changed {
 		if _, err := h.opts.Store.SetUVState(r.Context(), node.ID, store.StateActive,
 			"unblocked after a successful check", "agent", now); err != nil {

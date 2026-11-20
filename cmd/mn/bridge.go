@@ -78,6 +78,7 @@ func (t profileTargeter) Target(ctx context.Context, node store.UV) (probe.Targe
 type schedulerConfig struct {
 	CheckInterval time.Duration
 	Retries       int
+	BlockAfter    int
 	Logger        *slog.Logger
 }
 
@@ -92,6 +93,9 @@ func newScheduler(cfg schedulerConfig, db *store.Store, prober sched.Prober, cer
 		// The retry count is configurable; the ten-minute gap is not, because a shorter one turns a
 		// flapping mesh into a stampede.
 		policy.Retries = sched.RetryPolicy{Attempts: cfg.Retries, Gap: 10}
+	}
+	if cfg.BlockAfter > 0 {
+		policy.BlockAfter = cfg.BlockAfter
 	}
 	return &sched.Runner{
 		Store:    db,

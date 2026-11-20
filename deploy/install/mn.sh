@@ -8,7 +8,8 @@
 #   mn.sh --domain mn.example.com --email you@example.com
 #
 # Re-running it is the upgrade: the binary and the unit are replaced, `termit-mn init` keeps every
-# decision already made — domain, listen, master key, the nodes — and the service is restarted.
+# decision already made — domain, listen, master key, the nodes — and the service is restarted. Only the
+# first run needs `--domain`; an upgrade reads the name out of the configuration it is upgrading.
 set -eu
 
 PROGRAM=termit-mn
@@ -48,6 +49,20 @@ die() {
 	exit 1
 }
 
+# latest_tag prints the tag the `releases/latest` redirect points at, with whichever downloader the host
+# has. GNU wget stops at the first redirect and calls that an error, so only its headers are read and its
+# exit status is ignored; an empty answer is the caller's to report.
+latest_tag() {
+	if command -v curl >/dev/null 2>&1; then
+		curl -fsSLI -o /dev/null -w '%{url_effective}' "$LATEST_URL" 2>/dev/null
+	elif command -v wget >/dev/null 2>&1; then
+		wget -qS --max-redirect=0 -O /dev/null "$LATEST_URL" 2>&1 |
+			sed -n 's/^[[:space:]]*Location: //p' | tail -n 1
+	else
+		return 1
+	fi
+}
+
 usage() {
 	cat <<'EOF'
 Usage: mn.sh --domain NAME [--email ADDRESS] [options]
@@ -56,6 +71,7 @@ Install or upgrade one Termit management server. Must run as root on Debian 13, 
 
 Required on a first install:
   --domain NAME            the name this server answers on; its A/AAAA record must already point here
+                           (an upgrade reads it from the installed configuration instead)
 
 Options:
   --version VERSION        release to install, e.g. v0.4.1 or v0.4.1p1
@@ -163,7 +179,6 @@ while [ $# -gt 0 ]; do
 	esac
 done
 
-[ -n "$DOMAIN" ] || die "--domain is required: it is the name the server answers on"
 [ "$(id -u)" = 0 ] || die "run this as root"
 [ "$(uname -s)" = Linux ] || die "this installs a Linux server; the current system is $(uname -s)"
 
@@ -172,6 +187,16 @@ x86_64 | amd64) ARCH=amd64 ;;
 aarch64 | arm64) ARCH=arm64 ;;
 *) die "unsupported architecture $(uname -m); Termit ships linux/amd64 and linux/arm64" ;;
 esac
+
+# An upgrade is the ordinary second run, so the name comes from the configuration when the operator does
+# not repeat it: --domain is the first-install answer, not a ritual before every update. A name that was
+# given is still an explicit decision — `termit-mn init` refuses to rename an installed server and says so.
+if [ -z "$DOMAIN" ] && [ -f "$CONFIG" ]; then
+	DOMAIN=$(sed -n 's/^domain:[[:space:]]*//p' "$CONFIG" | head -n 1 | sed 's/^"//; s/"$//; s/[[:space:]]*$//')
+	[ -n "$DOMAIN" ] || die "$CONFIG has no domain; pass --domain"
+	say "domain:  $DOMAIN (from $CONFIG)"
+fi
+[ -n "$DOMAIN" ] || die "--domain is required on a first install: it is the name the server answers on"
 
 # A local path is a file:// URL: the same code path, and the same checksum, for a mirror on a USB stick.
 case "$BASE_URL" in
@@ -194,10 +219,9 @@ if [ "$VERSION_SET" = 0 ]; then
 	case "$BASE_URL" in
 	file://*) die "the newest release cannot be looked up in $BASE_URL; pass --version" ;;
 	esac
-	command -v curl >/dev/null 2>&1 ||
-		die "looking up the newest release needs curl; pass --version to name one"
-	tag=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "$LATEST_URL" 2>/dev/null) ||
-		die "cannot look up the newest release at $LATEST_URL; pass --version"
+	tag=$(latest_tag) ||
+		die "cannot look up the newest release at $LATEST_URL (needs curl or wget); pass --version"
+	[ -n "$tag" ] || die "cannot look up the newest release at $LATEST_URL; pass --version"
 	tag=${tag##*/}
 	case "$tag" in
 	v[0-9]*.[0-9]*.[0-9]*) VERSION=$tag LATEST=1 ;;
@@ -313,6 +337,9 @@ if [ "$PROBER" = 1 ]; then
 	esac
 	command -v unzip >/dev/null 2>&1 || {
 		say "installing unzip, which the probe worker comes in"
+		# A fresh image has no package lists, and `apt-get install` without them fails with "unable to
+		# locate package" — an error that reads like a missing package rather than a missing update.
+		apt-get update >/dev/null 2>&1 || true
 		DEBIAN_FRONTEND=noninteractive apt-get install -y unzip >/dev/null 2>&1 ||
 			die "cannot install unzip; install it and run this again, or pass --no-prober"
 	}

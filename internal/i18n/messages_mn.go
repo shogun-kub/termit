@@ -28,6 +28,14 @@ const (
 	MnEntryBackupHint    Key = "mn.entry.backup.hint"
 	MnEntryHelpLabel     Key = "mn.entry.help.label"
 	MnEntryHelpHint      Key = "mn.entry.help.hint"
+	MnEntryFirewallLabel Key = "mn.entry.firewall.label"
+	MnEntryFirewallHint  Key = "mn.entry.firewall.hint"
+	MnEntryBansLabel     Key = "mn.entry.bans.label"
+	MnEntryBansHint      Key = "mn.entry.bans.hint"
+	MnEntryGuardLabel    Key = "mn.entry.guard.label"
+	MnEntryGuardHint     Key = "mn.entry.guard.hint"
+	MnEntryRestoreLabel  Key = "mn.entry.restore.label"
+	MnEntryRestoreHint   Key = "mn.entry.restore.hint"
 	MnNodesHead          Key = "mn.nodes.head"
 	MnNodesListLabel     Key = "mn.nodes.list.label"
 	MnNodesListHint      Key = "mn.nodes.list.hint"
@@ -43,6 +51,12 @@ const (
 	MnNodesUnblockHint   Key = "mn.nodes.unblock.hint"
 	MnNodesRemoveLabel   Key = "mn.nodes.remove.label"
 	MnNodesRemoveHint    Key = "mn.nodes.remove.hint"
+	MnNodesReissueLabel  Key = "mn.nodes.reissue.label"
+	MnNodesReissueHint   Key = "mn.nodes.reissue.hint"
+	MnNodesAgentKeyLabel Key = "mn.nodes.agentkey.label"
+	MnNodesAgentKeyHint  Key = "mn.nodes.agentkey.hint"
+	MnNodesForgetLabel   Key = "mn.nodes.forget.label"
+	MnNodesForgetHint    Key = "mn.nodes.forget.hint"
 	MnInvitesHead        Key = "mn.invites.head"
 	MnInvitesListLabel   Key = "mn.invites.list.label"
 	MnInvitesListHint    Key = "mn.invites.list.hint"
@@ -68,10 +82,6 @@ const (
 	MnPromptRotateAdmin  Key = "mn.prompt.rotate_admin"
 	MnPromptTokenFile    Key = "mn.prompt.token_file"
 	MnPromptPublicName   Key = "mn.prompt.public_name"
-	MnErrNodeRequired    Key = "mn.err.node_required"
-	MnErrCodeRequired    Key = "mn.err.code_required"
-	MnErrSettingRequired Key = "mn.err.setting_required"
-	MnErrDomainRequired  Key = "mn.err.domain_required"
 )
 
 var messagesMNRU = map[Key]string{
@@ -81,40 +91,54 @@ var messagesMNRU = map[Key]string{
 	MnTokenFrom: "admin-токен из %s",
 	MnBadChoice: "%q не из списка",
 
-	MnEntryStatusLabel:  "состояние",
-	MnEntryStatusHint:   "сервер, узлы и расписание проверок",
-	MnEntryNodesLabel:   "узлы",
-	MnEntryNodesHint:    "список, подробности, одобрение, блокировка, удаление",
-	MnEntryInvitesLabel: "приглашения",
-	MnEntryInvitesHint:  "создать, показать, отозвать коды",
-	MnEntryCheckLabel:   "проверить сейчас",
-	MnEntryCheckHint:    "один узел или весь mesh",
-	MnEntryPolicyLabel:  "политика",
-	MnEntryPolicyHint:   "показать и изменить пороги планировщика",
-	MnEntrySubLabel:     "подписка",
-	MnEntrySubHint:      "показать или сменить токен подписки узла",
-	MnEntryAdminLabel:   "admin-токен",
-	MnEntryAdminHint:    "сменить учётные данные всех админ-команд",
-	MnEntryBackupLabel:  "резервная копия",
-	MnEntryBackupHint:   "записать согласованный снимок",
-	MnEntryHelpLabel:    "справка",
-	MnEntryHelpHint:     "все команды и флаги",
+	MnEntryStatusLabel:   "состояние",
+	MnEntryStatusHint:    "сервер, узлы и расписание проверок",
+	MnEntryNodesLabel:    "узлы",
+	MnEntryNodesHint:     "список, подробности, одобрение, блокировка, удаление, перевыпуск",
+	MnEntryInvitesLabel:  "приглашения",
+	MnEntryInvitesHint:   "создать, показать, отозвать коды",
+	MnEntryCheckLabel:    "проверить сейчас",
+	MnEntryCheckHint:     "один узел или весь mesh",
+	MnEntryPolicyLabel:   "политика",
+	MnEntryPolicyHint:    "показать и изменить пороги планировщика",
+	MnEntrySubLabel:      "подписка",
+	MnEntrySubHint:       "показать или сменить токен подписки узла",
+	MnEntryAdminLabel:    "admin-токен",
+	MnEntryAdminHint:     "сменить учётные данные всех админ-команд",
+	MnEntryBackupLabel:   "резервная копия",
+	MnEntryBackupHint:    "записать согласованный снимок",
+	MnEntryHelpLabel:     "справка",
+	MnEntryHelpHint:      "все команды и флаги",
+	MnEntryFirewallLabel: "межсетевой экран",
+	MnEntryFirewallHint:  "таблица хоста: состояние, включить, выключить, подтвердить",
+	MnEntryBansLabel:     "блокировки",
+	MnEntryBansHint:      "кого заблокировал страж и что заблокировали вы",
+	MnEntryGuardLabel:    "движок блокировок",
+	MnEntryGuardHint:     "работает ли страж и сколько он заблокировал",
+	MnEntryRestoreLabel:  "восстановить из копии",
+	MnEntryRestoreHint:   "вернуть базу и сертификаты из архива; сервер сначала нужно остановить",
 
-	MnNodesHead:         "узлы",
-	MnNodesListLabel:    "список",
-	MnNodesListHint:     "домен, состояние, последняя проверка",
-	MnNodesShowLabel:    "показать",
-	MnNodesShowHint:     "всё про один узел",
-	MnNodesApproveLabel: "одобрить",
-	MnNodesApproveHint:  "принять ожидающий узел",
-	MnNodesRejectLabel:  "отклонить",
-	MnNodesRejectHint:   "отказать ожидающему узлу",
-	MnNodesBlockLabel:   "заблокировать",
-	MnNodesBlockHint:    "перестать отдавать его в подписках",
-	MnNodesUnblockLabel: "разблокировать",
-	MnNodesUnblockHint:  "вернуть его в mesh",
-	MnNodesRemoveLabel:  "удалить",
-	MnNodesRemoveHint:   "убрать из реестра",
+	MnNodesHead:          "узлы",
+	MnNodesListLabel:     "список",
+	MnNodesListHint:      "домен, состояние, последняя проверка",
+	MnNodesShowLabel:     "показать",
+	MnNodesShowHint:      "всё про один узел",
+	MnNodesApproveLabel:  "одобрить",
+	MnNodesApproveHint:   "принять ожидающий узел",
+	MnNodesRejectLabel:   "отклонить",
+	MnNodesRejectHint:    "отказать ожидающему узлу",
+	MnNodesBlockLabel:    "заблокировать",
+	MnNodesBlockHint:     "перестать отдавать его в подписках",
+	MnNodesUnblockLabel:  "разблокировать",
+	MnNodesUnblockHint:   "вернуть его в mesh",
+	MnNodesRemoveLabel:   "удалить",
+	MnNodesRemoveHint:    "убрать из реестра",
+	MnNodesReissueLabel:  "выпустить заново",
+	MnNodesReissueHint:   "новая идентичность узла; старый ключ сразу перестаёт работать",
+	MnNodesAgentKeyLabel: "ключ агента",
+	MnNodesAgentKeyHint:  "показать текущий ключ, не ломая узел",
+	MnNodesForgetLabel:   "забыть запись",
+	MnNodesForgetHint:    "удалить запись домена, чтобы его можно было зарегистрировать заново",
 
 	MnInvitesHead:        "приглашения",
 	MnInvitesListLabel:   "список",
@@ -134,20 +158,16 @@ var messagesMNRU = map[Key]string{
 	MnSubRotateLabel: "сменить токен",
 	MnSubRotateHint:  "напечатать новый токен; старый URL перестанет работать",
 
-	MnPromptNode:         "ID или домен узла",
-	MnPromptReason:       "Причина, она попадёт в историю состояния",
-	MnPromptNote:         "Заметка, чтобы помнить, для кого он",
-	MnPromptInviteCode:   "Код приглашения для отзыва",
-	MnPromptCheckAll:     "Проверить все узлы вместо одного?",
-	MnPromptSetting:      "Настройка, например check_interval",
-	MnPromptValue:        "Значение, пусто — снять переопределение",
-	MnPromptRotateAdmin:  "Сменить admin-токен? Все скрипты и таймеры с ним перестанут работать",
-	MnPromptTokenFile:    "Записать новый токен в файл (пусто — напечатать один раз)",
-	MnPromptPublicName:   "Публичное имя сервера для URL (пусто — не включать)",
-	MnErrNodeRequired:    "нужен ID или домен узла",
-	MnErrCodeRequired:    "нужен код",
-	MnErrSettingRequired: "нужно имя настройки",
-	MnErrDomainRequired:  "нужен домен",
+	MnPromptNode:        "ID или домен узла",
+	MnPromptReason:      "Причина, она попадёт в историю состояния",
+	MnPromptNote:        "Заметка, чтобы помнить, для кого он",
+	MnPromptInviteCode:  "Код приглашения для отзыва",
+	MnPromptCheckAll:    "Проверить все узлы вместо одного?",
+	MnPromptSetting:     "Настройка, например check_interval",
+	MnPromptValue:       "Значение, пусто — снять переопределение",
+	MnPromptRotateAdmin: "Сменить admin-токен? Все скрипты и таймеры с ним перестанут работать",
+	MnPromptTokenFile:   "Записать новый токен в файл (пусто — напечатать один раз)",
+	MnPromptPublicName:  "Публичное имя сервера для URL (пусто — не включать)",
 }
 
 var messagesMNEN = map[Key]string{
@@ -157,40 +177,54 @@ var messagesMNEN = map[Key]string{
 	MnTokenFrom: "admin token from %s",
 	MnBadChoice: "%q is not one of the choices",
 
-	MnEntryStatusLabel:  "status",
-	MnEntryStatusHint:   "server, nodes and the check schedule",
-	MnEntryNodesLabel:   "nodes",
-	MnEntryNodesHint:    "list, inspect, approve, block, remove",
-	MnEntryInvitesLabel: "invites",
-	MnEntryInvitesHint:  "create, list, revoke codes",
-	MnEntryCheckLabel:   "check now",
-	MnEntryCheckHint:    "one node, or the whole mesh",
-	MnEntryPolicyLabel:  "policy",
-	MnEntryPolicyHint:   "show and change scheduler thresholds",
-	MnEntrySubLabel:     "subscription",
-	MnEntrySubHint:      "show or rotate a node's subscription token",
-	MnEntryAdminLabel:   "admin token",
-	MnEntryAdminHint:    "rotate the credential every admin command uses",
-	MnEntryBackupLabel:  "backup",
-	MnEntryBackupHint:   "write a consistent snapshot",
-	MnEntryHelpLabel:    "help",
-	MnEntryHelpHint:     "every command and flag",
+	MnEntryStatusLabel:   "status",
+	MnEntryStatusHint:    "server, nodes and the check schedule",
+	MnEntryNodesLabel:    "nodes",
+	MnEntryNodesHint:     "list, inspect, approve, block, remove, reissue, forget",
+	MnEntryInvitesLabel:  "invites",
+	MnEntryInvitesHint:   "create, list, revoke codes",
+	MnEntryCheckLabel:    "check now",
+	MnEntryCheckHint:     "one node, or the whole mesh",
+	MnEntryPolicyLabel:   "policy",
+	MnEntryPolicyHint:    "show and change scheduler thresholds",
+	MnEntrySubLabel:      "subscription",
+	MnEntrySubHint:       "show or rotate a node's subscription token",
+	MnEntryAdminLabel:    "admin token",
+	MnEntryAdminHint:     "rotate the credential every admin command uses",
+	MnEntryBackupLabel:   "backup",
+	MnEntryBackupHint:    "write a consistent snapshot",
+	MnEntryHelpLabel:     "help",
+	MnEntryHelpHint:      "every command and flag",
+	MnEntryFirewallLabel: "firewall",
+	MnEntryFirewallHint:  "the host table: status, on, off, confirm",
+	MnEntryBansLabel:     "bans",
+	MnEntryBansHint:      "what the guard banned, and what you blocked yourself",
+	MnEntryGuardLabel:    "guard",
+	MnEntryGuardHint:     "whether the ban engine runs, and how much it banned",
+	MnEntryRestoreLabel:  "restore from a snapshot",
+	MnEntryRestoreHint:   "put the database and certificates back from an archive; stop the server first",
 
-	MnNodesHead:         "nodes",
-	MnNodesListLabel:    "list",
-	MnNodesListHint:     "domain, state, last check",
-	MnNodesShowLabel:    "show",
-	MnNodesShowHint:     "everything about one node",
-	MnNodesApproveLabel: "approve",
-	MnNodesApproveHint:  "accept a pending node",
-	MnNodesRejectLabel:  "reject",
-	MnNodesRejectHint:   "refuse a pending node",
-	MnNodesBlockLabel:   "block",
-	MnNodesBlockHint:    "stop serving it in subscriptions",
-	MnNodesUnblockLabel: "unblock",
-	MnNodesUnblockHint:  "let it back in",
-	MnNodesRemoveLabel:  "remove",
-	MnNodesRemoveHint:   "drop it from the registry",
+	MnNodesHead:          "nodes",
+	MnNodesListLabel:     "list",
+	MnNodesListHint:      "domain, state, last check",
+	MnNodesShowLabel:     "show",
+	MnNodesShowHint:      "everything about one node",
+	MnNodesApproveLabel:  "approve",
+	MnNodesApproveHint:   "accept a pending node",
+	MnNodesRejectLabel:   "reject",
+	MnNodesRejectHint:    "refuse a pending node",
+	MnNodesBlockLabel:    "block",
+	MnNodesBlockHint:     "stop serving it in subscriptions",
+	MnNodesUnblockLabel:  "unblock",
+	MnNodesUnblockHint:   "let it back in",
+	MnNodesRemoveLabel:   "remove",
+	MnNodesRemoveHint:    "drop it from the registry",
+	MnNodesReissueLabel:  "reissue",
+	MnNodesReissueHint:   "a new identity for the node; the old key stops at once",
+	MnNodesAgentKeyLabel: "agent key",
+	MnNodesAgentKeyHint:  "print the current key without breaking the node",
+	MnNodesForgetLabel:   "forget",
+	MnNodesForgetHint:    "drop the record so the domain can be enrolled again",
 
 	MnInvitesHead:        "invites",
 	MnInvitesListLabel:   "list",
@@ -210,18 +244,14 @@ var messagesMNEN = map[Key]string{
 	MnSubRotateLabel: "rotate",
 	MnSubRotateHint:  "print a new token; the old URL stops working",
 
-	MnPromptNode:         "Node id or domain",
-	MnPromptReason:       "Reason, recorded with the state change",
-	MnPromptNote:         "Note, so you remember who it is for",
-	MnPromptInviteCode:   "Invite code to revoke",
-	MnPromptCheckAll:     "Check every node instead of one?",
-	MnPromptSetting:      "Setting, for example check_interval",
-	MnPromptValue:        "Value, empty to clear the override",
-	MnPromptRotateAdmin:  "Rotate the admin token? Every script and timer using it stops working now",
-	MnPromptTokenFile:    "Write the new token to this file (empty to print it once)",
-	MnPromptPublicName:   "Server's public name, for the URL (empty to leave it out)",
-	MnErrNodeRequired:    "a node id or domain is required",
-	MnErrCodeRequired:    "a code is required",
-	MnErrSettingRequired: "a setting name is required",
-	MnErrDomainRequired:  "a domain is required",
+	MnPromptNode:        "Node id or domain",
+	MnPromptReason:      "Reason, recorded with the state change",
+	MnPromptNote:        "Note, so you remember who it is for",
+	MnPromptInviteCode:  "Invite code to revoke",
+	MnPromptCheckAll:    "Check every node instead of one?",
+	MnPromptSetting:     "Setting, for example check_interval",
+	MnPromptValue:       "Value, empty to clear the override",
+	MnPromptRotateAdmin: "Rotate the admin token? Every script and timer using it stops working now",
+	MnPromptTokenFile:   "Write the new token to this file (empty to print it once)",
+	MnPromptPublicName:  "Server's public name, for the URL (empty to leave it out)",
 }

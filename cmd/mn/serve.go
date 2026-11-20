@@ -80,6 +80,7 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 	scheduler := newScheduler(schedulerConfig{
 		CheckInterval: cfg.Policy.CheckInterval,
 		Retries:       cfg.Policy.ProbeRetries,
+		BlockAfter:    cfg.Policy.BlockAfterFailedCycles,
 		Logger:        logger,
 	}, db, schedulerProber, newCertChecker(cfg))
 	scheduler.PolicyFn = policyFromSettings(cfg, db)
@@ -337,9 +338,17 @@ func policyFromSettings(cfg *config.Config, db *store.Store) func(ctx context.Co
 		if cfg.Policy.ProbeRetries > 0 {
 			policy.Retries = sched.RetryPolicy{Attempts: cfg.Policy.ProbeRetries, Gap: 10}
 		}
+		if cfg.Policy.BlockAfterFailedCycles > 0 {
+			policy.BlockAfter = cfg.Policy.BlockAfterFailedCycles
+		}
 		if value, err := db.GetSetting(ctx, "policy.check_interval"); err == nil && value != "" {
 			if interval, err := time.ParseDuration(value); err == nil && interval > 0 {
 				policy.Interval = interval
+			}
+		}
+		if value, err := db.GetSetting(ctx, "policy.block_after_failed_cycles"); err == nil && value != "" {
+			if cycles, err := strconv.Atoi(value); err == nil && cycles > 0 {
+				policy.BlockAfter = cycles
 			}
 		}
 		if value, err := db.GetSetting(ctx, "policy.probe_retries"); err == nil && value != "" {

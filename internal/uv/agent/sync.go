@@ -578,6 +578,20 @@ func RememberSubscription(st *state.State, answer proto.SyncResponse) bool {
 	return true
 }
 
+// RememberProbe stores the credential the server checks this node with. It arrives at enrollment and in
+// every sync answer; a state without it makes `init`, `warp mode` and `device add` write a config that
+// drops the probe, and the node then fails checks with nothing broken on it.
+func RememberProbe(st *state.State, answer proto.SyncResponse) bool {
+	if st.Credentials == nil || answer.Self.ProbeUUID == "" {
+		return false
+	}
+	if st.Credentials.ProbeUUID == answer.Self.ProbeUUID {
+		return false
+	}
+	st.Credentials.ProbeUUID = answer.Self.ProbeUUID
+	return true
+}
+
 // emailsOf names the clients an add request carries. Emails are the core's own identifiers and are
 // safe to show; the UUID beside each is not.
 func emailsOf(clients []xray.Client) []string {

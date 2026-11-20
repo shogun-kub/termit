@@ -108,14 +108,18 @@ The bootstrap script resolves a release, verifies it, installs the binary and it
 worker, creates the configuration, starts the service and prints the status:
 
 ```bash
-curl -fsSLO https://github.com/shogun-kub/termit/releases/latest/download/mn.sh
+wget -q https://github.com/shogun-kub/termit/releases/latest/download/mn.sh
 sh mn.sh --domain mn.example.com --email you@example.com \
   --admin-token-out /etc/termit/mn/admin.token
 ```
 
+Re-running the script is the upgrade, and an upgrade needs no flags: the domain comes from the installed
+configuration, the release is resolved again, the binary and the unit are replaced, `termit-mn init` keeps
+every decision already made, and the service is restarted.
+
 | Flag | Effect |
 |---|---|
-| `--domain` | the name the server answers on; required on a first install |
+| `--domain` | the name the server answers on; required on a first install, read from the installed configuration on an upgrade |
 | `--version` | `v0.4.1`, or a `v0.4.1p1` build; **the newest published release by default** |
 | `--email` / `--mode` / `--acme-ca` / `--acme-skip-tls-verify` / `--api-prefix` | passed to `termit-mn init` |
 | `--admin-token-out` | where `init` writes the admin token instead of printing it |
@@ -218,8 +222,8 @@ The probe worker (§2 says why it is not optional) is the last thing the script 
 the same pinned core the nodes run:
 
 ```bash
-apt-get install -y unzip
-curl -fsSLO https://github.com/XTLS/Xray-core/releases/download/v26.11.9/Xray-linux-64.zip
+apt-get update && apt-get install -y unzip
+wget -q https://github.com/XTLS/Xray-core/releases/download/v26.11.9/Xray-linux-64.zip
 unzip -o Xray-linux-64.zip -d /usr/local/lib/termit
 chmod 0755 /usr/local/lib/termit/xray
 sed -i 's|^  xray_binary: ""|  xray_binary: /usr/local/lib/termit/xray|' /etc/termit/mn/config.yaml
@@ -374,7 +378,7 @@ something piped from a branch:
 termit-mn invite create --note "node1" --uses 1        # on the MN; prints the code once
 
 # on the fresh node, as root
-curl -fsSLO https://github.com/shogun-kub/termit/releases/latest/download/uv.sh
+wget -q https://github.com/shogun-kub/termit/releases/latest/download/uv.sh
 sh uv.sh \
   --domain node1.example.net --email you@example.com \
   --mn https://mn.example.com/6rfjdqfn5nno --invite ABCD-EFGH-IJKL
@@ -409,15 +413,17 @@ termit-uv wizard
 ```
 
 The first question is the language (`ru` or `en`, Russian by default) because the menu and the page of
-client links are written in it; then the domain, the contact address, the masking site, the egress mode,
-whether to harden the node (unchecked — see below), the invite code and the management server URL. It then
-runs the same `init` with the same flags. Answers are kept in `wizard.yaml` beside the configuration, so an
-interrupted run continues where it stopped and `Enter` accepts what is already there (`--fresh` forgets
-them). On an installed node it asks nothing: it runs the pipeline in dry-run mode and, when every step
-reports its effect present, prints the status and exits. An installed node behind this build is the third
-case — the wizard names it and tells the operator to run `termit-uv init`, because converging is init's job
-and doing it from a questionnaire would hide the upgrade. The last thing a fresh install prints is the
-address of the [page with every link](#80-one-page-with-every-link).
+client links are written in it; then the domain, the contact address, the ACME directory (empty for the
+public one, then the question whether to verify a private CA's certificate), the masking site, the egress
+mode, whether to harden the node (unchecked — see below), the invite code and the management server URL. It
+then runs the same `init` with the same flags. Answers are kept in `wizard.yaml` beside the configuration,
+so an interrupted run continues where it stopped and `Enter` accepts what is already there (`--fresh`
+forgets them). On an installed node it asks nothing: it runs the pipeline in dry-run mode and, when every
+step reports its effect present, prints the status and exits — unless the registration never finished, in
+which case the kept code is spent and the enrollment retried. An installed node behind this build is the
+third case — the wizard names it and tells the operator to run `termit-uv init`, because converging is
+init's job and doing it from a questionnaire would hide the upgrade. The last thing a fresh install prints
+is the address of the [page with every link](#80-one-page-with-every-link).
 
 Without the script, the two commands it wraps are:
 
@@ -852,6 +858,7 @@ Every one of these is audited on the server.
 | replace a node's agent key | `termit-mn uv reissue <node>` | the old key stops working immediately; the new one is shown once |
 | check now | `termit-mn check now <node>` or `termit-mn check now --all` | one cycle, on demand |
 | tune the schedule | `termit-mn policy set check_interval 12h` | runtime override; `policy show` lists the keys |
+| tune the grace | `termit-mn policy set block_after_failed_cycles 4` | how many consecutive failed checks block a node (1–30, default 2 = one grace check); attempts inside a cycle count once |
 | **node blocked itself** | `termit-uv unblock` (on the node) | Scenario B: the server re-verifies DNS and the tunnel before re-admitting |
 | **node moved host** | `termit-uv migrate --relocate --domain new.example.net` | Scenario C |
 | **node rebuilt, state lost** | `termit-uv init --relocate --agent-key-file <file>` then `termit-uv migrate --relocate` | reuses the record; mints a new identity |
@@ -874,7 +881,7 @@ Two overrides are worth understanding before you use them:
 | `pending` | enrolled, waiting for an operator | `termit-mn uv approve` |
 | `active` | checks pass, in every subscription | — |
 | `unavailable` | one failed cycle; still in subscriptions, labelled degraded | a passing check |
-| `blocked` | two failed cycles in a row, or an operator decision | `termit-uv unblock` from the node, or `termit-mn uv unblock` |
+| `blocked` | the configured number of consecutive failed checks (default two), or an operator decision | `termit-uv unblock` from the node, or `termit-mn uv unblock` |
 | `removed` | out of the mesh for good | a new enrollment |
 
 `unknown` is not a state: it is the absence of a verdict. A prober that cannot run, a DNS resolver that
@@ -972,7 +979,11 @@ Publishing is a tag push on `main`, after the branch process in `AGENTS.md` §9 
 executable and attaches everything to the GitHub release, `uv.sh` included — the install URLs in the
 documentation point at `releases/download/<version>/uv.sh`. The workflow marks the release
 `prerelease: true`; clearing that flag is the deliberate act that records the release's own production
-pass (`docs/IMPLEMENTATION_PLAN.md` M4.3 for `0.2.1`, M5.8 for `0.3.2`, §11.9 for `0.4.0`). A maintainer
+pass (`docs/IMPLEMENTATION_PLAN.md` M4.3 for `0.2.1`, M5.8 for `0.3.2`, §11.9 for `0.4.0`, §11.10 for
+`0.4.1`). Clearing the flag alone leaves `releases/latest` where it was: GitHub only moves that pointer
+when the release is edited with `make_latest` (`gh release edit <version> --latest`, or
+`make_latest: true` through the API), and until it moves `releases/latest/download/...` — the URL the
+guide installs from — still answers with the previous version. A maintainer
 can do the same by hand with `gh release create` and the files from `dist/<version>/`: the assets are plain
 files, so nothing depends on the workflow.
 
@@ -1113,9 +1124,10 @@ guard refills them on its next pass. `unban` lifts a ban but keeps the offence, 
 longer ban — it is not a way to forget what happened.
 
 **Never banned, whichever signal fires**: loopback, the private and link-local ranges, the management
-server (resolved from `mn.url`, cached for ten minutes) and your own `ssh_from` networks. `bans block`
-refuses them too — a ban there cuts you off, not an attacker. To block an address in one of those ranges
-anyway, do it with `nft` directly and know what you are doing.
+server (resolved from `mn.url`, cached for ten minutes), your own `ssh_from` networks, and the WARP
+endpoint the node's tunnel dials (read from `warp.yaml`, whether WARP is on or off — banning it would cut
+the node's own egress). `bans block` refuses them too — a ban there cuts you off, not an attacker. To
+block an address in one of those ranges anyway, do it with `nft` directly and know what you are doing.
 
 ### 13.5 The blocklist
 

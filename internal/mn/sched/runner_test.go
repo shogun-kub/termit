@@ -151,6 +151,103 @@ func TestSecondFailureBlocks(t *testing.T) {
 	}
 }
 
+// TestGraceChecksDeferTheBlock: block_after_failed_cycles = 4 leaves the node unavailable for three
+// failed cycles and blocks it on the fourth. The three attempts inside a cycle are one count, not three.
+func TestGraceChecksDeferTheBlock(t *testing.T) {
+	t.Parallel()
+	db := newStore(t)
+	enroll(t, db, "uv_1", "one.example.com", store.StateActive)
+	r := runner(db, &scriptedProber{results: []probe.Result{failResult()}}, staticTargeter{ok: true})
+	r.Policy.BlockAfter = 4
+
+	for cycle := 1; cycle <= 3; cycle++ {
+		if _, err := r.CheckOne(context.Background(), mustNode(t, db, "uv_1")); err != nil {
+			t.Fatalf("cycle %d: %v", cycle, err)
+		}
+		if got := stateOf(t, db, "uv_1"); got != store.StateUnavailable {
+			t.Fatalf("cycle %d: state = %s, want unavailable (still in the grace period)", cycle, got)
+		}
+		if got := mustNode(t, db, "uv_1").FailedCycles; got != cycle {
+			t.Fatalf("cycle %d: failed cycles = %d, want %d (attempts do not count)", cycle, got, cycle)
+		}
+	}
+	if _, err := r.CheckOne(context.Background(), mustNode(t, db, "uv_1")); err != nil {
+		t.Fatalf("fourth cycle: %v", err)
+	}
+	if got := stateOf(t, db, "uv_1"); got != store.StateBlocked {
+		t.Errorf("state = %s, want blocked after the fourth failed cycle", got)
+	}
+}
+
+// switchProber answers every attempt with whatever verdict the test last set: a cycle verdict, rather
+// than the attempt-by-attempt script scriptedProber plays.
+type switchProber struct{ result probe.Result }
+
+func (p *switchProber) Probe(context.Context, []probe.Target) ([]probe.Result, error) {
+	return []probe.Result{p.result}, nil
+}
+
+// TestACheckThatCouldNotRunKeepsTheGrace: an unknown cycle is neither progress nor forgiveness. If it
+// reset the streak, three failures spread around prober outages would never block the node.
+func TestACheckThatCouldNotRunKeepsTheGrace(t *testing.T) {
+	t.Parallel()
+	db := newStore(t)
+	enroll(t, db, "uv_1", "one.example.com", store.StateActive)
+	prober := &switchProber{result: failResult()}
+	r := runner(db, prober, staticTargeter{ok: true})
+	r.Policy.BlockAfter = 3
+	check := func() {
+		t.Helper()
+		if _, err := r.CheckOne(context.Background(), mustNode(t, db, "uv_1")); err != nil {
+			t.Fatalf("CheckOne: %v", err)
+		}
+	}
+
+	check() // failure 1
+	check() // failure 2
+	prober.result = unknownResult()
+	check() // not counted
+	if got := mustNode(t, db, "uv_1").FailedCycles; got != 2 {
+		t.Fatalf("failed cycles = %d after an unknown cycle, want 2", got)
+	}
+	prober.result = failResult()
+	check() // failure 3 — blocks, because the unknown cycle did not reset the streak
+	if got := stateOf(t, db, "uv_1"); got != store.StateBlocked {
+		t.Errorf("state = %s, want blocked: an unknown cycle must not reset the streak", got)
+	}
+}
+
+// TestASuccessResetsTheGrace: a node that comes back starts a new streak, so a flapping path cannot
+// accumulate failures across recoveries.
+func TestASuccessResetsTheGrace(t *testing.T) {
+	t.Parallel()
+	db := newStore(t)
+	enroll(t, db, "uv_1", "one.example.com", store.StateActive)
+	prober := &switchProber{result: failResult()}
+	r := runner(db, prober, staticTargeter{ok: true})
+	r.Policy.BlockAfter = 3
+	check := func() {
+		t.Helper()
+		if _, err := r.CheckOne(context.Background(), mustNode(t, db, "uv_1")); err != nil {
+			t.Fatalf("CheckOne: %v", err)
+		}
+	}
+
+	check() // failure 1
+	check() // failure 2
+	prober.result = okResult()
+	check() // back to active, streak reset
+	prober.result = failResult()
+	check() // failure 1 of a new streak
+
+	if got := stateOf(t, db, "uv_1"); got != store.StateUnavailable {
+		t.Errorf("state = %s, want unavailable: the recovery reset the streak", got)
+	}
+	if got := mustNode(t, db, "uv_1").FailedCycles; got != 1 {
+		t.Errorf("failed cycles = %d, want 1 after the reset", got)
+	}
+}
+
 func TestSuccessRecoversTheNode(t *testing.T) {
 	t.Parallel()
 	db := newStore(t)

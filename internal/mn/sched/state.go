@@ -73,14 +73,37 @@ type Outcome struct {
 	Changed bool
 }
 
+// Tally is the failure streak the table needs to tell a node still inside its grace period from one
+// that has used it up. A streak counts cycles, not attempts: the retries inside one cycle are folded
+// into a single verdict before the table sees them.
+type Tally struct {
+	// Streak is the number of consecutive failed cycles, including the one this event reports.
+	Streak int
+	// BlockAfter is how many consecutive failures move a node to blocked. Zero means DefaultBlockAfter.
+	BlockAfter int
+}
+
+// DefaultBlockAfter is the documented default: one grace check, so a node blocks on its second
+// consecutive failed cycle.
+const DefaultBlockAfter = 2
+
+// blockAfter is the threshold with the default applied, so an unset policy still means "two strikes".
+func (t Tally) blockAfter() int {
+	if t.BlockAfter < 1 {
+		return DefaultBlockAfter
+	}
+	return t.BlockAfter
+}
+
 // Transition is the table. Every state × event pair is answered here; an unlisted pair is a change.
 //
 // The rules it encodes, from DESCRIPTION §7.2:
 //   - active → unavailable on the first failed cycle;
-//   - unavailable → blocked on the next one;
+//   - unavailable → blocked when the consecutive failure streak reaches Tally.BlockAfter (default 2,
+//     i.e. one grace cycle), and stays unavailable while the streak is shorter;
 //   - blocked → active only through an explicit, successful unblock;
 //   - unknown never moves anything, in any state.
-func Transition(state State, event Event) Outcome {
+func Transition(state State, event Event, tally Tally) Outcome {
 	if event == EventCheckUnknown {
 		// Invariant 2: we could not check, so we do not know. Say so and change nothing.
 		return Outcome{Next: state, Reason: "the check could not be completed"}
@@ -129,8 +152,15 @@ func Transition(state State, event Event) Outcome {
 			return Outcome{Next: StateActive, Changed: true, Reason: "checks passed again",
 				Effects: []Effect{EffectPeersDirty, EffectNotice}}
 		case EventCheckFailed:
-			return Outcome{Next: StateBlocked, Changed: true, Reason: "checks failed twice in a row",
-				Effects: []Effect{EffectPeersDirty, EffectAudit, EffectNotice}}
+			if tally.Streak >= tally.blockAfter() {
+				return Outcome{Next: StateBlocked, Changed: true,
+					Reason:  fmt.Sprintf("checks failed %d times in a row", tally.Streak),
+					Effects: []Effect{EffectPeersDirty, EffectAudit, EffectNotice}}
+			}
+			// The node is degraded but still in every peer set: nothing to write, nothing to tell.
+			return Outcome{Next: state,
+				Reason: fmt.Sprintf("checks failed %d of %d times in a row; still in the grace period",
+					tally.Streak, tally.blockAfter())}
 		case EventAdminBlock:
 			return Outcome{Next: StateBlocked, Changed: true, Reason: "blocked by an operator",
 				Effects: []Effect{EffectPeersDirty, EffectAudit}}

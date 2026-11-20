@@ -13,6 +13,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/shogun-kub/termit/internal/acme"
 	"github.com/shogun-kub/termit/internal/decoy"
 	"github.com/shogun-kub/termit/internal/i18n"
 	"github.com/shogun-kub/termit/internal/termui"
@@ -27,6 +28,8 @@ type wizardAnswers struct {
 	Locale       string   `yaml:"locale,omitempty"`
 	Domain       string   `yaml:"domain,omitempty"`
 	Email        string   `yaml:"email,omitempty"`
+	ACME         string   `yaml:"acme,omitempty"`
+	ACMESkip     bool     `yaml:"acme_skip_verify,omitempty"`
 	Template     string   `yaml:"decoy_template,omitempty"`
 	Warp         string   `yaml:"warp,omitempty"`
 	WarpSelected []string `yaml:"warp_selected,omitempty"`
@@ -140,6 +143,17 @@ re-installs a working node.`)
 		return a.wizardSaveFailed(err)
 	}
 
+	// The certificate authority comes before the site, because it is the one question whose wrong answer
+	// is not visible until the installation fails at the last step.
+	acmeDirectory, acmeSkip, err := a.wizardAskACME(ui, answers)
+	if err != nil {
+		return wizardInputEnded(ui, err)
+	}
+	answers.ACME, answers.ACMESkip = acmeDirectory, acmeSkip
+	if err := save(); err != nil {
+		return a.wizardSaveFailed(err)
+	}
+
 	template, err := a.wizardAskTemplate(ui, answers, cfg)
 	if err != nil {
 		return wizardInputEnded(ui, err)
@@ -186,36 +200,8 @@ re-installs a working node.`)
 		return exitOK
 	}
 
-	initArgs := []string{"--config", *configPath, "--domain", answers.Domain}
-	if answers.Locale != "" {
-		initArgs = append(initArgs, "--locale", answers.Locale)
-	}
-	if answers.Email != "" {
-		initArgs = append(initArgs, "--email", answers.Email)
-	}
-	if answers.Template != "" {
-		initArgs = append(initArgs, "--decoy-template", answers.Template)
-	}
-	if answers.MNURL != "" {
-		initArgs = append(initArgs, "--mn", answers.MNURL)
-	}
-	if answers.Harden {
-		initArgs = append(initArgs, "--harden")
-	}
-	switch answers.Warp {
-	case config.WarpOff:
-		initArgs = append(initArgs, "--no-warp")
-	case config.WarpSelected:
-		initArgs = append(initArgs, "--warp", config.WarpSelected)
-		if len(answers.WarpSelected) > 0 {
-			initArgs = append(initArgs, "--warp-selected", strings.Join(answers.WarpSelected, ","))
-		}
-	default:
-		initArgs = append(initArgs, "--warp", config.WarpAll)
-	}
-
 	ui.Blank()
-	if code := a.runInit(initArgs); code != exitOK {
+	if code := a.runInit(wizardInitArgs(answers, *configPath)); code != exitOK {
 		// The draft stays: a second run continues from the same answers.
 		ui.Error(tr.T(i18n.WizardInstallFailed))
 		return code
@@ -286,9 +272,16 @@ func (a *application) wizardAskLanguage(ui *termui.UI, answers wizardAnswers, cf
 
 // wizardAlreadyInstalled is what a second run of the wizard shows: what the node is, not questions
 // with answers the node already made.
+//
+// One case is not finished, though: a run whose init succeeded and whose enroll did not leaves a node
+// installed and outside the mesh, with the code still in the draft. This run is the second attempt at
+// exactly that step, and declaring victory would leave the owner to work out from the draft what to type.
 func (a *application) wizardAlreadyInstalled(cfg *config.Config, configPath, draftPath string) int {
 	a.tr = i18n.New(i18n.Console(cfg.Lang(), a.env))
 	tr := a.translator()
+	if answers, err := loadWizardAnswers(draftPath); err == nil && answers.Invite != "" && !a.enrolled(cfg) {
+		return a.wizardFinishEnrollment(cfg, configPath, draftPath, answers)
+	}
 	if err := os.Remove(draftPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		fmt.Fprintf(a.stderr, "termit-uv wizard: remove %s: %v\n", draftPath, err)
 	}
@@ -305,6 +298,36 @@ func (a *application) wizardAlreadyInstalled(cfg *config.Config, configPath, dra
 		}
 	}
 	return exitOK
+}
+
+// wizardFinishEnrollment runs the registration a previous run did not finish, with the code it kept. The
+// draft goes only when the node is in the mesh, so a third attempt is the same command again.
+func (a *application) wizardFinishEnrollment(cfg *config.Config, configPath, draftPath string, answers wizardAnswers) int {
+	tr := a.translator()
+	fmt.Fprintln(a.stdout, tr.T(i18n.WizardEnrollPending))
+	fmt.Fprintln(a.stdout)
+	args := []string{"--config", configPath, "--invite", answers.Invite}
+	if answers.MNURL != "" {
+		args = append(args, "--mn", answers.MNURL)
+	}
+	if code := a.runEnroll(args); code != exitOK {
+		fmt.Fprintln(a.stderr, tr.T(i18n.WizardEnrollFailed))
+		return code
+	}
+	if err := os.Remove(draftPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		fmt.Fprintf(a.stderr, "termit-uv wizard: remove %s: %v\n", draftPath, err)
+	}
+	ui := termui.New(a.stdin(), a.stdout, a.menuStyle())
+	ui.Blank()
+	ui.Title(tr.T(i18n.WizardDone))
+	ui.State("ok", tr.T(i18n.WizardDoneDetail))
+	return a.runOptions([]string{"--config", configPath})
+}
+
+// enrolled reports whether this node has registered with a management server.
+func (a *application) enrolled(cfg *config.Config) bool {
+	node, err := state.LoadInstalled(cfg.Paths.StatePath())
+	return err == nil && node.Credentials != nil && node.Credentials.AgentKey != ""
 }
 
 // wizardAskDomain keeps asking until there is a domain, because there is nothing to install without
@@ -326,6 +349,77 @@ func (a *application) wizardAskDomain(ui *termui.UI, answers wizardAnswers, cfg 
 			continue
 		}
 		return answer, nil
+	}
+}
+
+// wizardInitArgs turns the answers into the flags `init` parses. It is the whole contract between the
+// wizard and the installer: nothing here touches the host, and a question that never reaches this function
+// is a question the installation ignores.
+func wizardInitArgs(answers wizardAnswers, configPath string) []string {
+	args := []string{"--config", configPath, "--domain", answers.Domain}
+	if answers.Locale != "" {
+		args = append(args, "--locale", answers.Locale)
+	}
+	if answers.Email != "" {
+		args = append(args, "--email", answers.Email)
+	}
+	// A directory that is not the public one needs naming; the public one is init's own default, and
+	// skip-verify only means something for a private CA this host cannot check.
+	if answers.ACME != "" && answers.ACME != acme.DefaultDirectory {
+		args = append(args, "--acme-ca", answers.ACME)
+		if answers.ACMESkip {
+			args = append(args, "--acme-skip-tls-verify")
+		}
+	}
+	if answers.Template != "" {
+		args = append(args, "--decoy-template", answers.Template)
+	}
+	if answers.MNURL != "" {
+		args = append(args, "--mn", answers.MNURL)
+	}
+	if answers.Harden {
+		args = append(args, "--harden")
+	}
+	switch answers.Warp {
+	case config.WarpOff:
+		args = append(args, "--no-warp")
+	case config.WarpSelected:
+		args = append(args, "--warp", config.WarpSelected)
+		if len(answers.WarpSelected) > 0 {
+			args = append(args, "--warp-selected", strings.Join(answers.WarpSelected, ","))
+		}
+	default:
+		args = append(args, "--warp", config.WarpAll)
+	}
+	return args
+}
+
+// wizardAskACME asks which directory signs the certificate. The public one is the default and needs no
+// flag, so a standard installation answers nothing here; a private authority — a test lab, a company CA —
+// names its own, and only then is the question about verifying it worth asking: a self-signed CA is not
+// one this host can check.
+func (a *application) wizardAskACME(ui *termui.UI, answers wizardAnswers) (string, bool, error) {
+	tr := a.translator()
+	ui.Blank()
+	ui.Say(tr.Tf(i18n.WizardACMEIntro, acme.DefaultDirectory))
+	for {
+		answer, err := ui.Prompt(tr.T(i18n.WizardACME), answers.ACME)
+		if err != nil {
+			return "", false, err
+		}
+		answer = strings.TrimRight(strings.TrimSpace(answer), "/")
+		if answer == "" || answer == acme.DefaultDirectory {
+			return "", false, nil
+		}
+		if !strings.HasPrefix(answer, "https://") && !strings.HasPrefix(answer, "http://") {
+			ui.Error(tr.T(i18n.WizardACMEShape))
+			continue
+		}
+		skip, err := ui.Confirm(tr.T(i18n.WizardACMESkip), answers.ACMESkip)
+		if err != nil {
+			return "", false, err
+		}
+		return answer, skip, nil
 	}
 }
 
@@ -432,6 +526,7 @@ func (a *application) wizardSummary(ui *termui.UI, answers wizardAnswers) {
 	ui.Title(tr.T(i18n.WizardSummary))
 	ui.KV("domain", answers.Domain)
 	ui.KV("email", orNone(answers.Email))
+	ui.KV("acme", orPublic(answers.ACME))
 	ui.KV("site", answers.Template)
 	ui.KV("egress", answers.Warp+selectedNote(answers.WarpSelected))
 	ui.KV("mesh", orNone(answers.MNURL))
@@ -458,6 +553,15 @@ func orNone(value string) string {
 		return "—"
 	}
 	return value
+}
+
+// orPublic renders the certificate authority in the summary: the empty answer is not a missing value but
+// the public directory, and saying so is clearer than a dash.
+func orPublic(directory string) string {
+	if directory == "" {
+		return "Let's Encrypt"
+	}
+	return directory
 }
 
 func firstNonEmpty(values ...string) string {
@@ -519,22 +623,33 @@ func (a *application) initComplete(cfg *config.Config, configPath string) (bool,
 		return false, err
 	}
 	for _, step := range report.Steps {
-		switch {
-		case step.Status == state.StepPresent:
-		case nonEffectSteps[step.Name] && step.Status == state.StepPlanned:
-			// A step that never reports its effect as present says nothing either way. A failure in it
-			// is a different matter and falls through: a node whose host checks fail is not installed.
-		default:
+		if !stepSatisfied(step) {
 			return false, nil
 		}
 	}
 	return true, nil
 }
 
+// stepSatisfied reports whether one step of a dry run says the node is already installed. A step that
+// never reports its effect as present says nothing either way; a failure in it falls through, because a
+// node whose host checks fail is not installed.
+func stepSatisfied(step install.StepReport) bool {
+	switch {
+	case step.Status == state.StepPresent:
+		return true
+	case nonEffectSteps[step.Name] && step.Status == state.StepPlanned:
+		return true
+	}
+	return false
+}
+
 // nonEffectSteps are the steps whose Check never reports the effect as present, by design: preflight
-// verifies the host on every run, and start restarts the agent on every run because init is also the
-// upgrade path. Neither tells us whether the node is installed.
-var nonEffectSteps = map[string]bool{"preflight": true, "start": true}
+// verifies the host on every run, start restarts the agent on every run because init is also the upgrade
+// path, warp registers with Cloudflare when that is possible at all, and warp-egress measures where the
+// tunnel exits — a measurement, not a file. None of them tells us whether the node is installed: a
+// network that blocks WARP is the very case this project exists for, and it must not make the wizard
+// tell the owner to run init forever.
+var nonEffectSteps = map[string]bool{"preflight": true, "start": true, "warp": true, "warp-egress": true}
 
 // wizardDraftPath keeps the answers beside the configuration they belong to, not in the state
 // directory: a `--config` elsewhere is a node whose answers should travel with it.

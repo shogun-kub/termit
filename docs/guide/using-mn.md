@@ -14,17 +14,20 @@ that is [the interactive menu](menu.md).
 
 ## Install
 
-One command: it resolves the newest release, verifies its checksum, installs the binary and its unit,
-installs the probe worker, creates the configuration, starts the service and prints the status.
+Download the installer and run it: it resolves the newest release, verifies its checksum, installs the
+binary and its unit, installs the probe worker, creates the configuration, starts the service and prints
+the status. `wget` is part of a standard Debian 13 install; `curl -fsSLO <same URL>` works too:
 
 ```bash
-curl -fsSLO https://github.com/shogun-kub/termit/releases/latest/download/mn.sh
+wget -q https://github.com/shogun-kub/termit/releases/latest/download/mn.sh
 sh mn.sh --domain mn.example.com --email you@example.com --admin-token-out /etc/termit/mn/admin.token
 ```
 
 `--version v0.4.1` installs that release instead of the newest; `--base-url` points the script at a
 mirror, a `file://` URL or a local directory (where `--version` is required, because a mirror cannot
-answer "newest"). `--mode` is passed through to `init`:
+answer "newest"). Re-running the script is the upgrade, and it needs no flags: the domain is read from the
+installed configuration, the newest release is resolved again, and the service is restarted. `--mode` is
+passed through to `init`:
 
 | Mode | What happens when a node enrols |
 |---|---|
@@ -200,6 +203,7 @@ revoke it if it leaks. Each use consumes one slot.
 | replace a node's agent key | `termit-mn uv reissue node1.example.com` |
 | check now | `termit-mn check now node1.example.com`, or `termit-mn check now --all` |
 | tune the schedule | `termit-mn policy show`, `termit-mn policy set check_interval 12h` |
+| make the grace longer or shorter | `termit-mn policy set block_after_failed_cycles 4` — how many failed checks in a row block a node (default 2, i.e. one grace check) |
 | rotate a subscription token | `termit-mn sub rotate node1.example.com --domain mn.example.com` |
 
 What the states mean:
@@ -209,7 +213,7 @@ What the states mean:
 | `pending` | enrolled, not admitted yet (`invite+approval`) | `termit-mn uv approve` |
 | `active` | checked and working | — |
 | `unavailable` | a check ran and genuinely failed (certificate, decoy, tunnel) | passing checks |
-| `blocked` | two failed checks in a row, or an operator decision | `termit-mn uv unblock`, or the node asking with `termit-uv unblock` |
+| `blocked` | the configured number of failed checks in a row (`policy.block_after_failed_cycles`, default 2), or an operator decision | `termit-mn uv unblock`, or the node asking with `termit-uv unblock` |
 | `removed` | out of the mesh; credentials stop working | re-enrolment (new record) |
 
 The state machine only moves on a verdict. A check that could not run — prober down, DNS broken on
@@ -231,6 +235,10 @@ Every node has one token. The endpoints are:
 Both are stable for a given peer set and carry an `ETag`, so a caching client costs one `304`. A node
 shows its own URL in `termit-uv status`. Rotating the token invalidates the old URL immediately; it does not
 touch the node's own local devices, which never leave the box.
+
+A node that is `pending` or `removed` gets no list: its URL answers `404`, the same answer an unknown token
+gets. A `blocked` node keeps its URL, but its peers have dropped its credential, so nothing works through
+the mesh until an unblock.
 
 ## Backup and restore
 

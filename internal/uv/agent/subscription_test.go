@@ -31,3 +31,29 @@ func TestRememberSubscription(t *testing.T) {
 		t.Error("RememberSubscription changed a state without credentials")
 	}
 }
+
+func TestRememberProbe(t *testing.T) {
+	t.Parallel()
+	// A node rebuilt with --relocate has an agent key but no probe credential: the next sync must
+	// restore it, or the next config rewrite drops the server's way in.
+	st := &state.State{Credentials: &state.Credentials{AgentKey: "key"}}
+	answer := proto.SyncResponse{}
+	answer.Self.ProbeUUID = "11111111-2222-4333-8444-555555555555"
+	if !agent.RememberProbe(st, answer) {
+		t.Fatal("RememberProbe reported no change for an empty probe uuid")
+	}
+	if st.Credentials.ProbeUUID != answer.Self.ProbeUUID {
+		t.Errorf("stored %q, want %q", st.Credentials.ProbeUUID, answer.Self.ProbeUUID)
+	}
+	if agent.RememberProbe(st, answer) {
+		t.Error("RememberProbe reported a change for the same probe uuid")
+	}
+	if agent.RememberProbe(st, proto.SyncResponse{}) {
+		t.Error("RememberProbe cleared the probe uuid on an answer without one")
+	}
+
+	// No credentials means a node that is not enrolled: there is nothing to remember against.
+	if agent.RememberProbe(&state.State{}, answer) {
+		t.Error("RememberProbe changed a state without credentials")
+	}
+}

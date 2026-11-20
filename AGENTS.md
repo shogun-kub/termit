@@ -176,16 +176,22 @@ export TERMIT_LAB_PSCP='C:\Program Files\PuTTY\pscp.exe'
 go test -tags=lab ./test/lab -v -timeout 30m
 ```
 
+Run it with `-count=1`. `go test` caches a passing result and keys it on the package files and the
+environment the test reads — both unchanged between two runs of a gate — so a cached run prints the
+previous pass in seconds and proves nothing about the build in front of you.
+
 Concrete coordinates for this machine live in the gitignored `.spike-out/lab.md`; the variables above
 are what the tests read. The key is a PuTTY `.ppk` that OpenSSH cannot read, so the harness calls
 `plink`/`pscp` (M0.5) and pins each machine by fingerprint. A missing variable skips the suite rather
 than failing it: the lab is a manual gate, not part of `go test ./cmd/... ./internal/...`.
 
 Acceptance budget: UV = 1 vCPU / 1 GB RAM / 10 GB disk, MN = 2 vCPU / 2 GB. The containers are
-unprivileged LXC with **no `/dev/net/tun`**: the default `wireguard` WARP transport needs no device and can
-be exercised there; the opt-in `proxy` transport cannot, and must degrade with a clear reason (acceptance
-needs a KVM VM or a privileged container). Everything else — TLS, ACME against a local directory, the mesh
-scenarios, resource usage — is testable.
+unprivileged LXC with **no `/dev/net/tun`**, and a lab's egress may block the WARP API — the very block
+this project exists to route around. A node must still install, serve and say why: `wireguard` needs no
+device but may fail to register, and the opt-in `proxy` transport cannot run at all. WARP egress is
+therefore proved in a production pass (AGENTS §9), not in the lab; the lab proves the degradation —
+traffic keeps flowing and the reason is reported. Everything else — TLS, ACME against a local directory,
+the mesh scenarios, resource usage — is testable.
 
 Rules: tests are re-runnable and tolerate a previous failed run; never leave a machine needing manual
 repair (on failure dump the logs and a `termit-uv doctor` report into the output); never put lab
@@ -329,12 +335,33 @@ Commit hygiene: Conventional Commits (`feat(uv): …`, `fix(mn/probe): …`, `do
 per commit. Never commit `references/`, build output, `.dev/`, lab credentials, `*.pem`, `*.key`, SQLite
 files or logs.
 
-**After pushing, clean up**: `git push && go run ./deploy/clean`, or `make push`. The artifacts of a
+**After pushing, clean up**: `git push && go run ./deploy/clean`, or `make push` (on this machine with the
+push setting below in place). The artifacts of a
 release are spent once they are on the server, and the scratch directory grows by hundreds of megabytes
 per cycle. `deploy/clean` removes the build output, the lab logs and everything in `.spike-out/` that is
 not on its keep list — the Go toolchain, the caches, `lab.md`, the admin token and the two directories
 holding input — and refuses to touch a directory that contains its own `.git`. `--dry-run` shows the list
 and the freed bytes.
+
+**Pushing from this checkout**: the maintainer's Windows box sets `GIT_SSH` to TortoiseGit's
+`TortoiseGitPlink.exe` (TortoiseGit needs it there), and this clone carries a `remote.origin.puttykeyfile`
+for an unrelated project, so a plain `git push` stops at
+`fatal: Could not read from remote repository` — with no `Permission denied`, because plink never gets as
+far as authenticating. Git's own client can get through, with the system OpenSSH and `~/.ssh/id_rsa`.
+Point this clone at it once; `core.sshCommand` overrides `GIT_SSH` for git only, so TortoiseGit keeps its
+plink and the environment is not touched:
+
+```powershell
+git config --local core.sshCommand 'C:/Windows/System32/OpenSSH/ssh.exe'
+```
+
+Without that setting — another clone, a fresh machine — name it per command:
+
+```powershell
+git -c core.sshCommand='C:/Windows/System32/OpenSSH/ssh.exe' push origin dev
+```
+
+Both do the same thing; on Linux and macOS a plain `git push` needs neither.
 
 The caches are split by what losing them costs, because that is the only distinction that matters when
 the disk is full: `--build-cache` drops the compiled output (2.7 GB after a release cycle; the next build

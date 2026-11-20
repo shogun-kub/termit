@@ -54,7 +54,7 @@ func (s *Store) ScheduleCheck(ctx context.Context, id string, next, last time.Ti
 	return nil
 }
 
-// SetFailedCycles stores the consecutive failed cycles, for display and for the two-strike rule's audit
+// SetFailedCycles stores the consecutive failed cycles, for display and for the grace rule's audit
 // trail. The rule itself is in the transition table, not here.
 func (s *Store) SetFailedCycles(ctx context.Context, id string, cycles int) error {
 	if _, err := s.db.ExecContext(ctx, `UPDATE uv SET failed_cycles = ? WHERE id = ?`, cycles, id); err != nil {

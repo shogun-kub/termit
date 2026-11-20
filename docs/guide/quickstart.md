@@ -36,13 +36,14 @@ Wherever you see `mn.example.com` or `node-a.example.com`, use your own names.
 
 ## 1. The server
 
-Log in to the server as `root` and paste this one line. It downloads the newest release, checks the file
-against its published checksum, installs the server and its systemd unit, gives it the probe worker it
-needs, creates the configuration, starts the service and prints its status. `--version v0.4.1` installs
-that release instead of the newest one.
+Log in to the server as `root` and run these commands. They download the newest release with `wget`,
+which a standard Debian 13 install has (`curl -fsSLO <same URL>` works too), check the file against its
+published checksum, install the server and its systemd unit, give it the probe worker it needs, create
+the configuration, start the service and print its status. `--version v0.4.1` installs that release
+instead of the newest one.
 
 ```bash
-curl -fsSLO "https://github.com/shogun-kub/termit/releases/latest/download/mn.sh" && sh mn.sh --domain mn.example.com --email you@example.com --admin-token-out /etc/termit/mn/admin.token
+wget -q "https://github.com/shogun-kub/termit/releases/latest/download/mn.sh" && sh mn.sh --domain mn.example.com --email you@example.com --admin-token-out /etc/termit/mn/admin.token
 ```
 
 What to put instead of the placeholders:
@@ -82,12 +83,13 @@ The code (for example `ABCD-EFGH-IJKL`) is printed **once**. Copy it now — you
 
 ## 3. The node
 
-Log in to the node as `root` and paste this single line. It downloads the installer, verifies the
-release, installs the node program, and then asks you questions. Without `--version` it installs the
-newest release; `sh uv.sh --version v0.4.1 --wizard` pins one instead.
+Log in to the node as `root` and run these commands. They download the installer with `wget` (a standard
+Debian 13 install has it; `curl -fsSLO <same URL>` works too), verify the release, install the node
+program, and then ask you questions. Without `--version` it installs the newest release;
+`sh uv.sh --version v0.4.1 --wizard` pins one instead.
 
 ```bash
-curl -fsSLO "https://github.com/shogun-kub/termit/releases/latest/download/uv.sh" && sh uv.sh --wizard
+wget -q "https://github.com/shogun-kub/termit/releases/latest/download/uv.sh" && sh uv.sh --wizard
 ```
 
 The questions, in the order they come, and what to answer:
@@ -97,6 +99,7 @@ The questions, in the order they come, and what to answer:
 | `Language / Язык` | `en` or `ru` — the rest of the questions are in that language | never |
 | `Domain (a DNS name that points at this machine)` | `node-a.example.com` | — this one is required |
 | `Contact address for the certificate authority` | `you@example.com` | — you get a warning if the certificate is about to expire |
+| `ACME directory (empty = the public one)` | `Enter` — Let's Encrypt | a test lab or a company certificate authority: its directory URL, e.g. `https://ca.example.net/acme/dir`. You are then asked whether to skip verifying its certificate |
 | `Masking site` | press `Enter` (`portal`) | `product` gives a different-looking ordinary page at your node's address |
 | `Egress (all, selected, off)` | `all` — everything proxied leaves through Cloudflare | `off` if you do not want traffic to touch Cloudflare, or if your hoster blocks it; `selected` if only some sites should |
 | `Harden this node (yes/no) [y/N]` | `y` if this machine is only a Termit node | `n` or `Enter` if other services you need run on it (the firewall would cut them off), or you already have your own firewall |
@@ -111,7 +114,8 @@ certificate, builds the decoy page, starts the services and joins your server. T
 what happened.
 
 Every answer is remembered. If you disconnect in the middle, run `termit-uv wizard` again and it
-continues where it stopped.
+continues where it stopped; if the node got installed but the registration did not go through, it retries
+that step with the code it kept.
 
 ## 4. Approve the node
 

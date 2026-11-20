@@ -79,7 +79,7 @@ func (h *Handler) relocate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	outcome := sched.Transition(sched.State(node.State), sched.EventRelocate)
+	outcome := sched.Transition(sched.State(node.State), sched.EventRelocate, sched.Tally{})
 	if node.State != store.StateActive && !outcome.Changed {
 		writeProblem(w, http.StatusConflict, proto.NewProblem(http.StatusConflict,
 			proto.CodeConflict, "Conflict", fmt.Sprintf("this node is %s; %s", node.State, outcome.Reason)))

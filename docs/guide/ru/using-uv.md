@@ -25,10 +25,11 @@ Termit](overview.md) — начните с той страницы: она об�
 
 ## Установка
 
-Скачайте установщик и запустите его — не передавайте URL в шелл через пайп:
+Скачайте установщик и запустите его — не передавайте URL в шелл через пайп. `wget` есть в стандартной
+установке Debian 13; `curl -fsSLO <тот же URL>` тоже подойдёт:
 
 ```bash
-curl -fsSLO https://github.com/shogun-kub/termit/releases/latest/download/uv.sh
+wget -q https://github.com/shogun-kub/termit/releases/latest/download/uv.sh
 
 sh uv.sh \
   --domain node1.example.com --email you@example.com \

@@ -40,14 +40,16 @@ a provisioning script is a hang, not a convenience.
 │    …                                                                 │
 │    q   quit                                                          │
 │                                                                      │
-│  choose [1-16, q]:                                                   │
+│  choose [1-21, q]:                                                   │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
 Answer with the number or with the label — `3` and `install or converge` are the same answer, because
 the label is what you are looking at. An empty line takes the default shown in brackets, `q` quits, and
 an answer that matches nothing re-asks instead of exiting: a menu that dies on a typo is a menu nobody
-trusts. Closed stdin (a pipe that ran out) ends the session cleanly with status 0.
+trusts. The questions a step asks follow the same rule: a value the command cannot work without is asked
+again when it is left empty, and a yes/no answer that is neither is asked again too, so a typo never
+answers for you. Closed stdin (a pipe that ran out) ends the session cleanly with status 0.
 
 ## Node menu (`termit-uv`)
 
@@ -60,11 +62,16 @@ trusts. Closed stdin (a pipe that ran out) ends the session cleanly with status 
 | setup wizard | the whole first installation as questions; remembers the answers between runs | `termit-uv wizard` |
 | client options | the private page with every client link, and its address | `termit-uv options` |
 | join the mesh | asks for the server URL and an invite code | `termit-uv enroll …` |
+| lift a block | asks the server to verify this node and let it back in | `termit-uv unblock` |
+| move to another domain | relocates the node to a new domain (Scenario C) | `termit-uv migrate --relocate …` |
 | sync now | fetch the peer set now instead of waiting for the daily sync | `termit-uv sync` |
 | check drift | report whether the running core matches the server | `termit-uv sync --check` |
 | devices | list, add or remove this node's own devices | `termit-uv device …` |
 | print vless URI | the URI of this node's own device | `termit-uv uri` |
-| egress (WARP) | show, or switch between `all`, `off` and `selected` | `termit-uv warp …` |
+| egress (WARP) | show, switch between `all`, `off` and `selected`, or rotate the device | `termit-uv warp …` |
+| firewall | the host table: status, on, off, confirm, refresh, restore | `termit-uv firewall …` |
+| bans | what the guard banned, and your own permanent blocks | `termit-uv bans …` |
+| guard | whether the ban engine runs, and what it banned | `termit-uv guard status` |
 | certificate | renew now; optionally force a reissue | `termit-uv renew-cert [--force]` |
 | decoy site | regenerate the site, optionally with another archetype | `termit-uv renew-site …` |
 | uninstall | asks twice, names what `--purge` takes | `termit-uv uninstall [--purge]` |
@@ -75,17 +82,21 @@ trusts. Closed stdin (a pipe that ran out) ends the session cleanly with status 
 | Item | What it does | The command it runs |
 |---|---|---|
 | status | server, database, prober, node table | `termit-mn status` |
-| nodes | list, show, approve, reject, block, unblock, remove | `termit-mn uv …` |
+| nodes | list, show, approve, reject, block, unblock, remove, reissue, agent key, forget | `termit-mn uv …` |
 | invites | create, list, revoke codes | `termit-mn invite …` |
 | check now | the whole mesh, or one node | `termit-mn check now --all` / `termit-mn check now <node>` |
 | policy | show thresholds, or change one | `termit-mn policy …` |
 | subscription | rotate a node's subscription token | `termit-mn sub rotate <node>` |
 | admin token | replace the admin token you are using | `termit-mn admin rotate` |
 | backup | write a consistent snapshot | `termit-mn backup` |
+| restore from a snapshot | put the database and certificates back; asks for the archive and says the server must be stopped | `termit-mn restore --from … --force` |
+| firewall | the host table: status, on, off, confirm, refresh, restore | `termit-mn firewall …` |
+| bans | what the guard banned, and your own permanent blocks | `termit-mn bans …` |
+| guard | whether the ban engine runs, and what it banned | `termit-mn guard status` |
 | help | every command and flag | `termit-mn help` |
 
 The server menu is a front end for the admin CLI, so it needs what the admin CLI needs: a running
-server and the admin token. Give the token to the menu itself and every command it runs inherits it:
+server and the admin token. Give the token to the menu itself and every admin command it runs inherits it:
 
 ```bash
 termit-mn menu --token-file /etc/termit/mn/admin.token
@@ -94,13 +105,20 @@ termit-mn menu --token-file /etc/termit/mn/admin.token
 The header names the credential the session runs on (`admin token from --token-file …`, from
 `TERMIT_MN_ADMIN_TOKEN`, or from `TERMIT_MN_ADMIN_TOKEN_FILE`), says plainly when there is none, and the
 admin actions then refuse to run in the CLI's own words. `--config` and `--socket` work the same way.
+The local commands — `backup`, `restore`, `firewall`, `bans`, `guard` — read the host rather than the
+API, take none of those flags, and the menu leaves them out of what it passes.
 
 The node menu takes `--config` for the same reason: `termit-uv menu --config /path/to/config.yaml`
 inspects and acts on that node, not on the default one.
 
 Starting the server is deliberately absent. `termit-mn serve` belongs to the systemd unit, where its log is
 collected; a menu that starts a long-running foreground server would hide that log behind a menu
-screen.
+screen. The same reasoning keeps four other commands out: `termit-uv agent` and `guard run`, which are
+loops the units own; `firewall rollback`, which is the rollback timer's own command and says so in its
+help; and `version`, which is in the header of every screen. `termit-mn init` stays out too — the menu
+talks to a running server, and there is no server yet when that command is the one you need. Everything
+else the binary accepts has a menu entry, and `help` prints the full list — and since every entry runs
+the command line it prints, an entry cannot do anything the CLI cannot.
 
 ## Colour
 
