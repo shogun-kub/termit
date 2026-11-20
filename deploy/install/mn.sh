@@ -326,6 +326,9 @@ if [ "$PROBER" = 1 ]; then
 	esac
 	command -v unzip >/dev/null 2>&1 || {
 		say "installing unzip, which the probe worker comes in"
+		# A fresh image has no package lists, and `apt-get install` without them fails with "unable to
+		# locate package" — an error that reads like a missing package rather than a missing update.
+		apt-get update >/dev/null 2>&1 || true
 		DEBIAN_FRONTEND=noninteractive apt-get install -y unzip >/dev/null 2>&1 ||
 			die "cannot install unzip; install it and run this again, or pass --no-prober"
 	}
