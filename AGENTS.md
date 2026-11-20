@@ -331,12 +331,33 @@ Commit hygiene: Conventional Commits (`feat(uv): …`, `fix(mn/probe): …`, `do
 per commit. Never commit `references/`, build output, `.dev/`, lab credentials, `*.pem`, `*.key`, SQLite
 files or logs.
 
-**After pushing, clean up**: `git push && go run ./deploy/clean`, or `make push`. The artifacts of a
+**After pushing, clean up**: `git push && go run ./deploy/clean`, or `make push` (on this machine with the
+push setting below in place). The artifacts of a
 release are spent once they are on the server, and the scratch directory grows by hundreds of megabytes
 per cycle. `deploy/clean` removes the build output, the lab logs and everything in `.spike-out/` that is
 not on its keep list — the Go toolchain, the caches, `lab.md`, the admin token and the two directories
 holding input — and refuses to touch a directory that contains its own `.git`. `--dry-run` shows the list
 and the freed bytes.
+
+**Pushing from this checkout**: the maintainer's Windows box sets `GIT_SSH` to TortoiseGit's
+`TortoiseGitPlink.exe` (TortoiseGit needs it there), and this clone carries a `remote.origin.puttykeyfile`
+for an unrelated project, so a plain `git push` stops at
+`fatal: Could not read from remote repository` — with no `Permission denied`, because plink never gets as
+far as authenticating. Git's own client can get through, with the system OpenSSH and `~/.ssh/id_rsa`.
+Point this clone at it once; `core.sshCommand` overrides `GIT_SSH` for git only, so TortoiseGit keeps its
+plink and the environment is not touched:
+
+```powershell
+git config --local core.sshCommand 'C:/Windows/System32/OpenSSH/ssh.exe'
+```
+
+Without that setting — another clone, a fresh machine — name it per command:
+
+```powershell
+git -c core.sshCommand='C:/Windows/System32/OpenSSH/ssh.exe' push origin dev
+```
+
+Both do the same thing; on Linux and macOS a plain `git push` needs neither.
 
 The caches are split by what losing them costs, because that is the only distinction that matters when
 the disk is full: `--build-cache` drops the compiled output (2.7 GB after a release cycle; the next build
