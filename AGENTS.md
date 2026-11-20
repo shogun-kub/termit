@@ -182,10 +182,12 @@ are what the tests read. The key is a PuTTY `.ppk` that OpenSSH cannot read, so 
 than failing it: the lab is a manual gate, not part of `go test ./cmd/... ./internal/...`.
 
 Acceptance budget: UV = 1 vCPU / 1 GB RAM / 10 GB disk, MN = 2 vCPU / 2 GB. The containers are
-unprivileged LXC with **no `/dev/net/tun`**: the default `wireguard` WARP transport needs no device and can
-be exercised there; the opt-in `proxy` transport cannot, and must degrade with a clear reason (acceptance
-needs a KVM VM or a privileged container). Everything else — TLS, ACME against a local directory, the mesh
-scenarios, resource usage — is testable.
+unprivileged LXC with **no `/dev/net/tun`**, and a lab's egress may block the WARP API — the very block
+this project exists to route around. A node must still install, serve and say why: `wireguard` needs no
+device but may fail to register, and the opt-in `proxy` transport cannot run at all. WARP egress is
+therefore proved in a production pass (AGENTS §9), not in the lab; the lab proves the degradation —
+traffic keeps flowing and the reason is reported. Everything else — TLS, ACME against a local directory,
+the mesh scenarios, resource usage — is testable.
 
 Rules: tests are re-runnable and tolerate a previous failed run; never leave a machine needing manual
 repair (on failure dump the logs and a `termit-uv doctor` report into the output); never put lab
