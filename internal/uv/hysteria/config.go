@@ -96,6 +96,30 @@ func marshal(config file) ([]byte, error) {
 	return b.Bytes(), nil
 }
 
+// Decode reads a generated document back with unknown fields refused, and checks the three things the
+// transport cannot run without: an address, at least one user, and one outbound the catch-all ACL names.
+// The binary has no `-test`, so reading our own file strictly is the validation we can do before a
+// trial start.
+func Decode(data []byte) error {
+	var parsed file
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&parsed); err != nil {
+		return err
+	}
+	switch {
+	case parsed.Listen == "":
+		return errors.New("the document has no listen address")
+	case parsed.Auth.Type != "userpass" || len(parsed.Auth.UserPass) == 0:
+		return errors.New("the document does not authenticate anybody")
+	case len(parsed.Outbounds) == 0:
+		return errors.New("the document has no outbound")
+	case len(parsed.ACL.Rules) == 0 || parsed.ACL.Rules[0].Outbound != parsed.Outbounds[0].Name:
+		return errors.New("the document's ACL does not name its first outbound")
+	}
+	return nil
+}
+
 // Validate reports every reason the spec could not produce a working transport.
 func (s Spec) Validate() error {
 	var problems []error

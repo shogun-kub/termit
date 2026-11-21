@@ -195,7 +195,7 @@ func TestExtractXrayMissingEntry(t *testing.T) {
 func TestCopyVerifiedRejectsWrongDigest(t *testing.T) {
 	t.Parallel()
 	dst := filepath.Join(t.TempDir(), "archive.zip")
-	err := copyVerified(dst, strings.NewReader("bytes"), strings.Repeat("0", 64))
+	err := copyVerified(dst, strings.NewReader("bytes"), strings.Repeat("0", 64), "xray")
 	if err == nil || !strings.Contains(err.Error(), "digest mismatch") {
 		t.Fatalf("error = %v, want a digest mismatch", err)
 	}

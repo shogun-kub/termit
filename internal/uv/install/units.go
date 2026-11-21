@@ -81,6 +81,15 @@ func (s *unitsStep) unitFiles() (map[string][]byte, error) {
 		}
 		files[filepath.Join(s.e.cfg.Paths.UnitDir, service.GuardUnitName)] = guardUnit
 	}
+	// The transport's unit exists only when the transport is enabled: a unit for a binary that is not
+	// installed is a failed service in the journal on every boot.
+	if s.e.cfg.Hysteria != nil {
+		transportUnit, err := service.Hysteria(s.e.cfg.Paths.HysteriaBinary(), s.e.cfg.Paths.HysteriaConfig)
+		if err != nil {
+			return nil, err
+		}
+		files[filepath.Join(s.e.cfg.Paths.UnitDir, service.HysteriaUnitName)] = transportUnit
+	}
 	// The blocklist timer exists only when there is a list to fetch: a daily unit that fails because
 	// nobody configured a URL is noise in the journal, not a feature.
 	if s.e.cfg.Security.Firewall.BlocklistURL != "" {
@@ -142,6 +151,9 @@ func (s *unitsStep) Run(ctx context.Context) error {
 		s.e.st.AddPath(name, state.KindFile, "units", now)
 	}
 	s.e.st.AddPath(filepath.Join(s.e.cfg.Paths.UnitDir, service.XrayUnitName), state.KindUnit, "units", now)
+	if s.e.cfg.Hysteria != nil {
+		s.e.st.AddPath(filepath.Join(s.e.cfg.Paths.UnitDir, service.HysteriaUnitName), state.KindUnit, "units", now)
+	}
 	s.e.st.Touch()
 
 	if _, err := s.e.exec.Run(ctx, Cmd{Name: "systemctl", Args: []string{"daemon-reload"}}); err != nil {

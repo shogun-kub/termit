@@ -142,6 +142,34 @@ func New(opts Options) (*Installer, error) {
 	if opts.WarpProbe != nil {
 		env.probeWarp = opts.WarpProbe
 	}
+	// The transport's steps exist only when the transport does: an install that never enables it must
+	// not report work it is not going to do, and the journal must not grow steps nobody asked for.
+	steps := []Step{
+		&preflightStep{env},
+		&userStep{env},
+		&dirsStep{env},
+		&packagesStep{env},
+		&warpStep{env},
+		&xrayStep{env},
+	}
+	if cfg.Hysteria != nil {
+		steps = append(steps, &hysteriaBinStep{env})
+	}
+	steps = append(steps,
+		&identityStep{env},
+		&decoyStep{env},
+		&xrayConfigStep{env},
+	)
+	if cfg.Hysteria != nil {
+		steps = append(steps, &hysteriaConfigStep{env})
+	}
+	steps = append(steps,
+		&webStep{env},
+		&unitsStep{env},
+		&certificateStep{env},
+		&startStep{env},
+		&warpProbeStep{env},
+	)
 	return &Installer{
 		cfg:         cfg,
 		st:          st,
@@ -149,22 +177,7 @@ func New(opts Options) (*Installer, error) {
 		journalPath: cfg.Paths.JournalPath(),
 		version:     opts.Version,
 		env:         env,
-		steps: []Step{
-			&preflightStep{env},
-			&userStep{env},
-			&dirsStep{env},
-			&packagesStep{env},
-			&warpStep{env},
-			&xrayStep{env},
-			&identityStep{env},
-			&decoyStep{env},
-			&xrayConfigStep{env},
-			&webStep{env},
-			&unitsStep{env},
-			&certificateStep{env},
-			&startStep{env},
-			&warpProbeStep{env},
-		},
+		steps:       steps,
 	}, nil
 }
 

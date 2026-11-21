@@ -144,6 +144,10 @@ type Applier struct {
 	// BlockBitTorrent is the same kind of promise for the torrent rule: a config this node regenerates
 	// without it would quietly stop blocking.
 	BlockBitTorrent bool
+	// Hysteria is the loopback hop the QUIC transport enters through, for the same reason: a hop that
+	// disappears at the next sync makes every transport request fail, hours after the install looked
+	// fine.
+	Hysteria xray.HysteriaHop
 }
 
 // Result is what applying a set changed.
@@ -188,6 +192,7 @@ func (a Applier) spec(answer proto.SyncResponse, local []state.LocalUser) (xray.
 	spec.Path = a.Path
 	spec.Warp = a.Warp
 	spec.BlockBitTorrent = a.BlockBitTorrent
+	spec.Hysteria = a.Hysteria
 	desired := a.desired(answer, local)
 	ids := make([]string, 0, len(desired))
 	for id := range desired {

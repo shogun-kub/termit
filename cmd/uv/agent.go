@@ -157,6 +157,7 @@ func (a *application) applier(cfg *config.Config, st *state.State) (agent.Applie
 		},
 		Warp:            warpSpec,
 		BlockBitTorrent: cfg.Security.BitTorrentBlock,
+		Hysteria:        install.HysteriaHopFor(cfg),
 		Canary: agent.Canary{
 			Binary:    binary,
 			ProxyAddr: xray.DefaultListen + ":" + strconv.Itoa(xray.DefaultPort),

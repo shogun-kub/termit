@@ -43,6 +43,7 @@ func (s *xrayConfigStep) spec() (xray.Spec, error) {
 		return spec, err
 	}
 	spec.Warp = warpSpec
+	spec.Hysteria = HysteriaHopFor(s.e.cfg)
 	spec.Clients = []xray.Client{{ID: s.e.st.Identity.SelfUUID, Email: ownerEmail}}
 	for _, user := range s.e.st.LocalUsers {
 		spec.Clients = append(spec.Clients, xray.Client{ID: user.ID, Email: localEmail(user)})

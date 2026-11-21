@@ -104,16 +104,21 @@ func archiveSource(base, version, name string) (string, bool, error) {
 	return strings.TrimSuffix(base, "/") + "/v" + version + "/" + name, true, nil
 }
 
-// fetchArchive makes sure a verified copy of the archive is in the cache and returns its path.
-// A cached copy with the right digest is reused, so a resumed install does not download 35 MiB
-// again.
+// fetchArchive makes sure a verified copy of the release archive is in the cache and returns its path.
 func fetchArchive(ctx context.Context, client *http.Client, cfg *config.Config, arch, cacheDir string) (string, error) {
 	pin, err := archiveExpectation(cfg, arch)
 	if err != nil {
 		return "", err
 	}
+	return fetchVerified(ctx, client, cfg.Xray.DownloadBase, cfg.Xray.Version, pin, cacheDir, "xray")
+}
+
+// fetchVerified makes sure a copy of one release asset with the expected digest is in the cache and
+// returns its path. label names the component in errors; the mechanism is the same for every pinned
+// binary this project installs.
+func fetchVerified(ctx context.Context, client *http.Client, base, version string, pin archivePin, cacheDir, label string) (string, error) {
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
-		return "", fmt.Errorf("xray: create cache directory: %w", err)
+		return "", fmt.Errorf("%s: create cache directory: %w", label, err)
 	}
 	dst := filepath.Join(cacheDir, pin.Name)
 
@@ -123,28 +128,28 @@ func fetchArchive(ctx context.Context, client *http.Client, cfg *config.Config, 
 		}
 		// A stale or truncated cache entry is replaced rather than trusted.
 		if err := os.Remove(dst); err != nil {
-			return "", fmt.Errorf("xray: remove stale cache entry %s: %w", dst, err)
+			return "", fmt.Errorf("%s: remove stale cache entry %s: %w", label, dst, err)
 		}
 	}
 
-	source, remote, err := archiveSource(cfg.Xray.DownloadBase, cfg.Xray.Version, pin.Name)
+	source, remote, err := archiveSource(base, version, pin.Name)
 	if err != nil {
 		return "", err
 	}
 	if remote {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, source, nil)
 		if err != nil {
-			return "", fmt.Errorf("xray: build request for %s: %w", source, err)
+			return "", fmt.Errorf("%s: build request for %s: %w", label, source, err)
 		}
 		resp, err := client.Do(req)
 		if err != nil {
-			return "", fmt.Errorf("xray: download %s: %w", source, err)
+			return "", fmt.Errorf("%s: download %s: %w", label, source, err)
 		}
 		defer func() { _ = resp.Body.Close() }()
 		if resp.StatusCode != http.StatusOK {
-			return "", fmt.Errorf("xray: download %s: %s", source, resp.Status)
+			return "", fmt.Errorf("%s: download %s: %s", label, source, resp.Status)
 		}
-		if err := copyVerified(dst, resp.Body, pin.SHA256); err != nil {
+		if err := copyVerified(dst, resp.Body, pin.SHA256, label); err != nil {
 			return "", err
 		}
 		return dst, nil
@@ -152,21 +157,21 @@ func fetchArchive(ctx context.Context, client *http.Client, cfg *config.Config, 
 
 	file, err := os.Open(source) // #nosec G304 -- the path is built from configuration.
 	if err != nil {
-		return "", fmt.Errorf("xray: open local archive %s: %w", source, err)
+		return "", fmt.Errorf("%s: open local archive %s: %w", label, source, err)
 	}
 	defer func() { _ = file.Close() }()
-	if err := copyVerified(dst, file, pin.SHA256); err != nil {
+	if err := copyVerified(dst, file, pin.SHA256, label); err != nil {
 		return "", err
 	}
 	return dst, nil
 }
 
 // copyVerified writes src to dst atomically and refuses the result if its digest is not want.
-func copyVerified(dst string, src io.Reader, want string) error {
+func copyVerified(dst string, src io.Reader, want, label string) error {
 	dir := filepath.Dir(dst)
 	tmp, err := os.CreateTemp(dir, "."+filepath.Base(dst)+".part*")
 	if err != nil {
-		return fmt.Errorf("xray: create temporary file in %s: %w", dir, err)
+		return fmt.Errorf("%s: create temporary file in %s: %w", label, dir, err)
 	}
 	tmpName := tmp.Name()
 	defer func() { _ = os.Remove(tmpName) }()
@@ -175,26 +180,26 @@ func copyVerified(dst string, src io.Reader, want string) error {
 	written, err := io.Copy(io.MultiWriter(tmp, digest), io.LimitReader(src, maxArchiveBytes+1))
 	if err != nil {
 		_ = tmp.Close()
-		return fmt.Errorf("xray: write archive: %w", err)
+		return fmt.Errorf("%s: write archive: %w", label, err)
 	}
 	if written > maxArchiveBytes {
 		_ = tmp.Close()
-		return fmt.Errorf("xray: archive is larger than %d MiB", maxArchiveBytes>>20)
+		return fmt.Errorf("%s: archive is larger than %d MiB", label, maxArchiveBytes>>20)
 	}
 	got := hex.EncodeToString(digest.Sum(nil))
 	if got != want {
 		_ = tmp.Close()
-		return fmt.Errorf("xray: archive digest mismatch: got %s, expected %s", got, want)
+		return fmt.Errorf("%s: archive digest mismatch: got %s, expected %s", label, got, want)
 	}
 	if err := tmp.Sync(); err != nil {
 		_ = tmp.Close()
-		return fmt.Errorf("xray: sync archive: %w", err)
+		return fmt.Errorf("%s: sync archive: %w", label, err)
 	}
 	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("xray: close archive: %w", err)
+		return fmt.Errorf("%s: close archive: %w", label, err)
 	}
 	if err := os.Rename(tmpName, dst); err != nil {
-		return fmt.Errorf("xray: rename archive: %w", err)
+		return fmt.Errorf("%s: rename archive: %w", label, err)
 	}
 	return nil
 }
