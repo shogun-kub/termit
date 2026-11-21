@@ -67,10 +67,15 @@ func (a *application) runAgent(args []string) int {
 
 // newLoop wires the loop the service and `termit-uv agent --once` share.
 func (a *application) newLoop(cfg *config.Config) *agent.Loop {
+	remote := agent.Remote{BaseURL: cfg.MN.URL, CAFile: cfg.MN.CAFile}
+	// The server renders a link per kind, so it has to know which kinds this node serves — but only when
+	// that is more than the TLS profile. An older server decodes the sync body strictly and rejects the
+	// field outright, and a node that serves only `vless` has nothing to add: absent means exactly that.
+	if cfg.Hysteria != nil {
+		remote.Transports = proto.NodeTransports(true)
+	}
 	return &agent.Loop{
-		Remote: agent.Remote{BaseURL: cfg.MN.URL, CAFile: cfg.MN.CAFile,
-			// The server renders a link per kind, so it has to know which kinds this node serves.
-			Transports: proto.NodeTransports(cfg.Hysteria != nil)},
+		Remote:    remote,
 		Logger:    slog.Default(),
 		StatePath: cfg.Paths.StatePath(),
 		CertPath:  install.LeafCertPath(cfg),

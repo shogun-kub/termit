@@ -69,8 +69,12 @@ func (a *application) runSync(args []string) int {
 	}
 	defer unlock()
 
-	remote := agent.Remote{BaseURL: cfg.MN.URL, CAFile: cfg.MN.CAFile, CertPin: agent.CertFingerprint(install.LeafCertPath(cfg)),
-		Transports: proto.NodeTransports(cfg.Hysteria != nil)}
+	remote := agent.Remote{BaseURL: cfg.MN.URL, CAFile: cfg.MN.CAFile, CertPin: agent.CertFingerprint(install.LeafCertPath(cfg))}
+	// Only what the TLS profile cannot say: an older server decodes the body strictly and rejects the
+	// field, and absent already means `vless`.
+	if cfg.Hysteria != nil {
+		remote.Transports = proto.NodeTransports(true)
+	}
 	answer, err := remote.Fetch(ctx, st.Credentials.AgentKey, proto.SyncRequest{AgentVersion: version.Agent("termit-uv")})
 	if err != nil {
 		fmt.Fprintf(stderr, "termit-uv sync: %v\n", err)
