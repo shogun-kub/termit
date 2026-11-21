@@ -142,7 +142,12 @@ func TransportSpec(cfg *config.Config, selfUUID string, peerUUIDs []string) hyst
 
 // spec is what the transport must be told: the owner's device, its local users and every peer of this node.
 func (s *hysteriaConfigStep) spec() hysteria.Spec {
-	uuids := make([]string, 0, len(s.e.st.Peers)+len(s.e.st.LocalUsers))
+	uuids := make([]string, 0, len(s.e.st.Peers)+len(s.e.st.LocalUsers)+1)
+	// The server's probe credential is a user like any other, and the only way it can check a node whose
+	// transport is the QUIC one.
+	if s.e.st.Credentials != nil && s.e.st.Credentials.ProbeUUID != "" {
+		uuids = append(uuids, s.e.st.Credentials.ProbeUUID)
+	}
 	for _, user := range s.e.st.LocalUsers {
 		uuids = append(uuids, user.ID)
 	}
