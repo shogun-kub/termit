@@ -1704,7 +1704,11 @@ Phases:
    the password derived from each pair's UUID. What is left is the parameters side of the envelope: a kind
    whose parameters vary has no place to say so yet, and the prober has no way to read a kind it does not
    implement.
-3. Prober: MN links hysteria's client and probes the transport (§10.2, constraint 3).
+3. Prober (done): MN links hysteria's client and probes the transport (§10.2, constraint 3). The target
+   carries the kind the check goes through, and only a node that serves nothing but QUIC takes the new
+   path — every other node keeps the worker binary, which checks what a VLESS client would see. The
+   certificate pin is read the same way on both paths, and the server's probe credential joins the node's
+   transport user set so the QUIC half can authenticate at all.
 4. Production pass: this is a network change, so it ships as a pre-release first (AGENTS §9).
 
 Acceptance: on the lab, a node with hysteria2 as a second profile — a client through it reaches the
