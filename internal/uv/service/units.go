@@ -303,6 +303,9 @@ Restart=always
 RestartSec=3s
 LimitNOFILE=65535
 UMask=0077
+# A transport that meets a crafted QUIC packet must die alone (GO-2026-5288, no fix in v2.14.0 yet): the
+# ceiling turns a memory blow-up into a restart instead of an OOM that takes the node's other services.
+MemoryMax=256M
 
 # The transport listens on UDP/443, which is below 1024: one capability, nothing else. It writes nothing,
 # so it gets no writable path at all.

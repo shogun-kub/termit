@@ -1267,6 +1267,14 @@ security:
     udp_ports: [443]    # required while the firewall is on
 ```
 
+**A known advisory, and what it costs.** GO-2026-5288 says a crafted QUIC packet can drive the server out
+of memory when sniffing is on, and v2.14.0 is the newest release — there is no fixed version to install.
+What the node does about it: the transport runs as an unprivileged user, its unit caps it at
+`MemoryMax=256M`, and `Restart=always` turns a blow-up into a restart of the transport alone instead of an
+OOM that takes nginx and the core with it. Sniffing is on only when `block_bittorrent` is, so a node that
+does not block BitTorrent never reaches the vulnerable path. When a release with a fix appears, bump
+`hysteriaVersion` and its digests in `internal/uv/install/hysteria.go`.
+
 `termit-uv init` then installs the pinned binary, writes `/etc/termit/uv/hysteria.yaml`, installs
 `termit-hysteria.service` and starts it after the core. Re-running `init` converges; removing the
 `hysteria:` block and running it again leaves the transport running, so stop and remove the unit by hand

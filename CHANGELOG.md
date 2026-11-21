@@ -10,6 +10,11 @@ of at everyone's next cycle.
 
 ### Added
 
+- **The server can check a node that serves only QUIC.** The prober used to be an xray worker aimed at a
+  VLESS inbound, which a QUIC-only node does not have. The hysteria client now runs inside the server
+  process for those nodes: same probe URL, same certificate pin, same classification vocabulary, so the
+  state machine reads one kind of result and `unknown` still means unknown.
+
 - **The subscription carries the QUIC transport too.** A node reports what it serves in its sync request —
   a kind and a version — and the server renders a `hy2://` link beside the `vless://` one, plus a
   `hysteria2` outbound in the sing-box profile. The user name and password in that link are the same
