@@ -2268,3 +2268,59 @@ a one-line correction owed to the next release. Also worth recording: this works
 public TLS connection during the pass (Windows `schannel: AcquireCredentialsHandle failed`), so the
 external `200`s above were taken from the server host with `wget`; the nodes' own end-to-end checks are the
 server's probes and their own `warp status`.
+
+### 11.12 Production pass, 0.5.0, 2026-11-21
+
+`0.5.0` is the release that gives the mesh a second transport, makes the WARP tunnel carry UDP, and stops
+the node's own address from leaving on the family the tunnel does not carry. It touches the core's document
+on every node, so it went to production as a pre-release before any tag existed.
+
+**The pre-release this record is about is `v0.5.0p2`.** `p1` carried the release; `p2` added one fix found
+during the pass — the sync body carried a `transports` field from every node, and the 0.4.2 server, whose
+decoder is strict, rejected the whole request with `url_invalid: json: unknown field "transports"`. It
+showed up on then4 the moment the node was upgraded ahead of its server, which is the order a participant
+can reach for. `b9ec13e` sends the field only when the node serves more than the TLS profile.
+
+**Order: server, then nodes.** The server took `sh mn.sh --version v0.5.0p2` with no other argument; the
+database migrated `5 → 6` (the `uv_transport` table), which makes this upgrade one-way — the 0.4.2 binary
+cannot read it. `status` lists both nodes `active`; `healthz` answers `"build":"v0.5.0p2"` with
+`schema_version: 6` and a `mesh_generation`; `agent/sync` without a key answers `401`. A fourth node still
+on `v0.4.2` — a participant's, not ours — kept syncing across the migration, which is the server side of
+the same compatibility question the p2 fix answers on the node side.
+
+**then4 is the node with the transport.** Its temporary `hysteria2-temp` — the stopgap that proved the path
+— was stopped, disabled and removed (unit, `/etc/hysteria`, `/usr/local/bin/hysteria`), and the product's
+own unit replaced it: `termit-hysteria.service`, user `termit-hy`, UDP/443, `MemoryMax=256M`. The
+configuration gained `hysteria: {}` and `security.firewall.udp_ports: [443]`; `init` refused the first
+attempt with `hysteria needs UDP/443 in security.firewall.udp_ports, or its traffic is counted as
+scanning`, which is the validation added in this release doing its job.
+
+Measured through the product, a client on the node itself against the node's own link:
+
+| Check | Result |
+|---|---|
+| TLS profile end to end | `200` |
+| exit through the transport | `ip=104.28.193.183`, `warp=on` — Cloudflare, not the node |
+| 10 MB down | 14.8 MB/s ≈ 118 Mbit/s |
+| **IPv6 literal through the transport** | refused in 13 ms (`::/0 → block`) |
+| **IPv6-only name** (`ipv6.icanhazip.com`) | fails; it does **not** answer with `2a12:bec4:1485:67a::2` |
+| decoy, direct | `200` |
+
+The last two rows are the point of the routing change: before it, the same request answered with the node's
+own IPv6 address, because the family the tunnel does not carry was routed `direct`. then4 has a global
+address, so this is the environment where the leak was measurable, and it is gone.
+
+**then5 took `v0.5.0p2` with the transport left off**, which is its default: the node's document gained the
+same IPv6 refusal and nothing else. `warp status` `egress: on, via 104.28.222.16`, TLS `200`, both nodes
+`already in sync: 4 client(s), 2 peer(s)`, `doctor` 0 on each. Enabling the transport on then5 needs the
+firewall table re-applied with `udp_ports: [443]` — a separate, deliberate act with a rollback timer, not
+something a release pass does on its own.
+
+**The transport's off-path was proved on the lab**, not on production: removing the `hysteria:` block and
+running `init` reported `hysteria-off ok`, left the unit inactive and deleted the unit file, the
+configuration, the binary and the cached download, closed the port, and `doctor` still exited 0; restoring
+the block brought it back and a real client fetched `https://example.com` through it with `200`.
+
+Backups: MN `/root/termit-mn-pre-050p1-20261121-181849` (binary, unit, `etc-termit.tgz`,
+`var-lib-termit.tgz`, sha256), then4 `/root/then4-config-before-0.5.0.yaml` and
+`/root/termit-pre-050p1-*`, then5 `/root/termit-pre-050p1-20261121-181930`.
