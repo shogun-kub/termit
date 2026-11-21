@@ -613,10 +613,19 @@ is `/var/lib/termit/uv/warp.yaml`, `0600`, written once — a re-run of `init` r
 --purge` removes it with the rest of the state.
 
 **The tunnel carries one address family.** `warp.family` is `ipv4` (the default) or `ipv6`: the document
-keeps the tunnel address of that family and gives the peer that family's default route, and destinations
-of the other family are routed `direct` — the way they travelled before WARP existed. IPv4 is the default
-because Cloudflare's IPv6 egress is what large services tend to mark as unsafe, and because a provider's
-own IPv6 is not something the node can fix.
+keeps the tunnel address of that family and gives the peer that family's default route. Destinations of
+the other family are **refused**, not routed direct: they cannot go through a tunnel that does not carry
+them, and sending them direct would put the node's own address on the wire — the identifier the tunnel
+exists to hide. A client sees a connection that fails and can report it; what it never sees is an address
+it did not ask for. The cost is named: a service reachable only over the untaken family does not work
+through the node, which with the default family means IPv6-only services. IPv4 is the default because
+Cloudflare's IPv6 egress is what large services tend to mark as unsafe, and because a provider's own IPv6
+is not something the node can fix.
+
+A domain is not matched by these rules — the node's document resolves names in the outbound — so the
+refusal covers destinations that arrive as an address, which is what a client that resolved AAAA sends.
+Nothing in the node chooses to send IPv6 traffic out; a client that needs an IPv4 path for a v6-only name
+must be configured for it on the client side.
 
 ```bash
 termit-uv init --warp-family ipv6   # exit through Cloudflare's IPv6 instead

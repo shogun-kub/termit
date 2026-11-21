@@ -65,6 +65,11 @@ of at everyone's next cycle.
   nothing in the configuration explaining it, and `uninstall` was the only way back. The `termit-hy` user
   stays — no shell, no home, no writable path — and so does the manifest entry that lets `uninstall` find
   what is already gone.
+- **IPv6 no longer leaves on the node's own address.** The tunnel carries one address family, and
+  destinations of the other one were routed `direct` — out through the node's own IPv6, the identifier the
+  tunnel exists to hide. They are refused now: a client sees a connection that fails instead of an address
+  it never asked for. The price is named in `OPERATIONS.md` §7 — a service reachable only over the untaken
+  family does not work through the node, which with the IPv4 default means IPv6-only services.
 
 ## 0.4.2 — 2026-11-20
 The grace period does what its key promised, the subscription stops answering for nodes that are not

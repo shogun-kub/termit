@@ -542,12 +542,15 @@ func warpRules(w WarpSpec, balancerTag string) []rule {
 		} else {
 			tunnel.OutboundTag = WarpTag
 		}
-		// The tunnel carries one family, so the other one is named explicitly and sent the way it went
-		// before WARP existed. Leaving it to the trailing default would work by luck today and break the
-		// day a rule is added above it.
+		// The tunnel carries one family, so the other one is named explicitly rather than left to the
+		// trailing default. It used to go direct — the way it went before WARP existed — which meant it
+		// left the node on the node's own address, the identifier the tunnel exists to hide. It is refused
+		// instead: a client sees a connection that fails and can say so, rather than an address it never
+		// asked for. The cost is that a service reachable only over the untaken family does not work
+		// through this node; the default family is IPv4, so that is IPv6-only services.
 		other := rule{
 			Type: "field", Network: "tcp,udp",
-			IP: []string{otherFamilyRoute(w.FamilyOrDefault())}, OutboundTag: "direct",
+			IP: []string{otherFamilyRoute(w.FamilyOrDefault())}, OutboundTag: "block",
 		}
 		return []rule{other, tunnel}
 	}

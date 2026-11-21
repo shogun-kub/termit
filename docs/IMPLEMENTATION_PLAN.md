@@ -2163,6 +2163,14 @@ left to the trailing rule.
 document, `::/0` named direct, and `warp status` answering `egress: on` with `104.28.222.18` and
 `104.28.193.183` — Cloudflare's IPv4, where the same nodes reported `2a09:…` a few hours earlier.
 
+**Changed for 0.5.0, 2026-11-21: the untaken family is refused, not sent direct.** Routing it direct put
+the node's own address on the wire for every IPv6 destination — the identifier the tunnel exists to hide,
+measured as `ipv6.icanhazip.com` answering with a node's `2a12:…` address. The rule now sends those
+destinations to `block`. A client gets a connection that fails and can say so, instead of an address it
+never asked for; the price is that a service reachable only over the untaken family no longer works
+through the node, which with the IPv4 default means IPv6-only services. `OPERATIONS.md` §7 states the
+behaviour and its limit — the rules match addresses, not names.
+
 ### 11.10 Production pass, 0.4.1, 2026-11-17
 
 `0.4.1` is a small release — the wizard's install branch, the agent's write access to the page it

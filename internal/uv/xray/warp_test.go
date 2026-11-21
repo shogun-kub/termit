@@ -223,8 +223,8 @@ func TestWarpWireGuardPutsBothProtocolsThroughOneRule(t *testing.T) {
 	if len(last.Domain) != 0 {
 		t.Errorf("all mode should not narrow the rule: %+v", last)
 	}
-	if other := doc.Routing.Rules[2]; other.OutboundTag != "direct" || len(other.IP) != 1 || other.IP[0] != "::/0" {
-		t.Errorf("the v6 destinations should leave directly on the default family: %+v", other)
+	if other := doc.Routing.Rules[2]; other.OutboundTag != "block" || len(other.IP) != 1 || other.IP[0] != "::/0" {
+		t.Errorf("the v6 destinations must be refused on the default family, not sent out on the node's own address: %+v", other)
 	}
 }
 
@@ -256,16 +256,17 @@ func TestWarpWireGuardSelectedNarrowsTheTunnel(t *testing.T) {
 }
 
 // The tunnel carries one address family, chosen by the owner: Cloudflare's IPv6 egress is what large
-// services tend to block, so the default is IPv4, and the family it does not carry leaves the way it
-// did before WARP — direct, and decided before the tunnel rule rather than by the trailing default.
+// services tend to block, so the default is IPv4. The family it does not carry is refused — routed
+// direct it would leave on the node's own address — and the rule is decided before the tunnel rule
+// rather than by the trailing default.
 func TestWarpFamilyPicksTheTunnelAddress(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name       string
-		family     string
-		wantAddr   string
-		wantRoute  string
-		wantDirect string
+		name        string
+		family      string
+		wantAddr    string
+		wantRoute   string
+		wantRefused string
 	}{
 		{"the default is ipv4", "", "172.16.0.2/32", "0.0.0.0/0", "::/0"},
 		{"ipv6 carries the tunnel's v6 address", xray.WarpFamilyIPv6, "2606:4700:110:8d9c::2/128", "::/0", "0.0.0.0/0"},
@@ -289,19 +290,19 @@ func TestWarpFamilyPicksTheTunnelAddress(t *testing.T) {
 					t.Errorf("allowedIPs = %v, want %s alone", out.Settings.Peers[0].AllowedIPs, tc.wantRoute)
 				}
 			}
-			directIndex, tunnelIndex := -1, -1
+			refusedIndex, tunnelIndex := -1, -1
 			for i, r := range doc.Routing.Rules {
-				if r.OutboundTag == "direct" && len(r.IP) == 1 && r.IP[0] == tc.wantDirect {
-					directIndex = i
+				if r.OutboundTag == "block" && len(r.IP) == 1 && r.IP[0] == tc.wantRefused {
+					refusedIndex = i
 				}
 				if r.BalancerTag == xray.WarpBalancerTag {
 					tunnelIndex = i
 				}
 			}
-			if directIndex < 0 {
-				t.Fatalf("no rule sending %s direct: %+v", tc.wantDirect, doc.Routing.Rules)
+			if refusedIndex < 0 {
+				t.Fatalf("no rule refusing %s: %+v", tc.wantRefused, doc.Routing.Rules)
 			}
-			if tunnelIndex < 0 || directIndex > tunnelIndex {
+			if tunnelIndex < 0 || refusedIndex > tunnelIndex {
 				t.Errorf("the family the tunnel does not carry must be decided before it: %+v", doc.Routing.Rules)
 			}
 		})
