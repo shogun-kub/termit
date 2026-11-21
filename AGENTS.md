@@ -334,6 +334,13 @@ already passed CI and the lab.
   the tunnel's exit, what a client sees — not the one the code intends. Only then does the final tag
   exist. Purely local code (the decoy generator, the terminal interface, the docs) may ship on CI and the
   lab alone.
+- **An accepted advisory is a debt with a due date.** `govulncheck` has no exclusion flag, so
+  `deploy/vulngate` is the gate: it fails on any finding that is not named in
+  `deploy/vulnerabilities.json`, and prints the action for every entry that is. Each entry also carries
+  `must_be_gone_by` — the first release that must not see it — and `go run ./deploy/release` refuses that
+  version while the entry is still there. **Before every release: update the module that carries an
+  accepted advisory and delete its entry.** Moving the deadline is a deliberate act that needs a reason in
+  the commit, not a way to make the reminder stop.
 - **A tag points at a commit that has already been tested.** Retagging is allowed only while the release
   is unpublished; `v0.1.0` is published and stays where it is. Never retag a released commit — a version
   that means two different trees is worse than a wrong one.

@@ -38,6 +38,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/shogun-kub/termit/deploy/vulns"
 )
 
 // module is the import path the version is stamped into. It is a constant rather than derived from
@@ -128,6 +130,27 @@ func run(args []string, stdout, stderr io.Writer) error {
 	}
 	if *since != "" && !*notes {
 		return errors.New("--since only means something with --notes")
+	}
+	// An accepted advisory is a debt with a due date. The version that must not carry it is refused
+	// before anything is built, so the reminder arrives instead of the tag.
+	accepted, err := vulns.Load(filepath.Join(absoluteRoot, "deploy", "vulnerabilities.json"))
+	if err != nil {
+		return err
+	}
+	if blocked := accepted.Blocked(*version); len(blocked) > 0 {
+		var message strings.Builder
+		fmt.Fprintf(&message, "%s must not carry an accepted advisory:", *version)
+		for _, exclusion := range blocked {
+			fmt.Fprintf(&message, "\n  %s in %s, due since %s", exclusion.ID, exclusion.Module, exclusion.MustBeGoneBy)
+			if exclusion.Action != "" {
+				fmt.Fprintf(&message, "\n    %s", exclusion.Action)
+			}
+			if exclusion.Reason != "" {
+				fmt.Fprintf(&message, "\n    why it was accepted: %s", exclusion.Reason)
+			}
+		}
+		fmt.Fprintf(&message, "\nclear it, or move the deadline in deploy/vulnerabilities.json on purpose")
+		return errors.New(message.String())
 	}
 	if *notes {
 		return writeNotes(filepath.Join(absoluteRoot, "CHANGELOG.md"), *version, *since, stdout)

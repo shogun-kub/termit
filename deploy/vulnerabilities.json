@@ -1,0 +1,12 @@
+{
+  "note": "Advisories this build carries on purpose. Each entry names the release that must not see it: the vulnerability gate allows the id, and `go run ./deploy/release` refuses to cut a version at or past `must_be_gone_by` while the entry is still here. Clearing an entry means upgrading the module that carries the advisory, never extending the deadline.",
+  "exclusions": [
+    {
+      "id": "GO-2026-5288",
+      "module": "github.com/apernet/hysteria/core/v2",
+      "must_be_gone_by": "0.6.0",
+      "reason": "hysteria 2.14.0 is the newest release and has no fix. The advisory is in the server's sniffing path, which the prober's client never enables, and on a node the transport runs unprivileged with MemoryMax=256M (docs/OPERATIONS.md §14).",
+      "action": "Bump github.com/apernet/hysteria/core/v2 to a release with the fix, bump the node's pinned binary and digests in internal/uv/install/hysteria.go with it, then delete this entry."
+    }
+  ]
+}
