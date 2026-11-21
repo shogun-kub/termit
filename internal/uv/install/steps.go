@@ -233,11 +233,15 @@ func (s *dirsStep) Check(ctx context.Context) (CheckResult, error) {
 		case !info.IsDir():
 			return CheckResult{}, fmt.Errorf("%s exists but is not a directory", d.path)
 		}
-		// Ownership is part of the effect: a directory that exists but does not belong to the
-		// service user's group keeps the proxy core from reading its configuration.
-		if d.path == s.e.cfg.Paths.ConfigDir {
-			if group, ok := s.groupOwner(ctx, d.path); ok && group != serviceUser {
-				missing = append(missing, d.path+" belongs to group "+group)
+		// Ownership and mode are part of the effect: a directory that exists but cannot be entered by
+		// the process it was made for is a failure nobody sees until that process starts.
+		if chmodIsReal && info.Mode().Perm() != d.mode {
+			missing = append(missing, fmt.Sprintf("%s has mode %04o, want %04o", d.path, info.Mode().Perm(), d.mode))
+			continue
+		}
+		if group := s.e.dirGroup(d.path); group != "" {
+			if actual, ok := s.groupOwner(ctx, d.path); ok && actual != group {
+				missing = append(missing, d.path+" belongs to group "+actual+", want "+group)
 			}
 		}
 	}
@@ -261,21 +265,29 @@ func (s *dirsStep) Run(ctx context.Context) error {
 				return err
 			}
 		}
-		switch d.path {
-		case filepath.Dir(s.e.cfg.Paths.StateDir), s.e.cfg.Paths.StateDir:
-			if _, err := s.e.exec.Run(ctx, Cmd{Name: "chown", Args: []string{"root:" + serviceUser, d.path}}); err != nil {
-				return fmt.Errorf("give %s to root:%s: %w", d.path, serviceUser, err)
-			}
-		case s.e.cfg.Paths.CertDir:
-			if s.e.cfg.Hysteria != nil {
-				if _, err := s.e.exec.Run(ctx, Cmd{Name: "chown", Args: []string{"root:" + transportUser, d.path}}); err != nil {
-					return fmt.Errorf("give %s to root:%s: %w", d.path, transportUser, err)
-				}
+		if group := s.e.dirGroup(d.path); group != "" {
+			if _, err := s.e.exec.Run(ctx, Cmd{Name: "chown", Args: []string{"root:" + group, d.path}}); err != nil {
+				return fmt.Errorf("give %s to root:%s: %w", d.path, group, err)
 			}
 		}
 		s.e.st.AddPath(d.path, state.KindDir, "dirs", s.e.now())
 	}
 	return nil
+}
+
+// dirGroup is the group a directory must belong to, or "" when the distribution's default is fine. The
+// trailing two are the transport's: it reads the certificate, and the core must not, so `certs` belongs
+// to the transport's group and the state directory stays traversable for both.
+func (e *stepEnv) dirGroup(path string) string {
+	switch path {
+	case e.cfg.Paths.ConfigDir, filepath.Dir(e.cfg.Paths.StateDir), e.cfg.Paths.StateDir:
+		return serviceUser
+	case e.cfg.Paths.CertDir:
+		if e.cfg.Hysteria != nil {
+			return transportUser
+		}
+	}
+	return ""
 }
 
 // groupOwner reports the group of a path using stat(1), so the check needs no platform code. The

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/shogun-kub/termit/internal/acme"
@@ -85,6 +86,18 @@ func (s *certificateStep) Check(context.Context) (CheckResult, error) {
 	}
 	if recorded := s.e.st.Certificate; recorded == nil || !recorded.NotAfter.Equal(notAfter) {
 		return CheckResult{Detail: "the state file does not record the certificate on disk"}, nil
+	}
+	// The transport reads this key, and a renewal replaces the file: the group and the mode are part of
+	// what this step guarantees, not a side effect of the first issue.
+	if s.e.cfg.Hysteria != nil {
+		res, err := s.e.exec.Run(context.Background(), Cmd{Name: "stat", Args: []string{"-c", "%G %a", keyPath}})
+		if err == nil {
+			if fields := strings.Fields(strings.TrimSpace(res.Stdout)); len(fields) == 2 {
+				if fields[0] != transportUser || fields[1] != "640" {
+					return CheckResult{Detail: fmt.Sprintf("%s is %s:%s, want %s:640", keyPath, fields[0], fields[1], transportUser)}, nil
+				}
+			}
+		}
 	}
 	return CheckResult{Satisfied: true, Detail: "valid until " + notAfter.Format(time.RFC3339)}, nil
 }
