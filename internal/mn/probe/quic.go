@@ -51,7 +51,14 @@ func (w *Worker) quicProbe(ctx context.Context, t Target) Result {
 		TLSConfig: tlsConfig,
 	})
 	if err != nil {
-		res.Class, res.Err = ClassWorker, fmt.Errorf("probe: start the QUIC client: %w", err)
+		// The handshake failing is a statement about the path or the node, never about the prober: a
+		// node that listens on nothing is closed, one that answers too slowly is a timeout. Only a
+		// configuration this process cannot use at all is a worker failure.
+		res.Class, res.Err = ClassClosed, err
+		var netErr net.Error
+		if errors.Is(err, context.DeadlineExceeded) || errors.As(err, &netErr) && netErr.Timeout() {
+			res.Class = ClassTimeout
+		}
 		return res
 	}
 	defer func() { _ = client.Close() }()

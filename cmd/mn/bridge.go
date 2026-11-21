@@ -125,7 +125,17 @@ type enrollProberAdapter struct {
 	inner enroll.Prober
 }
 
+// batchProber is a prober that takes the scheduler's own targets, transport and all. The enrollment
+// interface has no field for the transport, so an adapter that always went through it would quietly
+// check every node the TLS way - including one that serves nothing but QUIC.
+type batchProber interface {
+	ProbeTargets(ctx context.Context, targets []probe.Target) ([]probe.Result, error)
+}
+
 func (a enrollProberAdapter) Probe(ctx context.Context, targets []probe.Target) ([]probe.Result, error) {
+	if batch, ok := a.inner.(batchProber); ok {
+		return batch.ProbeTargets(ctx, targets)
+	}
 	results := make([]probe.Result, 0, len(targets))
 	for _, target := range targets {
 		outcome := a.inner.Probe(ctx, enroll.Target{
