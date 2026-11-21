@@ -3,6 +3,17 @@ What each release changed, written for the people who run Termit. Newest first;
 carries every section back to the last release: the versions in between were handed out only as
 pre-releases, and whoever installs the release skipped them.
 
+## Unreleased
+
+### Fixed
+
+- **The node's own QUIC link is filed under the node, not under your devices.** The owner's page has a
+  section for this node and one for local devices, and the section for local devices says they exist only
+  on this node and never reach the mesh. With the transport enabled, the node's own `hy2://` link — same
+  credentials the mesh already has — was appended there, so the page captioned a mesh link with a note
+  that promises the opposite. Both of the node's links now sit in the node's section; a local device's
+  `hy2://` stays with the devices, where it belongs.
+
 ## 0.5.0 — 2026-11-21
 
 The node syncs when the server said to, and a new node reaches the rest of the mesh in minutes instead
