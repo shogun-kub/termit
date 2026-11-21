@@ -185,10 +185,11 @@ self-check:   ok 2026-11-10T11:17:04Z
 ```
 
 The agent syncs at the server-given time plus a small per-node jitter, checks itself (the node's own
-view of the internet), applies the peer set and goes back to sleep. Between those cycles it wakes every
-five minutes and reads the server's `healthz`, which carries a digest of the mesh: when the mesh has
-changed — a node joined, left, was blocked or moved — it syncs at once, so a new node appears everywhere
-within minutes. You do not need a timer of your own; the systemd units are installed by `termit-uv init`.
+view of the internet), applies the peer set and goes back to sleep. Between those cycles it wakes on the
+interval the server gives it — fifteen minutes by default, `mesh_poll` in the server's configuration —
+and reads the server's `healthz`, which carries a digest of the mesh: when the mesh has changed (a node
+joined, left, was blocked or moved) it syncs at once, so a new node appears everywhere within one
+interval. You do not need a timer of your own; the systemd units are installed by `termit-uv init`.
 
 ## Command reference
 

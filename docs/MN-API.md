@@ -278,7 +278,8 @@ Response `200 OK`:
      "path": "/p/", "mode": "packet-up", "state": "active"}
   ],
   "subscription_url": "https://mn.example.com/sub/...",
-  "policy": {"check_interval_seconds": 86400, "sync_interval_seconds": 86400, "min_sync_delay_seconds": 7200},
+  "policy": {"check_interval_seconds": 86400, "sync_interval_seconds": 86400, "min_sync_delay_seconds": 7200,
+             "mesh_poll_seconds": 900},
   "next_sync_after": "2026-11-11T18:16:11Z",
   "mesh_generation": "9f3c1a2b4d5e7788"
 }
@@ -301,6 +302,10 @@ leaves, is blocked or moves, and not when a node merely syncs. The node stores i
 the one `healthz` reports between scheduled syncs, so a join reaches the rest of the mesh within one
 poll instead of at each node's next cycle. It names nothing: an id, a domain and a state enter the
 digest, and only the digest leaves.
+
+`policy.mesh_poll_seconds` is how often the node may make that comparison; it comes from
+`policy.mesh_poll` in the server's configuration, where the default is `15m` and `0` turns the poll off
+(the node then makes no request between its cycles).
 
 Refusals: `unauthorized` (no key, unknown key, key of another node), `pending_approval`,
 `node_inactive`, `relocate_required` (the stored domain no longer matches what the node presents).

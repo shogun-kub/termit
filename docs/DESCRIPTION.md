@@ -310,10 +310,12 @@ Rules (all thresholds configurable on MN, defaults in parentheses):
 
 - **Check cadence**: one cycle per UV per ~24 h, random minute, never earlier than 2 h after
   enrollment. MN may override `next_sync_after` in the sync response.
-- **Convergence between cycles**: the agent wakes every 5 min and reads `{prefix}/healthz`, which
-  carries a digest of the mesh's shape. When the digest differs from the one its last sync applied, the
-  node reconciles immediately — so a join, a block or a removal reaches the rest of the mesh in minutes
-  rather than at each node's next cycle. The poll carries no credential and no peer data.
+- **Convergence between cycles**: the agent wakes on the interval the server states in
+  `policy.mesh_poll_seconds` (default fifteen minutes, `0` turns it off) and reads `{prefix}/healthz`,
+  which carries a digest of the mesh's shape. When the digest differs from the one its last sync
+  applied, the node reconciles immediately — so a join, a block or a removal reaches the rest of the
+  mesh in one interval rather than at each node's next cycle. The poll carries no credential and no
+  peer data, and with the interval at `0` the node makes no request at all between cycles.
 - **Retries inside a cycle**: 3 attempts, 10 min apart (adjustable), before a cycle counts as failed.
   Attempts never count towards a block: one cycle is one check, however many attempts it took.
 - **Active → unavailable**: first failed cycle. Stays in peers' configs.

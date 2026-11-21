@@ -513,12 +513,15 @@ per-node jitter (ten minutes at most), and runs:
 A failed cycle does not retry every minute: the agent keeps the schedule it has, and the server's
 probe decides the node's state.
 
-**Between the cycles the agent polls the mesh.** It wakes every five minutes and reads
-`{prefix}/healthz`, which carries `mesh_generation` — a digest of who is in the mesh and in what shape.
+**Between the cycles the agent polls the mesh.** It wakes every fifteen minutes — `policy.mesh_poll` in
+`/etc/termit/mn/config.yaml`, which the server hands to the node in its sync policy — and reads
+`{prefix}/healthz`, which carries `mesh_generation`, a digest of who is in the mesh and in what shape.
 When the digest differs from the one the last sync applied (a node joined, left, was blocked, moved or
 came back), the agent reconciles at once instead of waiting for its scheduled time: a fresh node
-appears in the rest of the mesh within minutes. The poll needs no credential and names nothing, and a
-poll it cannot read changes nothing — the scheduled cycle will report the outage with its backoff.
+appears in the rest of the mesh within one interval. The poll needs no credential and names nothing, and
+a poll it cannot read changes nothing — the scheduled cycle will report the outage with its backoff.
+**`mesh_poll: 0` turns the poll off**: a node then learns about a join at its next scheduled sync, and
+the node makes no request between cycles at all. The default is fifteen minutes.
 
 To run one cycle by hand:
 

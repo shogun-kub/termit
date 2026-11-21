@@ -12,10 +12,11 @@ of at everyone's next cycle.
 
 - **The mesh tells the nodes when it changed.** `{prefix}/healthz` carries `mesh_generation`, a digest of
   who is in the mesh and in what shape, and the sync answer carries the same value so a node knows which
-  mesh it applied. Between the scheduled syncs the agent reads it every five minutes and reconciles at
-  once when it differs: a join, a block, a removal or a move reaches the rest of the mesh within minutes
-  instead of at each node's next cycle. The digest names nothing — an id, a domain and a state go in,
-  only the digest comes out — and a poll it cannot read changes nothing.
+  mesh it applied. Between the scheduled syncs the agent reads it on the interval the server states in
+  `policy.mesh_poll_seconds` — fifteen minutes by default, `mesh_poll: 0` turns the poll off — and
+  reconciles at once when it differs: a join, a block, a removal or a move reaches the rest of the
+  mesh within one interval instead of at each node's next cycle. The digest names nothing — an id, a
+  domain and a state go in, only the digest comes out — and a poll it cannot read changes nothing.
 
 ### Fixed
 
