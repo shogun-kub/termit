@@ -43,6 +43,15 @@ func (h *Handler) sync(w http.ResponseWriter, r *http.Request) {
 	if err := h.opts.Store.TouchUV(r.Context(), node.ID, sourceIP(r), strings.TrimSpace(req.AgentVersion), now); err != nil {
 		h.opts.Logger.Error("sync: touch node", "uv", node.ID, "err", err)
 	}
+	// What the node serves decides what the subscription can render for it. A kind this server does not
+	// know is dropped rather than refused: a newer node must still be usable, and a link this server
+	// cannot write correctly is worse than no link.
+	if kinds := proto.ServedKinds(req.Transports); len(kinds) > 0 {
+		if err := h.opts.Store.SetUVTransports(r.Context(), node.ID, kinds); err != nil {
+			h.opts.Logger.Error("sync: record the transports", "uv", node.ID, "err", err)
+		}
+	}
+
 	// The node reports the certificate it serves and the prober pins it. A renewal replaces that
 	// leaf; a server still pinning the old one would close every later check on a mismatch, so the pin
 	// follows the report. It is authenticated by the agent key and the fingerprint is public.

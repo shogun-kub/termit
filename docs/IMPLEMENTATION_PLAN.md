@@ -1699,8 +1699,11 @@ Phases:
    instead of the missing `-test`, the core's loopback inbound, the firewall rule, Alt-Svc and a `doctor`
    line. Verified end to end on the lab: a client over UDP/443 exited through WARP (`104.28.254.16`) while
    the node's own traffic kept its own address, and the core logged the flow on the hop inbound.
-2. Profile (next): `kind: hysteria2` in the envelope, its parameters, URI build/parse, the subscription
-   form, and the password derived from each pair's UUID instead of one password per node.
+2. Profile (in progress): the envelope exists — a node reports `{kind, version}` for what it serves and the
+   subscription renders one link per kind (`hy2://` in the list, a `hysteria2` outbound in sing-box), with
+   the password derived from each pair's UUID. What is left is the parameters side of the envelope: a kind
+   whose parameters vary has no place to say so yet, and the prober has no way to read a kind it does not
+   implement.
 3. Prober: MN links hysteria's client and probes the transport (§10.2, constraint 3).
 4. Production pass: this is a network change, so it ships as a pre-release first (AGENTS §9).
 

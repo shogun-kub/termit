@@ -10,6 +10,13 @@ of at everyone's next cycle.
 
 ### Added
 
+- **The subscription carries the QUIC transport too.** A node reports what it serves in its sync request —
+  a kind and a version — and the server renders a `hy2://` link beside the `vless://` one, plus a
+  `hysteria2` outbound in the sing-box profile. The user name and password in that link are the same
+  UUID-derived values the node writes into its own user set, so nothing is stored and nothing has to be
+  asked of the node. A kind this server does not know is dropped rather than refused, and a node that stops
+  serving one loses its link at the next sync.
+
 - **A second transport over QUIC.** A node can serve Hysteria2 beside the TLS profile: UDP/443, the same
   certificate, and a decoy that answers a visitor exactly as the site does. A `hysteria:` block in the
   configuration turns it on; absent, nothing is installed and no port is opened. It runs as its own user

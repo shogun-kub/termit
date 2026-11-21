@@ -14,6 +14,9 @@ type CheckReport struct {
 type SyncRequest struct {
 	AgentVersion string       `json:"agent_version"`
 	Check        *CheckReport `json:"check,omitempty"`
+	// Transports is what this node serves. A node that predates the field sends nothing, which every
+	// server reads as the TLS profile alone — the only thing a node could serve before it existed.
+	Transports []Transport `json:"transports,omitempty"`
 }
 
 // HeaderCertSHA256 carries the leaf certificate the node currently serves, lowercase hex, so the

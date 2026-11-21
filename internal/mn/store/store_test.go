@@ -469,3 +469,35 @@ func TestRotateAdminMovesTheCredential(t *testing.T) {
 		t.Errorf("rotating an unknown admin = %v, want ErrNotFound", err)
 	}
 }
+
+// TestTransportsAreReplacedNotMerged: a node that stops serving a kind must lose that link, so the record
+// is the node's latest answer, not a growing set.
+func TestTransportsAreReplacedNotMerged(t *testing.T) {
+	t.Parallel()
+	s := openTestStore(t)
+	ctx := context.Background()
+	uv := testUV("uv_transport", "transport.example.com")
+	if err := s.CreateUV(ctx, uv); err != nil {
+		t.Fatalf("CreateUV: %v", err)
+	}
+	if err := s.SetUVTransports(ctx, uv.ID, []string{"vless", "hysteria2"}); err != nil {
+		t.Fatalf("SetUVTransports: %v", err)
+	}
+	got, err := s.UVTransports(ctx)
+	if err != nil {
+		t.Fatalf("UVTransports: %v", err)
+	}
+	if len(got[uv.ID]) != 2 {
+		t.Fatalf("got %v, want two kinds", got[uv.ID])
+	}
+	if err := s.SetUVTransports(ctx, uv.ID, []string{"vless"}); err != nil {
+		t.Fatalf("SetUVTransports: %v", err)
+	}
+	got, err = s.UVTransports(ctx)
+	if err != nil {
+		t.Fatalf("UVTransports: %v", err)
+	}
+	if len(got[uv.ID]) != 1 || got[uv.ID][0] != "vless" {
+		t.Fatalf("got %v, want only vless", got[uv.ID])
+	}
+}

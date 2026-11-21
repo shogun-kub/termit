@@ -72,7 +72,9 @@ func (a *application) newLoop(cfg *config.Config) *agent.Loop {
 		Logger:    slog.Default(),
 		StatePath: cfg.Paths.StatePath(),
 		CertPath:  install.LeafCertPath(cfg),
-		Now:       a.now,
+		// The server renders a link per kind, so it has to know which kinds this node actually serves.
+		Transports: proto.NodeTransports(cfg.Hysteria != nil),
+		Now:        a.now,
 		Check: func(ctx context.Context, st *state.State) state.SelfCheckReport {
 			return agent.RunSelfCheck(ctx, agent.SelfCheckOptions{
 				Config: cfg,

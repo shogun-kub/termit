@@ -111,6 +111,13 @@ func (h *Handler) peers(r *http.Request, owner store.UV) ([]sub.Peer, error) {
 		return nil, err
 	}
 	out := make([]sub.Peer, 0, len(nodes))
+	// What each node serves decides which links it gets. A node that never reported anything is read as
+	// the TLS profile alone, which is what every node served before the report existed.
+	transports, err := h.opts.Store.UVTransports(r.Context())
+	if err != nil {
+		h.opts.Logger.Warn("subscription: reading the reported transports", "err", err)
+		transports = nil
+	}
 	for _, node := range nodes {
 		profile, err := profileOf(node)
 		if err != nil {
@@ -130,13 +137,18 @@ func (h *Handler) peers(r *http.Request, owner store.UV) ([]sub.Peer, error) {
 				continue
 			}
 		}
+		kinds := transports[node.ID]
+		if len(kinds) == 0 {
+			kinds = []string{proto.KindVLESS}
+		}
 		out = append(out, sub.Peer{
-			ID:       node.ID,
-			Label:    labelOf(node, profile),
-			Domain:   node.Domain,
-			UUID:     uuid,
-			Path:     profile.Path,
-			Degraded: node.State == store.StateUnavailable,
+			ID:         node.ID,
+			Label:      labelOf(node, profile),
+			Domain:     node.Domain,
+			UUID:       uuid,
+			Path:       profile.Path,
+			Degraded:   node.State == store.StateUnavailable,
+			Transports: kinds,
 		})
 	}
 	return out, nil

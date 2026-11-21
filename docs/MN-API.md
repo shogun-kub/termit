@@ -259,9 +259,18 @@ Request:
 ```json
 {
   "agent_version": "termit-uv v0.3.1",
-  "check": {"ok": true, "latency_ms": 84, "at": "2026-11-10T18:16:11Z"}
+  "check": {"ok": true, "latency_ms": 84, "at": "2026-11-10T18:16:11Z"},
+  "transports": [{"kind": "vless", "version": 1}, {"kind": "hysteria2", "version": 1}]
 }
 ```
+
+`transports` is what the node serves, and it is what decides which links its participants get. `kind`
+names a client-facing transport (`vless` for the TLS profile, `hysteria2` for the QUIC one) and `version`
+says which shape of that kind's parameters the node speaks. A node that predates the field sends nothing,
+which every server reads as the TLS profile alone. A kind or a version this server does not know is
+**dropped, not refused**: a newer node must still be usable, and a link this server cannot write correctly
+is worse than no link. The record is the node's latest answer, so a node that stops serving a kind loses
+that link at its next sync.
 
 `check` is the node's own last self-check, folded into the server's history for that node. It is
 informational: it never moves a node's state, because a node that cannot reach the internet is exactly

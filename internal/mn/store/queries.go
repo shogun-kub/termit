@@ -556,3 +556,47 @@ func (s *Store) ForgetUV(ctx context.Context, id string) error {
 	}
 	return nil
 }
+
+// --- transports --------------------------------------------------------------
+
+// SetUVTransports records what a node says it serves, replacing the previous answer. A node that reported
+// nothing this server can serve is stored as no rows: the subscription then renders the TLS profile, which
+// is what a node predating the field served anyway.
+func (s *Store) SetUVTransports(ctx context.Context, uvID string, kinds []string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `DELETE FROM uv_transport WHERE uv_id = ?`, uvID); err != nil {
+		return err
+	}
+	for _, kind := range kinds {
+		if _, err := tx.ExecContext(ctx,
+			`INSERT OR IGNORE INTO uv_transport (uv_id, kind) VALUES (?, ?)`, uvID, kind); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// UVTransports is what every node reported, keyed by node id and ordered so a rendering is stable.
+func (s *Store) UVTransports(ctx context.Context) (map[string][]string, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT uv_id, kind FROM uv_transport ORDER BY uv_id, kind`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	out := map[string][]string{}
+	for rows.Next() {
+		var id, kind string
+		if err := rows.Scan(&id, &kind); err != nil {
+			return nil, err
+		}
+		out[id] = append(out[id], kind)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}

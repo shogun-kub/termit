@@ -116,6 +116,9 @@ type Loop struct {
 	Check func(ctx context.Context, st *state.State) state.SelfCheckReport
 	// Apply reconciles the core with the answer. Required.
 	Apply func(ctx context.Context, st *state.State, answer proto.SyncResponse) (Result, error)
+	// Transports is what this node serves, reported on every sync so the server can render a link for
+	// each kind. Empty means the TLS profile alone, which is what a node predating the field reported.
+	Transports []proto.Transport
 	// AfterSync is the last act of a cycle that applied an answer, and it runs after the state was
 	// saved: the owner's page uses it to list the mesh that was just reconciled. A failure is logged
 	// and never fails the cycle — the core is already correct, and a page is a convenience.
@@ -279,7 +282,7 @@ func (l *Loop) cycle(ctx context.Context) (CycleReport, error) {
 		st.LastSelfCheck = &report.Check
 	}
 
-	request := proto.SyncRequest{AgentVersion: version.Agent("termit-uv")}
+	request := proto.SyncRequest{AgentVersion: version.Agent("termit-uv"), Transports: l.Transports}
 	if l.Check != nil {
 		request.Check = checkReport(report.Check)
 	}
