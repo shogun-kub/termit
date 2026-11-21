@@ -166,6 +166,13 @@ func New(opts Options) (*Installer, error) {
 	steps = append(steps,
 		&webStep{env},
 		&unitsStep{env},
+	)
+	// The other direction of the switch: a node whose configuration no longer carries the block must end
+	// up without the unit, the config and the binary, or `init` would converge only one way.
+	if cfg.Hysteria == nil {
+		steps = append(steps, &hysteriaOffStep{env})
+	}
+	steps = append(steps,
 		&certificateStep{env},
 		&startStep{env},
 		&warpProbeStep{env},

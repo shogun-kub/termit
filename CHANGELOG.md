@@ -59,8 +59,14 @@ of at everyone's next cycle.
   design asks for. The loop now waits for the scheduled time and uses the five-minute wake only for the
   cheap mesh poll, which also means a manual `termit-uv sync` no longer races a cycle that was never due.
 
-## 0.4.2 — 2026-11-20
+- **The transport can be turned off again.** Removing the `hysteria:` block and running `termit-uv init`
+  now stops and disables the unit, removes its configuration and the pinned binary, and reports
+  `hysteria-off` in the journal. Before this the switch only turned one way: the unit kept running with
+  nothing in the configuration explaining it, and `uninstall` was the only way back. The `termit-hy` user
+  stays — no shell, no home, no writable path — and so does the manifest entry that lets `uninstall` find
+  what is already gone.
 
+## 0.4.2 — 2026-11-20
 The grace period does what its key promised, the subscription stops answering for nodes that are not
 there, and the installer runs on a box that has wget and no curl.
 

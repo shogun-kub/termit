@@ -1287,9 +1287,14 @@ does not block BitTorrent never reaches the vulnerable path. When a release with
 `hysteriaVersion` and its digests in `internal/uv/install/hysteria.go`.
 
 `termit-uv init` then installs the pinned binary, writes `/etc/termit/uv/hysteria.yaml`, installs
-`termit-hysteria.service` and starts it after the core. Re-running `init` converges; removing the
-`hysteria:` block and running it again leaves the transport running, so stop and remove the unit by hand
-before that (§12 is the uninstall path).
+`termit-hysteria.service` and starts it after the core.
+
+**The block is the switch in both directions.** Remove it and run `init` again: the step `hysteria-off`
+stops and disables the unit, removes the unit file, the configuration and the pinned binary, and says so
+in its journal line. What stays is the `termit-hy` user — no shell, no home, no writable path; `uninstall
+--purge` removes it — and the manifest entry, which is how uninstall still knows what this node once had.
+One cleanup is the operator's: a leftover `udp_ports: [443]` in the security section is their own line,
+and with nothing listening behind it the firewall is simply accepting packets nobody answers.
 
 How it is put together, and why:
 
