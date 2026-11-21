@@ -265,3 +265,65 @@ ProtectHome=yes
 `)
 	return []byte(b.String()), nil
 }
+
+// HysteriaUnitName is the unit that runs the QUIC transport.
+const HysteriaUnitName = "termit-hysteria.service"
+
+// Hysteria renders the QUIC transport's unit. It is a second long-running proxy process, which
+// DESCRIPTION.md §11.8 allows for a transport the core cannot speak — and it is narrow: its own unit,
+// one capability because UDP/443 is below 1024, and no writable path of its own.
+//
+// Restart=always for the same reason the core has it: a clean exit is still a dead transport.
+func Hysteria(binary, config string) ([]byte, error) {
+	if !filepath.IsAbs(binary) && !strings.HasPrefix(binary, "/") ||
+		!filepath.IsAbs(config) && !strings.HasPrefix(config, "/") {
+		return nil, fmt.Errorf("service: binary %q and config %q must be absolute paths", binary, config)
+	}
+	var b strings.Builder
+	b.WriteString(unitHeader)
+	fmt.Fprintf(&b, `
+[Unit]
+Description=Termit QUIC transport
+Documentation=https://github.com/shogun-kub/termit
+After=network-online.target termit-xray.service
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=termit
+Group=termit
+ExecStart=%s server -c %s
+Restart=always
+RestartSec=3s
+LimitNOFILE=65535
+UMask=0077
+
+# The transport listens on UDP/443, which is below 1024: one capability, nothing else. It writes nothing,
+# so it gets no writable path at all.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target
+`, binary, config)
+	return []byte(b.String()), nil
+}

@@ -502,3 +502,36 @@ func TestWarpFamilyDefaultsToIPv4(t *testing.T) {
 		t.Fatalf("Parse = %v, want a refusal naming the two families", err)
 	}
 }
+
+// TestHysteriaNeedsAPasswordAndAnOpenUDPPort: an enabled transport without a password accepts nobody,
+// and a table that does not publish UDP/443 counts the transport's own traffic as scanning.
+func TestHysteriaNeedsAPasswordAndAnOpenUDPPort(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		body string
+		want string
+	}{
+		{"no password", "hysteria: {}\n", "password is required"},
+		{"short password", "hysteria:\n  password: short\n", "at least 8"},
+		{"enabled without the port", "hysteria:\n  password: a-long-enough-password\n" +
+			"security:\n  firewall:\n    enabled: true\n    udp_ports: []\n", "UDP/443"},
+		{"enabled with the port", "hysteria:\n  password: a-long-enough-password\n" +
+			"security:\n  firewall:\n    enabled: true\n    udp_ports: [443]\n", ""},
+		{"absent is off", "", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := config.Parse(strings.NewReader(minimal + tc.body))
+			switch {
+			case tc.want == "" && err != nil:
+				t.Fatalf("Parse refused a configuration it should accept: %v", err)
+			case tc.want != "" && err == nil:
+				t.Fatalf("Parse accepted a configuration it should refuse")
+			case tc.want != "" && !strings.Contains(err.Error(), tc.want):
+				t.Errorf("error %q does not mention %q", err, tc.want)
+			}
+		})
+	}
+}

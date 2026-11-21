@@ -191,3 +191,38 @@ func TestLongRunningUnitsRestartAfterACleanExit(t *testing.T) {
 		}
 	}
 }
+
+// TestHysteriaUnit: the transport listens on UDP/443, so it needs exactly one capability and nothing
+// else, and it must come back after a clean exit like the core does.
+func TestHysteriaUnit(t *testing.T) {
+	t.Parallel()
+	unit, err := service.Hysteria("/usr/lib/termit/bin/hysteria", "/etc/termit/uv/hysteria.yaml")
+	if err != nil {
+		t.Fatalf("Hysteria: %v", err)
+	}
+	text := string(unit)
+	for _, want := range []string{
+		"ExecStart=/usr/lib/termit/bin/hysteria server -c /etc/termit/uv/hysteria.yaml",
+		"User=termit",
+		"Restart=always",
+		"AmbientCapabilities=CAP_NET_BIND_SERVICE",
+		"CapabilityBoundingSet=CAP_NET_BIND_SERVICE",
+		"NoNewPrivileges=yes",
+		"ProtectSystem=strict",
+		"PrivateDevices=yes",
+		"MemoryDenyWriteExecute=yes",
+		"After=network-online.target termit-xray.service",
+		"WantedBy=multi-user.target",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("transport unit is missing %q", want)
+		}
+	}
+	// It writes nothing, so it must not be given a writable path: the narrower unit is the point.
+	if strings.Contains(text, "ReadWritePaths=") {
+		t.Error("the transport unit asks for a writable path; it writes nothing")
+	}
+	if _, err := service.Hysteria("hysteria", "/etc/termit/uv/hysteria.yaml"); err == nil {
+		t.Error("Hysteria accepted a relative binary path")
+	}
+}
