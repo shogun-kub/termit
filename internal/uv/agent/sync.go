@@ -34,6 +34,10 @@ type Remote struct {
 	// CertPin is the certificate the node currently serves, sent with the request so the server can
 	// pin its probes to it. It is per call: the node renews the certificate while the agent runs.
 	CertPin string
+	// Transports is what this node serves, so the server can render a link per kind. It lives here
+	// rather than in the request the caller passes, because both the agent and the one-shot sync must
+	// report it and one of them forgetting is a silent gap.
+	Transports []proto.Transport
 	// Timeout bounds one call. Defaults to 30s.
 	Timeout time.Duration
 }
@@ -54,6 +58,9 @@ func (r Remote) Fetch(ctx context.Context, agentKey string, request proto.SyncRe
 	}
 	if request.AgentVersion == "" {
 		request.AgentVersion = proto.APIVersion
+	}
+	if len(request.Transports) == 0 {
+		request.Transports = r.Transports
 	}
 	body, err := json.Marshal(request)
 	if err != nil {
