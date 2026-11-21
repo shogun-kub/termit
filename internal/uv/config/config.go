@@ -230,9 +230,6 @@ func (w Warp) UsesWireGuard() bool { return w.TransportOrDefault() == WarpTransp
 // loopback SOCKS inbound, so WARP, the blocklist and the direct rules stay the core's decisions
 // (IMPLEMENTATION_PLAN.md §10.3, DESCRIPTION.md §11.8). Its presence in the configuration is the switch.
 type Hysteria struct {
-	// Password is what a client presents, with HysteriaUser as the name. Until the profile envelope
-	// carries a password derived from each pair's UUID, this is one password for the whole node.
-	Password string `yaml:"password"`
 	// SocksPort is the core's loopback SOCKS inbound the transport's traffic enters through. Empty means
 	// DefaultHysteriaSocksPort.
 	SocksPort int `yaml:"socks_port,omitempty"`
@@ -254,17 +251,10 @@ func (h Hysteria) HopPort() int {
 	return h.SocksPort
 }
 
-// validate reports what a configuration cannot mean. An enabled transport needs a password, a sane hop
-// port, and a firewall that publishes UDP/443: an unlisted UDP port is what the scan meter counts, and the
-// guard then bans the participants the transport exists for.
+// validate reports what a configuration cannot mean. The users are derived from the pairs' UUIDs, so
+// there is no password to check here.
 func (h Hysteria) validate() []error {
 	var problems []error
-	switch {
-	case h.Password == "":
-		problems = append(problems, errors.New("hysteria.password is required when the transport is enabled"))
-	case len(h.Password) < 8:
-		problems = append(problems, errors.New("hysteria.password must be at least 8 characters"))
-	}
 	if port := h.HopPort(); port < 1 || port > 65535 {
 		problems = append(problems, fmt.Errorf("hysteria.socks_port %d is out of range", port))
 	}

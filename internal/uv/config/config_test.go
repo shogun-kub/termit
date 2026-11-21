@@ -503,22 +503,22 @@ func TestWarpFamilyDefaultsToIPv4(t *testing.T) {
 	}
 }
 
-// TestHysteriaNeedsAPasswordAndAnOpenUDPPort: an enabled transport without a password accepts nobody,
-// and a table that does not publish UDP/443 counts the transport's own traffic as scanning.
-func TestHysteriaNeedsAPasswordAndAnOpenUDPPort(t *testing.T) {
+// TestHysteriaNeedsAnOpenUDPPort: the users are derived from the pairs' UUIDs, so there is no password in
+// the configuration - but a table that does not publish UDP/443 counts the transport's own traffic as
+// scanning, and the guard bans for what the meter counted.
+func TestHysteriaNeedsAnOpenUDPPort(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name string
 		body string
 		want string
 	}{
-		{"no password", "hysteria: {}\n", "password is required"},
-		{"short password", "hysteria:\n  password: short\n", "at least 8"},
-		{"enabled without the port", "hysteria:\n  password: a-long-enough-password\n" +
+		{"no block is off", "", ""},
+		{"enabled without the port", "hysteria: {}\n" +
 			"security:\n  firewall:\n    enabled: true\n    udp_ports: []\n", "UDP/443"},
-		{"enabled with the port", "hysteria:\n  password: a-long-enough-password\n" +
+		{"enabled with the port", "hysteria: {}\n" +
 			"security:\n  firewall:\n    enabled: true\n    udp_ports: [443]\n", ""},
-		{"absent is off", "", ""},
+		{"bad hop port", "hysteria:\n  socks_port: 70000\n", "out of range"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

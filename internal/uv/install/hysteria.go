@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/shogun-kub/termit/internal/proto"
 	"github.com/shogun-kub/termit/internal/uv/config"
 	"github.com/shogun-kub/termit/internal/uv/hysteria"
 	"github.com/shogun-kub/termit/internal/uv/service"
@@ -115,16 +116,37 @@ type hysteriaConfigStep struct{ e *stepEnv }
 
 func (*hysteriaConfigStep) Name() string { return "hysteria-config" }
 
-// spec is what the transport must be told. Until the profile envelope carries a password per peer, the
-// node has one user and one password.
-func (s *hysteriaConfigStep) spec() hysteria.Spec {
+// TransportSpec builds the transport's document from the configuration and the pair UUIDs a node serves:
+// its own device's and its peers'. Every user name and password is derived from the UUID, so this is the
+// only place that mapping lives - the installer and the agent's sync both call it, and the server derives
+// the same pair when it renders a participant's link.
+func TransportSpec(cfg *config.Config, selfUUID string, peerUUIDs []string) hysteria.Spec {
+	users := make(map[string]string, len(peerUUIDs)+1)
+	if selfUUID != "" {
+		users[proto.HysteriaUser(selfUUID)] = proto.HysteriaPassword(selfUUID)
+	}
+	for _, uuid := range peerUUIDs {
+		if uuid == "" {
+			continue
+		}
+		users[proto.HysteriaUser(uuid)] = proto.HysteriaPassword(uuid)
+	}
 	return hysteria.Spec{
-		CertFile:      LeafCertPath(s.e.cfg),
-		KeyFile:       filepath.Join(s.e.cfg.Paths.CertDir, keyFile),
-		Users:         map[string]string{config.HysteriaUser: s.e.cfg.Hysteria.Password},
-		HopAddress:    fmt.Sprintf("127.0.0.1:%d", s.e.cfg.Hysteria.HopPort()),
+		CertFile:      LeafCertPath(cfg),
+		KeyFile:       filepath.Join(cfg.Paths.CertDir, keyFile),
+		Users:         users,
+		HopAddress:    fmt.Sprintf("127.0.0.1:%d", cfg.Hysteria.HopPort()),
 		MasqueradeURL: "https://127.0.0.1:443",
 	}
+}
+
+// spec is what the transport must be told: the owner's device and every peer of this node.
+func (s *hysteriaConfigStep) spec() hysteria.Spec {
+	uuids := make([]string, 0, len(s.e.st.Peers))
+	for _, peer := range s.e.st.Peers {
+		uuids = append(uuids, peer.UUID)
+	}
+	return TransportSpec(s.e.cfg, s.e.st.Identity.SelfUUID, uuids)
 }
 
 func (s *hysteriaConfigStep) Check(context.Context) (CheckResult, error) {
