@@ -829,11 +829,11 @@ Delivered:
 | A redaction test: enrolment and sync log identifiers, never the agent key, subscription token, probe UUID, invite code or node UUID | `internal/mn/server` | the test fails if any of them appears |
 | In-place certificate renewal on the server: it re-checks every six hours, writes through the CA's chain and serves the new pair on the next handshake — no restart, and a failed attempt keeps the old certificate in service | `internal/mn/cert` (loader + loop), `termit-mn serve` | unit tests for the reload, the broken-pair case and the loop; lab: a certificate swapped under a running server was served immediately, swapped back, and the real chain still validated |
 
-Also outstanding, and a maintainer decision rather than a defect fix: `DESCRIPTION.md` §8 shows a sync
-body shape the server does not send, `DESCRIPTION.md` §15 says agent keys are hashed with Argon2id and compared in
-constant time (they are SHA-256 digests looked up through an index, deliberately), and `DESCRIPTION.md` §13.4 lists
-`termit-mn sub show`, which does not exist. `docs/PROTOCOL.md` is what the build does; the design document
-should be reconciled with it before the first tag.
+The three places where `DESCRIPTION.md` contradicted the build are reconciled as of 2026-11-21: the sync
+example carries `mesh_generation` and `policy.mesh_poll_seconds`, §15 describes the credential store as it
+is (256-bit random keys, SHA-256 digests, found through an index), and §13.4 lists `termit-mn sub rotate`
+instead of a `sub show` command that never existed. `docs/PROTOCOL.md` stays what the build does; the
+design document now says the same.
 
 ### M4.3 Release — done
 

@@ -203,7 +203,7 @@ own credential.
 | `self_uuid` | UV at init | as part of the registered URL | `identity.json` | owner reaches own server |
 | `probe_uuid` | MN at enrollment | DB | `identity.json` | MN health probe |
 | `pair_uuid(A,B)` | derived | derivable | in `state.json` + Xray config | A↔B access |
-| `agent_key` | MN at enrollment | Argon2id hash | `identity.json` (0600) | authenticates agent API calls |
+| `agent_key` | MN at enrollment | SHA-256 digest | `identity.json` (0600) | authenticates agent API calls |
 | `sub_token` | MN at enrollment | hash | not needed by UV | read-only subscription URL |
 | local user UUIDs | UV owner | no | `state.json` (`local_users`) | family devices, managed with `termit-uv device` |
 
@@ -487,8 +487,9 @@ Sync response shape (abridged; the whole set is in `internal/proto/sync.go`):
   ],
   "subscription_url": "https://mn.example.com/sub/<token>",
   "policy": {"check_interval_seconds": 86400, "sync_interval_seconds": 86400,
-             "min_sync_delay_seconds": 300},
-  "next_sync_after": "2026-11-10T07:31:00Z"
+             "min_sync_delay_seconds": 300, "mesh_poll_seconds": 900},
+  "next_sync_after": "2026-11-10T07:31:00Z",
+  "mesh_generation": "9f3c1a2b4d5e7788"
 }
 ```
 
@@ -817,7 +818,7 @@ termit-mn uv list                      # state, last seen, agent version
 termit-mn uv approve uv_…   |  termit-mn uv block uv_…  |  termit-mn uv unblock uv_…  |  termit-mn uv rm uv_…
 termit-mn check now uv_…    |  termit-mn check now --all
 termit-mn policy show       |  termit-mn policy set check_interval 12h   # or probe_retries 3, block_after_failed_cycles 4
-termit-mn sub show uv_…     |  termit-mn sub rotate uv_…
+termit-mn sub rotate uv_…   # the only way to hand out a lost subscription URL again: the old one stops
 termit-mn status            # state counts, per-node last/next check, effective interval
 ```
 
@@ -841,7 +842,10 @@ audit 1 year, `uv_event` forever (small).
 ## 15. Security summary
 
 - TLS 1.3 only between UV and MN; certificates from Let's Encrypt via built-in ACME on both sides.
-- Agent keys hashed with Argon2id; compared in constant time; per-key and per-IP rate limits.
+- Agent keys are 256-bit random values, stored as SHA-256 digests and found by digest through an index,
+  so there is no byte-by-byte comparison to observe and nothing to brute-force; per-key and per-IP rate
+  limits bound the online guesses a leaked digest would invite. A slow KDF buys nothing here: the secret is
+  already unguessable, and it would be paid on every agent request.
 - Subscription tokens separate, revocable, rotatable, and never accepted on agent endpoints. Their
   rate limit (60 requests per 15 minutes, per token) is load control, not brute-force defence: the
   token is unguessable, and a client that refreshes at launch must not see `429`.
