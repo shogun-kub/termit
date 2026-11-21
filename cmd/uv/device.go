@@ -66,13 +66,15 @@ func (a *application) deviceList(args []string) int {
 		return exitOK
 	}
 	for _, user := range node.LocalUsers {
-		uri, err := a.deviceURI(cfg, node, user.ID, user.Label)
+		links, err := a.deviceLinks(cfg, node, user.ID, user.Label)
 		if err != nil {
 			fmt.Fprintf(a.stderr, "termit-uv device list: %v\n", err)
 			return exitFailure
 		}
 		fmt.Fprintf(a.stdout, "%-16s %s\n", user.Label, state.Fingerprint(user.ID))
-		fmt.Fprintf(a.stdout, "%16s %s\n", "", uri)
+		for _, link := range links {
+			fmt.Fprintf(a.stdout, "%16s %s\n", "", link)
+		}
 	}
 	return exitOK
 }
@@ -116,7 +118,7 @@ func (a *application) deviceAdd(args []string) int {
 	if code := a.applyXrayConfig(cfg, *configPath, "termit-uv device add"); code != exitOK {
 		return code
 	}
-	uri, err := a.deviceURI(cfg, node, id, *label)
+	links, err := a.deviceLinks(cfg, node, id, *label)
 	if err != nil {
 		fmt.Fprintf(a.stderr, "termit-uv device add: %v\n", err)
 		return exitFailure
@@ -126,7 +128,10 @@ func (a *application) deviceAdd(args []string) int {
 	if err := a.refreshOptions(cfg); err != nil {
 		fmt.Fprintf(a.stderr, "termit-uv device add: the client options page could not be refreshed: %v\n", err)
 	}
-	fmt.Fprintf(a.stdout, "added %s\n%s\n", *label, uri)
+	fmt.Fprintf(a.stdout, "added %s\n", *label)
+	for _, link := range links {
+		fmt.Fprintln(a.stdout, link)
+	}
 	return exitOK
 }
 
@@ -233,6 +238,23 @@ func (a *application) deviceURI(cfg *config.Config, node *state.State, id, label
 		return "", err
 	}
 	return withFragmentation(uri, cfg), nil
+}
+
+// deviceLinks is every URI a client can use for one identity: the TLS profile, and the QUIC transport when
+// this node serves it. A local device's links never leave the node; the node's own are the ones the mesh
+// already has.
+func (a *application) deviceLinks(cfg *config.Config, node *state.State, id, label string) ([]string, error) {
+	vless, err := a.deviceURI(cfg, node, id, label)
+	if err != nil {
+		return nil, err
+	}
+	links := []string{vless}
+	if cfg.Hysteria != nil {
+		if uri, err := proto.BuildHysteriaURL(cfg.Domain, id, label+" (QUIC)"); err == nil {
+			links = append(links, uri)
+		}
+	}
+	return links, nil
 }
 
 // loadInstalled loads the configuration and state, reporting the standard messages.

@@ -69,6 +69,7 @@ answers for you. Closed stdin (a pipe that ran out) ends the session cleanly wit
 | devices | list, add or remove this node's own devices | `termit-uv device …` |
 | print vless URI | the URI of this node's own device | `termit-uv uri` |
 | egress (WARP) | show, switch between `all`, `off` and `selected`, or rotate the device | `termit-uv warp …` |
+| QUIC transport | turn the second transport on or off; the answer defaults to what the node already does | `termit-uv init --hysteria` / `--no-hysteria` |
 | firewall | the host table: status, on, off, confirm, refresh, restore | `termit-uv firewall …` |
 | bans | what the guard banned, and your own permanent blocks | `termit-uv bans …` |
 | guard | whether the ban engine runs, and what it banned | `termit-uv guard status` |

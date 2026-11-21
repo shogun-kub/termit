@@ -5,6 +5,19 @@ pre-releases, and whoever installs the release skipped them.
 
 ## Unreleased
 
+### Added
+
+- **The QUIC transport is switched on without editing YAML.** `termit-uv init --hysteria` adds the block
+  and, with it, the UDP port the transport listens on to `security.firewall.udp_ports` — a port missing
+  from that list falls into the core's scan counter and the guard bans the owner's own traffic. `init
+  --no-hysteria` turns it off and retires the unit, the configuration and the binary. Both go through
+  `init`, so everything else converges as usual, and the menu has an entry ("QUIC transport") that asks the
+  one question and runs the same command. The applied firewall table is still applied only by `firewall on`
+  — `init` says so when it matters.
+- **The CLI hands out the second link, not only the page.** `termit-uv uri`, `device add` and `device list`
+  print the `hy2://` link beside the `vless://` one when the node serves the transport, so a device added
+  from a terminal comes with both ways in.
+
 ### Fixed
 
 - **The node's own QUIC link is filed under the node, not under your devices.** The owner's page has a

@@ -70,6 +70,7 @@ termit-mn menu
 | devices | список, добавление и удаление собственных устройств узла | `termit-uv device …` |
 | print vless URI | URI собственного устройства этого узла | `termit-uv uri` |
 | egress (WARP) | показать, переключить `all`, `off`, `selected` или сменить устройство | `termit-uv warp …` |
+| QUIC-транспорт | включить или выключить второй транспорт; ответ по умолчанию — как уже настроено | `termit-uv init --hysteria` / `--no-hysteria` |
 | firewall | таблица хоста: состояние, on, off, confirm, refresh, restore | `termit-uv firewall …` |
 | bans | кого заблокировал движок банов и ваши собственные постоянные блокировки | `termit-uv bans …` |
 | guard | работает ли движок блокировок и сколько он заблокировал | `termit-uv guard status` |

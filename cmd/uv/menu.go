@@ -236,6 +236,11 @@ func (a *application) menuEntries() []menuEntry {
 			plan:     a.planWarp,
 		},
 		{
+			labelKey: i18n.MenuTransportLabel,
+			hintKey:  i18n.MenuTransportHint,
+			plan:     a.planTransport,
+		},
+		{
 			labelKey: i18n.MenuFirewallLabel,
 			hintKey:  i18n.MenuFirewallHint,
 			plan:     a.planFirewall,
@@ -329,6 +334,30 @@ func (a *application) planInstall(ui *termui.UI) ([][]string, error) {
 		argv = append(argv, "--no-warp")
 	}
 	return [][]string{argv}, nil
+}
+
+// planTransport turns the QUIC transport on or off. The question defaults to what the configuration
+// already says, so pressing Enter changes nothing — and the menu still runs no behaviour of its own: it
+// answers the flag `init --hysteria` would have carried.
+func (a *application) planTransport(ui *termui.UI) ([][]string, error) {
+	tr := a.translator()
+	cfg, err := config.Load(a.menuConfigPath())
+	if err != nil {
+		ui.Say(tr.T(i18n.MenuNoConfig))
+		return nil, nil
+	}
+	enabled := cfg.Hysteria != nil
+	on, err := ui.Confirm(tr.T(i18n.PromptTransport), enabled)
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case on && !enabled:
+		return [][]string{{"init", "--hysteria"}}, nil
+	case !on && enabled:
+		return [][]string{{"init", "--no-hysteria"}}, nil
+	}
+	return nil, nil
 }
 
 // planEnroll asks for the server and the invite code. The MN URL defaults to the configured one, so a

@@ -161,19 +161,24 @@ The node can serve its certificate on UDP/443 too, with Hysteria2 — a protocol
 networks. Voice calls and video feel the difference first; ordinary browsing does not need it, and nothing
 is installed until you ask.
 
-```yaml
-# /etc/termit/uv/config.yaml
-hysteria: {}            # the block is the switch
-security:
-  firewall:
-    udp_ports: [443]    # required while the firewall is on
+```bash
+termit-uv init --hysteria      # install and serve it; the menu has "QUIC transport"
 ```
 
-`termit-uv init` then installs the pinned binary, writes `/etc/termit/uv/hysteria.yaml`, and starts
+The flag writes the block the transport needs (`hysteria: {}`) and adds `443` to
+`security.firewall.udp_ports`: a UDP port that is not in that list falls into the core's scan counter, and
+the guard would ban the owner's own QUIC traffic. An already-applied table is not touched by `init` — the
+firewall is applied only by `firewall on` — so re-apply it to publish the port:
+
+```bash
+termit-uv firewall on && termit-uv firewall confirm
+```
+
+`init` then installs the pinned binary, writes `/etc/termit/uv/hysteria.yaml`, and starts
 `termit-hysteria` as its own unprivileged user. From that point:
 
-- `termit-uv uri` and the page from `termit-uv options` hand out a `hy2://` link beside the `vless://` one,
-  labelled `(QUIC)`;
+- `termit-uv uri`, `termit-uv device add` and `termit-uv device list` print the `hy2://` link beside the
+  `vless://` one, labelled `(QUIC)`, and so does the page from `termit-uv options`;
 - the subscription from your server carries the same second link, and the sing-box profile gets a
   `hysteria2` outbound;
 - `termit-uv sync` is what tells the server about it — nothing on the server needs configuring.
@@ -184,7 +189,7 @@ transport's memory. The cap turns that into a restart of the transport alone —
 other service on the node keep running — and `0.6.0` is the first release that must not carry it,
 as `deploy/vulnerabilities.json` says.
 
-To turn it off, delete the `hysteria:` block and run `termit-uv init` again: the unit is stopped,
+To turn it off, run `termit-uv init --no-hysteria`: the unit is stopped,
 disabled and removed with its configuration and the pinned binary, the port closes, and the next sync
 drops the second link from the subscription.
 

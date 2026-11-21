@@ -61,5 +61,12 @@ func (a *application) runURI(args []string) int {
 		return exitFailure
 	}
 	fmt.Fprintln(a.stdout, withFragmentation(uri, cfg))
+	// Both ways in, when the node serves both: the QUIC transport is a second protocol for the same
+	// identity, not a second device, so it belongs in this answer rather than behind another flag.
+	if cfg.Hysteria != nil {
+		if quic, err := proto.BuildHysteriaURL(cfg.Domain, node.Identity.SelfUUID, name+" (QUIC)"); err == nil {
+			fmt.Fprintln(a.stdout, quic)
+		}
+	}
 	return exitOK
 }

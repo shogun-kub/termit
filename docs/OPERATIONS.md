@@ -1280,12 +1280,26 @@ The node can serve a second transport beside the TLS profile: Hysteria2 on UDP/4
 certificate and the same decoy. It is off by default, and a node that never enables it installs nothing
 and opens no port.
 
+```bash
+termit-uv init --hysteria      # on: writes the block and publishes the port
+termit-uv init --no-hysteria   # off: retires the unit, the configuration and the binary
+```
+
+Both flags go through `init`, so everything else converges as usual. `--hysteria` writes what an operator
+would have written by hand — and the part they forget:
+
 ```yaml
 hysteria: {}            # the block is the switch; its presence enables the transport
 security:
   firewall:
     udp_ports: [443]    # required while the firewall is on
 ```
+
+A UDP port missing from that list falls into the core's scan counter and the guard bans the owner's own
+QUIC traffic, so the flag adds it. The applied table is not touched — the firewall is applied only by
+`firewall on` — and `init` says so; publish the port with `termit-uv firewall on` followed by
+`termit-uv firewall confirm`. `--no-hysteria` removes the block and leaves the port in the list: it is the
+operator's line, and a node may publish it for something else.
 
 **A known advisory, and what it costs.** GO-2026-5288 says a crafted QUIC packet can drive the server out
 of memory when sniffing is on, and v2.14.0 is the newest release — there is no fixed version to install.
@@ -1298,7 +1312,7 @@ does not block BitTorrent never reaches the vulnerable path. When a release with
 `termit-uv init` then installs the pinned binary, writes `/etc/termit/uv/hysteria.yaml`, installs
 `termit-hysteria.service` and starts it after the core.
 
-**The block is the switch in both directions.** Remove it and run `init` again: the step `hysteria-off`
+**The switch turns both ways.** `init --no-hysteria` retires it: the step `hysteria-off`
 stops and disables the unit, removes the unit file, the configuration and the pinned binary, and says so
 in its journal line. What stays is the `termit-hy` user — no shell, no home, no writable path; `uninstall
 --purge` removes it — and the manifest entry, which is how uninstall still knows what this node once had.
