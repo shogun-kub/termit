@@ -36,13 +36,15 @@ Wherever you see `mn.example.com` or `node-a.example.com`, use your own names.
 
 ## 1. The server
 
-Log in to the server as `root` and run these commands. They download the newest release with `wget`,
-which a standard Debian 13 install has (`curl -fsSLO <same URL>` works too), check the file against its
-published checksum, install the server and its systemd unit, give it the probe worker it needs, create
-the configuration, start the service and print its status. `--version v0.4.1` installs that release
-instead of the newest one.
+Log in to the server as `root` and run these commands. They download the newest release with `wget`
+(`curl -fsSLO <same URL>` works too; a minimal Debian image ships neither, and the first snippet line
+installs one), check the file against its published checksum, install the server and its systemd unit,
+give it the probe worker it needs, create the configuration, start the service and print its status.
+`--version v0.4.1` installs that release instead of the newest one.
 
 ```bash
+# only when the image has neither curl nor wget
+apt-get update && apt-get install -y wget
 wget -q "https://github.com/shogun-kub/termit/releases/latest/download/mn.sh" && sh mn.sh --domain mn.example.com --email you@example.com --admin-token-out /etc/termit/mn/admin.token
 ```
 
@@ -83,12 +85,14 @@ The code (for example `ABCD-EFGH-IJKL`) is printed **once**. Copy it now — you
 
 ## 3. The node
 
-Log in to the node as `root` and run these commands. They download the installer with `wget` (a standard
-Debian 13 install has it; `curl -fsSLO <same URL>` works too), verify the release, install the node
+Log in to the node as `root` and run these commands. They download the installer with `wget` (`curl
+-fsSLO <same URL>` works too; a minimal Debian image ships neither), verify the release, install the node
 program, and then ask you questions. Without `--version` it installs the newest release;
 `sh uv.sh --version v0.4.1 --wizard` pins one instead.
 
 ```bash
+# only when the image has neither curl nor wget
+apt-get update && apt-get install -y wget
 wget -q "https://github.com/shogun-kub/termit/releases/latest/download/uv.sh" && sh uv.sh --wizard
 ```
 

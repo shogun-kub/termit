@@ -25,10 +25,13 @@ Termit](overview.md) — начните с той страницы: она об�
 
 ## Установка
 
-Скачайте установщик и запустите его — не передавайте URL в шелл через пайп. `wget` есть в стандартной
-установке Debian 13; `curl -fsSLO <тот же URL>` тоже подойдёт:
+Скачайте установщик и запустите его — не передавайте URL в шелл через пайп. `wget` есть не всегда: в
+минимальном и netinst-образе Debian нет ни его, ни `curl`, поэтому сначала поставьте что-то одно
+(`apt-get update && apt-get install -y wget`). `curl -fsSLO <тот же URL>` тоже подойдёт:
 
 ```bash
+apt-get update && apt-get install -y wget   # только если в образе нет ни curl, ни wget
+
 wget -q https://github.com/shogun-kub/termit/releases/latest/download/uv.sh
 
 sh uv.sh \

@@ -25,10 +25,13 @@ is [the interactive menu](menu.md), and every entry prints the command it runs.
 
 ## Install
 
-Download the installer, then run it — never pipe a URL into a shell. `wget` is part of a standard
-Debian 13 install; `curl -fsSLO <same URL>` works too:
+Download the installer, then run it — never pipe a URL into a shell. `wget` is not guaranteed: Debian's
+minimal and netinst images ship neither it nor `curl`, so install one first (`apt-get update &&
+apt-get install -y wget`). `curl -fsSLO <same URL>` works too:
 
 ```bash
+apt-get update && apt-get install -y wget   # only when the image has neither
+
 wget -q https://github.com/shogun-kub/termit/releases/latest/download/uv.sh
 
 sh uv.sh \

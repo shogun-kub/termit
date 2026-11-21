@@ -105,9 +105,11 @@ binary as a step; the server does not have that step.
 ## 3. Install the management server
 
 The bootstrap script resolves a release, verifies it, installs the binary and its unit, gives it the probe
-worker, creates the configuration, starts the service and prints the status:
+worker, creates the configuration, starts the service and prints the status. Debian's minimal and netinst
+images ship neither `curl` nor `wget`, so install one first on such a box:
 
 ```bash
+apt-get update && apt-get install -y wget   # only when the image has neither
 wget -q https://github.com/shogun-kub/termit/releases/latest/download/mn.sh
 sh mn.sh --domain mn.example.com --email you@example.com \
   --admin-token-out /etc/termit/mn/admin.token
@@ -378,6 +380,7 @@ something piped from a branch:
 termit-mn invite create --note "node1" --uses 1        # on the MN; prints the code once
 
 # on the fresh node, as root
+apt-get update && apt-get install -y wget   # only when the image has neither
 wget -q https://github.com/shogun-kub/termit/releases/latest/download/uv.sh
 sh uv.sh \
   --domain node1.example.net --email you@example.com \
