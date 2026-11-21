@@ -233,3 +233,29 @@ func TestGenerateSiteRefuses(t *testing.T) {
 		})
 	}
 }
+
+// TestQUICAdvertisesAltSvc: the transport's UDP port is only part of the site if the TLS vhost says so;
+// without the header it is a port someone finds by scanning.
+func TestQUICAdvertisesAltSvc(t *testing.T) {
+	t.Parallel()
+	spec := baseSpec()
+	if !spec.TLS() {
+		spec.CertPath, spec.KeyPath = "/certs/fullchain.pem", "/certs/privkey.pem"
+	}
+	spec.QUIC = true
+	page, err := web.GenerateSite(spec)
+	if err != nil {
+		t.Fatalf("GenerateSite: %v", err)
+	}
+	if !strings.Contains(string(page), "add_header Alt-Svc 'h3=\":443\"; ma=86400' always;") {
+		t.Errorf("the vhost does not advertise the transport:\n%s", page)
+	}
+	spec.QUIC = false
+	page, err = web.GenerateSite(spec)
+	if err != nil {
+		t.Fatalf("GenerateSite: %v", err)
+	}
+	if strings.Contains(string(page), "Alt-Svc") {
+		t.Error("the vhost advertises a transport the node does not serve")
+	}
+}

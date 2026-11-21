@@ -1253,3 +1253,49 @@ pending case fails at boot with `read-only file system` and the table does not c
   one.
 - It does not hide the node from a targeted observer. It refuses scans and probes; see
   [`THREAT_MODEL.md`](THREAT_MODEL.md).
+
+## 14. The QUIC transport
+
+The node can serve a second transport beside the TLS profile: Hysteria2 on UDP/443, with the same
+certificate and the same decoy. It is off by default, and a node that never enables it installs nothing
+and opens no port.
+
+```yaml
+hysteria:
+  password: <a secret the operator chooses>
+security:
+  firewall:
+    udp_ports: [443]   # required while the firewall is on
+```
+
+`termit-uv init` then installs the pinned binary, writes `/etc/termit/uv/hysteria.yaml`, installs
+`termit-hysteria.service` and starts it after the core. Re-running `init` converges; removing the
+`hysteria:` block and running it again leaves the transport running, so stop and remove the unit by hand
+before that (§12 is the uninstall path).
+
+How it is put together, and why:
+
+- **It runs as its own user.** `termit-hy` reads the certificate's private key, and the core's user must
+  not: the certificate directory belongs to the transport's group and is unreadable by the core.
+- **Its traffic goes through the core.** A loopback SOCKS inbound (`127.0.0.1:10801` by default) is where
+  every request enters, so WARP, the blocklist, the direct rules and the torrent rule apply to it exactly
+  as they do to a client's traffic. Without the hop the transport would dial out on its own and bypass
+  all of it.
+- **No Brutal, no obfuscation.** `congestion.type: bbr` with `ignoreClientBandwidth`, and the Chrome-shaped
+  QUIC handshake the upstream client sends by default. Both choices are about not standing out.
+- **Alt-Svc.** The vhost advertises `h3=":443"` while the transport is enabled, so a browser finds the
+  QUIC port through the site rather than by scanning.
+
+What it costs on a one-vCPU node: about 50 MB of resident memory, roughly 2 % of a core idle and 0.45–0.9 s
+of CPU per 100 MB carried (4–9 % of a core per 100 Mbit/s). Throughput through the hop measured 355–415
+Mbit/s on a production node.
+
+Checking it:
+
+```bash
+termit-uv doctor                     # a "transport" line appears only while it is enabled
+systemctl status termit-hysteria
+ss -lnu | grep :443
+```
+
+A wrong password or an empty one is refused when the configuration is read, not at the first handshake.

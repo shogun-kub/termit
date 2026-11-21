@@ -45,6 +45,7 @@ func (s *webStep) spec(ctx context.Context) (web.SiteSpec, error) {
 	}
 	spec.SecretPath = "/" + s.e.st.Identity.XHTTPPath + "/"
 	spec.XrayAddr = xrayAddress()
+	spec.QUIC = s.e.cfg.Hysteria != nil
 	spec.HTTP2Directive = s.nginxHTTP2Directive(ctx)
 
 	// TLS is decided by what is on disk, not by a state flag: a half-written certificate must not

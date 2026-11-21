@@ -62,6 +62,10 @@ func Diagnose(ctx context.Context, opts DiagnoseOptions) []Check {
 	checks = append(checks, diagnoseCertificate(cfg, st, opts.Now()))
 	checks = append(checks, diagnoseDecoy(cfg, st))
 	checks = append(checks, diagnoseProxy(ctx, opts.Exec, cfg))
+	// Only when it is enabled: a check for a transport nobody asked for is noise on a healthy node.
+	if cfg.Hysteria != nil {
+		checks = append(checks, diagnoseTransport(ctx, opts.Exec, cfg))
+	}
 	warpClient := warp.New(warpRunner{exec: opts.Exec})
 	if opts.WarpHost != nil {
 		warpClient.Host = *opts.WarpHost
@@ -148,6 +152,29 @@ func diagnoseDecoy(cfg *config.Config, st *state.State) Check {
 		}
 	}
 	return Check{Name: "decoy", Status: StatusOK, Detail: site.Template + " site, files match the seed"}
+}
+
+// diagnoseTransport answers "is the QUIC transport working". It is a second process, so three things can
+// be wrong on their own: the binary is gone, the config is unreadable to its user, or the unit is down.
+func diagnoseTransport(ctx context.Context, exec Executor, cfg *config.Config) Check {
+	if _, err := os.Stat(cfg.Paths.HysteriaBinary()); err != nil {
+		return Check{Name: "transport", Status: StatusFail, Detail: "the transport binary is missing: " + cfg.Paths.HysteriaBinary(),
+			Hint: "`termit-uv init`"}
+	}
+	info, err := os.Stat(cfg.Paths.HysteriaConfig)
+	switch {
+	case err != nil:
+		return Check{Name: "transport", Status: StatusFail, Detail: "the transport config is missing: " + cfg.Paths.HysteriaConfig,
+			Hint: "`termit-uv init`"}
+	case chmodIsReal && info.Mode().Perm() != 0o640:
+		return Check{Name: "transport", Status: StatusFail,
+			Detail: fmt.Sprintf("%s has mode %04o, want 0640", cfg.Paths.HysteriaConfig, info.Mode().Perm())}
+	}
+	if _, err := exec.Run(ctx, Cmd{Name: "systemctl", Args: []string{"is-active", "--quiet", service.HysteriaUnitName}}); err != nil {
+		return Check{Name: "transport", Status: StatusFail, Detail: service.HysteriaUnitName + " is not running",
+			Hint: "systemctl status " + service.HysteriaUnitName + "; `termit-uv init` starts it again"}
+	}
+	return Check{Name: "transport", Status: StatusOK, Detail: "hysteria " + hysteriaVersion + ", " + cfg.Paths.HysteriaConfig}
 }
 
 func diagnoseProxy(ctx context.Context, exec Executor, cfg *config.Config) Check {

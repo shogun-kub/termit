@@ -10,6 +10,16 @@ of at everyone's next cycle.
 
 ### Added
 
+- **A second transport over QUIC.** A node can serve Hysteria2 beside the TLS profile: UDP/443, the same
+  certificate, and a decoy that answers a visitor exactly as the site does. A `hysteria:` block in the
+  configuration turns it on; absent, nothing is installed and no port is opened. It runs as its own user
+  (`termit-hy`) because it reads the certificate's private key and the core must not, and its traffic
+  enters the core through a loopback SOCKS inbound — so WARP, the blocklist and the torrent rule apply to
+  it exactly as they do to a client's. Pinned to 2.14.0 by version and digest, with no Brutal congestion
+  control and no obfuscation (`congestion.type: bbr`, `ignoreClientBandwidth: true`). An unlisted UDP port
+  is what the scan meter counts, so enabling the transport without `443` in `security.firewall.udp_ports`
+  is refused when the configuration is read rather than discovered as a ban later.
+
 - **A table can publish UDP ports.** `security.firewall.udp_ports` adds them to the node's own ruleset,
   accepted before the kernel's scan meter — which is the point: an unlisted UDP port falls through to the
   meter, and the guard then bans the participants for the traffic the port exists to carry. Nothing uses

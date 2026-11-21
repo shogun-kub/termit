@@ -24,6 +24,7 @@ import (
 // generator wrote, so a rename cannot leave a running process behind.
 var unitNames = []string{
 	service.XrayUnitName,
+	service.HysteriaUnitName,
 	service.AgentUnitName,
 	service.RenewTimerName,
 	service.RenewUnitName,

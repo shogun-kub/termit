@@ -1693,17 +1693,16 @@ found by scanning.
 Phases:
 
 0. Spike (done: S16) — the handshake, the decoy, the hop for TCP (25 of 25) and for UDP (an echo through
-   it and a real DNS answer). Nothing is left of it.
-1. Profile: `kind: hysteria2` in the envelope, its parameters, URI build/parse, and the password derived
-   from the UUID.
-2. Node: the binary, its unit, install and upgrade; the `auth.userpass` map and the restart that applies
-   it; the core's loopback `socks` inbound behind it. Unlike Xray there is no `-test` to lean on, so
-   validation is ours: a strict decode of our own struct plus a trial start on a spare port before the
-   unit is switched over (§11.3 names `xray -test` specifically; this is the same invariant, differently
-   kept).
-3. Network: firewall, decoy masquerade, Alt-Svc, and the prober's second path on the MN side.
-4. Documentation and the production pass. This is a network change, so it ships as a pre-release first
-   (AGENTS §9).
+   it and a real DNS answer).
+1. Node (done): the pinned binary (version and digest from the release's `hashes.txt`), its unit under its
+   own user `termit-hy`, the generated `auth.userpass` config with a strict read-back and a trial start
+   instead of the missing `-test`, the core's loopback inbound, the firewall rule, Alt-Svc and a `doctor`
+   line. Verified end to end on the lab: a client over UDP/443 exited through WARP (`104.28.254.16`) while
+   the node's own traffic kept its own address, and the core logged the flow on the hop inbound.
+2. Profile (next): `kind: hysteria2` in the envelope, its parameters, URI build/parse, the subscription
+   form, and the password derived from each pair's UUID instead of one password per node.
+3. Prober: MN links hysteria's client and probes the transport (§10.2, constraint 3).
+4. Production pass: this is a network change, so it ships as a pre-release first (AGENTS §9).
 
 Acceptance: on the lab, a node with hysteria2 as a second profile — a client through it reaches the
 internet with WARP as the egress and the blocklist applied, a torrent is refused, the decoy answers a
