@@ -155,7 +155,7 @@ listen:       :443
 api prefix:   /6rfjdqfn5nno
 masking site: portal (what a prober gets for every path the API does not claim)
 config:       /etc/termit/mn/config.yaml
-database:     /var/lib/termit/mn/termit.db (schema 5)
+database:     /var/lib/termit/mn/termit.db (schema 6)
 master key:   /etc/termit/mn/master.key (generated now)
 master key id: <fingerprint>
 
@@ -248,7 +248,7 @@ api:      /6rfjdqfn5nno
 decoy:    portal
 version:  termit-mn v0.4.1 (commit …, built …, api 1, profile v1)
 uptime:   3h12m (started 2026-11-10 11:18)
-database: /var/lib/termit/mn/termit.db (412.0 KiB, schema 5)
+database: /var/lib/termit/mn/termit.db (412.0 KiB, schema 6)
 prober:   ready (/usr/local/lib/termit/xray)
 queue:    0 due, next 2026-11-11 12:34 UTC
 cert:     2027-02-08T12:06:44Z (in 89 days)

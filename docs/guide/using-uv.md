@@ -66,7 +66,7 @@ Useful variations:
 | your own build, not a release | install the binary yourself and run `termit-uv init` |
 | opt out of WARP | `--no-warp`, later `termit-uv warp mode off` |
 | change how WARP carries traffic | `termit-uv init --warp-transport wireguard` (inside the core, TCP and UDP) or `proxy` (the `warp-cli` sidecar, TCP only) |
-| choose which family leaves through WARP | `termit-uv init --warp-family ipv4` (the default; the other family goes direct) or `ipv6` |
+| choose which family leaves through WARP | `termit-uv init --warp-family ipv4` (the default; destinations of the other family are refused) or `ipv6` |
 
 The script refuses to install bytes it cannot verify. If it stops, the message names the file and the
 expected digest.
@@ -83,7 +83,9 @@ termit-uv init --domain node1.example.com --email you@example.com
 ## What `termit-uv init` does
 
 Fourteen steps, each idempotent: a step whose effect is already there does nothing, so re-running
-is the way to repair a partial install.
+is the way to repair a partial install. With the QUIC transport enabled two more appear —
+`hysteria-binary` and `hysteria-config` — and without it `hysteria-off`, which does nothing on a node that
+never had it.
 
 | Step | What it does |
 |---|---|
@@ -179,11 +181,12 @@ security:
 What it costs: about 50 MB of memory, and its unit caps it at 256 MB; 4–9 % of one core per 100 Mbit/s
 carried. The pinned release also carries one known issue (GO-2026-5288): a crafted packet can exhaust the
 transport's memory. The cap turns that into a restart of the transport alone — the TLS profile and every
-other service on the node keep running — and the next release is not allowed to ship the advisory:
-`deploy/vulnerabilities.json` names `0.6.0` as the version that must not.
+other service on the node keep running — and `0.6.0` is the first release that must not carry it,
+as `deploy/vulnerabilities.json` says.
 
-To turn it off, delete the `hysteria:` block and run `termit-uv init` again: the unit stops, the port
-closes, and the next sync removes the second link from the subscription.
+To turn it off, delete the `hysteria:` block and run `termit-uv init` again: the unit is stopped,
+disabled and removed with its configuration and the pinned binary, the port closes, and the next sync
+drops the second link from the subscription.
 
 ## Day to day
 

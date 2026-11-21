@@ -36,7 +36,7 @@ credential is ever regenerated.`)
 	warpTransport := flags.String("warp-transport", "",
 		"how WARP carries traffic: wireguard (inside the core, TCP and UDP) or proxy (warp-cli's SOCKS, TCP only)")
 	warpFamily := flags.String("warp-family", "",
-		"address family the WARP tunnel carries: ipv4 (default) or ipv6; the other family goes direct")
+		"address family the WARP tunnel carries: ipv4 (default) or ipv6; destinations of the other family are refused")
 	xrayVersion := flags.String("xray-version", "", "Xray-core release to install")
 	xrayBase := flags.String("xray-download-base", "", "release directory: an http(s) URL, a file URL or a local path")
 	dryRun := flags.Bool("dry-run", false, "report what would change without touching the host")

@@ -71,7 +71,7 @@ server has its own page in [Running the server](docs/guide/using-mn.md).
 ```bash
 # on the server (Debian 13, ports 80/443 free, DNS pointing at it)
 wget -q https://github.com/shogun-kub/termit/releases/latest/download/mn.sh
-sh mn.sh --domain mn.example.com --email you@example.com   # --version v0.4.1 pins a release
+sh mn.sh --domain mn.example.com --email you@example.com   # --version v0.4.2 pins a release
 termit-mn invite create --note "node-a"                    # prints the code once
 
 # on the node (Debian 13, ports 80/443 free, DNS pointing at it)
@@ -111,12 +111,12 @@ Deliberate design choices worth knowing before you deploy it:
 
 ## Status
 
-`v0.4.1` is the newest release. M1–M5 are implemented and verified on a three-machine acceptance lab
+`v0.4.2` is the newest release. M1–M5 are implemented and verified on a three-machine acceptance lab
 (Debian 13 in unprivileged containers), and the release pipeline builds verified artifacts for
 linux/amd64 and linux/arm64. Since `0.4.0` the WARP tunnel runs inside the proxy core instead of a
 sidecar, so it needs no `/dev/net/tun`, and `warp.family` decides which address family leaves through it.
 The passes behind the releases are recorded in [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md)
-(M5-8 for `0.3.2`, §11.9 for `0.4.0`): three production hosts — a management server in a container and two
+(M5-8 for `0.3.2`, §11.9–§11.11 for `0.4.0`–`0.4.2`): three production hosts — a management server in a container and two
 nodes behind real domains — with the host firewall confirmed and surviving a reboot, the ban engine and
 the blocklist active, WARP egress verified through Cloudflare's own trace, the owner's page reachable over
 TLS, and a phone app passing traffic through both nodes. `v0.3.2` and its predecessors carry their own
@@ -141,7 +141,7 @@ go test ./cmd/... ./internal/...                  # unit tests
 go vet ./cmd/... ./internal/...
 gofmt -l cmd internal deploy test                 # must print nothing
 
-go run ./deploy/release --version v0.4.1 --out dist   # the release directory, as CI builds it
+go run ./deploy/release --version v0.4.2 --out dist   # the release directory, as CI builds it
 ```
 
 Package patterns are explicit on purpose: `references/` holds third-party Go source inside this
