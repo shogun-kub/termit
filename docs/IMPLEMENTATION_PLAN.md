@@ -1443,11 +1443,13 @@ These are not separate milestones; they must be updated in the milestone that to
 
 ## 5. Explicitly deferred (post-v1)
 
-- REALITY as a second profile; Hysteria2/TUIC; MTProto (§10.4).
-- Multi-vantage probing (§10.6); federation between independent MNs; MN replication in one mesh
-  (§10.2); node reputation.
-- One machine running both the MN and a node (§10.5).
-- Web admin UI; traffic accounting and quotas (§10.3); Telegram bot.
+v0.5.0 takes part of this list back off it (§10); everything here without a 0.5.0 item stays deferred.
+
+- REALITY and the other xray-core protocol kinds; MTProto (§10.2).
+- Multi-vantage probing (§10.7); federation between independent MNs; MN replication in one mesh
+  (§10.4); node reputation.
+- One machine running both the MN and a node (§10.6).
+- Web admin UI; traffic accounting and quotas (§10.5); Telegram bot.
 - IPv6-only nodes; non-Debian distributions (an explicit portability milestone, not a side effect).
 - Hot certificate reload without a restart (depends on Xray capabilities).
 
@@ -1512,15 +1514,32 @@ path cooperate.
 
 ## 10. Backlog
 
-Work that is understood, wanted and deliberately not in the current milestone. Each item names the rule
-that keeps it out, so nobody re-discovers the reason from scratch.
+v0.5.0 is three of these items, in this order: a WARP that carries UDP (10.1), the profile options and
+the envelope for a second kind (10.2), and Hysteria2 as that kind (10.3). Each unblocks the next, and the
+first two are worth shipping even if the third slips.
+
+Everything after them is postponed to a later release: understood and wanted, but nothing in 0.5.0
+depends on it. Each postponed item still names the rule that keeps it out, so nobody re-discovers the
+reason from scratch.
 
 ### 10.1 WARP that carries UDP
 
-Today `warp.mode` routes TCP through `warp-cli`'s SOCKS5 listener and sends UDP `direct`
+Until 0.4.0 `warp.mode` routed TCP through `warp-cli`'s SOCKS5 listener and sent UDP `direct`
 (`docs/OPERATIONS.md` §6): proxy mode has no UDP ASSOCIATE, so a UDP flow handed to it never returns and
-the first casualty is client DNS. The split keeps the nodes usable and gives up the address WARP exists to
-hide, for UDP only. Four ways to close that gap were surveyed on 2026-11-16.
+the first casualty is client DNS. The split kept the nodes usable and gave up the address WARP exists to
+hide, for UDP only. Four ways to close that gap were surveyed on 2026-11-16; option A was built in 0.4.0
+and proved on a production node (§11), including a DNS query answered through the tunnel.
+
+What keeps it a 0.5.0 item:
+
+- **The `proxy` transport still splits UDP to `direct`.** A node that has to run `warp-cli` — the fallback
+  when the WireGuard registration cannot be made — keeps that hole while reporting `warp=on` like any
+  other.
+- **The transport must stay swappable.** Cloudflare is moving WARP to MASQUE, and the tunnel is a
+  registration plus an outbound whose tag the routing rule names. That indirection is the work; option D
+  must drop into it without touching routing, the fail-open balancer or the state.
+- **Hysteria2 will carry UDP through it** (§10.3). The hop is proved for TCP on the lab; the same path with
+  UDP payloads, and the identity a peer sees at the exit, is part of this item's acceptance.
 
 | Option | UDP | Host routing | Cost |
 |---|---|---|---|
@@ -1529,7 +1548,7 @@ hide, for UDP only. Four ways to close that gap were surveyed on 2026-11-16.
 | C. `warp-cli` in TUN mode | yes | full-tunnel capture | contradicts §2.2.1, and `/dev/net/tun` is absent on the LXC nodes |
 | D. `usque` (MASQUE, userspace SOCKS5 with TCP and UDP) | yes | none | a third-party service and its netstack, plus a licence to check; MASQUE is where Cloudflare is going |
 
-**Recommended: A, planned in §11.** Xray has shipped a userspace WireGuard outbound since 1.6.5 and documents the WARP
+**Chosen: A, built in 0.4.0 (§11).** Xray has shipped a userspace WireGuard outbound since 1.6.5 and documents the WARP
 setup end to end ([xtls guide](https://xtls.github.io/en/document/level-2/warp.html)); `noKernelTun` forces
 the in-process gVisor stack, which is exactly the LXC case these nodes are
 ([outbound docs](https://xtls.github.io/config/outbounds/wireguard.html)). `wgcf generate --xray` prints the
@@ -1554,12 +1573,130 @@ over WireGuard ([wgcf#459](https://github.com/ViRb3/wgcf/issues/459)). Free WARP
 must therefore stay swappable — the routing rule names a tag, not a protocol — so option D can replace it
 without touching anything else.
 
-Acceptance, when it is picked up: a UDP probe through the tunnel reports `warp=on` in the trace, the node's
-own SSH/ACME/decoy traffic still leaves from its own address, `wgcf`-equivalent credentials survive a
-restart and are never logged, fail-open still moves traffic to `direct` when WARP stops answering, and no
-`ip rule`/`ip route` change exists on the host.
+Acceptance for the remainder: a node on the `proxy` transport either carries UDP through WARP or says in
+`warp status` that it cannot; option D can replace the outbound by changing a tag; and with Hysteria2
+enabled, a UDP payload from a client exits at Cloudflare's address, while SSH, ACME and the decoy still
+leave from the node's own. No `ip rule`/`ip route` change exists on the host.
 
-### 10.2 Several MNs in one mesh
+### 10.2 More protocols and protocol options
+
+V1 is one profile: VLESS over XHTTP `packet-up` inside TLS that nginx terminates, with the parameters
+frozen in `internal/proto/profile.go`, one `xray-core` probe worker on MN, and one URI builder plus one
+sing-box renderer for the two subscription forms. This is not accidental — the path, mode, fingerprint
+and padding were measured, and every component is shaped around that one profile. `DESCRIPTION.md` §3
+rules a second protocol out for v1.
+
+The request has two sizes, and the smaller one may be enough:
+
+- **Options inside the profile** — XHTTP mode, ALPN, mux/padding, path shape. A small enumerated set,
+  validated at enrollment and versioned; free-form values are refused because a client that cannot parse
+  the URI fails silently, and because some values are already known-bad here: an `h2` ALPN cannot cross
+  nginx's HTTP/1.1 hop, and a `chrome` hello was frozen on a measured path. These change the URI builder,
+  the generator and the prober together.
+- **A second protocol** — REALITY, Trojan/VMess/Shadowsocks, Hysteria2/TUIC. The profile becomes
+  `{kind, version, params}` with a codec per kind. REALITY first: same core, same VLESS payload, and
+  already named as a later profile in `DESCRIPTION.md` §3. Shadowsocks and Trojan are also xray-core
+  protocols. Hysteria2/TUIC are UDP, need another client on MN and another listener on UV; MTProto is a
+  different product.
+
+Constraints, in the order they decide the design:
+
+1. **The credential model is VLESS-shaped.** Pair access is a UUID derived per pair; Shadowsocks and
+   Hysteria2 use passwords, REALITY keeps the UUID. Each kind needs its own pair-secret derivation with
+   a distinct domain separator, or the mesh cannot express "A may use B" portably. Changing
+   `DESCRIPTION.md` §6.2 is a new `credential_epoch` and a migration.
+2. **Port 443 is shared with the decoy and ACME.** nginx owns TCP/443 today. REALITY wants the core on
+   443 and takes the client-facing handshake from nginx, so the decoy becomes REALITY's fallback and the
+   certificate flow changes. QUIC protocols use UDP/443 and do not collide with nginx, but need their
+   own probe path.
+3. **The prober is one binary.** MN's `xray-core` speaks every xray-core protocol; Hysteria2/TUIC need a
+   second pinned client with its own upgrade path and failure modes. The narrow `Probe(ctx, url)` seam
+   survives, but each transport is a new implementation behind it.
+4. **Clients differ.** Stock sing-box already cannot read the XHTTP profile; a second protocol widens
+   that matrix. The subscription must tell a client what it can parse — profile version, per-form
+   rendering, or an explicit refusal — instead of emitting a URI that opens and fails.
+5. **No host firewall or routing changes and no second daemon.** That rules out TUN designs and anything
+   needing a port forward, and it applies to every new protocol.
+
+Order in 0.5.0: the options first (small, no credential change), and the `{kind, version, params}` envelope
+built for the kind that ships in that release — Hysteria2 (§10.3), which is a binary of its own and
+therefore the expensive one. REALITY and the other xray-core kinds reuse the envelope and come later: they
+are cheaper, because the prober already speaks them and no second daemon appears. Never expose raw Xray
+JSON: a per-kind schema with validation is the only thing that keeps the generator, parser and prober from
+drifting apart.
+
+Acceptance: a second kind end to end on the lab — URI build/parse round-trip, generated document golden
+plus `xray -test`, an MN probe through it, both subscription forms, a client that does not support it
+getting a clear refusal, and the decoy/ACME/direct-traffic invariants unchanged. A profile-version test
+must show an old MN and a new UV (and the reverse) refusing the mismatch instead of writing a config
+that cannot work.
+
+### 10.3 Hysteria2 as a second transport
+
+The node's profile is TLS that nginx terminates. Where a network interferes with that shape, the answer
+that works today is a QUIC transport: it runs on UDP, so the interference aimed at TCP/443 does not see
+it, and its handshake can pass for a browser's.
+
+Hysteria2 is the one to take, on evidence rather than taste: its QUIC handshake is Chrome-shaped out of
+the box (S16). Measured on 2026–11–21 against a capture of the same session from Opera 140 (Chromium 157):
+1,886 bytes of `ClientHello` from hysteria 2.14.0, 1,935–1,951 from the browser, the same twelve
+extensions, GREASE at both ends and no `0xff01`. `disable_chrome_parrot: true` drops it to 1,524 bytes
+with the Go extension order — the difference between blending in and announcing a library.
+
+What it costs, measured on a production node's own single vCPU (1 CPU, KVM, BBR, no obfuscation, the
+node's Let's Encrypt leaf): 100 MB transfers at 44–52 MB/s (355–415 Mbit/s) across the WAN, 0.45–0.9 s of
+CPU per 100 MB — 4–9 % of one core per 100 Mbit/s carried — a 50 MB resident set and about 2 % idle. That
+is affordable at this deployment's scale, and it is the price of a transport the core cannot speak.
+
+Three things decide the shape, and each one was learned the hard way:
+
+- **Its egress is its own.** Hysteria dials the destination itself, so by default it bypasses every rule
+  the core enforces: WARP, the blocklist, the direct rules, the opt-in BitTorrent block. Measured: on a
+  node that refuses BitTorrent, torrent traffic went straight out through hysteria. Policy must live on
+  the far side of the tunnel, not beside it — a `socks5` outbound to the core's own loopback `socks`
+  inbound, whose routing then classifies the flow exactly as it does today. On the lab, 2026–11–21, 25 of
+  25 requests through that hop succeeded at 80–95 MB/s, and the core added about 0.02 s of CPU per 100 MB.
+- **It is a second daemon.** xray-core has no hysteria2, so this is another pinned binary and another
+  unit, which contradicts the one-long-running-process invariant in `DESCRIPTION.md` §3 and §11. The
+  invariant changes for a reason that survives review: a transport the core cannot speak. It is pinned by
+  version and checksum, it has its own upgrade path, and its handshake is part of the fingerprint — an
+  upgrade is a fingerprint change and is tested as one.
+- **Its authentication is HTTP.** `auth.type: http` lets the agent answer the authentication call on
+  loopback, so the password can be the pair-derived secret the mesh already computes: no new credential
+  model, and adding or removing a peer needs no restart. The derivation still needs its own domain
+  separator (§10.2, constraint 1), and that is a `credential_epoch` decision, not a detail.
+
+The certificate is the node's existing leaf: hysteria re-reads it on every handshake, so a renewal needs
+no restart. The decoy stays byte-identical: `masquerade: proxy` forwards a non-hysteria visitor to the
+vhost, which reproduces nginx's headers and 404s. No Brutal (`congestion.type: bbr` with
+`ignoreClientBandwidth: true`): a transport that fights the network for bandwidth is a transport that gets
+noticed. No obfuscation and no port hopping — both are fingerprints of their own, and neither is needed
+here.
+
+Firewall: TCP/80 and TCP/443 are accepted before the scan meter, and UDP/443 must join them in the same
+place. An unlisted UDP port falls through to the meter, and the participant is banned for their own QUIC
+traffic. Alt-Svc `h3` on the vhost is then what makes the listener part of the same site instead of a port
+found by scanning.
+
+Phases:
+
+0. Spike (largely done: S16). Left: UDP through the hop, and the auth call against the agent.
+1. Profile: `kind: hysteria2` in the envelope, its parameters, URI build/parse, the pair-secret
+   derivation and the epoch decision that goes with it.
+2. Node: the binary, its unit, install and upgrade; the agent's auth endpoint; the core's loopback `socks`
+   inbound behind it.
+3. Network: firewall, decoy masquerade, Alt-Svc, and the prober's second path on the MN side.
+4. Documentation and the production pass. This is a network change, so it ships as a pre-release first
+   (AGENTS §9).
+
+Acceptance: on the lab, a node with hysteria2 as a second profile — a client through it reaches the
+internet with WARP as the egress and the blocklist applied, a torrent is refused, the decoy answers a
+plain HTTPS visitor identically on both transports, the URI round-trip and the generated document pass,
+an unmodified sing-box refuses the kind instead of writing a config that cannot work, and a killed
+hysteria process comes back by itself (the `Restart=always` the core's unit now has). Production pass: the
+exit address and the fingerprint of a real handshake from a second machine.
+
+### 10.4 Several MNs in one mesh — postponed
 
 Today one MN is the only authority: it owns the SQLite registry, derives every pair credential from its
 `master_key`, probes every node and renders every subscription. A second MN in the same mesh is therefore
@@ -1630,7 +1767,7 @@ logged. A partition admits no replica enrollment and no epoch bump; a schema mis
 but keeps serving the last good snapshot. The lab needs a second MN machine — the spare fourth container
 is a UV — so the suite grows before this ships.
 
-### 10.3 Traffic limits per node
+### 10.5 Traffic limits per node — postponed
 
 Nothing counts bytes today: MN knows a node answers checks and nothing else. VPS plans cap traffic, so a
 node can be suspended by its provider without warning — which removes a working exit and, because the
@@ -1677,58 +1814,7 @@ node to `active` with no operator action; the peer set drops it while limited an
 `termit-mn status` shows the number and the period. This is a quota, not per-second rate limiting
 (§5.10).
 
-### 10.4 More protocols and protocol options
-
-V1 is one profile: VLESS over XHTTP `packet-up` inside TLS that nginx terminates, with the parameters
-frozen in `internal/proto/profile.go`, one `xray-core` probe worker on MN, and one URI builder plus one
-sing-box renderer for the two subscription forms. This is not accidental — the path, mode, fingerprint
-and padding were measured, and every component is shaped around that one profile. `DESCRIPTION.md` §3
-rules a second protocol out for v1.
-
-The request has two sizes, and the smaller one may be enough:
-
-- **Options inside the profile** — XHTTP mode, ALPN, mux/padding, path shape. A small enumerated set,
-  validated at enrollment and versioned; free-form values are refused because a client that cannot parse
-  the URI fails silently, and because some values are already known-bad here: an `h2` ALPN cannot cross
-  nginx's HTTP/1.1 hop, and a `chrome` hello was frozen on a measured path. These change the URI builder,
-  the generator and the prober together.
-- **A second protocol** — REALITY, Trojan/VMess/Shadowsocks, Hysteria2/TUIC. The profile becomes
-  `{kind, version, params}` with a codec per kind. REALITY first: same core, same VLESS payload, and
-  already named as a later profile in `DESCRIPTION.md` §3. Shadowsocks and Trojan are also xray-core
-  protocols. Hysteria2/TUIC are UDP, need another client on MN and another listener on UV; MTProto is a
-  different product.
-
-Constraints, in the order they decide the design:
-
-1. **The credential model is VLESS-shaped.** Pair access is a UUID derived per pair; Shadowsocks and
-   Hysteria2 use passwords, REALITY keeps the UUID. Each kind needs its own pair-secret derivation with
-   a distinct domain separator, or the mesh cannot express "A may use B" portably. Changing
-   `DESCRIPTION.md` §6.2 is a new `credential_epoch` and a migration.
-2. **Port 443 is shared with the decoy and ACME.** nginx owns TCP/443 today. REALITY wants the core on
-   443 and takes the client-facing handshake from nginx, so the decoy becomes REALITY's fallback and the
-   certificate flow changes. QUIC protocols use UDP/443 and do not collide with nginx, but need their
-   own probe path.
-3. **The prober is one binary.** MN's `xray-core` speaks every xray-core protocol; Hysteria2/TUIC need a
-   second pinned client with its own upgrade path and failure modes. The narrow `Probe(ctx, url)` seam
-   survives, but each transport is a new implementation behind it.
-4. **Clients differ.** Stock sing-box already cannot read the XHTTP profile; a second protocol widens
-   that matrix. The subscription must tell a client what it can parse — profile version, per-form
-   rendering, or an explicit refusal — instead of emitting a URI that opens and fails.
-5. **No host firewall or routing changes and no second daemon.** That rules out TUN designs and anything
-   needing a port forward, and it applies to every new protocol.
-
-Order if picked up: options first (small, no credential change), then REALITY (same core, one topology
-change), then the other xray-core protocols, and only then a UDP protocol with its own client. Never
-expose raw Xray JSON: a per-kind schema with validation is the only thing that keeps the generator,
-parser and prober from drifting apart.
-
-Acceptance: a second kind end to end on the lab — URI build/parse round-trip, generated document golden
-plus `xray -test`, an MN probe through it, both subscription forms, a client that does not support it
-getting a clear refusal, and the decoy/ACME/direct-traffic invariants unchanged. A profile-version test
-must show an old MN and a new UV (and the reverse) refusing the mismatch instead of writing a config
-that cannot work.
-
-### 10.5 The MN and a node on one machine
+### 10.6 The MN and a node on one machine — postponed
 
 Today the two roles are two machines by design: the node's nginx owns `:80` and `:443`, while the MN has
 its own TLS listener on `:443` and its ACME challenge listener on `:80` (`docs/OPERATIONS.md` §1). For a
@@ -1772,23 +1858,23 @@ Acceptance: one box from a clean image — both names served over TLS, `termit-m
 `termit-uv doctor` green, exactly one process per port, a client through the node reaching the internet
 while the MN's own traffic never enters the tunnel, a subscription and an admin command working across
 the shared challenge listener, `uninstall --purge` of either role leaving the other serving, and the
-coupling stated in the guide. The co-located node's probe comes from a second vantage (§10.6): a check
+coupling stated in the guide. The co-located node's probe comes from a second vantage (§10.7): a check
 that leaves from the same box is a self-check, not evidence that the node is reachable from outside.
 
-### 10.6 A second vantage for the MN's own node
+### 10.7 A second vantage for the MN's own node — postponed
 
 Today the home MN is the only observer: its probe decides a node's state, and its own vantage is assumed
 to be the internet's. Two cases that this plan now makes common break that assumption. A node co-located
-with its MN (§10.5) can only be reached through hairpin NAT or loopback, so the check stops measuring
+with its MN (§10.6) can only be reached through hairpin NAT or loopback, so the check stops measuring
 external reachability. An MN whose path to one node is blocked, while every other node is fine, has no
 way to say "this is my vantage, not the node" — and by `DESCRIPTION.md` §7.2 a timeout is a verdict, so
 the node is blocked.
 
 The fix is to let another MN, on a different network, perform the probe and hand the verdict back: a
 second vantage. It is deferred with the rest of multi-vantage probing (§5), but its wire shape belongs in
-the plan now, because §10.5 cannot honestly claim external validation without it.
+the plan now, because §10.6 cannot honestly claim external validation without it.
 
-It is a delegation, not a federation. A node keeps one home MN (§10.2) and only the home MN decides and
+It is a delegation, not a federation. A node keeps one home MN (§10.4) and only the home MN decides and
 writes state; a peer observes and answers, it never writes a row.
 
 **Verdict rule**, generalising the retry aggregation `runCycle` already does ("failed only if every
@@ -1802,7 +1888,7 @@ attempt concluded"):
 Shape:
 
 - **Config**: `prober.peers: [{name, url, key, delegate: [domains]}]`. The list is explicit: an automatic
-  "delegate my own domain" rule would hard-code the topology, and §10.5 is not the only reason to
+  "delegate my own domain" rule would hard-code the topology, and §10.6 is not the only reason to
   delegate.
 - **Protocol**: one call, `POST {prefix}/peer/probe` with `{uv_id, target{domain, port, sni, path, mode,
   uuid, pin}}`, answered with the `Result` the local prober would have produced (`ok`, class, latency,
@@ -1820,9 +1906,9 @@ Decisions that come before any code:
    can block any node it can reach. Options: accept it (the mesh is cooperative, as with a hostile UV),
    require unanimity once there are two or more vantages, or let a single peer's failure move a node only
    to `unavailable` while `blocked` needs the node's own self-check to fail as well. This is the same
-   trust question as §10.2's shared master key and must be answered with it.
+   trust question as §10.4's shared master key and must be answered with it.
 2. **What the peer learns.** A probe target is the probe UUID, the secret path and the certificate pin —
-   the ability to connect to a node it does not own. Under a shared master key (§10.2) a peer derives
+   the ability to connect to a node it does not own. Under a shared master key (§10.4) a peer derives
    pair credentials anyway, so this is not new power; without replication it is, and must be stated.
    Whether the probe UUID becomes rotatable (today `uv reissue` rotates only the agent key) is open.
 3. **Who picks the peer.** Explicit selection is honest; automatic selection from the list is convenient
@@ -1837,7 +1923,7 @@ only by the peer and reaches `active` on the peer's `ok`; stopping the peer leav
 in decision 1, recorded in the guide; a stale result never moves the node; the state-machine tests are
 unchanged, because no transition was added.
 
-## 11. Planned: WARP over WireGuard inside the core (0.4.0)
+## 11. Planned: WARP over WireGuard inside the core (0.5.0)
 
 The one thing `0.3.2` gave up is that UDP leaves from the node's address: `warp-cli`'s proxy mode cannot
 carry it, so §10.1's option A replaces the proxy with a WireGuard outbound inside Xray. This is the plan;
