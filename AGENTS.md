@@ -94,6 +94,8 @@ deploy/systemd    installed copies of the units, for readers; the node's are ren
                   `internal/uv/service` because paths come from the configuration
 deploy/install    bootstrap shell script and release checks
 deploy/release    the release builder (`go run ./deploy/release`), which CI runs too
+deploy/vulngate   the vulnerability gate CI runs; `deploy/vulns` is its list of accepted advisories
+                  (`deploy/vulnerabilities.json`), each with the release that must not carry it
 test/lab          SSH-driven acceptance suite (build tag `lab`); test/integration is a planned
                   Compose suite — the lab is the gate
 docs, docs/guide  design and operations docs; `docs/guide/ru` is the Russian mirror
@@ -135,7 +137,9 @@ go build ./cmd/... ./internal/...     # compile everything we own
 go test ./cmd/... ./internal/...      # unit tests
 go test -race ./internal/...          # race detector on library code
 go vet ./cmd/... ./internal/...       # cheap correctness pass
-go test ./deploy/release              # the release tool's own tests
+go test ./deploy/...                  # the release tool, the vulnerability gate and the exclusion list
+go run ./deploy/vulngate ./cmd/... ./internal/...   # what CI's govulncheck step runs, with the
+                                      # accepted advisories from deploy/vulnerabilities.json
 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0   # once per toolchain
 "$(go env GOPATH)/bin/golangci-lint" run ./cmd/... ./internal/...           # lint (CI gate)
 go run ./cmd/uv --help                # and: go run ./cmd/mn init --domain mn.localhost --data-dir ./.dev/mn

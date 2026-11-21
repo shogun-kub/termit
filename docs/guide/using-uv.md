@@ -153,6 +153,38 @@ The client fetches the list again on its own schedule; when a peer comes or goes
 it takes. The URL is a secret: it carries your credentials. If it leaks, rotate it on the server
 (`termit-mn sub rotate node1.example.com --domain mn.example.com`) and the old one stops working.
 
+## A second transport over QUIC (optional)
+
+The node can serve its certificate on UDP/443 too, with Hysteria2 — a protocol built for lossy mobile
+networks. Voice calls and video feel the difference first; ordinary browsing does not need it, and nothing
+is installed until you ask.
+
+```yaml
+# /etc/termit/uv/config.yaml
+hysteria: {}            # the block is the switch
+security:
+  firewall:
+    udp_ports: [443]    # required while the firewall is on
+```
+
+`termit-uv init` then installs the pinned binary, writes `/etc/termit/uv/hysteria.yaml`, and starts
+`termit-hysteria` as its own unprivileged user. From that point:
+
+- `termit-uv uri` and the page from `termit-uv options` hand out a `hy2://` link beside the `vless://` one,
+  labelled `(QUIC)`;
+- the subscription from your server carries the same second link, and the sing-box profile gets a
+  `hysteria2` outbound;
+- `termit-uv sync` is what tells the server about it — nothing on the server needs configuring.
+
+What it costs: about 50 MB of memory, and its unit caps it at 256 MB; 4–9 % of one core per 100 Mbit/s
+carried. The pinned release also carries one known issue (GO-2026-5288): a crafted packet can exhaust the
+transport's memory. The cap turns that into a restart of the transport alone — the TLS profile and every
+other service on the node keep running — and the next release is not allowed to ship the advisory:
+`deploy/vulnerabilities.json` names `0.6.0` as the version that must not.
+
+To turn it off, delete the `hysteria:` block and run `termit-uv init` again: the unit stops, the port
+closes, and the next sync removes the second link from the subscription.
+
 ## Day to day
 
 ```bash

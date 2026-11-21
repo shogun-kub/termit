@@ -832,6 +832,17 @@ has. Check the core, not the store listing:
 | Hiddify, Streisand, sing-box itself | sing-box | no — no XHTTP transport upstream |
 | Husi | sing-box fork | partial; its XHTTP client is not interoperable with Xray's inbound |
 
+**A node with the QUIC transport has a second link per entry**, `hy2://user:password@domain:443?sni=domain`
+labelled `(QUIC)`, and the JSON subscription form carries a `hysteria2` outbound with the same tag. The
+user name and password are derived from the same credential the `vless://` link carries, so the two links
+are interchangeable credentials for the same node, not two accounts. Any client that speaks Hysteria2 can
+use it — the podkop family, Hiddify, NekoBox, the reference `hysteria` client — but it needs UDP/443 to
+reach the node, which is the point and also the catch: a network that blocks QUIC or UDP makes that link
+useless while the TLS profile keeps working. Points to remember: `hy2://` carries no XHTTP path and no
+fragmentation parameters, so a client that applies the profile's fragmentation to it is doing nothing
+useful; and the label suffix is the only difference between the two lines, which is what makes them easy
+to tell apart in a client's list.
+
 A client without XHTTP does not report "unsupported transport": it falls back to plain VLESS over TLS,
 the node answers its request with an HTTP `400`, and the client's VLESS reader reports the first byte
 of `HTTP/1.1` as a version — `unknown version: 72` (`72` is `H`). Treat that message as "wrong client",

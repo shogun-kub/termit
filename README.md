@@ -30,8 +30,11 @@ healthy node, with a credential that is valid for exactly one pair of nodes.
              └──────────────────┘
 ```
 
-## Documentation
+Optionally a node serves the **same certificate over QUIC** as well — Hysteria2 on UDP/443, off by
+default — for participants whose network treats UDP better than it treats TCP. Its traffic still leaves
+through the node's WARP tunnel, because it enters the same core rather than going around it.
 
+## Documentation
 Start with the guide. It is written for the person installing a node, not for the maintainer, and there
 is a Russian version beside every page.
 

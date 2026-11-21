@@ -243,8 +243,16 @@ For UV `A`:
 
 ```
 self              vless://self_uuid(A)@A.domain:443?…params(A)…#A-label
+                  hy2://user(self_uuid(A)):pass(self_uuid(A))@A.domain:443?sni=A.domain#A-label (QUIC)
 peer P (active)   vless://pair_uuid(A,P)@P.domain:443?…params(P)…#P-label
+                  hy2://user(pair_uuid(A,P)):pass(pair_uuid(A,P))@P.domain:443?sni=P.domain#P-label (QUIC)
 ```
+
+The `hy2://` line exists only for a node that reported the QUIC transport (§5.1): the user name and the
+password are a one-way derivation of the same credential the `vless://` line carries, so the server stores
+nothing extra, and a node that stops serving the transport simply loses its second line at the next sync.
+A subscription therefore has one to two links per node, never more, and the plain and JSON forms carry the
+same set.
 
 Peers are ordered by label then id so that the rendered subscription is stable (ETag-friendly).
 `unavailable` peers are included but marked in the label suffix (e.g. `·degraded`) — clients keep
@@ -440,13 +448,18 @@ against an API it does not understand. Errors are RFC 9457-style problem objects
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
 | `POST` | `{prefix}/enroll` | invite code | register a new UV |
-| `POST` | `{prefix}/agent/sync` | agent key | report self-check and the leaf pin, fetch desired state + subscription URL |
+| `POST` | `{prefix}/agent/sync` | agent key | report self-check, the leaf pin and what the node serves (`transports`), fetch desired state + subscription URL |
 | `POST` | `{prefix}/agent/unblock` | agent key | Scenario B |
 | `POST` | `{prefix}/agent/relocate` | agent key | Scenario C |
 | `GET` | `/` and every other path | none | the masking site: a generated page, or its own 404 |
-| `GET` | `/sub/{token}` | token | base64 `vless://` list |
+| `GET` | `/sub/{token}` | token | base64 `vless://` list, plus `hy2://` where a node serves the transport |
 | `GET` | `/sub/{token}/json` | token | sing-box profile (same peers, richer routing) |
 | `GET` | `{prefix}/healthz`, `/metrics` | none / loopback | liveness, Prometheus |
+
+The sync body also carries `transports`: one `{kind, version}` per transport the node serves — `vless`
+always, `hysteria2` when the operator enabled it. That report is what the subscription renders links from,
+so the server keeps no second copy of a node's configuration; a kind or a version it does not know is
+dropped rather than refused, which keeps a newer node usable against an older server.
 
 `{prefix}` is `api_prefix`: the path the node API is served under, random on a fresh install so that a
 server is not discoverable by probing the names everyone uses. It is not a secret — every node carries

@@ -306,3 +306,34 @@ There is no uninstall command for the server: it owns two data directories, the 
 the probe worker in `/usr/local/lib/termit` and its units, and deleting a registry is not something an
 automated command should decide to do.
 
+
+## 12. The QUIC transport does not come up
+
+The link from the subscription or from the node's own page fails, while the TLS profile on the same node
+works. Work through these in order; each one removes a class of causes.
+
+1. **Is it running, and on which port?** `systemctl status termit-hysteria` and `ss -lunp | grep ':443'`.
+   A unit that is not `active` has a reason in `journalctl -u termit-hysteria -n 50`: usually a missing
+   binary (`termit-uv init` installs it) or a config that stopped parsing after a hand edit.
+2. **Is it the unit or the box?** Restart it and watch the journal. A start that is killed within seconds
+   by the kernel is the memory cap doing its job — `journalctl -k | grep 'Killed process'` names it. That
+   is GO-2026-5288 bounded: the transport comes back, the node's other services never notice.
+3. **Can the node read its own key?** `ls -l /var/lib/termit/uv/certs`: `privkey.pem` must be
+   `-rw-r----- root termit-hy` inside `drwxr-x--- root termit-hy`. Anything else is a node installed by an
+   older build; `termit-uv init` fixes the modes, `chown` alone does not.
+4. **Is the firewall carrying it?** With the table on, `nft list chain inet termit_uv input | grep 'udp
+   dport 443'` must show the accept, and `security.firewall.udp_ports` must list `443`. `termit-uv init`
+   refuses to enable the transport without it, so a node with the transport on and no rule was edited by
+   hand.
+5. **Does the node accept that credential?** `grep -c '^    u' /etc/termit/uv/hysteria.yaml` is the number
+   of accepted users: the node's own device, its local devices, every peer, and the server's probe. A link
+   whose user name is not in that file points at a node that has not synced since its user set changed.
+6. **Is the client the broken part?** Check that the client's TLS stack works at all before blaming the
+   node: `hysteria client -c client.yaml` with the same link on the same machine, then a request through
+   its SOCKS port. If HTTPS fails with an error from the client's own TLS library while the tunnel answers
+   plain HTTP, the tunnel is fine and the client is not. This is not hypothetical — a Windows `curl` built
+   against Schannel failed every HTTPS request through a healthy transport.
+7. **UDP, or the path?** If the handshake never completes and plain HTTP over the same tunnel works,
+   suspect the network: some paths drop or throttle UDP/443. `tcpdump -ni any 'udp port 443'` on the node
+   shows whether the client's packets arrive at all; none arriving is a path or firewall problem, not a
+   Termit one.
