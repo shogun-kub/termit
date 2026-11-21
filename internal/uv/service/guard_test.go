@@ -20,7 +20,7 @@ func TestGuardUnit(t *testing.T) {
 	for _, want := range []string{
 		"Type=simple",
 		"ExecStart=/usr/bin/termit-uv guard run --config /etc/termit/uv/config.yaml",
-		"Restart=on-failure",
+		"Restart=always",
 		"ReadWritePaths=/var/lib/termit/uv",
 		"ReadOnlyPaths=/etc/termit/uv /var/log/nginx",
 		"NoNewPrivileges=yes",

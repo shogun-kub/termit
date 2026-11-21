@@ -20,7 +20,7 @@ func TestXrayUnit(t *testing.T) {
 		"[Install]",
 		"ExecStart=/usr/lib/termit/bin/xray run -config /etc/termit/uv/xray.json",
 		"User=termit",
-		"Restart=on-failure",
+		"Restart=always",
 		// The hardening the design promises: no privilege, no writable system, no home, no devices.
 		"NoNewPrivileges=yes",
 		"ProtectSystem=strict",
@@ -84,7 +84,7 @@ func TestAgentUnit(t *testing.T) {
 	text := string(unit)
 	for _, want := range []string{
 		"ExecStart=/usr/bin/termit-uv agent -v --config /etc/termit/uv/config.yaml",
-		"Restart=on-failure",
+		"Restart=always",
 		"NoNewPrivileges=yes",
 		"ProtectSystem=strict",
 		"ReadWritePaths=/etc/termit/uv /var/lib/termit/uv",
@@ -158,6 +158,36 @@ func TestRenewTimer(t *testing.T) {
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("timer is missing %q", want)
+		}
+	}
+}
+
+// TestLongRunningUnitsRestartAfterACleanExit: Xray handles SIGTERM and exits 0, which on-failure
+// leaves dead — a node stayed without a core until someone looked. Every long-running unit must come
+// back by itself; systemctl stop is still a stop, restart policy does not override it.
+func TestLongRunningUnitsRestartAfterACleanExit(t *testing.T) {
+	t.Parallel()
+	xray, err := service.Xray("/usr/lib/termit/bin/xray", "/etc/termit/uv/xray.json")
+	if err != nil {
+		t.Fatalf("Xray: %v", err)
+	}
+	agent, err := service.Agent("/usr/bin/termit-uv", "/etc/termit/uv/config.yaml",
+		[]string{"/etc/termit/uv"}, nil)
+	if err != nil {
+		t.Fatalf("Agent: %v", err)
+	}
+	guard, err := service.Guard("/usr/bin/termit-uv", "/etc/termit/uv/config.yaml", "/var/lib/termit/uv",
+		"/etc/termit/uv", "/var/log/nginx")
+	if err != nil {
+		t.Fatalf("Guard: %v", err)
+	}
+	for name, unit := range map[string][]byte{"xray": xray, "agent": agent, "guard": guard} {
+		text := string(unit)
+		if !strings.Contains(text, "Restart=always") {
+			t.Errorf("%s unit does not restart after a clean exit", name)
+		}
+		if strings.Contains(text, "Restart=on-failure") {
+			t.Errorf("%s unit still restarts only on failure", name)
 		}
 	}
 }

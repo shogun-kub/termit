@@ -54,7 +54,9 @@ Type=simple
 User=termit
 Group=termit
 ExecStart=%s run -config %s
-Restart=on-failure
+# Xray handles SIGTERM and exits 0, which on-failure does not restart: the node stayed without a core
+# until someone looked. Restart=always still honours systemctl stop.
+Restart=always
 RestartSec=3s
 LimitNOFILE=65535
 UMask=0077
@@ -124,7 +126,7 @@ StartLimitBurst=10
 [Service]
 Type=simple
 ExecStart=%s agent -v --config %s
-Restart=on-failure
+Restart=always
 RestartSec=30s
 Nice=10
 

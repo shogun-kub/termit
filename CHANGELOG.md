@@ -20,6 +20,12 @@ of at everyone's next cycle.
 
 ### Fixed
 
+- **A service that exits cleanly is started again.** The core's unit said `Restart=on-failure`, and Xray
+  handles SIGTERM by exiting 0 — a stop signal, or any other clean exit, left the node without a core
+  until someone looked: a production node sat dead for ten minutes on 2026-11-21 before an operator
+  noticed. `termit-xray`, `termit-uv-agent`, `termit-uv-guard` and the two server units now use
+  `Restart=always`; `systemctl stop` is still a stop, and the start limits still end a crash loop.
+
 - **The agent honours `next_sync_after`.** It woke at the server's time but ran a full cycle on every
   wake anyway, because the wake had no "is it due?" check: `status` promised `next sync: +24h` while the
   node reconciled every hour — twenty-four times the traffic, the self-checks and the page renders the
