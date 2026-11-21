@@ -203,7 +203,8 @@ func TestHysteriaUnit(t *testing.T) {
 	text := string(unit)
 	for _, want := range []string{
 		"ExecStart=/usr/lib/termit/bin/hysteria server -c /etc/termit/uv/hysteria.yaml",
-		"User=termit",
+		"User=termit-hy",
+		"Group=termit-hy",
 		"Restart=always",
 		"AmbientCapabilities=CAP_NET_BIND_SERVICE",
 		"CapabilityBoundingSet=CAP_NET_BIND_SERVICE",

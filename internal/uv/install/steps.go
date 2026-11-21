@@ -20,6 +20,11 @@ import (
 // port and needs no capability.
 const serviceUser = "termit"
 
+// transportUser runs the QUIC transport. It is a second account because that process reads the
+// certificate's private key and the core must not be able to: the key is group-readable for this user
+// only. It joins the core's group so it can traverse the state directory to reach the certificate.
+const transportUser = "termit-hy"
+
 // aptEnv keeps a package install from asking anything.
 var aptEnv = []string{
 	"DEBIAN_FRONTEND=noninteractive",
@@ -96,10 +101,19 @@ type dir struct {
 }
 
 func (e *stepEnv) dirs() []dir {
+	certMode := os.FileMode(0o700)
+	if e.cfg.Hysteria != nil {
+		// The transport reads the certificate's private key, and the core must not: the directory
+		// belongs to the transport's group, so the core's user cannot even list it.
+		certMode = 0o750
+	}
 	return []dir{
 		{e.cfg.Paths.ConfigDir, 0o750},
+		// The parent of the state directory is traversable by the service group, which both the core's
+		// user and the transport's use: without it a non-root process cannot reach what it was given.
+		{filepath.Dir(e.cfg.Paths.StateDir), 0o750},
 		{e.cfg.Paths.StateDir, 0o750},
-		{e.cfg.Paths.CertDir, 0o700},
+		{e.cfg.Paths.CertDir, certMode},
 		{e.cfg.Paths.ACMEWebroot, 0o755},
 		{e.cfg.Paths.SiteDir, 0o755},
 		{e.cfg.Paths.BinDir, 0o755},
@@ -148,30 +162,57 @@ type userStep struct{ e *stepEnv }
 func (*userStep) Name() string { return "user" }
 
 func (s *userStep) Check(ctx context.Context) (CheckResult, error) {
-	_, err := s.e.exec.Run(ctx, Cmd{Name: "id", Args: []string{"-u", serviceUser}})
-	if err == nil {
-		return CheckResult{Satisfied: true, Detail: "system user " + serviceUser}, nil
+	var missing []string
+	for _, user := range s.e.serviceUsers() {
+		_, err := s.e.exec.Run(ctx, Cmd{Name: "id", Args: []string{"-u", user}})
+		switch {
+		case err == nil:
+		case exitCode(err) == 1 || notFound(err):
+			missing = append(missing, user)
+		default:
+			return CheckResult{}, fmt.Errorf("query user %s: %w", user, err)
+		}
 	}
-	if exitCode(err) == 1 || notFound(err) {
-		return CheckResult{Detail: "system user " + serviceUser + " does not exist"}, nil
+	if len(missing) > 0 {
+		return CheckResult{Detail: "system user " + strings.Join(missing, ", ") + " does not exist"}, nil
 	}
-	return CheckResult{}, fmt.Errorf("query user %s: %w", serviceUser, err)
+	return CheckResult{Satisfied: true, Detail: "system users " + strings.Join(s.e.serviceUsers(), ", ")}, nil
 }
 
 func (s *userStep) Run(ctx context.Context) error {
-	_, err := s.e.exec.Run(ctx, Cmd{Name: "useradd", Args: []string{
-		"--system",
-		"--no-create-home",
-		"--home-dir", "/nonexistent",
-		"--shell", "/usr/sbin/nologin",
-		"--user-group",
-		serviceUser,
-	}})
-	if err != nil {
-		return fmt.Errorf("create user %s: %w", serviceUser, err)
+	for _, user := range s.e.serviceUsers() {
+		if _, err := s.e.exec.Run(ctx, Cmd{Name: "id", Args: []string{"-u", user}}); err == nil {
+			continue
+		}
+		_, err := s.e.exec.Run(ctx, Cmd{Name: "useradd", Args: []string{
+			"--system",
+			"--no-create-home",
+			"--home-dir", "/nonexistent",
+			"--shell", "/usr/sbin/nologin",
+			"--user-group",
+			user,
+		}})
+		if err != nil {
+			return fmt.Errorf("create user %s: %w", user, err)
+		}
+		s.e.st.AddPath(user, state.KindUser, "user", s.e.now())
 	}
-	s.e.st.AddPath(serviceUser, state.KindUser, "user", s.e.now())
+	// The transport reaches the certificate through the state directory, which belongs to the core's
+	// group: without the membership it cannot traverse the path and every handshake fails.
+	if s.e.cfg.Hysteria != nil {
+		if _, err := s.e.exec.Run(ctx, Cmd{Name: "usermod", Args: []string{"-a", "-G", serviceUser, transportUser}}); err != nil {
+			return fmt.Errorf("add %s to group %s: %w", transportUser, serviceUser, err)
+		}
+	}
 	return nil
+}
+
+// serviceUsers are the accounts a node needs: the core's, and the transport's when it is enabled.
+func (e *stepEnv) serviceUsers() []string {
+	if e.cfg.Hysteria == nil {
+		return []string{serviceUser}
+	}
+	return []string{serviceUser, transportUser}
 }
 
 // dirsStep creates the agent's directories with the modes the safety rules require.
@@ -218,6 +259,18 @@ func (s *dirsStep) Run(ctx context.Context) error {
 		if d.path == s.e.cfg.Paths.ConfigDir {
 			if err := s.allowServiceUser(ctx, d.path); err != nil {
 				return err
+			}
+		}
+		switch d.path {
+		case filepath.Dir(s.e.cfg.Paths.StateDir), s.e.cfg.Paths.StateDir:
+			if _, err := s.e.exec.Run(ctx, Cmd{Name: "chown", Args: []string{"root:" + serviceUser, d.path}}); err != nil {
+				return fmt.Errorf("give %s to root:%s: %w", d.path, serviceUser, err)
+			}
+		case s.e.cfg.Paths.CertDir:
+			if s.e.cfg.Hysteria != nil {
+				if _, err := s.e.exec.Run(ctx, Cmd{Name: "chown", Args: []string{"root:" + transportUser, d.path}}); err != nil {
+					return fmt.Errorf("give %s to root:%s: %w", d.path, transportUser, err)
+				}
 			}
 		}
 		s.e.st.AddPath(d.path, state.KindDir, "dirs", s.e.now())

@@ -269,6 +269,10 @@ ProtectHome=yes
 // HysteriaUnitName is the unit that runs the QUIC transport.
 const HysteriaUnitName = "termit-hysteria.service"
 
+// HysteriaUser is the account the QUIC transport runs as. It is separate from the core's account on
+// purpose: the transport reads the certificate's private key, and the core must not be able to.
+const HysteriaUser = "termit-hy"
+
 // Hysteria renders the QUIC transport's unit. It is a second long-running proxy process, which
 // DESCRIPTION.md §11.8 allows for a transport the core cannot speak — and it is narrow: its own unit,
 // one capability because UDP/443 is below 1024, and no writable path of its own.
@@ -292,8 +296,8 @@ StartLimitBurst=5
 
 [Service]
 Type=simple
-User=termit
-Group=termit
+User=termit-hy
+Group=termit-hy
 ExecStart=%s server -c %s
 Restart=always
 RestartSec=3s
