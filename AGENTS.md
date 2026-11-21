@@ -196,7 +196,11 @@ the mesh scenarios, resource usage — is testable.
 Rules: tests are re-runnable and tolerate a previous failed run; never leave a machine needing manual
 repair (on failure dump the logs and a `termit-uv doctor` report into the output); never put lab
 addresses, keys, domains or ACME URLs in the repository; destructive actions (uninstall, reboot) only in
-tests explicitly tagged for them.
+tests explicitly tagged for them. **A red test is repeated once, three minutes later, before it is
+investigated.** The lab's egress and GitHub's release CDN hand out TLS and read timeouts that do not
+reproduce — a probe whose worker listened but whose SOCKS handshake timed out is the usual shape — and a
+single re-run tells that apart from a defect for the price of three minutes. Only a failure that repeats
+is a bug; quote both runs when it does.
 
 ## 5. Coding conventions
 
