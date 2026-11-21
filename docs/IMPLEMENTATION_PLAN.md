@@ -2324,3 +2324,31 @@ the block brought it back and a real client fetched `https://example.com` throug
 Backups: MN `/root/termit-mn-pre-050p1-20261121-181849` (binary, unit, `etc-termit.tgz`,
 `var-lib-termit.tgz`, sha256), then4 `/root/then4-config-before-0.5.0.yaml` and
 `/root/termit-pre-050p1-*`, then5 `/root/termit-pre-050p1-20261121-181930`.
+
+### 11.13 Production pass, 0.5.1, 2026-11-21
+
+`0.5.1` fixes the owner's page — with the transport enabled it filed the node's own `hy2://` link under
+"Your own devices", whose note promises a link that never reaches the mesh — and adds the two things that
+made the transport usable without an editor: `init --hysteria` / `--no-hysteria`, and the `hy2://` link in
+`uri`, `device add` and `device list`.
+
+**The pre-release this record is about is `v0.5.1p1`** (`3d6a76f`, 14 assets). Order: server, then5 (the
+node that had the transport off), then4. The server took it with `sh mn.sh --version v0.5.1p1`; schema
+stayed 6, `healthz` answers `"build":"v0.5.1p1"`, both nodes active.
+
+**then5 was where the new interface was proved**, because it is the node that had `udp_ports: []` and no
+`hysteria:` block. `termit-uv init --hysteria` wrote both, reported `11 ok, 5 present`, started
+`termit-hysteria` on UDP/443, and printed exactly the warning the design calls for: *"UDP/443 is in the
+configuration; the table already in force was rendered without it"*, with the `firewall on` /
+`confirm` next step. The table was re-applied and confirmed (`udp port 443 accept` in `inet termit_uv`,
+default deny, ports 22/80/443), `doctor` 0 — and through the transport, with a client on the node itself:
+`200`, exit `ip=104.28.222.18 warp=on`, IPv6 literal refused, `ipv6.icanhazip.com` failing rather than
+answering with the node's address.
+
+**The links reach the terminal.** `termit-uv uri` printed the `vless://` and the `hy2://` one
+(`#then5.bookinet.ru%20(QUIC)`); `device add --label probe-device` printed both for the device, and it was
+removed afterwards. On then4 the subscription then carried both styles and both nodes' QUIC links
+(`hy2` present, `then5 … (QUIC)` found), so a client can now take either node over QUIC.
+
+Backups: MN `/root/termit-mn-pre-050p1-20261121-181849` (previous pass) and the 0.5.1 run's own; then5
+`/root/termit-pre-050p1-20261121-181930` plus the 0.5.1 backups; then4 `/root/termit-pre-050p1-*`.
