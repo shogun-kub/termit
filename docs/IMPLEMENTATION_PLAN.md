@@ -1681,7 +1681,9 @@ found by scanning.
 
 Phases:
 
-0. Spike (largely done: S16). Left: UDP through the hop, and the auth call against the agent.
+0. Spike (done: S16) — the handshake, the decoy, the hop for TCP (25 of 25) and for UDP (an echo through
+   it and a real DNS answer). What is left of it is the auth call against the agent, which is phase 2's
+   first task.
 1. Profile: `kind: hysteria2` in the envelope, its parameters, URI build/parse, the pair-secret
    derivation and the epoch decision that goes with it.
 2. Node: the binary, its unit, install and upgrade; the agent's auth endpoint; the core's loopback `socks`
