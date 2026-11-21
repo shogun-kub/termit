@@ -22,8 +22,6 @@ const (
 	// hysteriaReleaseBase is a release directory. Hysteria's tags carry a path ("app/v2.14.0"), so the
 	// base includes it and the layout below stays <base>/v<version>/<asset>.
 	hysteriaReleaseBase = "https://github.com/apernet/hysteria/releases/download/app"
-	// hysteriaMaxBytes bounds the download: the amd64 binary is 24 MiB.
-	hysteriaMaxBytes = 96 << 20
 )
 
 // hysteriaAssets pins the release asset and its digest per GOARCH, taken from the release's
