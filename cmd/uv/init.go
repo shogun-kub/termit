@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"runtime"
+	"slices"
 	"strings"
 
 	"github.com/shogun-kub/termit/internal/i18n"
@@ -36,13 +37,16 @@ credential is ever regenerated.`)
 	warpTransport := flags.String("warp-transport", "",
 		"how WARP carries traffic: wireguard (inside the core, TCP and UDP) or proxy (warp-cli's SOCKS, TCP only)")
 	warpFamily := flags.String("warp-family", "",
-		"address family the WARP tunnel carries: ipv4 (default) or ipv6; the other family goes direct")
+		"address family the WARP tunnel carries: ipv4 (default) or ipv6; destinations of the other family are refused")
 	xrayVersion := flags.String("xray-version", "", "Xray-core release to install")
 	xrayBase := flags.String("xray-download-base", "", "release directory: an http(s) URL, a file URL or a local path")
 	dryRun := flags.Bool("dry-run", false, "report what would change without touching the host")
 	only := flags.String("only", "", "run only these steps, comma separated")
 	skip := flags.String("skip", "", "skip these steps, comma separated")
 	harden := flags.Bool("harden", false, "configure the host firewall and the ban engine for this node (it does not apply the table)")
+	flags.Bool("hysteria", false,
+		"serve the QUIC transport too: Hysteria2 on UDP/443, plus that port in the firewall's UDP list")
+	flags.Bool("no-hysteria", false, "stop serving the QUIC transport and remove it from this node")
 	relocate := flags.Bool("relocate", false, "install a rebuilt node: reuse the agent key, mint a new identity, do not enroll")
 	agentKeyFile := flags.String("agent-key-file", "",
 		"0600 file holding the agent key of the node being rebuilt (required with --relocate)")
@@ -140,6 +144,15 @@ credential is ever regenerated.`)
 		// present to confirm it.
 		cfg.Security.Firewall.Enabled = *harden
 		cfg.Security.Guard.Enabled = *harden
+	}
+	switch {
+	case set["hysteria"] && set["no-hysteria"]:
+		fmt.Fprintln(a.stderr, "termit-uv init: --hysteria and --no-hysteria contradict each other")
+		return exitUsage
+	case set["no-hysteria"]:
+		enableTransport(cfg, false)
+	case set["hysteria"]:
+		enableTransport(cfg, true)
 	}
 
 	if cfg.Domain == "" {
@@ -245,6 +258,10 @@ credential is ever regenerated.`)
 		fmt.Fprintln(a.stdout, "next: termit-uv unblock                              (the node keeps its domain)")
 		fmt.Fprintln(a.stdout, "      termit-uv migrate --relocate                   (the node moved to a new domain)")
 	}
+	if set["hysteria"] && cfg.Security.Firewall.Enabled && !*dryRun {
+		fmt.Fprintf(a.stdout, "\nQUIC transport: UDP/%d is in the configuration; the table already in force was rendered without it.\n", proto.HysteriaPort)
+		fmt.Fprintln(a.stdout, "next: termit-uv firewall on        (it removes itself in five minutes unless you confirm)")
+	}
 	if set["harden"] && cfg.Security.Firewall.Enabled && !*dryRun {
 		fmt.Fprintln(a.stdout, "\nhardening: the configuration and the ban engine are in place; the table is not applied.")
 		fmt.Fprintln(a.stdout, "next: termit-uv firewall on        (it removes itself in five minutes unless you confirm)")
@@ -305,6 +322,33 @@ func agentKeyFromBytes(data []byte) (string, error) {
 		return "", errors.New("the agent key file must hold exactly one key")
 	}
 	return key, nil
+}
+
+// enableTransport turns the QUIC transport on or off in the configuration. Turning it on publishes the
+// port it listens on: that is the part an operator forgets, and an unpublished UDP port is counted as
+// scanning and then banned — `cfg.Validate` refuses the combination, so the switch satisfies the rule it
+// would otherwise fail on. Turning it off leaves the port alone: it is the operator's line, and a node
+// that stopped serving the transport may still publish it for something else.
+func enableTransport(cfg *config.Config, on bool) {
+	if !on {
+		cfg.Hysteria = nil
+		return
+	}
+	if cfg.Hysteria == nil {
+		cfg.Hysteria = &config.Hysteria{}
+	}
+	cfg.Security.Firewall.UDPPorts = withPort(cfg.Security.Firewall.UDPPorts, proto.HysteriaPort)
+}
+
+// withPort returns ports with port present, in ascending order and without duplicates: the flag that
+// adds one must not make the configuration different every time it runs.
+func withPort(ports []int, port int) []int {
+	if slices.Contains(ports, port) {
+		return ports
+	}
+	out := append(append([]int(nil), ports...), port)
+	slices.Sort(out)
+	return out
 }
 
 // joinWords renders a list as "a, b and c".

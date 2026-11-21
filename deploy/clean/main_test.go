@@ -44,6 +44,9 @@ func tree(t *testing.T) string {
 	write(".spike-out/prod.md", 512)
 	write(".spike-out/prod_known_hosts", 256)
 	write(".spike-out/mn-admin.token", 43)
+	write(".spike-out/github-token", 93)
+	write(".spike-out/sonar-token", 44)
+	write(".spike-out/gh.js", 1200)
 	write(".spike-out/ssh/lab.pub", 128)
 	write(".spike-out/shotgen/main.go", 200)
 	write(".spike-out/dist/v0.1.1/termit-mn", 2048)
@@ -85,9 +88,10 @@ func TestPlanRemovesArtifactsAndScratchButKeepsTheToolchain(t *testing.T) {
 			t.Errorf("%q is not planned for removal: %s", path, got)
 		}
 	}
-	// The toolchain, the caches, the lab's own notes and the input directories stay.
+	// The toolchain, the caches, the notes, the credentials beside them and the input directories stay.
 	for _, path := range []string{
 		".spike-out/tools", ".spike-out/gocache", ".spike-out/lab.md", ".spike-out/mn-admin.token",
+		".spike-out/github-token", ".spike-out/sonar-token", ".spike-out/gh.js",
 		".spike-out/prod.md", ".spike-out/prod_known_hosts",
 		".spike-out/ssh", ".spike-out/shotgen", "captures", "cmd", "docs", "go.mod",
 	} {

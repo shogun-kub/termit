@@ -45,9 +45,10 @@ type Data struct {
 	// PageURL is the address the owner should keep; it is printed on the page too, so a screenshot
 	// still tells them how to open it again.
 	PageURL string
-	// Local is this node's own device. It is what survives a management server that cannot be
-	// reached, so it is always present.
-	Local Link
+	// Local is this node's own device, one link per transport it serves. It is what survives a
+	// management server that cannot be reached, so it is always present. A second transport is another
+	// way into the same node — not a local device, which is why it belongs here and not in Devices.
+	Local []Link
 	// Devices are the node's local users: the owner's phone, laptop, router. They live only on this
 	// node, and the page is where the owner picks the one they need without a terminal.
 	Devices []Link
@@ -67,7 +68,7 @@ type Data struct {
 	Text pageText
 	// LocalView, DevicesView and PeersView pair each link with the words its row needs. html/template
 	// rebinds $ when a named template is called, so the words have to travel with the link.
-	LocalView   LinkView
+	LocalView   []LinkView
 	DevicesView []LinkView
 	PeersView   []LinkView
 }
@@ -254,7 +255,7 @@ footer { margin-top: 2.5rem; color: var(--dim); font-size: .8rem; text-align: ce
 <h2>{{.Text.Local}}</h2>
 <section>
   <ul class="links">
-    {{template "link" .LocalView}}
+    {{range .LocalView}}{{template "link" .}}{{end}}
   </ul>
   <p class="note">{{.Text.LocalNote}}</p>
 </section>
@@ -346,7 +347,10 @@ func Render(d Data) ([]byte, error) {
 		d.Lang = i18n.Default
 	}
 	d.Text = textFor(d.Lang)
-	d.LocalView = LinkView{Link: d.Local, Text: d.Text}
+	d.LocalView = make([]LinkView, 0, len(d.Local))
+	for _, link := range d.Local {
+		d.LocalView = append(d.LocalView, LinkView{Link: link, Text: d.Text})
+	}
 	d.DevicesView = make([]LinkView, 0, len(d.Devices))
 	for _, device := range d.Devices {
 		d.DevicesView = append(d.DevicesView, LinkView{Link: device, Text: d.Text})

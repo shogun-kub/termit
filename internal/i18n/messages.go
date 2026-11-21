@@ -42,6 +42,8 @@ const (
 	MenuURIHint          Key = "menu.uri.hint"
 	MenuWarpLabel        Key = "menu.warp.label"
 	MenuWarpHint         Key = "menu.warp.hint"
+	MenuTransportLabel   Key = "menu.transport.label"
+	MenuTransportHint    Key = "menu.transport.hint"
 	MenuCertificateLabel Key = "menu.certificate.label"
 	MenuCertificateHint  Key = "menu.certificate.hint"
 	MenuDecoyLabel       Key = "menu.decoy.label"
@@ -109,6 +111,7 @@ const (
 	PromptDomain       Key = "prompt.domain"
 	PromptEmail        Key = "prompt.email"
 	PromptWarp         Key = "prompt.warp"
+	PromptTransport    Key = "prompt.transport"
 	PromptMN           Key = "prompt.mn"
 	PromptInvite       Key = "prompt.invite"
 	PromptDeviceLabel  Key = "prompt.device_label"
@@ -240,6 +243,8 @@ var messagesUVRU = map[Key]string{
 	MenuURIHint:          "ссылка собственного устройства этого узла",
 	MenuWarpLabel:        "выход (WARP)",
 	MenuWarpHint:         "откуда уходит проксируемый трафик",
+	MenuTransportLabel:   "QUIC-транспорт",
+	MenuTransportHint:    "Hysteria2 на UDP/443 рядом с TLS-профилем: включить или выключить",
 	MenuCertificateLabel: "сертификат",
 	MenuCertificateHint:  "обновить TLS-сертификат сейчас",
 	MenuDecoyLabel:       "сайт-приманка",
@@ -303,6 +308,7 @@ var messagesUVRU = map[Key]string{
 	PromptDomain:       "Домен (имя в DNS, указывающее на эту машину)",
 	PromptEmail:        "Адрес для центра сертификации",
 	PromptWarp:         "Отправлять проксируемый трафик через Cloudflare WARP?",
+	PromptTransport:    "Отдавать второй транспорт по QUIC (Hysteria2 на UDP/443)?",
 	PromptMN:           "Адрес сервера управления",
 	PromptInvite:       "Код приглашения от оператора сервера",
 	PromptDeviceLabel:  "Имя нового устройства",
@@ -430,6 +436,8 @@ var messagesUVEN = map[Key]string{
 	MenuURIHint:          "the URI of this node's own device",
 	MenuWarpLabel:        "egress (WARP)",
 	MenuWarpHint:         "where proxied traffic leaves",
+	MenuTransportLabel:   "QUIC transport",
+	MenuTransportHint:    "Hysteria2 on UDP/443 beside the TLS profile: turn it on or off",
 	MenuCertificateLabel: "certificate",
 	MenuCertificateHint:  "renew the TLS certificate now",
 	MenuDecoyLabel:       "decoy site",
@@ -493,6 +501,7 @@ var messagesUVEN = map[Key]string{
 	PromptDomain:       "Domain (a DNS name that points at this machine)",
 	PromptEmail:        "Email for the certificate authority",
 	PromptWarp:         "Send proxied traffic through Cloudflare WARP?",
+	PromptTransport:    "Serve the second transport over QUIC (Hysteria2 on UDP/443)?",
 	PromptMN:           "Management server URL",
 	PromptInvite:       "Invite code from the server operator",
 	PromptDeviceLabel:  "Label for the new device",

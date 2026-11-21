@@ -3,6 +3,30 @@ What each release changed, written for the people who run Termit. Newest first;
 carries every section back to the last release: the versions in between were handed out only as
 pre-releases, and whoever installs the release skipped them.
 
+## 0.5.1 — 2026-11-21
+
+### Added
+
+- **The QUIC transport is switched on without editing YAML.** `termit-uv init --hysteria` adds the block
+  and, with it, the UDP port the transport listens on to `security.firewall.udp_ports` — a port missing
+  from that list falls into the core's scan counter and the guard bans the owner's own traffic. `init
+  --no-hysteria` turns it off and retires the unit, the configuration and the binary. Both go through
+  `init`, so everything else converges as usual, and the menu has an entry ("QUIC transport") that asks the
+  one question and runs the same command. The applied firewall table is still applied only by `firewall on`
+  — `init` says so when it matters.
+- **The CLI hands out the second link, not only the page.** `termit-uv uri`, `device add` and `device list`
+  print the `hy2://` link beside the `vless://` one when the node serves the transport, so a device added
+  from a terminal comes with both ways in.
+
+### Fixed
+
+- **The node's own QUIC link is filed under the node, not under your devices.** The owner's page has a
+  section for this node and one for local devices, and the section for local devices says they exist only
+  on this node and never reach the mesh. With the transport enabled, the node's own `hy2://` link — same
+  credentials the mesh already has — was appended there, so the page captioned a mesh link with a note
+  that promises the opposite. Both of the node's links now sit in the node's section; a local device's
+  `hy2://` stays with the devices, where it belongs.
+
 ## 0.5.0 — 2026-11-21
 
 The node syncs when the server said to, and a new node reaches the rest of the mesh in minutes instead
@@ -68,7 +92,7 @@ of at everyone's next cycle.
 - **IPv6 no longer leaves on the node's own address.** The tunnel carries one address family, and
   destinations of the other one were routed `direct` — out through the node's own IPv6, the identifier the
   tunnel exists to hide. They are refused now: a client sees a connection that fails instead of an address
-  it never asked for. The price is named in `OPERATIONS.md` §7 — a service reachable only over the untaken
+  it never asked for. The price is named in [`OPERATIONS.md`](docs/OPERATIONS.md) §6 — a service reachable only over the untaken
   family does not work through the node, which with the IPv4 default means IPv6-only services.
 
 ## 0.4.2 — 2026-11-20

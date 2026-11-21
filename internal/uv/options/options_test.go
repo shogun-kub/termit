@@ -85,9 +85,8 @@ func TestRenderCarriesEveryLinkAndSaysWhatItIs(t *testing.T) {
 		Domain: "node.example.com",
 		Lang:   i18n.EN,
 		Token:  strings.Repeat("ab", options.TokenBytes),
-		Local: options.Link{
-			Label: "node.example.com",
-			URI:   "vless://self@node.example.com:443?type=xhttp&security=tls#node.example.com",
+		Local: []options.Link{
+			{Label: "node.example.com", URI: "vless://self@node.example.com:443?type=xhttp&security=tls#node.example.com"},
 		},
 		Devices: []options.Link{
 			{Label: "phone", URI: "vless://dev@node.example.com:443?type=xhttp#phone"},
@@ -108,7 +107,7 @@ func TestRenderCarriesEveryLinkAndSaysWhatItIs(t *testing.T) {
 	}
 	html := string(page)
 	for _, want := range []string{
-		data.Local.URI[:40],
+		data.Local[0].URI[:40],
 		"Devices (1)",
 		"phone",
 		"far.example.com",
@@ -140,7 +139,7 @@ func TestRenderWithoutPeersIsHonest(t *testing.T) {
 		Domain: "node.example.com",
 		Lang:   i18n.EN,
 		Token:  strings.Repeat("cd", options.TokenBytes),
-		Local:  options.Link{Label: "node.example.com", URI: "vless://self@node.example.com:443"},
+		Local:  []options.Link{{Label: "node.example.com", URI: "vless://self@node.example.com:443"}},
 	})
 	if err != nil {
 		t.Fatalf("Render: %v", err)
@@ -160,7 +159,7 @@ func TestRenderShowsAWarningInsteadOfAnEmptyMesh(t *testing.T) {
 		Domain:  "node.example.com",
 		Lang:    i18n.EN,
 		Token:   strings.Repeat("ef", options.TokenBytes),
-		Local:   options.Link{Label: "node.example.com", URI: "vless://self@node.example.com:443"},
+		Local:   []options.Link{{Label: "node.example.com", URI: "vless://self@node.example.com:443"}},
 		Warning: "The mesh could not be fetched just now.",
 	})
 	if err != nil {
@@ -181,7 +180,7 @@ func TestRenderInRussian(t *testing.T) {
 		Domain: "node.example.com",
 		Lang:   i18n.RU,
 		Token:  strings.Repeat("ab", options.TokenBytes),
-		Local:  options.Link{Label: "node.example.com", URI: "vless://self@node.example.com:443#node.example.com"},
+		Local:  []options.Link{{Label: "node.example.com", URI: "vless://self@node.example.com:443#node.example.com"}},
 		Peers: []options.Link{
 			{Label: "pesok.example.com", URI: "vless://peer@pesok.example.com:443#pesok.example.com", Degraded: true},
 		},

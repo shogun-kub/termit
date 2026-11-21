@@ -66,7 +66,7 @@ Useful variations:
 | your own build, not a release | install the binary yourself and run `termit-uv init` |
 | opt out of WARP | `--no-warp`, later `termit-uv warp mode off` |
 | change how WARP carries traffic | `termit-uv init --warp-transport wireguard` (inside the core, TCP and UDP) or `proxy` (the `warp-cli` sidecar, TCP only) |
-| choose which family leaves through WARP | `termit-uv init --warp-family ipv4` (the default; the other family goes direct) or `ipv6` |
+| choose which family leaves through WARP | `termit-uv init --warp-family ipv4` (the default; destinations of the other family are refused) or `ipv6` |
 
 The script refuses to install bytes it cannot verify. If it stops, the message names the file and the
 expected digest.
@@ -83,7 +83,9 @@ termit-uv init --domain node1.example.com --email you@example.com
 ## What `termit-uv init` does
 
 Fourteen steps, each idempotent: a step whose effect is already there does nothing, so re-running
-is the way to repair a partial install.
+is the way to repair a partial install. With the QUIC transport enabled two more appear —
+`hysteria-binary` and `hysteria-config` — and without it `hysteria-off`, which does nothing on a node that
+never had it.
 
 | Step | What it does |
 |---|---|
@@ -159,19 +161,24 @@ The node can serve its certificate on UDP/443 too, with Hysteria2 — a protocol
 networks. Voice calls and video feel the difference first; ordinary browsing does not need it, and nothing
 is installed until you ask.
 
-```yaml
-# /etc/termit/uv/config.yaml
-hysteria: {}            # the block is the switch
-security:
-  firewall:
-    udp_ports: [443]    # required while the firewall is on
+```bash
+termit-uv init --hysteria      # install and serve it; the menu has "QUIC transport"
 ```
 
-`termit-uv init` then installs the pinned binary, writes `/etc/termit/uv/hysteria.yaml`, and starts
+The flag writes the block the transport needs (`hysteria: {}`) and adds `443` to
+`security.firewall.udp_ports`: a UDP port that is not in that list falls into the core's scan counter, and
+the guard would ban the owner's own QUIC traffic. An already-applied table is not touched by `init` — the
+firewall is applied only by `firewall on` — so re-apply it to publish the port:
+
+```bash
+termit-uv firewall on && termit-uv firewall confirm
+```
+
+`init` then installs the pinned binary, writes `/etc/termit/uv/hysteria.yaml`, and starts
 `termit-hysteria` as its own unprivileged user. From that point:
 
-- `termit-uv uri` and the page from `termit-uv options` hand out a `hy2://` link beside the `vless://` one,
-  labelled `(QUIC)`;
+- `termit-uv uri`, `termit-uv device add` and `termit-uv device list` print the `hy2://` link beside the
+  `vless://` one, labelled `(QUIC)`, and so does the page from `termit-uv options`;
 - the subscription from your server carries the same second link, and the sing-box profile gets a
   `hysteria2` outbound;
 - `termit-uv sync` is what tells the server about it — nothing on the server needs configuring.
@@ -179,11 +186,12 @@ security:
 What it costs: about 50 MB of memory, and its unit caps it at 256 MB; 4–9 % of one core per 100 Mbit/s
 carried. The pinned release also carries one known issue (GO-2026-5288): a crafted packet can exhaust the
 transport's memory. The cap turns that into a restart of the transport alone — the TLS profile and every
-other service on the node keep running — and the next release is not allowed to ship the advisory:
-`deploy/vulnerabilities.json` names `0.6.0` as the version that must not.
+other service on the node keep running — and `0.6.0` is the first release that must not carry it,
+as `deploy/vulnerabilities.json` says.
 
-To turn it off, delete the `hysteria:` block and run `termit-uv init` again: the unit stops, the port
-closes, and the next sync removes the second link from the subscription.
+To turn it off, run `termit-uv init --no-hysteria`: the unit is stopped,
+disabled and removed with its configuration and the pinned binary, the port closes, and the next sync
+drops the second link from the subscription.
 
 ## Day to day
 

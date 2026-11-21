@@ -47,7 +47,7 @@ listen:       :443
 api prefix:   /6rfjdqfn5nno
 masking site: portal (what a prober gets for every path the API does not claim)
 config:       /etc/termit/mn/config.yaml
-database:     /var/lib/termit/mn/termit.db (schema 5)
+database:     /var/lib/termit/mn/termit.db (schema 6)
 master key:   /etc/termit/mn/master.key (generated now)
 
 admin token (shown once, store it now):
@@ -161,7 +161,7 @@ api:      /6rfjdqfn5nno
 decoy:    portal
 version:  termit-mn v0.4.1 (commit …, built …, api 1, profile v1)
 uptime:   3h12m (started 2026-11-10 11:18)
-database: /var/lib/termit/mn/termit.db (412.0 KiB, schema 5)
+database: /var/lib/termit/mn/termit.db (412.0 KiB, schema 6)
 prober:   ready (/usr/local/lib/termit/xray)
 queue:    0 due, next 2026-11-11 12:34 UTC
 cert:     2027-02-08T12:06:44Z (in 89 days)
@@ -233,8 +233,8 @@ DNS на сервере сломан, таймаут — даёт `unknown` и �
 
 | URL | Содержимое |
 |---|---|
-| `https://mn.example.com/sub/<token>` | base64 из одного `vless://` на строку — тот самый «URL подписки», который нужен клиенту |
-| `https://mn.example.com/sub/<token>/json` | те же пиры как профиль sing-box, с селектором и `direct` для приватных диапазонов |
+| `https://mn.example.com/sub/<token>` | base64 из ссылок, по строке на ссылку, — тот самый «URL подписки», который нужен клиенту; узел с включённым QUIC-транспортом добавляет рядом с `vless://` свою `hy2://` |
+| `https://mn.example.com/sub/<token>/json` | те же пиры как профиль sing-box: селектор, `direct` для приватных диапазонов и outbound `hysteria2`, если узел его отдаёт |
 
 Оба стабильны при неизменном составе пиров и несут `ETag`, поэтому кэширующий клиент обходится одним
 `304`. Свой URL узел показывает в `termit-uv status`. Обновление токена мгновенно отменяет старый URL и не
@@ -298,7 +298,7 @@ journalctl -u termit-mn -f
 | `termit-mn admin rotate` | заменить админ-токен, которым команда аутентифицировалась; `--token-out FILE` пишет его в файл |
 | `termit-mn status` | сервер, узлы, расписание |
 | `termit-mn backup`, `termit-mn restore` | снимок и восстановление |
-| `termit-mn firewall` | собственная таблица сервера: `status`, `on`, `off`, `confirm`, `refresh` |
+| `termit-mn firewall` | собственная таблица сервера: `status`, `on`, `off`, `confirm`, `refresh`, `restore` |
 | `termit-mn bans`, `termit-mn guard` | движок банов на сервере |
 | `termit-mn version` | версия сборки и протокола |
 

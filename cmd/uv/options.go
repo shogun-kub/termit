@@ -130,17 +130,19 @@ func (a *application) optionsData(ctx context.Context, cfg *config.Config, node 
 		Token:   token,
 		Lang:    cfg.Lang(),
 		PageURL: options.PageURL(cfg.Domain, token),
-		Local: options.Link{
+		Local: []options.Link{{
 			Label: cfg.Domain,
 			URI:   localURI(cfg, node),
-		},
+		}},
 		Generated: a.now().UTC(),
 	}
 	// The QUIC transport is a second way into the same node, and it needs its own link: the user name and
-	// the password are derived from the same UUID, so the page can hand it out without asking anyone.
+	// the password are derived from the same UUID, so the page can hand it out without asking anyone. It
+	// belongs beside the node's own link because it *is* the node's own link — its credentials are the
+	// ones the mesh also has, unlike a local device's, which never leave this machine.
 	if cfg.Hysteria != nil {
 		if uri, err := proto.BuildHysteriaURL(cfg.Domain, node.Identity.SelfUUID, cfg.Domain+" (QUIC)"); err == nil {
-			data.Devices = append(data.Devices, options.Link{Label: cfg.Domain + " (QUIC)", URI: uri})
+			data.Local = append(data.Local, options.Link{Label: cfg.Domain + " (QUIC)", URI: uri})
 		}
 	}
 	// The owner's own devices belong here: the page is where they pick the one they need, and

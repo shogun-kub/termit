@@ -46,7 +46,7 @@ listen:       :443
 api prefix:   /6rfjdqfn5nno
 masking site: portal (what a prober gets for every path the API does not claim)
 config:       /etc/termit/mn/config.yaml
-database:     /var/lib/termit/mn/termit.db (schema 5)
+database:     /var/lib/termit/mn/termit.db (schema 6)
 master key:   /etc/termit/mn/master.key (generated now)
 
 admin token (shown once, store it now):
@@ -159,7 +159,7 @@ api:      /6rfjdqfn5nno
 decoy:    portal
 version:  termit-mn v0.4.1 (commit …, built …, api 1, profile v1)
 uptime:   3h12m (started 2026-11-10 11:18)
-database: /var/lib/termit/mn/termit.db (412.0 KiB, schema 5)
+database: /var/lib/termit/mn/termit.db (412.0 KiB, schema 6)
 prober:   ready (/usr/local/lib/termit/xray)
 queue:    0 due, next 2026-11-11 12:34 UTC
 cert:     2027-02-08T12:06:44Z (in 89 days)
@@ -231,8 +231,8 @@ Every node has one token. The endpoints are:
 
 | URL | Contents |
 |---|---|
-| `https://mn.example.com/sub/<token>` | base64 of one `vless://` URI per line — the "subscription URL" a client wants |
-| `https://mn.example.com/sub/<token>/json` | the same peers as a sing-box profile, with a selector and `direct` for private ranges |
+| `https://mn.example.com/sub/<token>` | base64 of the URIs, one per line — the "subscription URL" a client wants; a node that serves the QUIC transport adds its `hy2://` beside the `vless://` |
+| `https://mn.example.com/sub/<token>/json` | the same peers as a sing-box profile, with a selector, `direct` for private ranges and a `hysteria2` outbound when the node serves one |
 
 Both are stable for a given peer set and carry an `ETag`, so a caching client costs one `304`. A node
 shows its own URL in `termit-uv status`. Rotating the token invalidates the old URL immediately; it does not
