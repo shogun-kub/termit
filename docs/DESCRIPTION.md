@@ -103,6 +103,7 @@ Two binaries, one repository:
 | `127.0.0.1:8443/tcp` | `xray` | VLESS+XHTTP, plaintext, loopback only |
 | `127.0.0.1:10085/tcp` | `xray` | management API (inbounds, users), loopback only |
 | `127.0.0.1:40000/tcp` | `warp-cli` (only on `warp.transport: proxy`) | WARP SOCKS5 proxy |
+| `:443/udp` | `hysteria` (only when the QUIC transport is enabled) | that transport; a browser finds it through the `Alt-Svc` the vhost advertises |
 
 The front is nginx because the routing decision is a **prefix** match. Xray's `fallbacks` compare the
 request path exactly, while an XHTTP client appends a per-request identifier to its configured path
@@ -114,6 +115,12 @@ TLS for browsers, and provides a battle-tested streaming proxy for the XHTTP hop
 Xray therefore holds no certificate and speaks no TLS. The agent generates both configurations,
 serves nothing itself, and owns certificate issuance and renewal. The decoy is a static tree that
 nginx serves; an owner who wants a real site can point the fallback location at it later.
+
+The one exception to "one proxy process" is a transport the core cannot speak. It stays narrow: a pinned
+binary with a checksum, its own unit, user and state directory, a management listener on loopback only,
+a handshake whose shape is re-tested with every upgrade, and no policy of its own — its traffic enters
+the core through a loopback `socks` inbound, so WARP, the blocklist and the direct rules stay the core's
+decisions. `IMPLEMENTATION_PLAN.md` §10.3 is where that is being built.
 
 > Design note: this is the same three-layer shape the references use. The difference is that we
 > generate and own one nginx configuration file instead of overwriting the distribution's default
@@ -581,6 +588,12 @@ These are non-negotiable and must be enforced by tests:
    MN check results, and (optionally) on stderr of the timer.
 7. **Direct traffic stays direct.** Any feature that would capture host traffic is out of scope by
    construction, not by configuration.
+8. **One core, and at most one transport the core cannot speak.** A node runs exactly one `xray`. The only
+   other long-running proxy process is a QUIC transport, present only when the operator enables it, and it
+   brings its own pinned version and checksum, unit, user and state directory, a loopback-only management
+   listener, a handshake fingerprint that is re-tested on every upgrade, and no routing of its own: its
+   traffic reaches the core through a loopback inbound, so the core's routing stays the only place policy
+   lives.
 
 ## 12. Lessons taken from the references
 

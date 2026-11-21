@@ -1603,21 +1603,25 @@ The request has two sizes, and the smaller one may be enough:
 Constraints, in the order they decide the design:
 
 1. **The credential model is VLESS-shaped.** Pair access is a UUID derived per pair; Shadowsocks and
-   Hysteria2 use passwords, REALITY keeps the UUID. Each kind needs its own pair-secret derivation with
-   a distinct domain separator, or the mesh cannot express "A may use B" portably. Changing
-   `DESCRIPTION.md` §6.2 is a new `credential_epoch` and a migration.
+   Hysteria2 use passwords, REALITY keeps the UUID. For Hysteria2 the password is a one-way derivation of
+   that UUID (§10.3), so the mesh still expresses "A may use B" with what both sides already hold and the
+   epoch does not move. A kind whose secret cannot be derived from the UUID would change
+   `DESCRIPTION.md` §6.2, which is a new `credential_epoch` and a migration.
 2. **Port 443 is shared with the decoy and ACME.** nginx owns TCP/443 today. REALITY wants the core on
    443 and takes the client-facing handshake from nginx, so the decoy becomes REALITY's fallback and the
    certificate flow changes. QUIC protocols use UDP/443 and do not collide with nginx, but need their
    own probe path.
-3. **The prober is one binary.** MN's `xray-core` speaks every xray-core protocol; Hysteria2/TUIC need a
-   second pinned client with its own upgrade path and failure modes. The narrow `Probe(ctx, url)` seam
-   survives, but each transport is a new implementation behind it.
+3. **The prober is one binary.** MN's `xray-core` speaks every xray-core protocol; Hysteria2/TUIC need
+   another client there. The cheapest way to look like a browser is to link hysteria's own client code into
+   the MN binary: same handshake by construction, no second process on the server. A hand-written QUIC
+   prober would mean maintaining a fork of the handshake, which is not a prober but a second project.
+   The narrow `Probe(ctx, url)` seam survives, but each transport is a new implementation behind it.
 4. **Clients differ.** Stock sing-box already cannot read the XHTTP profile; a second protocol widens
    that matrix. The subscription must tell a client what it can parse — profile version, per-form
    rendering, or an explicit refusal — instead of emitting a URI that opens and fails.
-5. **No host firewall or routing changes and no second daemon.** That rules out TUN designs and anything
-   needing a port forward, and it applies to every new protocol.
+5. **No host routing changes, and no new process unless the core cannot speak the transport.** TUN designs
+   and anything needing a port forward stay out. A transport the core cannot speak is the one exception,
+   under the conditions in `DESCRIPTION.md` §11.8; every other kind runs inside the core it already has.
 
 Order in 0.5.0: the options first (small, no credential change), and the `{kind, version, params}` envelope
 built for the kind that ships in that release — Hysteria2 (§10.3), which is a binary of its own and
@@ -1639,7 +1643,7 @@ that works today is a QUIC transport: it runs on UDP, so the interference aimed 
 it, and its handshake can pass for a browser's.
 
 Hysteria2 is the one to take, on evidence rather than taste: its QUIC handshake is Chrome-shaped out of
-the box (S16). Measured on 2026–11–21 against a capture of the same session from Opera 140 (Chromium 157):
+the box (S16). Measured on 2026-11-21 against a capture of the same session from Opera 140 (Chromium 157):
 1,886 bytes of `ClientHello` from hysteria 2.14.0, 1,935–1,951 from the browser, the same twelve
 extensions, GREASE at both ends and no `0xff01`. `disable_chrome_parrot: true` drops it to 1,524 bytes
 with the Go extension order — the difference between blending in and announcing a library.
@@ -1655,17 +1659,20 @@ Three things decide the shape, and each one was learned the hard way:
   the core enforces: WARP, the blocklist, the direct rules, the opt-in BitTorrent block. Measured: on a
   node that refuses BitTorrent, torrent traffic went straight out through hysteria. Policy must live on
   the far side of the tunnel, not beside it — a `socks5` outbound to the core's own loopback `socks`
-  inbound, whose routing then classifies the flow exactly as it does today. On the lab, 2026–11–21, 25 of
+  inbound, whose routing then classifies the flow exactly as it does today. On the lab, 2026-11-21, 25 of
   25 requests through that hop succeeded at 80–95 MB/s, and the core added about 0.02 s of CPU per 100 MB.
-- **It is a second daemon.** xray-core has no hysteria2, so this is another pinned binary and another
-  unit, which contradicts the one-long-running-process invariant in `DESCRIPTION.md` §3 and §11. The
-  invariant changes for a reason that survives review: a transport the core cannot speak. It is pinned by
-  version and checksum, it has its own upgrade path, and its handshake is part of the fingerprint — an
-  upgrade is a fingerprint change and is tested as one.
-- **Its authentication is HTTP.** `auth.type: http` lets the agent answer the authentication call on
-  loopback, so the password can be the pair-derived secret the mesh already computes: no new credential
-  model, and adding or removing a peer needs no restart. The derivation still needs its own domain
-  separator (§10.2, constraint 1), and that is a `credential_epoch` decision, not a detail.
+- **It is a second daemon, and the design now says so.** xray-core has no hysteria2, so this is another
+  pinned binary and another unit — allowed on the conditions `DESCRIPTION.md` §11.8 spells out, and pinned
+  by version and checksum because its handshake is part of the fingerprint: an upgrade is a fingerprint
+  change and is tested as one.
+- **Its authentication is a file.** `auth.type: userpass` maps a name to a password, and the password is
+  derived from the pair's UUID — `base64url(SHA-256("termit/hysteria2/" + uuid))` — so there is no new
+  secret to store and no credential epoch to bump: both sides already know the UUID, and the derivation
+  is one-way. The agent rewrites the file on every sync and restarts the service, so a change costs a
+  restart of the QUIC transport alone: with the TLS transport also enabled that is invisible, and with it
+  alone sessions reconnect in seconds. Enrollments and blocks are rare enough to pay that, and one restart
+  is worth more than a password oracle listening on the node. The trade accepted here: whoever holds the
+  subscription holds both access links to that node.
 
 The certificate is the node's existing leaf: hysteria re-reads it on every handshake, so a renewal needs
 no restart. The decoy stays byte-identical: `masquerade: proxy` forwards a non-hysteria visitor to the
@@ -1682,12 +1689,11 @@ found by scanning.
 Phases:
 
 0. Spike (done: S16) — the handshake, the decoy, the hop for TCP (25 of 25) and for UDP (an echo through
-   it and a real DNS answer). What is left of it is the auth call against the agent, which is phase 2's
-   first task.
-1. Profile: `kind: hysteria2` in the envelope, its parameters, URI build/parse, the pair-secret
-   derivation and the epoch decision that goes with it.
-2. Node: the binary, its unit, install and upgrade; the agent's auth endpoint; the core's loopback `socks`
-   inbound behind it.
+   it and a real DNS answer). Nothing is left of it.
+1. Profile: `kind: hysteria2` in the envelope, its parameters, URI build/parse, and the password derived
+   from the UUID.
+2. Node: the binary, its unit, install and upgrade; the `userpass` file and the restart that applies it;
+   the core's loopback `socks` inbound behind it.
 3. Network: firewall, decoy masquerade, Alt-Svc, and the prober's second path on the MN side.
 4. Documentation and the production pass. This is a network change, so it ships as a pre-release first
    (AGENTS §9).
