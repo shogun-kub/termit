@@ -1261,11 +1261,10 @@ certificate and the same decoy. It is off by default, and a node that never enab
 and opens no port.
 
 ```yaml
-hysteria:
-  password: <a secret the operator chooses>
+hysteria: {}            # the block is the switch; its presence enables the transport
 security:
   firewall:
-    udp_ports: [443]   # required while the firewall is on
+    udp_ports: [443]    # required while the firewall is on
 ```
 
 `termit-uv init` then installs the pinned binary, writes `/etc/termit/uv/hysteria.yaml`, installs
@@ -1298,4 +1297,7 @@ systemctl status termit-hysteria
 ss -lnu | grep :443
 ```
 
-A wrong password or an empty one is refused when the configuration is read, not at the first handshake.
+There is no password to set. Every pair's user name and password are derived from that pair's UUID, which
+both the node and the server already hold: the node writes them into the transport's configuration, and the
+server writes the same values into the participant's link. Adding or removing a peer is a sync, not a
+configuration change on the node.
