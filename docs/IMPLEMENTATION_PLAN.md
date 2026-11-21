@@ -1945,6 +1945,58 @@ only by the peer and reaches `active` on the peer's `ok`; stopping the peer leav
 in decision 1, recorded in the guide; a stale result never moves the node; the state-machine tests are
 unchanged, because no transition was added.
 
+### 10.8 A QR code beside every client link
+
+Every row of the owner's page (`termit-uv options`) carries a copy button, and copying is the wrong gesture
+for the device the links exist for: a phone has no shared clipboard with the node, so the owner either types
+a 600-character URI or sends it through a messenger. A QR next to the link turns that into one camera action,
+and it is the same secret, only drawn — the page is behind the node's unguessable token, so nothing new is
+exposed, though a screenshot of the screen becomes scannable by whoever sees it, which the docs will say.
+
+The obvious implementation is forbidden by a rule this repository already has: no `img src="https://api.
+qrserver.com/…"` and no CDN copy of a QR library, because the page would (a) send the node's credentials to
+a third party and (b) reference an external host — the decoy's whole point is that a page which phones home
+is a fingerprint (`AGENTS.md` §5, "Decoy site"). So the encoder is ours, in one of two shapes:
+
+| shape | cost | notes |
+|---|---|---|
+| Go encoder, inline SVG per link | byte mode + Reed–Solomon, versions 1–40, ~300 lines with vectors | the page keeps the only JS it has (copy); testable in Go; no vendored JavaScript to audit |
+| a QR library embedded in the page | ~15 KB of MIT JavaScript, with attribution | smaller Go change, a second language to keep in step with the page's CSP and with the options test that fails a page referencing an external host (`internal/uv/options/options_test.go`) |
+
+The Go encoder is the recommendation: it is the shape the rest of the page already uses (the page is
+`html/template` over a Go value, so a `QR string` field per link renders as an `<svg>` with no script at
+all), and a QR is arithmetic, which tests well — the standard vectors for "HELLO WORLD" and a short URL, plus
+a round-trip through an independent decoder if one can be kept out of the shipped binary.
+
+What decides the real design, before any code:
+
+- **Density.** The node's own `vless://` link is a few hundred characters before fragmentation: XHTTP
+  extras, `mode=packet-up`, the path, `fragment=…`, `sb.tls.*`. That is a large, dense code — readable from a
+  still screen, unreliable from a moving one, and hopeless in a small inset. `hy2://` is a tenth of it. Two
+  ways out, and the choice must be made explicitly rather than discovered on a phone: draw the full link and
+  accept that the scan needs a steady hand, or draw a *minimal* link (scheme, credential, host, `type`,
+  `security`, `sni`, path — the parameters that connect) and leave `fragment` and `sb.tls.*` to the copy
+  button. The second is more useful and needs a size on the QR that a screen can show.
+- **Which rows.** All of them: the node's own two, every local device's two, and each peer's. A peer's link
+  is the one a new device most often needs, and it arrives with the subscription rather than from `device`.
+- **Where it appears.** Inline under the row (a second line in the same `<li>`), not a modal: the page has no
+  modal machinery and a phone cannot easily close one. One code visible at a time keeps the page readable.
+- **Error correction and size.** Level M with a module size that fits the column; the quiet zone is part of
+  the SVG's viewBox, because a code that touches the row's border does not scan.
+- **The terminal.** `termit-uv uri --qr` printing half-block characters is a nice-to-have, not part of this
+  item: the phone case needs the page, and a terminal QR is a second renderer to keep right.
+
+It is small enough to ride with `0.6.0`, which has to be cut anyway: the accepted advisory in
+`deploy/vulnerabilities.json` must be gone from that release.
+
+Acceptance: on a phone, the camera opens a row's code and the client imports the link; the page references
+no external host and still passes the existing test that fails a page referencing one (`internal/uv/options/options_test.go`); a Go test round-trips the encoder
+against the published vectors and fails if a link with a control character or an over-long URI is passed
+without a clear error; `go test` grows no dependency.
+
+Documents when this ships: `docs/guide/ru/using-uv.md` and its English counterpart (the page description),
+`docs/OPERATIONS.md` §8 for the owner's page, `--help` for the optional flag, and a changelog entry that
+names the screenshot consequence.
 ## 11. Planned: WARP over WireGuard inside the core (0.5.0)
 
 The one thing `0.3.2` gave up is that UDP leaves from the node's address: `warp-cli`'s proxy mode cannot
