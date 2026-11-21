@@ -3,7 +3,7 @@ What each release changed, written for the people who run Termit. Newest first;
 carries every section back to the last release: the versions in between were handed out only as
 pre-releases, and whoever installs the release skipped them.
 
-## 0.5.0 — unreleased
+## 0.5.0 — 2026-11-21
 
 The node syncs when the server said to, and a new node reaches the rest of the mesh in minutes instead
 of at everyone's next cycle.
