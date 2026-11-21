@@ -57,6 +57,7 @@ unit runs; running it by hand is the way to check what a reboot would do.`)
 	table := firewall.Table{
 		Name:        tableName,
 		Ports:       applied.Ports,
+		UDPPorts:    applied.UDPPorts,
 		SSHFrom:     prefixes,
 		DefaultDeny: applied.DefaultDeny,
 		Scan:        component.Security.Scan(),

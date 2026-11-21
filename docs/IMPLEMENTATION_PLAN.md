@@ -1132,6 +1132,7 @@ security:                       # everything here is off unless the operator say
     enabled: false              # the operator's intent; `firewall status` compares the host with it
     default_deny: true
     ssh_from: []                # CIDRs allowed to reach 22; empty means "from anywhere"
+    udp_ports: []               # inbound UDP besides the TCP ports the component serves (a QUIC transport)
   guard:
     enabled: false              # also decides whether the table carries the scan meters
     scan:

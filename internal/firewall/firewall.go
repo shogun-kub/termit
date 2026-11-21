@@ -110,6 +110,10 @@ type Table struct {
 	Name string
 	// Ports are the inbound TCP ports this component publishes. SSHPort must be among them.
 	Ports []int
+	// UDPPorts are inbound UDP ports it publishes as well. A QUIC transport needs one, and an unlisted
+	// UDP port falls through to the scan meter, which bans the participants who use it. The same number
+	// in both lists is normal: 443 serves TLS over TCP and QUIC over UDP.
+	UDPPorts []int
 	// SSHFrom restricts SSHPort to these networks. Empty means "from anywhere".
 	SSHFrom []netip.Prefix
 	// DefaultDeny drops whatever the rules above did not accept. Off is for an operator who runs
@@ -138,6 +142,16 @@ func (t Table) Validate() error {
 			problems = append(problems, fmt.Errorf("port %d is listed twice", port))
 		}
 		seen[port] = true
+	}
+	seenUDP := make(map[int]bool, len(t.UDPPorts))
+	for _, port := range t.UDPPorts {
+		if port < 1 || port > 65535 {
+			problems = append(problems, fmt.Errorf("udp port %d is outside 1-65535", port))
+		}
+		if seenUDP[port] {
+			problems = append(problems, fmt.Errorf("udp port %d is listed twice", port))
+		}
+		seenUDP[port] = true
 	}
 	if len(t.SSHFrom) > 0 && !seen[SSHPort] {
 		problems = append(problems, fmt.Errorf("ssh_from is set but port %d is not published, so SSH would be closed", SSHPort))
@@ -261,6 +275,9 @@ func (t Table) Render() ([]byte, error) {
 		if others := withoutPort(t.Ports, SSHPort); len(others) > 0 {
 			fmt.Fprintf(&b, "\t\ttcp dport %s accept\n", portList(others))
 		}
+	}
+	if len(t.UDPPorts) > 0 {
+		fmt.Fprintf(&b, "\t\tudp dport %s accept\n", portList(t.UDPPorts))
 	}
 	if t.Scan.Enabled {
 		rate, err := t.Scan.rate()

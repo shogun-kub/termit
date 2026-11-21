@@ -1059,6 +1059,7 @@ In the order the input chain evaluates it:
 | `ip saddr @banned4 drop`, `ip6 saddr @banned6 drop` | what the guard banned |
 | `icmpv6 type { nd-*, packet-too-big, destination-unreachable, time-exceeded } accept` | without NDP and PMTU messages IPv6 stops working |
 | `tcp dport { 22, 80, 443 } accept` | what a node publishes — or, with `ssh_from`, port 22 only from the listed networks |
+| `udp dport { … } accept` | `security.firewall.udp_ports`, empty unless the node serves a QUIC transport. It has to come before the meter: an unlisted UDP port is counted there, and the guard bans for what the meter counted |
 | `meter scan4m { … } add @scan4 { … }` | counts attempts to everything else per source, in the kernel — present only when the guard is configured (§13.4), because the guard is what reads the set |
 | `counter drop` | with `default_deny`, everything else is refused |
 

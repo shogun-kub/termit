@@ -10,6 +10,11 @@ of at everyone's next cycle.
 
 ### Added
 
+- **A table can publish UDP ports.** `security.firewall.udp_ports` adds them to the node's own ruleset,
+  accepted before the kernel's scan meter — which is the point: an unlisted UDP port falls through to the
+  meter, and the guard then bans the participants for the traffic the port exists to carry. Nothing uses
+  it yet; a QUIC transport will.
+
 - **The mesh tells the nodes when it changed.** `{prefix}/healthz` carries `mesh_generation`, a digest of
   who is in the mesh and in what shape, and the sync answer carries the same value so a node knows which
   mesh it applied. Between the scheduled syncs the agent reads it on the interval the server states in
