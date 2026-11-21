@@ -34,8 +34,12 @@ var artifacts = []string{"dist", "build", ".dev"}
 var artifactPatterns = []string{"*.exe", "*.test", "*.out", "coverage.*"}
 
 // scratchKeep is what survives inside the scratch directory: the toolchain, the caches that make the
-// next build fast, the lab's own notes and token, and the two small directories that hold source or a
-// public key rather than output.
+// next build fast, the lab's own notes, the credentials that live beside them, and the two small
+// directories that hold source or a public key rather than output.
+//
+// The credentials are on this list because cleaning up is not the same as forgetting: a token cannot be
+// regenerated from anything in the tree, and the notes name the file the operator filled in. Losing one
+// silently turns the next release into a manual one.
 var scratchKeep = map[string]bool{
 	"tools":            true, // the portable Go toolchain
 	"gocache":          true, // build cache

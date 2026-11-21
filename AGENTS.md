@@ -190,11 +190,11 @@ are what the tests read. The key is a PuTTY `.ppk` that OpenSSH cannot read, so 
 than failing it: the lab is a manual gate, not part of `go test ./cmd/... ./internal/...`.
 
 Credentials for this host live beside it, also gitignored: `.spike-out/github-token` (a fine-grained
-token for `shogun-kub/termit` with Actions read/write and Contents read, which
-`node .spike-out/dispatch-release.js` uses to start `release.yaml` on a `release/<version>` branch and read
-the run back), `.spike-out/mn-admin.token` (the lab server's admin token) and `.spike-out/sonar-token` (the
-scanner's). `lab.md` lists them with what each opens. None of them may appear in the repository, a
-document, a commit message or a log line — the repository is public and the documents are read by everyone.
+token for `shogun-kub/termit` with Actions read/write and Contents read, which `node .spike-out/gh.js`
+uses to start `release.yaml` on a `release/<version>` branch and read the run back),
+`.spike-out/mn-admin.token` (the lab server's admin token) and `.spike-out/sonar-token` (the scanner's).
+`lab.md` lists them with what each opens. None of them may appear in the repository, a document, a commit
+message or a log line — the repository is public and the documents are read by everyone.
 
 Acceptance budget: UV = 1 vCPU / 1 GB RAM / 10 GB disk, MN = 2 vCPU / 2 GB. The containers are
 unprivileged LXC with **no `/dev/net/tun`**, and a lab's egress may block the WARP API — the very block
@@ -365,9 +365,10 @@ files or logs.
 push setting below in place). The artifacts of a
 release are spent once they are on the server, and the scratch directory grows by hundreds of megabytes
 per cycle. `deploy/clean` removes the build output, the lab logs and everything in `.spike-out/` that is
-not on its keep list — the Go toolchain, the caches, `lab.md`, the admin token and the two directories
-holding input — and refuses to touch a directory that contains its own `.git`. `--dry-run` shows the list
-and the freed bytes.
+not on its keep list — the Go toolchain, the caches, the notes (`lab.md`, `prod.md`), the credentials
+beside them (`mn-admin.token`, `github-token`, `sonar-token`, `gh.js`) and the two directories holding
+input — and refuses to touch a directory that contains its own `.git`. `--dry-run` shows the list and the
+freed bytes.
 
 **Pushing from this checkout**: the maintainer's Windows box sets `GIT_SSH` to TortoiseGit's
 `TortoiseGitPlink.exe` (TortoiseGit needs it there), and this clone carries a `remote.origin.puttykeyfile`
