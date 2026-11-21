@@ -136,6 +136,13 @@ func (a *application) optionsData(ctx context.Context, cfg *config.Config, node 
 		},
 		Generated: a.now().UTC(),
 	}
+	// The QUIC transport is a second way into the same node, and it needs its own link: the user name and
+	// the password are derived from the same UUID, so the page can hand it out without asking anyone.
+	if cfg.Hysteria != nil {
+		if uri, err := proto.BuildHysteriaURL(cfg.Domain, node.Identity.SelfUUID, cfg.Domain+" (QUIC)"); err == nil {
+			data.Devices = append(data.Devices, options.Link{Label: cfg.Domain + " (QUIC)", URI: uri})
+		}
+	}
 	// The owner's own devices belong here: the page is where they pick the one they need, and
 	// `device list` in a terminal is the fallback, not the only way.
 	for _, user := range node.LocalUsers {
@@ -144,6 +151,11 @@ func (a *application) optionsData(ctx context.Context, cfg *config.Config, node 
 			continue
 		}
 		data.Devices = append(data.Devices, options.Link{Label: user.Label, URI: uri})
+		if cfg.Hysteria != nil {
+			if quic, err := proto.BuildHysteriaURL(cfg.Domain, user.ID, user.Label+" (QUIC)"); err == nil {
+				data.Devices = append(data.Devices, options.Link{Label: user.Label + " (QUIC)", URI: quic})
+			}
+		}
 	}
 	if node.Credentials == nil || node.Credentials.SubscriptionURL == "" {
 		return data

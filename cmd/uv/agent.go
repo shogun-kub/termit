@@ -95,7 +95,10 @@ func (a *application) newLoop(cfg *config.Config) *agent.Loop {
 			// The QUIC transport has no API: its users are one file, and a changed file means one
 			// restart of that unit alone. It runs after the core, because its traffic enters the core.
 			if cfg.Hysteria != nil {
-				uuids := make([]string, 0, len(answer.Peers))
+				uuids := make([]string, 0, len(answer.Peers)+len(st.LocalUsers))
+				for _, user := range st.LocalUsers {
+					uuids = append(uuids, user.ID)
+				}
 				for _, peer := range agent.PeersFrom(answer) {
 					uuids = append(uuids, peer.UUID)
 				}

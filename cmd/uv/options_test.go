@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shogun-kub/termit/internal/proto"
 	"github.com/shogun-kub/termit/internal/uv/config"
 	"github.com/shogun-kub/termit/internal/uv/state"
 )
@@ -350,5 +351,43 @@ func TestOptionsCarriesTheNodesOwnFragmentParameter(t *testing.T) {
 		if !strings.Contains(string(page), want) {
 			t.Errorf("the local link is missing %q", want)
 		}
+	}
+}
+
+// TestOptionsHandsOutTheQUICLink: the node serves a second transport, and the page is where the owner gets
+// a link for it without a terminal - with the user name and password derived from the same UUID.
+func TestOptionsHandsOutTheQUICLink(t *testing.T) {
+	t.Parallel()
+	app, cfg, configPath := optionsFixture(t, "")
+	cfg.Hysteria = &config.Hysteria{}
+	if err := cfg.Save(configPath); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+	node, err := state.LoadInstalled(cfg.Paths.StatePath())
+	if err != nil {
+		t.Fatalf("load state: %v", err)
+	}
+	const device = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+	if err := node.AddLocalUser(device, "phone", time.Unix(0, 0)); err != nil {
+		t.Fatalf("add a local user: %v", err)
+	}
+	if err := node.Save(cfg.Paths.StatePath()); err != nil {
+		t.Fatalf("save state: %v", err)
+	}
+	if code := app.run([]string{"options", "--config", configPath}); code != exitOK {
+		t.Fatalf("exit = %d; stderr: %s", code, app.stderr.(*strings.Builder).String())
+	}
+	node, err = state.LoadInstalled(cfg.Paths.StatePath())
+	if err != nil {
+		t.Fatalf("load state after the render: %v", err)
+	}
+	page, err := os.ReadFile(filepath.Join(cfg.Paths.SiteDir, node.Options.Token, "index.html"))
+	if err != nil {
+		t.Fatalf("read the page: %v", err)
+	}
+	html := string(page)
+	want := "hy2://" + proto.HysteriaUser(device) + ":" + proto.HysteriaPassword(device) + "@" + cfg.Domain + ":443"
+	if !strings.Contains(html, want) {
+		t.Errorf("the page has no QUIC link for the device (%s):\n%s", want, html)
 	}
 }

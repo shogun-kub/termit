@@ -36,3 +36,41 @@ func TestHysteriaPassword(t *testing.T) {
 		t.Error("the user name depends on the case of the UUID")
 	}
 }
+
+// TestHysteriaLinkRoundTrip: the link is what a participant actually pastes into a client, so what we
+// build has to read back to the same node, the same user and the same label.
+func TestHysteriaLinkRoundTrip(t *testing.T) {
+	t.Parallel()
+	const uuid = "11111111-2222-4333-8444-555555555555"
+	raw, err := proto.BuildHysteriaURL("Node.Example.COM.", uuid, "my phone")
+	if err != nil {
+		t.Fatalf("BuildHysteriaURL: %v", err)
+	}
+	if !strings.HasPrefix(raw, "hy2://") {
+		t.Fatalf("scheme: %q", raw)
+	}
+	link, err := proto.ParseHysteriaURL(raw)
+	if err != nil {
+		t.Fatalf("ParseHysteriaURL: %v", err)
+	}
+	if link.Domain != "node.example.com" {
+		t.Errorf("domain = %q", link.Domain)
+	}
+	if link.User != proto.HysteriaUser(uuid) {
+		t.Errorf("user = %q, want %q", link.User, proto.HysteriaUser(uuid))
+	}
+	if link.Label != "my phone" {
+		t.Errorf("label = %q", link.Label)
+	}
+	// The password travels in the authority, not the query: a client that reads the URI the way hysteria
+	// documents it must find it there.
+	if !strings.Contains(raw, "@node.example.com:443?") {
+		t.Errorf("the authority is not host:port with the password in front: %q", raw)
+	}
+	if _, err := proto.BuildHysteriaURL("not a domain", uuid, ""); err == nil {
+		t.Error("BuildHysteriaURL accepted a string that is not a domain")
+	}
+	if _, err := proto.ParseHysteriaURL("vless://x@y:443"); err == nil {
+		t.Error("ParseHysteriaURL accepted a vless link")
+	}
+}

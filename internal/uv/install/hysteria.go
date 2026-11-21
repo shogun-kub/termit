@@ -140,9 +140,12 @@ func TransportSpec(cfg *config.Config, selfUUID string, peerUUIDs []string) hyst
 	}
 }
 
-// spec is what the transport must be told: the owner's device and every peer of this node.
+// spec is what the transport must be told: the owner's device, its local users and every peer of this node.
 func (s *hysteriaConfigStep) spec() hysteria.Spec {
-	uuids := make([]string, 0, len(s.e.st.Peers))
+	uuids := make([]string, 0, len(s.e.st.Peers)+len(s.e.st.LocalUsers))
+	for _, user := range s.e.st.LocalUsers {
+		uuids = append(uuids, user.ID)
+	}
 	for _, peer := range s.e.st.Peers {
 		uuids = append(uuids, peer.UUID)
 	}
