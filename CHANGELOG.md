@@ -3,7 +3,7 @@ What each release changed, written for the people who run Termit. Newest first;
 carries every section back to the last release: the versions in between were handed out only as
 pre-releases, and whoever installs the release skipped them.
 
-## Unreleased
+## 0.5.1 — 2026-11-21
 
 ### Added
 
