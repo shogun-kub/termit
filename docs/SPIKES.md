@@ -399,7 +399,8 @@ does. One more way to misread a certificate problem as a trust problem.
 ## S16 (0.5.0) — what a QUIC transport looks like on the wire, and what it costs
 
 Hysteria2 was evaluated on 2026-11-20/21 as the second transport (§10.3): one production node (1 vCPU,
-KVM), hysteria 2.14.0 pinned from its own repository, the node's Let's Encrypt leaf, BBR, no obfuscation.
+KVM), hysteria 2.14.0 (its `hysteria-linux-amd64` checksum is the one in the upstream release's
+`hashes.txt`, `apernet/hysteria` tag `app/v2.14.0`), the node's Let's Encrypt leaf, BBR, no obfuscation.
 
 **A QUIC Initial is not opaque, so a fingerprint is a measurement, not an opinion.** The Initial is
 encrypted with keys derived from the client's destination connection id and a fixed salt (RFC 9001 §5.2),

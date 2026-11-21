@@ -1612,10 +1612,13 @@ Constraints, in the order they decide the design:
    certificate flow changes. QUIC protocols use UDP/443 and do not collide with nginx, but need their
    own probe path.
 3. **The prober is one binary.** MN's `xray-core` speaks every xray-core protocol; Hysteria2/TUIC need
-   another client there. The cheapest way to look like a browser is to link hysteria's own client code into
-   the MN binary: same handshake by construction, no second process on the server. A hand-written QUIC
-   prober would mean maintaining a fork of the handshake, which is not a prober but a second project.
-   The narrow `Probe(ctx, url)` seam survives, but each transport is a new implementation behind it.
+   another client there. Decided: MN links hysteria's own client module
+   (`github.com/apernet/hysteria/core/v2/client`), so the probe carries the same handshake by construction
+   and the server runs no second process. The cost is module graph weight — quic-go and its dependencies
+   enter MN's graph — and that is recorded and gated by `govulncheck` like any other dependency (§8). A
+   hand-written QUIC prober would mean maintaining a fork of the handshake, which is not a prober but a
+   second project. The narrow `Probe(ctx, url)` seam survives, but each transport is a new implementation
+   behind it.
 4. **Clients differ.** Stock sing-box already cannot read the XHTTP profile; a second protocol widens
    that matrix. The subscription must tell a client what it can parse — profile version, per-form
    rendering, or an explicit refusal — instead of emitting a URI that opens and fails.
@@ -1665,14 +1668,15 @@ Three things decide the shape, and each one was learned the hard way:
   pinned binary and another unit — allowed on the conditions `DESCRIPTION.md` §11.8 spells out, and pinned
   by version and checksum because its handshake is part of the fingerprint: an upgrade is a fingerprint
   change and is tested as one.
-- **Its authentication is a file.** `auth.type: userpass` maps a name to a password, and the password is
-  derived from the pair's UUID — `base64url(SHA-256("termit/hysteria2/" + uuid))` — so there is no new
-  secret to store and no credential epoch to bump: both sides already know the UUID, and the derivation
-  is one-way. The agent rewrites the file on every sync and restarts the service, so a change costs a
-  restart of the QUIC transport alone: with the TLS transport also enabled that is invisible, and with it
-  alone sessions reconnect in seconds. Enrollments and blocks are rare enough to pay that, and one restart
-  is worth more than a password oracle listening on the node. The trade accepted here: whoever holds the
-  subscription holds both access links to that node.
+- **Its authentication is a restart.** `auth.userpass` is an inline map in the generated config — there is
+  no file to watch and no reload: the server's only signal is shutdown, and its HTTP surface is read-only.
+  So the agent regenerates the config and restarts the service whenever the peer set changes. The password
+  is derived from the pair's UUID — `base64url(SHA-256("termit/hysteria2/" + uuid))` — so there is no new
+  secret to store and no credential epoch to bump: both sides already know the UUID, and the derivation is
+  one-way. A restart costs the QUIC transport's sessions and nothing else: with the TLS transport also
+  enabled nobody notices, and with it alone clients reconnect in seconds. Enrollments and blocks are rare
+  enough to pay that, which is why there is no password oracle (or helper service) listening on the node.
+  The trade accepted here: whoever holds the subscription holds both access links to that node.
 
 The certificate is the node's existing leaf: hysteria re-reads it on every handshake, so a renewal needs
 no restart. The decoy stays byte-identical: `masquerade: proxy` forwards a non-hysteria visitor to the
@@ -1692,8 +1696,11 @@ Phases:
    it and a real DNS answer). Nothing is left of it.
 1. Profile: `kind: hysteria2` in the envelope, its parameters, URI build/parse, and the password derived
    from the UUID.
-2. Node: the binary, its unit, install and upgrade; the `userpass` file and the restart that applies it;
-   the core's loopback `socks` inbound behind it.
+2. Node: the binary, its unit, install and upgrade; the `auth.userpass` map and the restart that applies
+   it; the core's loopback `socks` inbound behind it. Unlike Xray there is no `-test` to lean on, so
+   validation is ours: a strict decode of our own struct plus a trial start on a spare port before the
+   unit is switched over (§11.3 names `xray -test` specifically; this is the same invariant, differently
+   kept).
 3. Network: firewall, decoy masquerade, Alt-Svc, and the prober's second path on the MN side.
 4. Documentation and the production pass. This is a network change, so it ships as a pre-release first
    (AGENTS §9).
