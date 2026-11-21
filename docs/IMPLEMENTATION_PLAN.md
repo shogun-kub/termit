@@ -917,7 +917,7 @@ pass. The Docker Compose harness remains a developer convenience (QUESTIONS Q9.4
 
 ## M5 — Security hardening (planned; decisions taken 2026-11-15)
 
-Nothing here is implemented yet except M5.0 (§5.0) and M5.1–M5.6 (§5.9). The decisions below were made
+Nothing here is implemented yet except M5-0 (§5.0) and M5-1–M5-6 (§5.9). The decisions below were made
 by the operator on 2026-11-15; the milestones in §5.9 are the implementation plan, and each one ends in
 something the lab can check.
 
@@ -939,7 +939,7 @@ something the lab can check.
 
 ### 5.0 Spike results (measured on `termit-uv2.lan`, nftables 1.1.3, Xray 26.11.9)
 
-M5.0 asked two questions. Both are answered, and the second answer changed the config we planned to
+M5-0 asked two questions. Both are answered, and the second answer changed the config we planned to
 ship. The throwaway rulesets and configs lived in the session scratch, not in the repository; the
 conclusions are here.
 
@@ -1118,12 +1118,12 @@ termit-mn  firewall … / bans … / guard …           the same code, the serv
   record keeps what was actually applied so `status` never lies; the configuration file is not edited,
   because the owner edits it by hand.
 - Still missing on purpose: the check against an install in flight. There is no install lock in the
-  tree yet, and a check for a file nothing creates would be decoration — it lands with M5.6, where
+  tree yet, and a check for a file nothing creates would be decoration — it lands with M5-6, where
   `init` starts taking one.
 
 ### 5.6 Configuration
 
-What exists today (M5.1); the keys of the later milestones are added by them, so nothing is accepted
+What exists today (M5-1); the keys of the later milestones are added by them, so nothing is accepted
 before something reads it:
 
 ```yaml
@@ -1149,8 +1149,8 @@ security:                       # everything here is off unless the operator say
     ladder_window: 24h          # how long a repeat still counts as one
 ```
 
-Still to come, with the milestone that reads it: `bittorrent_block` (M5.4). The blocklist keys
-(`blocklist_url`, `blocklist_refresh`, M5.3) are in place.
+Still to come, with the milestone that reads it: `bittorrent_block` (M5-4). The blocklist keys
+(`blocklist_url`, `blocklist_refresh`, M5-3) are in place.
 
 Three constraints the loader enforces:
 
@@ -1200,14 +1200,14 @@ the first bytes of each connection, which is why it is off by default and not im
 
 ### 5.9 Milestones
 
-**M5.0 — Spike (done).** On `termit-uv2.lan`: nftables 1.1.3 accepts the `meter … add @set { …
+**M5-0 — Spike (done).** On `termit-uv2.lan`: nftables 1.1.3 accepts the `meter … add @set { …
 timeout … }` form and refuses the two shapes that look equivalent (element-level `timeout` with a
 `limit`, and a `limit` matcher before `add`); the `add @set { … limit … }` form without a meter adds on
 the first packet and is not a detector; `nft -c -f` accepts the whole table, both families, one meter
 each. The pinned Xray 26.11.9 does classify a BitTorrent handshake, and `routeOnly` must be `true`. All
 of it is in §5.0, including what changed because of it.
 
-**M5.1 — Table and commands (done).** `internal/firewall` renders the table from a typed model and
+**M5-1 — Table and commands (done).** `internal/firewall` renders the table from a typed model and
 applies it through `nft -f -`; `internal/uv/service` renders the rollback pair; `cmd/uv/firewall.go`
 implements `status|on|off|confirm|rollback` with `--dry-run`, `--ssh-from` and `--default-deny`; the
 `security:` block is in the node's configuration. Four golden files (node with and without
@@ -1221,7 +1221,7 @@ The lockout drill was run by hand on `termit-uv2.lan`, because it costs five min
 allowed path, and after 310 s the timer fired on its own, removed the table and SSH came back — `status`
 then said `off since 14s ago` and the journal said why.
 
-**M5.2 — Guard and bans (done).** `internal/firewall` gained the ban record, the ladder as a pure
+**M5-2 — Guard and bans (done).** `internal/firewall` gained the ban record, the ladder as a pure
 function, the never-ban set and the set-element operations; `internal/guard` is the loop — the kernel's
 scan set, the web server's log with a rotation-aware tail, the 4xx window, and a reconcile pass that
 makes the kernel match `bans.json`. `termit-uv bans list|offenders|block|unban|unblock` and
@@ -1254,7 +1254,7 @@ taken down by `off` — stays gone. The plugin, the server's copy in `deploy/sys
 (`TestLabHarden`: delete the table the way a reboot does, start the unit, the table returns without a
 timer; `off` then the unit, nothing returns) are in §5.9.
 
-**M5.3 — Blocklist refresh (done).** `internal/firewall/blocklist.go` parses, normalises, renders and
+**M5-3 — Blocklist refresh (done).** `internal/firewall/blocklist.go` parses, normalises, renders and
 stores the list, fetches it over `http(s)` or `file` with `If-Modified-Since` and a 4 MiB cap, and
 replaces the kernel's two sets in **one** `nft -f -` batch (`flush set` plus the elements), so the host is
 never without a blocklist. `termit-uv firewall refresh` is the command (`--url` for a one-off,
@@ -1271,7 +1271,7 @@ hand, which is what systemd does daily) loads a `file://` list into the kernel, 
 refused with the sets untouched, an unreachable source is refused the same way, a network that leaves the
 source leaves the kernel, and `off` then `on` restores the list from the file.
 
-**M5.4 — BitTorrent (done).** `security.bittorrent_block` (off by default, `security:` top level, not the
+**M5-4 — BitTorrent (done).** `security.bittorrent_block` (off by default, `security:` top level, not the
 firewall) reaches `xray.Spec.BlockBitTorrent` through both paths that generate the config — the install
 step and the agent's reconciler — because a config regenerated without the flag would quietly stop
 blocking. The generated document swaps the sniffer for `{enabled, destOverride: [], routeOnly: true}` and
@@ -1284,7 +1284,7 @@ The golden was fed to the pinned core on the lab node: `xray -test` says `Config
 A real torrent client is still not lab-shaped, so that half stays manual and `OPERATIONS.md` §6.1 says
 what to watch: the handshake dies, an HTTPS request through the same client does not.
 
-**M5.5 — MN parity (done).** The commands are one implementation, not two: `internal/harden` holds the
+**M5-5 — MN parity (done).** The commands are one implementation, not two: `internal/harden` holds the
 `security:` block both configurations embed, and `internal/hardencmd` holds the six firewall, five
 bans and two guard commands. Each binary supplies a `Target` (table name, ports, units, paths, access
 log, whether a unit directory exists) and the seams a test replaces; `cmd/uv`'s three command files
@@ -1315,7 +1315,7 @@ still answers, a node syncs through :443 while the table is up, `check --all` pa
 block`/`unblock` work against the server's sets, `off` returns `nft list ruleset` to its previous
 digest, and the ban record survives the table.
 
-**M5.6 — Wiring (done).** `init --harden` sets `security.firewall.enabled` and `security.guard.enabled`
+**M5-6 — Wiring (done).** `init --harden` sets `security.firewall.enabled` and `security.guard.enabled`
 and stops there: the table is still `firewall on`, so no install can put a default-deny table on a host
 while nobody is watching, and `init --harden=false` undoes it. The wizard asks the same question,
 unchecked, and passes the same flag (new keys in both languages). `status` gained a `firewall:` line that
@@ -1329,7 +1329,7 @@ Lab (`TestLabHarden`, 7.0 s): `init --harden` installs and starts the guard's un
 says what to run, `on` + `confirm` applies the table, a real `guard run --once` pass succeeds against it,
 and the cleanup leaves the node as it was found.
 
-**M5.7 — Docs and the §11 amendment (done).** Done: `DESCRIPTION.md` §11 invariant 1 (never touch
+**M5-7 — Docs and the §11 amendment (done).** Done: `DESCRIPTION.md` §11 invariant 1 (never touch
 routing; the table exists only after `firewall on`; the guard and the blocklist refresh only fill sets; the
 boot unit only puts back a confirmed apply), `OPERATIONS.md` §13 with the exact rules, the way back, the
 blocklist, the server's copy and what survives a reboot, `THREAT_MODEL.md` §5.6/§5.7 and the residual-risk
@@ -1337,7 +1337,7 @@ line, `QUESTIONS.md` §0a, and the page a new operator needed:
 [`guide/hardening.md`](guide/hardening.md) and its [Russian mirror](guide/ru/hardening.md), linked from
 both overviews, both READMEs and the command tables of `using-uv` and `using-mn`.
 
-**M5.8 — Rollout.** Lab first, all of it; then the production MN (`firewall on` with the rollback
+**M5-8 — Rollout.** Lab first, all of it; then the production MN (`firewall on` with the rollback
 timer, then `confirm` from a second session), then the two nodes one at a time, checking after each
 step: SSH alive, 443 serving, a client request through the tunnel, the MN's prober green, `status`
 clean. Any step that fails: `firewall off`, and the host is where it started. Reboot one node on purpose
@@ -2115,7 +2115,7 @@ Still open before a release: the production pass on the two nodes.
 
 Two to three days of work: the registration client and the state file are the bulk of it, the generator
 change is small, and the lab pass is a half-day. It ships as `0.4.0` from a `release/v0.4.0` branch, with
-its own production pass recorded the way `M5.8` was.
+its own production pass recorded the way `M5-8` was.
 ### 11.9 Production pass, 2026-11-17
 
 Both nodes took `v0.4.0` with `uv.sh --version v0.4.0`: the upgrade converged the units, the certificate
