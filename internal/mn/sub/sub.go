@@ -203,11 +203,15 @@ func RenderJSON(peers []Peer, opts Options) ([]byte, error) {
 
 	profile := singBoxProfile{
 		Log: map[string]any{"level": "warn"},
+		// sing-box 1.14 removed the legacy DNS server format and refuses the whole profile when it meets
+		// one, so this is the 1.12+ shape: a typed server with an explicit address. "remote" answers
+		// through the tunnel, "local" is the system resolver for the rules that need it.
 		DNS: map[string]any{
 			"servers": []any{
-				map[string]any{"tag": "remote", "detour": "proxy"},
-				map[string]any{"tag": "local"},
+				map[string]any{"type": "https", "tag": "remote", "server": "1.1.1.1", "detour": "proxy"},
+				map[string]any{"type": "local", "tag": "local"},
 			},
+			"final": "remote",
 		},
 		Inbounds: []any{
 			map[string]any{"type": "tun", "tag": "tun-in", "stack": "system", "auto_route": true},
