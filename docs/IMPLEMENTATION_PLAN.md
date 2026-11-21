@@ -525,7 +525,7 @@ stopped both nodes (a failed unit also hits systemd's start rate limiter, so a p
 enough); and `openssl verify` without `-untrusted` misreports a valid chain.
 
 Acceptance item deliberately left to M3: "pulling a node's plug makes its probe fail" is the
-scheduler's job (§7.2), not this milestone's.
+scheduler's job (`DESCRIPTION.md` §7.2), not this milestone's.
 
 ### M2 follow-ups, done straight after
 
@@ -732,7 +732,7 @@ config, then migrate the record back) and removes the hosts entries the test add
 
 The same run also covers the mesh with three nodes (`test/lab/mesh_test.go`, skipped when
 `TERMIT_LAB_UV3` is unset). That node is not needed by M3.6's single-node drills, but two nodes cannot
-express the invariants §6.3–§6.5 state: each node must serve exactly its two peers, the three pair
+express the invariants `DESCRIPTION.md` §6.3–§6.5 state: each node must serve exactly its two peers, the three pair
 credentials must be pairwise distinct and symmetric (`uuid(A→P) == uuid(P→A)`), a blocked node leaves
 the surviving pair intact while its own read-only list keeps both peers, and a move of one node leaves
 the pair between the other two untouched. With `TERMIT_LAB_UV3` set, Scenario C adds that last check
@@ -829,11 +829,11 @@ Delivered:
 | A redaction test: enrolment and sync log identifiers, never the agent key, subscription token, probe UUID, invite code or node UUID | `internal/mn/server` | the test fails if any of them appears |
 | In-place certificate renewal on the server: it re-checks every six hours, writes through the CA's chain and serves the new pair on the next handshake — no restart, and a failed attempt keeps the old certificate in service | `internal/mn/cert` (loader + loop), `termit-mn serve` | unit tests for the reload, the broken-pair case and the loop; lab: a certificate swapped under a running server was served immediately, swapped back, and the real chain still validated |
 
-Also outstanding, and a maintainer decision rather than a defect fix: `DESCRIPTION.md` §8 shows a sync
-body shape the server does not send, §15 says agent keys are hashed with Argon2id and compared in
-constant time (they are SHA-256 digests looked up through an index, deliberately), and §13.4 lists
-`termit-mn sub show`, which does not exist. `docs/PROTOCOL.md` is what the build does; the design document
-should be reconciled with it before the first tag.
+The three places where `DESCRIPTION.md` contradicted the build are reconciled as of 2026-11-21: the sync
+example carries `mesh_generation` and `policy.mesh_poll_seconds`, §15 describes the credential store as it
+is (256-bit random keys, SHA-256 digests, found through an index), and §13.4 lists `termit-mn sub rotate`
+instead of a `sub show` command that never existed. `docs/PROTOCOL.md` stays what the build does; the
+design document now says the same.
 
 ### M4.3 Release — done
 
@@ -917,7 +917,7 @@ pass. The Docker Compose harness remains a developer convenience (QUESTIONS Q9.4
 
 ## M5 — Security hardening (planned; decisions taken 2026-11-15)
 
-Nothing here is implemented yet except M5.0 (§5.0) and M5.1–M5.6 (§5.9). The decisions below were made
+Nothing here is implemented yet except M5-0 (§5.0) and M5-1–M5-6 (§5.9). The decisions below were made
 by the operator on 2026-11-15; the milestones in §5.9 are the implementation plan, and each one ends in
 something the lab can check.
 
@@ -939,7 +939,7 @@ something the lab can check.
 
 ### 5.0 Spike results (measured on `termit-uv2.lan`, nftables 1.1.3, Xray 26.11.9)
 
-M5.0 asked two questions. Both are answered, and the second answer changed the config we planned to
+M5-0 asked two questions. Both are answered, and the second answer changed the config we planned to
 ship. The throwaway rulesets and configs lived in the session scratch, not in the repository; the
 conclusions are here.
 
@@ -1118,12 +1118,12 @@ termit-mn  firewall … / bans … / guard …           the same code, the serv
   record keeps what was actually applied so `status` never lies; the configuration file is not edited,
   because the owner edits it by hand.
 - Still missing on purpose: the check against an install in flight. There is no install lock in the
-  tree yet, and a check for a file nothing creates would be decoration — it lands with M5.6, where
+  tree yet, and a check for a file nothing creates would be decoration — it lands with M5-6, where
   `init` starts taking one.
 
 ### 5.6 Configuration
 
-What exists today (M5.1); the keys of the later milestones are added by them, so nothing is accepted
+What exists today (M5-1); the keys of the later milestones are added by them, so nothing is accepted
 before something reads it:
 
 ```yaml
@@ -1132,6 +1132,7 @@ security:                       # everything here is off unless the operator say
     enabled: false              # the operator's intent; `firewall status` compares the host with it
     default_deny: true
     ssh_from: []                # CIDRs allowed to reach 22; empty means "from anywhere"
+    udp_ports: []               # inbound UDP besides the TCP ports the component serves (a QUIC transport)
   guard:
     enabled: false              # also decides whether the table carries the scan meters
     scan:
@@ -1148,8 +1149,8 @@ security:                       # everything here is off unless the operator say
     ladder_window: 24h          # how long a repeat still counts as one
 ```
 
-Still to come, with the milestone that reads it: `bittorrent_block` (M5.4). The blocklist keys
-(`blocklist_url`, `blocklist_refresh`, M5.3) are in place.
+Still to come, with the milestone that reads it: `bittorrent_block` (M5-4). The blocklist keys
+(`blocklist_url`, `blocklist_refresh`, M5-3) are in place.
 
 Three constraints the loader enforces:
 
@@ -1199,14 +1200,14 @@ the first bytes of each connection, which is why it is off by default and not im
 
 ### 5.9 Milestones
 
-**M5.0 — Spike (done).** On `termit-uv2.lan`: nftables 1.1.3 accepts the `meter … add @set { …
+**M5-0 — Spike (done).** On `termit-uv2.lan`: nftables 1.1.3 accepts the `meter … add @set { …
 timeout … }` form and refuses the two shapes that look equivalent (element-level `timeout` with a
 `limit`, and a `limit` matcher before `add`); the `add @set { … limit … }` form without a meter adds on
 the first packet and is not a detector; `nft -c -f` accepts the whole table, both families, one meter
 each. The pinned Xray 26.11.9 does classify a BitTorrent handshake, and `routeOnly` must be `true`. All
 of it is in §5.0, including what changed because of it.
 
-**M5.1 — Table and commands (done).** `internal/firewall` renders the table from a typed model and
+**M5-1 — Table and commands (done).** `internal/firewall` renders the table from a typed model and
 applies it through `nft -f -`; `internal/uv/service` renders the rollback pair; `cmd/uv/firewall.go`
 implements `status|on|off|confirm|rollback` with `--dry-run`, `--ssh-from` and `--default-deny`; the
 `security:` block is in the node's configuration. Four golden files (node with and without
@@ -1220,7 +1221,7 @@ The lockout drill was run by hand on `termit-uv2.lan`, because it costs five min
 allowed path, and after 310 s the timer fired on its own, removed the table and SSH came back — `status`
 then said `off since 14s ago` and the journal said why.
 
-**M5.2 — Guard and bans (done).** `internal/firewall` gained the ban record, the ladder as a pure
+**M5-2 — Guard and bans (done).** `internal/firewall` gained the ban record, the ladder as a pure
 function, the never-ban set and the set-element operations; `internal/guard` is the loop — the kernel's
 scan set, the web server's log with a rotation-aware tail, the 4xx window, and a reconcile pass that
 makes the kernel match `bans.json`. `termit-uv bans list|offenders|block|unban|unblock` and
@@ -1253,7 +1254,7 @@ taken down by `off` — stays gone. The plugin, the server's copy in `deploy/sys
 (`TestLabHarden`: delete the table the way a reboot does, start the unit, the table returns without a
 timer; `off` then the unit, nothing returns) are in §5.9.
 
-**M5.3 — Blocklist refresh (done).** `internal/firewall/blocklist.go` parses, normalises, renders and
+**M5-3 — Blocklist refresh (done).** `internal/firewall/blocklist.go` parses, normalises, renders and
 stores the list, fetches it over `http(s)` or `file` with `If-Modified-Since` and a 4 MiB cap, and
 replaces the kernel's two sets in **one** `nft -f -` batch (`flush set` plus the elements), so the host is
 never without a blocklist. `termit-uv firewall refresh` is the command (`--url` for a one-off,
@@ -1270,7 +1271,7 @@ hand, which is what systemd does daily) loads a `file://` list into the kernel, 
 refused with the sets untouched, an unreachable source is refused the same way, a network that leaves the
 source leaves the kernel, and `off` then `on` restores the list from the file.
 
-**M5.4 — BitTorrent (done).** `security.bittorrent_block` (off by default, `security:` top level, not the
+**M5-4 — BitTorrent (done).** `security.bittorrent_block` (off by default, `security:` top level, not the
 firewall) reaches `xray.Spec.BlockBitTorrent` through both paths that generate the config — the install
 step and the agent's reconciler — because a config regenerated without the flag would quietly stop
 blocking. The generated document swaps the sniffer for `{enabled, destOverride: [], routeOnly: true}` and
@@ -1283,7 +1284,7 @@ The golden was fed to the pinned core on the lab node: `xray -test` says `Config
 A real torrent client is still not lab-shaped, so that half stays manual and `OPERATIONS.md` §6.1 says
 what to watch: the handshake dies, an HTTPS request through the same client does not.
 
-**M5.5 — MN parity (done).** The commands are one implementation, not two: `internal/harden` holds the
+**M5-5 — MN parity (done).** The commands are one implementation, not two: `internal/harden` holds the
 `security:` block both configurations embed, and `internal/hardencmd` holds the six firewall, five
 bans and two guard commands. Each binary supplies a `Target` (table name, ports, units, paths, access
 log, whether a unit directory exists) and the seams a test replaces; `cmd/uv`'s three command files
@@ -1314,7 +1315,7 @@ still answers, a node syncs through :443 while the table is up, `check --all` pa
 block`/`unblock` work against the server's sets, `off` returns `nft list ruleset` to its previous
 digest, and the ban record survives the table.
 
-**M5.6 — Wiring (done).** `init --harden` sets `security.firewall.enabled` and `security.guard.enabled`
+**M5-6 — Wiring (done).** `init --harden` sets `security.firewall.enabled` and `security.guard.enabled`
 and stops there: the table is still `firewall on`, so no install can put a default-deny table on a host
 while nobody is watching, and `init --harden=false` undoes it. The wizard asks the same question,
 unchecked, and passes the same flag (new keys in both languages). `status` gained a `firewall:` line that
@@ -1328,7 +1329,7 @@ Lab (`TestLabHarden`, 7.0 s): `init --harden` installs and starts the guard's un
 says what to run, `on` + `confirm` applies the table, a real `guard run --once` pass succeeds against it,
 and the cleanup leaves the node as it was found.
 
-**M5.7 — Docs and the §11 amendment (done).** Done: `DESCRIPTION.md` §11 invariant 1 (never touch
+**M5-7 — Docs and the §11 amendment (done).** Done: `DESCRIPTION.md` §11 invariant 1 (never touch
 routing; the table exists only after `firewall on`; the guard and the blocklist refresh only fill sets; the
 boot unit only puts back a confirmed apply), `OPERATIONS.md` §13 with the exact rules, the way back, the
 blocklist, the server's copy and what survives a reboot, `THREAT_MODEL.md` §5.6/§5.7 and the residual-risk
@@ -1336,7 +1337,7 @@ line, `QUESTIONS.md` §0a, and the page a new operator needed:
 [`guide/hardening.md`](guide/hardening.md) and its [Russian mirror](guide/ru/hardening.md), linked from
 both overviews, both READMEs and the command tables of `using-uv` and `using-mn`.
 
-**M5.8 — Rollout.** Lab first, all of it; then the production MN (`firewall on` with the rollback
+**M5-8 — Rollout.** Lab first, all of it; then the production MN (`firewall on` with the rollback
 timer, then `confirm` from a second session), then the two nodes one at a time, checking after each
 step: SSH alive, 443 serving, a client request through the tunnel, the MN's prober green, `status`
 clean. Any step that fails: `firewall off`, and the host is where it started. Reboot one node on purpose
@@ -1443,11 +1444,13 @@ These are not separate milestones; they must be updated in the milestone that to
 
 ## 5. Explicitly deferred (post-v1)
 
-- REALITY as a second profile; Hysteria2/TUIC; MTProto (§10.4).
-- Multi-vantage probing (§10.6); federation between independent MNs; MN replication in one mesh
-  (§10.2); node reputation.
-- One machine running both the MN and a node (§10.5).
-- Web admin UI; traffic accounting and quotas (§10.3); Telegram bot.
+v0.5.0 takes part of this list back off it (§10); everything here without a 0.5.0 item stays deferred.
+
+- REALITY and the other xray-core protocol kinds; MTProto (§10.2).
+- Multi-vantage probing (§10.7); federation between independent MNs; MN replication in one mesh
+  (§10.4); node reputation.
+- One machine running both the MN and a node (§10.6).
+- Web admin UI; traffic accounting and quotas (§10.5); Telegram bot.
 - IPv6-only nodes; non-Debian distributions (an explicit portability milestone, not a side effect).
 - Hot certificate reload without a restart (depends on Xray capabilities).
 
@@ -1512,24 +1515,41 @@ path cooperate.
 
 ## 10. Backlog
 
-Work that is understood, wanted and deliberately not in the current milestone. Each item names the rule
-that keeps it out, so nobody re-discovers the reason from scratch.
+v0.5.0 is three of these items, in this order: a WARP that carries UDP (10.1), the profile options and
+the envelope for a second kind (10.2), and Hysteria2 as that kind (10.3). Each unblocks the next, and the
+first two are worth shipping even if the third slips.
+
+Everything after them is postponed to a later release: understood and wanted, but nothing in 0.5.0
+depends on it. Each postponed item still names the rule that keeps it out, so nobody re-discovers the
+reason from scratch.
 
 ### 10.1 WARP that carries UDP
 
-Today `warp.mode` routes TCP through `warp-cli`'s SOCKS5 listener and sends UDP `direct`
+Until 0.4.0 `warp.mode` routed TCP through `warp-cli`'s SOCKS5 listener and sent UDP `direct`
 (`docs/OPERATIONS.md` §6): proxy mode has no UDP ASSOCIATE, so a UDP flow handed to it never returns and
-the first casualty is client DNS. The split keeps the nodes usable and gives up the address WARP exists to
-hide, for UDP only. Four ways to close that gap were surveyed on 2026-11-16.
+the first casualty is client DNS. The split kept the nodes usable and gave up the address WARP exists to
+hide, for UDP only. Four ways to close that gap were surveyed on 2026-11-16; option A was built in 0.4.0
+and proved on a production node (§11), including a DNS query answered through the tunnel.
+
+What keeps it a 0.5.0 item:
+
+- **The `proxy` transport still splits UDP to `direct`.** A node that has to run `warp-cli` — the fallback
+  when the WireGuard registration cannot be made — keeps that hole while reporting `warp=on` like any
+  other.
+- **The transport must stay swappable.** Cloudflare is moving WARP to MASQUE, and the tunnel is a
+  registration plus an outbound whose tag the routing rule names. That indirection is the work; option D
+  must drop into it without touching routing, the fail-open balancer or the state.
+- **Hysteria2 will carry UDP through it** (§10.3). The hop is proved for TCP on the lab; the same path with
+  UDP payloads, and the identity a peer sees at the exit, is part of this item's acceptance.
 
 | Option | UDP | Host routing | Cost |
 |---|---|---|---|
 | **A. Xray `wireguard` outbound** with WARP credentials (`noKernelTun: true`) | yes | **none** — gVisor netstack inside the core | needs a WARP registration and a stored private key; one fewer service than today |
-| B. `wgcf` + `wg-quick` (what `references/Blitz` does) | yes | `ip rule`, routes, `resolvconf` | contradicts §2.2.1 |
-| C. `warp-cli` in TUN mode | yes | full-tunnel capture | contradicts §2.2.1, and `/dev/net/tun` is absent on the LXC nodes |
+| B. `wgcf` + `wg-quick` (what `references/Blitz` does) | yes | `ip rule`, routes, `resolvconf` | contradicts `AGENTS.md` §2.2, rule 1 |
+| C. `warp-cli` in TUN mode | yes | full-tunnel capture | contradicts `AGENTS.md` §2.2, rule 1, and `/dev/net/tun` is absent on the LXC nodes |
 | D. `usque` (MASQUE, userspace SOCKS5 with TCP and UDP) | yes | none | a third-party service and its netstack, plus a licence to check; MASQUE is where Cloudflare is going |
 
-**Recommended: A, planned in §11.** Xray has shipped a userspace WireGuard outbound since 1.6.5 and documents the WARP
+**Chosen: A, built in 0.4.0 (§11).** Xray has shipped a userspace WireGuard outbound since 1.6.5 and documents the WARP
 setup end to end ([xtls guide](https://xtls.github.io/en/document/level-2/warp.html)); `noKernelTun` forces
 the in-process gVisor stack, which is exactly the LXC case these nodes are
 ([outbound docs](https://xtls.github.io/config/outbounds/wireguard.html)). `wgcf generate --xray` prints the
@@ -1554,12 +1574,151 @@ over WireGuard ([wgcf#459](https://github.com/ViRb3/wgcf/issues/459)). Free WARP
 must therefore stay swappable — the routing rule names a tag, not a protocol — so option D can replace it
 without touching anything else.
 
-Acceptance, when it is picked up: a UDP probe through the tunnel reports `warp=on` in the trace, the node's
-own SSH/ACME/decoy traffic still leaves from its own address, `wgcf`-equivalent credentials survive a
-restart and are never logged, fail-open still moves traffic to `direct` when WARP stops answering, and no
-`ip rule`/`ip route` change exists on the host.
+Acceptance for the remainder: a node on the `proxy` transport either carries UDP through WARP or says in
+`warp status` that it cannot; option D can replace the outbound by changing a tag; and with Hysteria2
+enabled, a UDP payload from a client exits at Cloudflare's address, while SSH, ACME and the decoy still
+leave from the node's own. No `ip rule`/`ip route` change exists on the host.
 
-### 10.2 Several MNs in one mesh
+### 10.2 More protocols and protocol options
+
+V1 is one profile: VLESS over XHTTP `packet-up` inside TLS that nginx terminates, with the parameters
+frozen in `internal/proto/profile.go`, one `xray-core` probe worker on MN, and one URI builder plus one
+sing-box renderer for the two subscription forms. This is not accidental — the path, mode, fingerprint
+and padding were measured, and every component is shaped around that one profile. `DESCRIPTION.md` §3
+rules a second protocol out for v1.
+
+The request has two sizes, and the smaller one may be enough:
+
+- **Options inside the profile** — XHTTP mode, ALPN, mux/padding, path shape. A small enumerated set,
+  validated at enrollment and versioned; free-form values are refused because a client that cannot parse
+  the URI fails silently, and because some values are already known-bad here: an `h2` ALPN cannot cross
+  nginx's HTTP/1.1 hop, and a `chrome` hello was frozen on a measured path. These change the URI builder,
+  the generator and the prober together.
+- **A second protocol** — REALITY, Trojan/VMess/Shadowsocks, Hysteria2/TUIC. The profile becomes
+  `{kind, version, params}` with a codec per kind. REALITY first: same core, same VLESS payload, and
+  already named as a later profile in `DESCRIPTION.md` §3. Shadowsocks and Trojan are also xray-core
+  protocols. Hysteria2/TUIC are UDP, need another client on MN and another listener on UV; MTProto is a
+  different product.
+
+Constraints, in the order they decide the design:
+
+1. **The credential model is VLESS-shaped.** Pair access is a UUID derived per pair; Shadowsocks and
+   Hysteria2 use passwords, REALITY keeps the UUID. For Hysteria2 the password is a one-way derivation of
+   that UUID (§10.3), so the mesh still expresses "A may use B" with what both sides already hold and the
+   epoch does not move. A kind whose secret cannot be derived from the UUID would change
+   `DESCRIPTION.md` §6.2, which is a new `credential_epoch` and a migration.
+2. **Port 443 is shared with the decoy and ACME.** nginx owns TCP/443 today. REALITY wants the core on
+   443 and takes the client-facing handshake from nginx, so the decoy becomes REALITY's fallback and the
+   certificate flow changes. QUIC protocols use UDP/443 and do not collide with nginx, but need their
+   own probe path.
+3. **The prober is one binary.** MN's `xray-core` speaks every xray-core protocol; Hysteria2/TUIC need
+   another client there. Decided: MN links hysteria's own client module
+   (`github.com/apernet/hysteria/core/v2/client`), so the probe carries the same handshake by construction
+   and the server runs no second process. The cost is module graph weight — quic-go and its dependencies
+   enter MN's graph — and that is recorded and gated by `govulncheck` like any other dependency (§8). A
+   hand-written QUIC prober would mean maintaining a fork of the handshake, which is not a prober but a
+   second project. The narrow `Probe(ctx, url)` seam survives, but each transport is a new implementation
+   behind it.
+4. **Clients differ.** Stock sing-box already cannot read the XHTTP profile; a second protocol widens
+   that matrix. The subscription must tell a client what it can parse — profile version, per-form
+   rendering, or an explicit refusal — instead of emitting a URI that opens and fails.
+5. **No host routing changes, and no new process unless the core cannot speak the transport.** TUN designs
+   and anything needing a port forward stay out. A transport the core cannot speak is the one exception,
+   under the conditions in `DESCRIPTION.md` §11, invariant 8; every other kind runs inside the core it already has.
+
+Order in 0.5.0: the options first (small, no credential change), and the `{kind, version, params}` envelope
+built for the kind that ships in that release — Hysteria2 (§10.3), which is a binary of its own and
+therefore the expensive one. REALITY and the other xray-core kinds reuse the envelope and come later: they
+are cheaper, because the prober already speaks them and no second daemon appears. Never expose raw Xray
+JSON: a per-kind schema with validation is the only thing that keeps the generator, parser and prober from
+drifting apart.
+
+Acceptance: a second kind end to end on the lab — URI build/parse round-trip, generated document golden
+plus `xray -test`, an MN probe through it, both subscription forms, a client that does not support it
+getting a clear refusal, and the decoy/ACME/direct-traffic invariants unchanged. A profile-version test
+must show an old MN and a new UV (and the reverse) refusing the mismatch instead of writing a config
+that cannot work.
+
+### 10.3 Hysteria2 as a second transport
+
+The node's profile is TLS that nginx terminates. Where a network interferes with that shape, the answer
+that works today is a QUIC transport: it runs on UDP, so the interference aimed at TCP/443 does not see
+it, and its handshake can pass for a browser's.
+
+Hysteria2 is the one to take, on evidence rather than taste: its QUIC handshake is Chrome-shaped out of
+the box (S16). Measured on 2026-11-21 against a capture of the same session from Opera 140 (Chromium 157):
+1,886 bytes of `ClientHello` from hysteria 2.14.0, 1,935–1,951 from the browser, the same twelve
+extensions, GREASE at both ends and no `0xff01`. `disable_chrome_parrot: true` drops it to 1,524 bytes
+with the Go extension order — the difference between blending in and announcing a library.
+
+What it costs, measured on a production node's own single vCPU (1 CPU, KVM, BBR, no obfuscation, the
+node's Let's Encrypt leaf): 100 MB transfers at 44–52 MB/s (355–415 Mbit/s) across the WAN, 0.45–0.9 s of
+CPU per 100 MB — 4–9 % of one core per 100 Mbit/s carried — a 50 MB resident set and about 2 % idle. That
+is affordable at this deployment's scale, and it is the price of a transport the core cannot speak.
+
+Three things decide the shape, and each one was learned the hard way:
+
+- **Its egress is its own.** Hysteria dials the destination itself, so by default it bypasses every rule
+  the core enforces: WARP, the blocklist, the direct rules, the opt-in BitTorrent block. Measured: on a
+  node that refuses BitTorrent, torrent traffic went straight out through hysteria. Policy must live on
+  the far side of the tunnel, not beside it — a `socks5` outbound to the core's own loopback `socks`
+  inbound, whose routing then classifies the flow exactly as it does today. On the lab, 2026-11-21, 25 of
+  25 requests through that hop succeeded at 80–95 MB/s, and the core added about 0.02 s of CPU per 100 MB.
+- **It is a second daemon, and the design now says so.** xray-core has no hysteria2, so this is another
+  pinned binary and another unit — allowed on the conditions `DESCRIPTION.md` §11, invariant 8 spells out, and pinned
+  by version and checksum because its handshake is part of the fingerprint: an upgrade is a fingerprint
+  change and is tested as one.
+- **Its authentication is a restart.** `auth.userpass` is an inline map in the generated config — there is
+  no file to watch and no reload: the server's only signal is shutdown, and its HTTP surface is read-only.
+  So the agent regenerates the config and restarts the service whenever the peer set changes. The password
+  is derived from the pair's UUID — `base64url(SHA-256("termit/hysteria2/" + uuid))` — so there is no new
+  secret to store and no credential epoch to bump: both sides already know the UUID, and the derivation is
+  one-way. A restart costs the QUIC transport's sessions and nothing else: with the TLS transport also
+  enabled nobody notices, and with it alone clients reconnect in seconds. Enrollments and blocks are rare
+  enough to pay that, which is why there is no password oracle (or helper service) listening on the node.
+  The trade accepted here: whoever holds the subscription holds both access links to that node.
+
+The certificate is the node's existing leaf: hysteria re-reads it on every handshake, so a renewal needs
+no restart. The decoy stays byte-identical: `masquerade: proxy` forwards a non-hysteria visitor to the
+vhost, which reproduces nginx's headers and 404s. No Brutal (`congestion.type: bbr` with
+`ignoreClientBandwidth: true`): a transport that fights the network for bandwidth is a transport that gets
+noticed. No obfuscation and no port hopping — both are fingerprints of their own, and neither is needed
+here.
+
+Firewall: TCP/80 and TCP/443 are accepted before the scan meter, and UDP/443 must join them in the same
+place. An unlisted UDP port falls through to the meter, and the participant is banned for their own QUIC
+traffic. Alt-Svc `h3` on the vhost is then what makes the listener part of the same site instead of a port
+found by scanning.
+
+Phases:
+
+0. Spike (done: S16) — the handshake, the decoy, the hop for TCP (25 of 25) and for UDP (an echo through
+   it and a real DNS answer).
+1. Node (done): the pinned binary (version and digest from the release's `hashes.txt`), its unit under its
+   own user `termit-hy`, the generated `auth.userpass` config with a strict read-back and a trial start
+   instead of the missing `-test`, the core's loopback inbound, the firewall rule, Alt-Svc and a `doctor`
+   line. Verified end to end on the lab: a client over UDP/443 exited through WARP (`104.28.254.16`) while
+   the node's own traffic kept its own address, and the core logged the flow on the hop inbound.
+2. Profile (in progress): the envelope exists — a node reports `{kind, version}` for what it serves and the
+   subscription renders one link per kind (`hy2://` in the list, a `hysteria2` outbound in sing-box), with
+   the password derived from each pair's UUID. What is left is the parameters side of the envelope: a kind
+   whose parameters vary has no place to say so yet, and the prober has no way to read a kind it does not
+   implement.
+3. Prober (done): MN links hysteria's client and probes the transport (§10.2, constraint 3). The target
+   carries the kind the check goes through, and only a node that serves nothing but QUIC takes the new
+   path — every other node keeps the worker binary, which checks what a VLESS client would see. The
+   certificate pin is read the same way on both paths, and the server's probe credential joins the node's
+   transport user set so the QUIC half can authenticate at all.
+4. Production pass: this is a network change, so it ships as a pre-release first (AGENTS §9).
+
+Acceptance: on the lab, a node with hysteria2 as a second profile — a client through it reaches the
+internet with WARP as the egress and the blocklist applied, a torrent is refused, the decoy answers a
+plain HTTPS visitor identically on both transports, the URI round-trip and the generated document pass,
+an unmodified sing-box refuses the kind instead of writing a config that cannot work, and a killed
+hysteria process comes back by itself (the `Restart=always` the core's unit now has). Production pass: the
+exit address and the fingerprint of a real handshake from a second machine.
+
+### 10.4 Several MNs in one mesh — postponed
 
 Today one MN is the only authority: it owns the SQLite registry, derives every pair credential from its
 `master_key`, probes every node and renders every subscription. A second MN in the same mesh is therefore
@@ -1630,7 +1789,7 @@ logged. A partition admits no replica enrollment and no epoch bump; a schema mis
 but keeps serving the last good snapshot. The lab needs a second MN machine — the spare fourth container
 is a UV — so the suite grows before this ships.
 
-### 10.3 Traffic limits per node
+### 10.5 Traffic limits per node — postponed
 
 Nothing counts bytes today: MN knows a node answers checks and nothing else. VPS plans cap traffic, so a
 node can be suspended by its provider without warning — which removes a working exit and, because the
@@ -1677,58 +1836,7 @@ node to `active` with no operator action; the peer set drops it while limited an
 `termit-mn status` shows the number and the period. This is a quota, not per-second rate limiting
 (§5.10).
 
-### 10.4 More protocols and protocol options
-
-V1 is one profile: VLESS over XHTTP `packet-up` inside TLS that nginx terminates, with the parameters
-frozen in `internal/proto/profile.go`, one `xray-core` probe worker on MN, and one URI builder plus one
-sing-box renderer for the two subscription forms. This is not accidental — the path, mode, fingerprint
-and padding were measured, and every component is shaped around that one profile. `DESCRIPTION.md` §3
-rules a second protocol out for v1.
-
-The request has two sizes, and the smaller one may be enough:
-
-- **Options inside the profile** — XHTTP mode, ALPN, mux/padding, path shape. A small enumerated set,
-  validated at enrollment and versioned; free-form values are refused because a client that cannot parse
-  the URI fails silently, and because some values are already known-bad here: an `h2` ALPN cannot cross
-  nginx's HTTP/1.1 hop, and a `chrome` hello was frozen on a measured path. These change the URI builder,
-  the generator and the prober together.
-- **A second protocol** — REALITY, Trojan/VMess/Shadowsocks, Hysteria2/TUIC. The profile becomes
-  `{kind, version, params}` with a codec per kind. REALITY first: same core, same VLESS payload, and
-  already named as a later profile in `DESCRIPTION.md` §3. Shadowsocks and Trojan are also xray-core
-  protocols. Hysteria2/TUIC are UDP, need another client on MN and another listener on UV; MTProto is a
-  different product.
-
-Constraints, in the order they decide the design:
-
-1. **The credential model is VLESS-shaped.** Pair access is a UUID derived per pair; Shadowsocks and
-   Hysteria2 use passwords, REALITY keeps the UUID. Each kind needs its own pair-secret derivation with
-   a distinct domain separator, or the mesh cannot express "A may use B" portably. Changing
-   `DESCRIPTION.md` §6.2 is a new `credential_epoch` and a migration.
-2. **Port 443 is shared with the decoy and ACME.** nginx owns TCP/443 today. REALITY wants the core on
-   443 and takes the client-facing handshake from nginx, so the decoy becomes REALITY's fallback and the
-   certificate flow changes. QUIC protocols use UDP/443 and do not collide with nginx, but need their
-   own probe path.
-3. **The prober is one binary.** MN's `xray-core` speaks every xray-core protocol; Hysteria2/TUIC need a
-   second pinned client with its own upgrade path and failure modes. The narrow `Probe(ctx, url)` seam
-   survives, but each transport is a new implementation behind it.
-4. **Clients differ.** Stock sing-box already cannot read the XHTTP profile; a second protocol widens
-   that matrix. The subscription must tell a client what it can parse — profile version, per-form
-   rendering, or an explicit refusal — instead of emitting a URI that opens and fails.
-5. **No host firewall or routing changes and no second daemon.** That rules out TUN designs and anything
-   needing a port forward, and it applies to every new protocol.
-
-Order if picked up: options first (small, no credential change), then REALITY (same core, one topology
-change), then the other xray-core protocols, and only then a UDP protocol with its own client. Never
-expose raw Xray JSON: a per-kind schema with validation is the only thing that keeps the generator,
-parser and prober from drifting apart.
-
-Acceptance: a second kind end to end on the lab — URI build/parse round-trip, generated document golden
-plus `xray -test`, an MN probe through it, both subscription forms, a client that does not support it
-getting a clear refusal, and the decoy/ACME/direct-traffic invariants unchanged. A profile-version test
-must show an old MN and a new UV (and the reverse) refusing the mismatch instead of writing a config
-that cannot work.
-
-### 10.5 The MN and a node on one machine
+### 10.6 The MN and a node on one machine — postponed
 
 Today the two roles are two machines by design: the node's nginx owns `:80` and `:443`, while the MN has
 its own TLS listener on `:443` and its ACME challenge listener on `:80` (`docs/OPERATIONS.md` §1). For a
@@ -1772,23 +1880,23 @@ Acceptance: one box from a clean image — both names served over TLS, `termit-m
 `termit-uv doctor` green, exactly one process per port, a client through the node reaching the internet
 while the MN's own traffic never enters the tunnel, a subscription and an admin command working across
 the shared challenge listener, `uninstall --purge` of either role leaving the other serving, and the
-coupling stated in the guide. The co-located node's probe comes from a second vantage (§10.6): a check
+coupling stated in the guide. The co-located node's probe comes from a second vantage (§10.7): a check
 that leaves from the same box is a self-check, not evidence that the node is reachable from outside.
 
-### 10.6 A second vantage for the MN's own node
+### 10.7 A second vantage for the MN's own node — postponed
 
 Today the home MN is the only observer: its probe decides a node's state, and its own vantage is assumed
 to be the internet's. Two cases that this plan now makes common break that assumption. A node co-located
-with its MN (§10.5) can only be reached through hairpin NAT or loopback, so the check stops measuring
+with its MN (§10.6) can only be reached through hairpin NAT or loopback, so the check stops measuring
 external reachability. An MN whose path to one node is blocked, while every other node is fine, has no
 way to say "this is my vantage, not the node" — and by `DESCRIPTION.md` §7.2 a timeout is a verdict, so
 the node is blocked.
 
 The fix is to let another MN, on a different network, perform the probe and hand the verdict back: a
 second vantage. It is deferred with the rest of multi-vantage probing (§5), but its wire shape belongs in
-the plan now, because §10.5 cannot honestly claim external validation without it.
+the plan now, because §10.6 cannot honestly claim external validation without it.
 
-It is a delegation, not a federation. A node keeps one home MN (§10.2) and only the home MN decides and
+It is a delegation, not a federation. A node keeps one home MN (§10.4) and only the home MN decides and
 writes state; a peer observes and answers, it never writes a row.
 
 **Verdict rule**, generalising the retry aggregation `runCycle` already does ("failed only if every
@@ -1802,7 +1910,7 @@ attempt concluded"):
 Shape:
 
 - **Config**: `prober.peers: [{name, url, key, delegate: [domains]}]`. The list is explicit: an automatic
-  "delegate my own domain" rule would hard-code the topology, and §10.5 is not the only reason to
+  "delegate my own domain" rule would hard-code the topology, and §10.6 is not the only reason to
   delegate.
 - **Protocol**: one call, `POST {prefix}/peer/probe` with `{uv_id, target{domain, port, sni, path, mode,
   uuid, pin}}`, answered with the `Result` the local prober would have produced (`ok`, class, latency,
@@ -1820,9 +1928,9 @@ Decisions that come before any code:
    can block any node it can reach. Options: accept it (the mesh is cooperative, as with a hostile UV),
    require unanimity once there are two or more vantages, or let a single peer's failure move a node only
    to `unavailable` while `blocked` needs the node's own self-check to fail as well. This is the same
-   trust question as §10.2's shared master key and must be answered with it.
+   trust question as §10.4's shared master key and must be answered with it.
 2. **What the peer learns.** A probe target is the probe UUID, the secret path and the certificate pin —
-   the ability to connect to a node it does not own. Under a shared master key (§10.2) a peer derives
+   the ability to connect to a node it does not own. Under a shared master key (§10.4) a peer derives
    pair credentials anyway, so this is not new power; without replication it is, and must be stated.
    Whether the probe UUID becomes rotatable (today `uv reissue` rotates only the agent key) is open.
 3. **Who picks the peer.** Explicit selection is honest; automatic selection from the list is convenient
@@ -1837,7 +1945,7 @@ only by the peer and reaches `active` on the peer's `ok`; stopping the peer leav
 in decision 1, recorded in the guide; a stale result never moves the node; the state-machine tests are
 unchanged, because no transition was added.
 
-## 11. Planned: WARP over WireGuard inside the core (0.4.0)
+## 11. Planned: WARP over WireGuard inside the core (0.5.0)
 
 The one thing `0.3.2` gave up is that UDP leaves from the node's address: `warp-cli`'s proxy mode cannot
 carry it, so §10.1's option A replaces the proxy with a WireGuard outbound inside Xray. This is the plan;
@@ -1899,7 +2007,7 @@ Two ways to obtain it, and the plan takes the second:
     "mtu": 1280, "noKernelTun": true } }
 ```
 
-`noKernelTun` is not a tuning knob here: it is what keeps the node out of host routing (invariant §2.2.1)
+`noKernelTun` is not a tuning knob here: it is what keeps the node out of host routing (invariant 1 in `AGENTS.md` §2.2)
 and what makes the outbound work in the LXC containers the lab runs on. The measured cost — two thirds of
 the kernel path's throughput on a one-vCPU node (§10.1) — is accepted and recorded.
 
@@ -2007,7 +2115,7 @@ Still open before a release: the production pass on the two nodes.
 
 Two to three days of work: the registration client and the state file are the bulk of it, the generator
 change is small, and the lab pass is a half-day. It ships as `0.4.0` from a `release/v0.4.0` branch, with
-its own production pass recorded the way `M5.8` was.
+its own production pass recorded the way `M5-8` was.
 ### 11.9 Production pass, 2026-11-17
 
 Both nodes took `v0.4.0` with `uv.sh --version v0.4.0`: the upgrade converged the units, the certificate
@@ -2054,6 +2162,14 @@ left to the trailing rule.
 `v0.4.0p6` on both production nodes: `family: ipv4`, `172.16.0.2/32` and `0.0.0.0/0` in the core's
 document, `::/0` named direct, and `warp status` answering `egress: on` with `104.28.222.18` and
 `104.28.193.183` — Cloudflare's IPv4, where the same nodes reported `2a09:…` a few hours earlier.
+
+**Changed for 0.5.0, 2026-11-21: the untaken family is refused, not sent direct.** Routing it direct put
+the node's own address on the wire for every IPv6 destination — the identifier the tunnel exists to hide,
+measured as `ipv6.icanhazip.com` answering with a node's `2a12:…` address. The rule now sends those
+destinations to `block`. A client gets a connection that fails and can say so, instead of an address it
+never asked for; the price is that a service reachable only over the untaken family no longer works
+through the node, which with the IPv4 default means IPv6-only services. `OPERATIONS.md` §7 states the
+behaviour and its limit — the rules match addresses, not names.
 
 ### 11.10 Production pass, 0.4.1, 2026-11-17
 

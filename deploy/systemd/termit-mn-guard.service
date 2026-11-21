@@ -21,7 +21,7 @@ StartLimitBurst=10
 [Service]
 Type=simple
 ExecStart=/usr/bin/termit-mn guard run --config /etc/termit/mn/config.yaml
-Restart=on-failure
+Restart=always
 RestartSec=30s
 Nice=10
 

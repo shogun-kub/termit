@@ -105,9 +105,11 @@ binary as a step; the server does not have that step.
 ## 3. Install the management server
 
 The bootstrap script resolves a release, verifies it, installs the binary and its unit, gives it the probe
-worker, creates the configuration, starts the service and prints the status:
+worker, creates the configuration, starts the service and prints the status. Debian's minimal and netinst
+images ship neither `curl` nor `wget`, so install one first on such a box:
 
 ```bash
+apt-get update && apt-get install -y wget   # only when the image has neither
 wget -q https://github.com/shogun-kub/termit/releases/latest/download/mn.sh
 sh mn.sh --domain mn.example.com --email you@example.com \
   --admin-token-out /etc/termit/mn/admin.token
@@ -378,6 +380,7 @@ something piped from a branch:
 termit-mn invite create --note "node1" --uses 1        # on the MN; prints the code once
 
 # on the fresh node, as root
+apt-get update && apt-get install -y wget   # only when the image has neither
 wget -q https://github.com/shogun-kub/termit/releases/latest/download/uv.sh
 sh uv.sh \
   --domain node1.example.net --email you@example.com \
@@ -508,7 +511,19 @@ per-node jitter (ten minutes at most), and runs:
    restart as fallback and rollback on failure.
 
 A failed cycle does not retry every minute: the agent keeps the schedule it has, and the server's
-probe decides the node's state. To run one cycle by hand:
+probe decides the node's state.
+
+**Between the cycles the agent polls the mesh.** It wakes every fifteen minutes — `policy.mesh_poll` in
+`/etc/termit/mn/config.yaml`, which the server hands to the node in its sync policy — and reads
+`{prefix}/healthz`, which carries `mesh_generation`, a digest of who is in the mesh and in what shape.
+When the digest differs from the one the last sync applied (a node joined, left, was blocked, moved or
+came back), the agent reconciles at once instead of waiting for its scheduled time: a fresh node
+appears in the rest of the mesh within one interval. The poll needs no credential and names nothing, and
+a poll it cannot read changes nothing — the scheduled cycle will report the outage with its backoff.
+**`mesh_poll: 0` turns the poll off**: a node then learns about a join at its next scheduled sync, and
+the node makes no request between cycles at all. The default is fifteen minutes.
+
+To run one cycle by hand:
 
 ```bash
 termit-uv agent --once
@@ -598,10 +613,19 @@ is `/var/lib/termit/uv/warp.yaml`, `0600`, written once — a re-run of `init` r
 --purge` removes it with the rest of the state.
 
 **The tunnel carries one address family.** `warp.family` is `ipv4` (the default) or `ipv6`: the document
-keeps the tunnel address of that family and gives the peer that family's default route, and destinations
-of the other family are routed `direct` — the way they travelled before WARP existed. IPv4 is the default
-because Cloudflare's IPv6 egress is what large services tend to mark as unsafe, and because a provider's
-own IPv6 is not something the node can fix.
+keeps the tunnel address of that family and gives the peer that family's default route. Destinations of
+the other family are **refused**, not routed direct: they cannot go through a tunnel that does not carry
+them, and sending them direct would put the node's own address on the wire — the identifier the tunnel
+exists to hide. A client sees a connection that fails and can report it; what it never sees is an address
+it did not ask for. The cost is named: a service reachable only over the untaken family does not work
+through the node, which with the default family means IPv6-only services. IPv4 is the default because
+Cloudflare's IPv6 egress is what large services tend to mark as unsafe, and because a provider's own IPv6
+is not something the node can fix.
+
+A domain is not matched by these rules — the node's document resolves names in the outbound — so the
+refusal covers destinations that arrive as an address, which is what a client that resolved AAAA sends.
+Nothing in the node chooses to send IPv6 traffic out; a client that needs an IPv4 path for a v6-only name
+must be configured for it on the client side.
 
 ```bash
 termit-uv init --warp-family ipv6   # exit through Cloudflare's IPv6 instead
@@ -817,6 +841,17 @@ has. Check the core, not the store listing:
 | Hiddify, Streisand, sing-box itself | sing-box | no — no XHTTP transport upstream |
 | Husi | sing-box fork | partial; its XHTTP client is not interoperable with Xray's inbound |
 
+**A node with the QUIC transport has a second link per entry**, `hy2://user:password@domain:443?sni=domain`
+labelled `(QUIC)`, and the JSON subscription form carries a `hysteria2` outbound with the same tag. The
+user name and password are derived from the same credential the `vless://` link carries, so the two links
+are interchangeable credentials for the same node, not two accounts. Any client that speaks Hysteria2 can
+use it — the podkop family, Hiddify, NekoBox, the reference `hysteria` client — but it needs UDP/443 to
+reach the node, which is the point and also the catch: a network that blocks QUIC or UDP makes that link
+useless while the TLS profile keeps working. Points to remember: `hy2://` carries no XHTTP path and no
+fragmentation parameters, so a client that applies the profile's fragmentation to it is doing nothing
+useful; and the label suffix is the only difference between the two lines, which is what makes them easy
+to tell apart in a client's list.
+
 A client without XHTTP does not report "unsupported transport": it falls back to plain VLESS over TLS,
 the node answers its request with an HTTP `400`, and the client's VLESS reader reports the first byte
 of `HTTP/1.1` as a version — `unknown version: 72` (`72` is `H`). Treat that message as "wrong client",
@@ -979,7 +1014,7 @@ Publishing is a tag push on `main`, after the branch process in `AGENTS.md` §9 
 executable and attaches everything to the GitHub release, `uv.sh` included — the install URLs in the
 documentation point at `releases/download/<version>/uv.sh`. The workflow marks the release
 `prerelease: true`; clearing that flag is the deliberate act that records the release's own production
-pass (`docs/IMPLEMENTATION_PLAN.md` M4.3 for `0.2.1`, M5.8 for `0.3.2`, §11.9 for `0.4.0`, §11.10 for
+pass (`docs/IMPLEMENTATION_PLAN.md` M4.3 for `0.2.1`, M5-8 for `0.3.2`, §11.9 for `0.4.0`, §11.10 for
 `0.4.1`). Clearing the flag alone leaves `releases/latest` where it was: GitHub only moves that pointer
 when the release is edited with `make_latest` (`gh release edit <version> --latest`, or
 `make_latest: true` through the API), and until it moves `releases/latest/download/...` — the URL the
@@ -1044,6 +1079,7 @@ In the order the input chain evaluates it:
 | `ip saddr @banned4 drop`, `ip6 saddr @banned6 drop` | what the guard banned |
 | `icmpv6 type { nd-*, packet-too-big, destination-unreachable, time-exceeded } accept` | without NDP and PMTU messages IPv6 stops working |
 | `tcp dport { 22, 80, 443 } accept` | what a node publishes — or, with `ssh_from`, port 22 only from the listed networks |
+| `udp dport { … } accept` | `security.firewall.udp_ports`, empty unless the node serves a QUIC transport. It has to come before the meter: an unlisted UDP port is counted there, and the guard bans for what the meter counted |
 | `meter scan4m { … } add @scan4 { … }` | counts attempts to everything else per source, in the kernel — present only when the guard is configured (§13.4), because the guard is what reads the set |
 | `counter drop` | with `default_deny`, everything else is refused |
 
@@ -1237,3 +1273,64 @@ pending case fails at boot with `read-only file system` and the table does not c
   one.
 - It does not hide the node from a targeted observer. It refuses scans and probes; see
   [`THREAT_MODEL.md`](THREAT_MODEL.md).
+
+## 14. The QUIC transport
+
+The node can serve a second transport beside the TLS profile: Hysteria2 on UDP/443, with the same
+certificate and the same decoy. It is off by default, and a node that never enables it installs nothing
+and opens no port.
+
+```yaml
+hysteria: {}            # the block is the switch; its presence enables the transport
+security:
+  firewall:
+    udp_ports: [443]    # required while the firewall is on
+```
+
+**A known advisory, and what it costs.** GO-2026-5288 says a crafted QUIC packet can drive the server out
+of memory when sniffing is on, and v2.14.0 is the newest release — there is no fixed version to install.
+What the node does about it: the transport runs as an unprivileged user, its unit caps it at
+`MemoryMax=256M`, and `Restart=always` turns a blow-up into a restart of the transport alone instead of an
+OOM that takes nginx and the core with it. Sniffing is on only when `block_bittorrent` is, so a node that
+does not block BitTorrent never reaches the vulnerable path. When a release with a fix appears, bump
+`hysteriaVersion` and its digests in `internal/uv/install/hysteria.go`.
+
+`termit-uv init` then installs the pinned binary, writes `/etc/termit/uv/hysteria.yaml`, installs
+`termit-hysteria.service` and starts it after the core.
+
+**The block is the switch in both directions.** Remove it and run `init` again: the step `hysteria-off`
+stops and disables the unit, removes the unit file, the configuration and the pinned binary, and says so
+in its journal line. What stays is the `termit-hy` user — no shell, no home, no writable path; `uninstall
+--purge` removes it — and the manifest entry, which is how uninstall still knows what this node once had.
+One cleanup is the operator's: a leftover `udp_ports: [443]` in the security section is their own line,
+and with nothing listening behind it the firewall is simply accepting packets nobody answers.
+
+How it is put together, and why:
+
+- **It runs as its own user.** `termit-hy` reads the certificate's private key, and the core's user must
+  not: the certificate directory belongs to the transport's group and is unreadable by the core.
+- **Its traffic goes through the core.** A loopback SOCKS inbound (`127.0.0.1:10801` by default) is where
+  every request enters, so WARP, the blocklist, the direct rules and the torrent rule apply to it exactly
+  as they do to a client's traffic. Without the hop the transport would dial out on its own and bypass
+  all of it.
+- **No Brutal, no obfuscation.** `congestion.type: bbr` with `ignoreClientBandwidth`, and the Chrome-shaped
+  QUIC handshake the upstream client sends by default. Both choices are about not standing out.
+- **Alt-Svc.** The vhost advertises `h3=":443"` while the transport is enabled, so a browser finds the
+  QUIC port through the site rather than by scanning.
+
+What it costs on a one-vCPU node: about 50 MB of resident memory, roughly 2 % of a core idle and 0.45–0.9 s
+of CPU per 100 MB carried (4–9 % of a core per 100 Mbit/s). Throughput through the hop measured 355–415
+Mbit/s on a production node.
+
+Checking it:
+
+```bash
+termit-uv doctor                     # a "transport" line appears only while it is enabled
+systemctl status termit-hysteria
+ss -lnu | grep :443
+```
+
+There is no password to set. Every pair's user name and password are derived from that pair's UUID, which
+both the node and the server already hold: the node writes them into the transport's configuration, and the
+server writes the same values into the participant's link. Adding or removing a peer is a sync, not a
+configuration change on the node.

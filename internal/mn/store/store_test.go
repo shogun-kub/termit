@@ -469,3 +469,82 @@ func TestRotateAdminMovesTheCredential(t *testing.T) {
 		t.Errorf("rotating an unknown admin = %v, want ErrNotFound", err)
 	}
 }
+
+// TestTransportsAreReplacedNotMerged: a node that stops serving a kind must lose that link, so the record
+// is the node's latest answer, not a growing set.
+func TestTransportsAreReplacedNotMerged(t *testing.T) {
+	t.Parallel()
+	s := openTestStore(t)
+	ctx := context.Background()
+	uv := testUV("uv_transport", "transport.example.com")
+	if err := s.CreateUV(ctx, uv); err != nil {
+		t.Fatalf("CreateUV: %v", err)
+	}
+	if err := s.SetUVTransports(ctx, uv.ID, []string{"vless", "hysteria2"}); err != nil {
+		t.Fatalf("SetUVTransports: %v", err)
+	}
+	got, err := s.UVTransports(ctx)
+	if err != nil {
+		t.Fatalf("UVTransports: %v", err)
+	}
+	if len(got[uv.ID]) != 2 {
+		t.Fatalf("got %v, want two kinds", got[uv.ID])
+	}
+	if err := s.SetUVTransports(ctx, uv.ID, []string{"vless"}); err != nil {
+		t.Fatalf("SetUVTransports: %v", err)
+	}
+	got, err = s.UVTransports(ctx)
+	if err != nil {
+		t.Fatalf("UVTransports: %v", err)
+	}
+	if len(got[uv.ID]) != 1 || got[uv.ID][0] != "vless" {
+		t.Fatalf("got %v, want only vless", got[uv.ID])
+	}
+}
+
+// TestOpenMigratesFromFive: the transport table arrived with schema 6, and a registry that has been
+// running since 5 must gain it without losing a row. A fresh database proves nothing about that step.
+func TestOpenMigratesFromFive(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "five.db")
+	ctx := context.Background()
+	s, err := store.Open(ctx, store.Options{Path: path})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	uv := testUV("uv_five", "five.example.com")
+	if err := s.CreateUV(ctx, uv); err != nil {
+		t.Fatalf("CreateUV: %v", err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	// Put the file back the way a build without the transport table left it.
+	raw, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatalf("open raw: %v", err)
+	}
+	for _, query := range []string{"DROP TABLE uv_transport", "PRAGMA user_version = 5"} {
+		if _, err := raw.Exec(query); err != nil {
+			t.Fatalf("%s: %v", query, err)
+		}
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatalf("close raw: %v", err)
+	}
+
+	s, err = store.Open(ctx, store.Options{Path: path})
+	if err != nil {
+		t.Fatalf("Open after the migration: %v", err)
+	}
+	defer func() { _ = s.Close() }()
+	if version, err := s.Version(ctx); err != nil || version != store.SchemaVersion {
+		t.Fatalf("version = %d, %v", version, err)
+	}
+	if _, err := s.UVTransports(ctx); err != nil {
+		t.Fatalf("the transport table did not survive the migration: %v", err)
+	}
+	if _, err := s.UVByID(ctx, uv.ID); err != nil {
+		t.Fatalf("the node was lost in the migration: %v", err)
+	}
+}

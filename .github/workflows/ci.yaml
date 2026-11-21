@@ -49,8 +49,8 @@ jobs:
 
       - name: release tool tests
         run: |
-          go vet ./deploy/release
-          go test ./deploy/release
+          go vet ./deploy/...
+          go test ./deploy/...
 
   # The dependency set is small on purpose; this is what keeps it honest, and it is the only gate that
   # looks at the standard library's own advisories as well as our direct modules.
@@ -62,8 +62,11 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      # govulncheck has no exclusion flag, so the gate is our own: every finding must be either absent
+      # or named in deploy/vulnerabilities.json, and every entry there carries the release that must
+      # not see it - `deploy/release` refuses to cut that version while the entry is still present.
       - name: govulncheck
-        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 $PKGS
+        run: go run ./deploy/vulngate -tool golang.org/x/vuln/cmd/govulncheck@v1.9.0 $PKGS
 
   lint:
     runs-on: ubuntu-latest

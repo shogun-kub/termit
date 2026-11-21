@@ -28,6 +28,9 @@ type Peer struct {
 	Path   string
 	// Degraded marks a node that is still in the list but currently failing its checks.
 	Degraded bool
+	// Transports is what the node reported it serves (proto.KindVLESS, proto.KindHysteria2). Empty
+	// means the TLS profile alone, which is what a node predating the report served.
+	Transports []string
 }
 
 // Options configure the web links.
@@ -85,6 +88,16 @@ func RenderList(peers []Peer, opts Options) (string, error) {
 		// and the patched sing-box builds read them from the URI.
 		raw = proto.AddSingBoxFragment(raw, opts.Fragment, opts.RecordFragment)
 		lines = append(lines, raw)
+		// A node that also serves the QUIC transport gets a second link: different protocol, different
+		// port, and the user name and password derived from the same pair credential. The TLS-only
+		// parameters above do not belong on it.
+		if proto.Serves(peer.Transports, proto.KindHysteria2) {
+			quic, err := proto.BuildHysteriaURL(peer.Domain, peer.UUID, label+" (QUIC)")
+			if err != nil {
+				return "", fmt.Errorf("sub: build the QUIC URI for %s: %w", peer.Domain, err)
+			}
+			lines = append(lines, quic)
+		}
 	}
 	// A trailing newline is what every client tolerates, and it keeps a one-peer list from looking
 	// like a truncated file.
@@ -150,6 +163,22 @@ func RenderJSON(peers []Peer, opts Options) ([]byte, error) {
 		if opts.RecordFragment {
 			tls["record_fragment"] = true
 		}
+		if proto.Serves(peer.Transports, proto.KindHysteria2) {
+			quicTag := tag + " (QUIC)"
+			tags = append(tags, quicTag)
+			outbounds = append(outbounds, map[string]any{
+				"type":        "hysteria2",
+				"tag":         quicTag,
+				"server":      peer.Domain,
+				"server_port": proto.HysteriaPort,
+				"password":    proto.HysteriaPassword(peer.UUID),
+				"tls": map[string]any{
+					"enabled":     true,
+					"server_name": peer.Domain,
+					"alpn":        []string{"h3"},
+				},
+			})
+		}
 		outbounds = append(outbounds, map[string]any{
 			"type":        "vless",
 			"tag":         tag,
@@ -174,11 +203,15 @@ func RenderJSON(peers []Peer, opts Options) ([]byte, error) {
 
 	profile := singBoxProfile{
 		Log: map[string]any{"level": "warn"},
+		// sing-box 1.14 removed the legacy DNS server format and refuses the whole profile when it meets
+		// one, so this is the 1.12+ shape: a typed server with an explicit address. "remote" answers
+		// through the tunnel, "local" is the system resolver for the rules that need it.
 		DNS: map[string]any{
 			"servers": []any{
-				map[string]any{"tag": "remote", "detour": "proxy"},
-				map[string]any{"tag": "local"},
+				map[string]any{"type": "https", "tag": "remote", "server": "1.1.1.1", "detour": "proxy"},
+				map[string]any{"type": "local", "tag": "local"},
 			},
+			"final": "remote",
 		},
 		Inbounds: []any{
 			map[string]any{"type": "tun", "tag": "tun-in", "stack": "system", "auto_route": true},

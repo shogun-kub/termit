@@ -36,6 +36,40 @@ func TestParseAppliesDefaults(t *testing.T) {
 	if cfg.Policy.CheckInterval != 24*time.Hour {
 		t.Errorf("check interval = %v, want 24h", cfg.Policy.CheckInterval)
 	}
+	if got := cfg.Policy.MeshPollInterval(); got != config.DefaultMeshPoll {
+		t.Errorf("mesh poll = %v, want the default %v", got, config.DefaultMeshPoll)
+	}
+}
+
+func TestMeshPollZeroIsADecision(t *testing.T) {
+	t.Parallel()
+	// An absent key means the default; an explicit 0 means the operator does not want the poll, and
+	// the loader must keep the two apart — that is why the field is a pointer.
+	absent, err := config.Parse(strings.NewReader("domain: mn.example.com\n"))
+	if err != nil {
+		t.Fatalf("Parse without the key: %v", err)
+	}
+	if got := absent.Policy.MeshPollInterval(); got != config.DefaultMeshPoll {
+		t.Errorf("without the key the poll is %v, want %v", got, config.DefaultMeshPoll)
+	}
+
+	off, err := config.Parse(strings.NewReader("domain: mn.example.com\npolicy:\n  mesh_poll: 0\n"))
+	if err != nil {
+		t.Fatalf("Parse with 0: %v", err)
+	}
+	if off.Policy.MeshPoll != nil && *off.Policy.MeshPoll != 0 {
+		t.Errorf("mesh_poll was read as %v", *off.Policy.MeshPoll)
+	}
+	if got := off.Policy.MeshPollInterval(); got != 0 {
+		t.Errorf("mesh_poll: 0 became %v, want the poll turned off", got)
+	}
+
+	negative := config.PollInterval(-time.Minute)
+	bad := config.Default()
+	bad.Policy.MeshPoll = &negative
+	if err := bad.Validate(); err == nil || !strings.Contains(err.Error(), "mesh_poll") {
+		t.Errorf("a negative mesh_poll = %v, want a refusal naming it", err)
+	}
 }
 
 func TestParseRejectsUnknownKeys(t *testing.T) {

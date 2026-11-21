@@ -24,6 +24,11 @@ var engineNow = time.Date(2026, 11, 9, 15, 0, 0, 0, time.UTC)
 // may do. The WARP step has its own tests with a fake executor.
 const skippedSteps = 3
 
+// presentOnAFreshNode counts the steps that report "already done" on a node that has none of the work:
+// the egress probe, whose sandboxed core never becomes active, and the transport's retire step, which has
+// nothing to retire because the transport was never enabled.
+const presentOnAFreshNode = 2
+
 type sandbox struct {
 	exec     *fakeExecutor
 	user     bool
@@ -130,6 +135,7 @@ func testConfig(t *testing.T) *config.Config {
 	cfg.Paths.SiteDir = filepath.Join(cfg.Paths.StateDir, "site")
 	cfg.Paths.BinDir = filepath.Join(dir, "sbin")
 	cfg.Paths.XrayConfig = filepath.Join(cfg.Paths.ConfigDir, "xray.json")
+	cfg.Paths.HysteriaConfig = filepath.Join(cfg.Paths.ConfigDir, "hysteria.yaml")
 	cfg.Paths.NginxSite = filepath.Join(dir, "nginx", "sites-available", "termit.conf")
 	cfg.Paths.SitesEnabled = filepath.Join(dir, "nginx", "sites-enabled", "termit.conf")
 	cfg.Paths.UnitDir = filepath.Join(dir, "systemd")
@@ -188,7 +194,7 @@ func TestEngineInstallsAndReusesState(t *testing.T) {
 	}
 	// The egress probe is the one step the sandbox reports as present: its core never becomes active, so
 	// there is no tunnel to verify and it says so instead of running.
-	if counts := report.Counts(); counts[state.StepOK] != len(first.Steps())-skippedSteps-1 {
+	if counts := report.Counts(); counts[state.StepOK] != len(first.Steps())-skippedSteps-presentOnAFreshNode {
 		t.Fatalf("first run counts = %v, want every step after preflight to be ok: %+v", counts, report.Steps)
 	}
 
@@ -306,9 +312,9 @@ func TestEngineResumesAfterFailure(t *testing.T) {
 		t.Fatalf("resume Run: %v", err)
 	}
 	counts := resumeReport.Counts()
-	// Three now: the two steps before the failure, and the egress probe, which the fake sandbox reports
-	// as skipped because its core is never active.
-	if counts[state.StepPresent] != 3 || counts[state.StepOK] != len(resumed.Steps())-skippedSteps-3 {
+	// Four now: the two steps before the failure, the egress probe, which the fake sandbox reports as
+	// skipped because its core is never active, and the transport retire step, which finds nothing.
+	if counts[state.StepPresent] != 4 || counts[state.StepOK] != len(resumed.Steps())-skippedSteps-4 {
 		t.Errorf("resume counts = %v, want the two steps before the failure present and the rest ok: %+v", counts, resumeReport.Steps)
 	}
 	if !resumed.State().Installed() {
@@ -326,7 +332,7 @@ func TestEngineDryRunTouchesNothing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if counts := report.Counts(); counts[state.StepPlanned] != len(installer.Steps())-skippedSteps-1 {
+	if counts := report.Counts(); counts[state.StepPlanned] != len(installer.Steps())-skippedSteps-presentOnAFreshNode {
 		t.Errorf("dry run counts = %v, want every step but the egress probe planned: %+v", counts, report.Steps)
 	}
 	if _, err := os.Stat(cfg.Paths.StateDir); !os.IsNotExist(err) {

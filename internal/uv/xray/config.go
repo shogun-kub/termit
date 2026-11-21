@@ -29,6 +29,10 @@ const (
 	InboundTag = "proxy"
 	// APITag names the API's own inbound and its virtual outbound.
 	APITag = "api"
+	// HysteriaInboundTag names the loopback SOCKS inbound the QUIC transport's traffic enters through.
+	HysteriaInboundTag = "hysteria-in"
+	// DefaultHysteriaSocksPort is where that inbound listens on loopback.
+	DefaultHysteriaSocksPort = 10801
 )
 
 var uuidPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
@@ -56,6 +60,26 @@ type Spec struct {
 	// BlockBitTorrent sniffs the first bytes of every connection and blackholes the ones the core
 	// recognises as BitTorrent. It is off by default: sniffing costs a little CPU on every connection.
 	BlockBitTorrent bool
+	// Hysteria is the QUIC transport's loopback hop. When it is on, the document carries a SOCKS inbound
+	// on loopback and the transport dials through it, so its traffic takes the routing decisions below
+	// instead of leaving the node on its own.
+	Hysteria HysteriaHop
+}
+
+// HysteriaHop is the loopback inbound the QUIC transport's traffic enters the core through. It is a
+// local socket: the transport is the only client, and it runs on this host.
+type HysteriaHop struct {
+	Enabled bool
+	// Port is the loopback port. Zero means DefaultHysteriaSocksPort.
+	Port int
+}
+
+// PortOrDefault is the loopback port the hop listens on.
+func (h HysteriaHop) PortOrDefault() int {
+	if h.Port == 0 {
+		return DefaultHysteriaSocksPort
+	}
+	return h.Port
 }
 
 // WarpSpec is the WARP egress the generator must wire in. It is a plain description of the intent;
@@ -192,6 +216,15 @@ func (s Spec) Validate() error {
 	for name, port := range map[string]int{"port": s.Port, "api port": s.APIPort} {
 		if port < 1 || port > 65535 {
 			problems = append(problems, fmt.Errorf("%s %d is out of range", name, port))
+		}
+	}
+	if s.Hysteria.Enabled {
+		hop := s.Hysteria.PortOrDefault()
+		switch {
+		case hop < 1 || hop > 65535:
+			problems = append(problems, fmt.Errorf("hysteria hop port %d is out of range", hop))
+		case hop == s.Port, hop == s.APIPort:
+			problems = append(problems, fmt.Errorf("hysteria hop port %d collides with another inbound", hop))
 		}
 	}
 	switch s.LogLevel {
@@ -388,6 +421,22 @@ func Generate(spec Spec) ([]byte, error) {
 		}
 	}
 
+	if spec.Hysteria.Enabled {
+		hop := inbound{
+			Tag:      HysteriaInboundTag,
+			Listen:   DefaultListen,
+			Port:     spec.Hysteria.PortOrDefault(),
+			Protocol: "socks",
+			Settings: socksInboundSettings{Auth: "noauth", UDP: true},
+		}
+		if spec.BlockBitTorrent {
+			// The transport's traffic is the one path the torrent rule would otherwise never see: that
+			// rule matches a sniffed protocol, and sniffing is a per-inbound setting.
+			hop.Sniffing = &sniffing{Enabled: true, DestOverride: []string{}, RouteOnly: true}
+		}
+		config.Inbounds = append(config.Inbounds, hop)
+	}
+
 	data, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
 		return nil, fmt.Errorf("xray: encode config: %w", err)
@@ -493,12 +542,15 @@ func warpRules(w WarpSpec, balancerTag string) []rule {
 		} else {
 			tunnel.OutboundTag = WarpTag
 		}
-		// The tunnel carries one family, so the other one is named explicitly and sent the way it went
-		// before WARP existed. Leaving it to the trailing default would work by luck today and break the
-		// day a rule is added above it.
+		// The tunnel carries one family, so the other one is named explicitly rather than left to the
+		// trailing default. It used to go direct — the way it went before WARP existed — which meant it
+		// left the node on the node's own address, the identifier the tunnel exists to hide. It is refused
+		// instead: a client sees a connection that fails and can say so, rather than an address it never
+		// asked for. The cost is that a service reachable only over the untaken family does not work
+		// through this node; the default family is IPv4, so that is IPv6-only services.
 		other := rule{
 			Type: "field", Network: "tcp,udp",
-			IP: []string{otherFamilyRoute(w.FamilyOrDefault())}, OutboundTag: "direct",
+			IP: []string{otherFamilyRoute(w.FamilyOrDefault())}, OutboundTag: "block",
 		}
 		return []rule{other, tunnel}
 	}
@@ -603,6 +655,13 @@ type finalRule struct {
 
 type socksSettings struct {
 	Servers []socksServer `json:"servers"`
+}
+
+// socksInboundSettings is the loopback inbound the QUIC transport enters through: no authentication
+// because the socket is local and belongs to the transport, and UDP because half of its traffic is.
+type socksInboundSettings struct {
+	Auth string `json:"auth"`
+	UDP  bool   `json:"udp"`
 }
 
 type socksServer struct {

@@ -155,6 +155,7 @@ first: if you cannot reach the host to confirm, the table removes itself.`)
 	applied := &firewall.Applied{
 		Table:       table.Name,
 		Ports:       table.Ports,
+		UDPPorts:    table.UDPPorts,
 		SSHFrom:     prefixStrings(table.SSHFrom),
 		DefaultDeny: table.DefaultDeny,
 		AppliedAt:   now.UTC(),

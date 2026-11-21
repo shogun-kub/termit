@@ -207,6 +207,12 @@ type State struct {
 	// Peers is the set the server last handed out; it is what the core was configured with.
 	Peers    []Peer   `json:"peers,omitempty"`
 	Schedule Schedule `json:"schedule,omitempty"`
+	// MeshGeneration is the mesh digest that came with the last sync. The loop compares it with the
+	// server's /healthz between scheduled syncs, so a join is noticed in minutes, not the next day.
+	MeshGeneration string `json:"mesh_generation,omitempty"`
+	// MeshPollSeconds is how often the server asked this node to poll for that digest; nil means it
+	// never said, and 0 means it asked for no poll at all.
+	MeshPollSeconds *int `json:"mesh_poll_seconds,omitempty"`
 	// LastSelfCheck is what the agent loop observed locally before its last sync.
 	LastSelfCheck *SelfCheckReport `json:"last_self_check,omitempty"`
 	Manifest      []Path           `json:"manifest,omitempty"`

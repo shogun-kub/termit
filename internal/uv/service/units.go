@@ -54,7 +54,9 @@ Type=simple
 User=termit
 Group=termit
 ExecStart=%s run -config %s
-Restart=on-failure
+# Xray handles SIGTERM and exits 0, which on-failure does not restart: the node stayed without a core
+# until someone looked. Restart=always still honours systemctl stop.
+Restart=always
 RestartSec=3s
 LimitNOFILE=65535
 UMask=0077
@@ -124,7 +126,7 @@ StartLimitBurst=10
 [Service]
 Type=simple
 ExecStart=%s agent -v --config %s
-Restart=on-failure
+Restart=always
 RestartSec=30s
 Nice=10
 
@@ -261,5 +263,74 @@ LimitNOFILE=65535
 PrivateTmp=yes
 ProtectHome=yes
 `)
+	return []byte(b.String()), nil
+}
+
+// HysteriaUnitName is the unit that runs the QUIC transport.
+const HysteriaUnitName = "termit-hysteria.service"
+
+// HysteriaUser is the account the QUIC transport runs as. It is separate from the core's account on
+// purpose: the transport reads the certificate's private key, and the core must not be able to.
+const HysteriaUser = "termit-hy"
+
+// Hysteria renders the QUIC transport's unit. It is a second long-running proxy process, which
+// DESCRIPTION.md §11.8 allows for a transport the core cannot speak — and it is narrow: its own unit,
+// one capability because UDP/443 is below 1024, and no writable path of its own.
+//
+// Restart=always for the same reason the core has it: a clean exit is still a dead transport.
+func Hysteria(binary, config string) ([]byte, error) {
+	if !filepath.IsAbs(binary) && !strings.HasPrefix(binary, "/") ||
+		!filepath.IsAbs(config) && !strings.HasPrefix(config, "/") {
+		return nil, fmt.Errorf("service: binary %q and config %q must be absolute paths", binary, config)
+	}
+	var b strings.Builder
+	b.WriteString(unitHeader)
+	fmt.Fprintf(&b, `
+[Unit]
+Description=Termit QUIC transport
+Documentation=https://github.com/shogun-kub/termit
+After=network-online.target termit-xray.service
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=termit-hy
+Group=termit-hy
+ExecStart=%s server -c %s
+Restart=always
+RestartSec=3s
+LimitNOFILE=65535
+UMask=0077
+# A transport that meets a crafted QUIC packet must die alone (GO-2026-5288, no fix in v2.14.0 yet): the
+# ceiling turns a memory blow-up into a restart instead of an OOM that takes the node's other services.
+MemoryMax=256M
+
+# The transport listens on UDP/443, which is below 1024: one capability, nothing else. It writes nothing,
+# so it gets no writable path at all.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target
+`, binary, config)
 	return []byte(b.String()), nil
 }

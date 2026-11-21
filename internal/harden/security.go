@@ -58,6 +58,9 @@ type Firewall struct {
 	// SSHFrom restricts port 22 to these CIDRs or addresses. Empty means from anywhere, which is the
 	// common case: a static operator address is the exception.
 	SSHFrom []string `yaml:"ssh_from"`
+	// UDPPorts are the inbound UDP ports the component serves besides the TCP ones its table is built
+	// for. A QUIC transport needs its port here: an unlisted UDP port falls through to the scan meter.
+	UDPPorts []int `yaml:"udp_ports"`
 	// BlocklistURL is the network list the host refuses; empty means no list at all. http(s) and file
 	// URLs are supported, and nothing else: no git, no rsync.
 	BlocklistURL string `yaml:"blocklist_url"`
@@ -226,6 +229,7 @@ func (c *Config) Table(name string, ports []int) (firewall.Table, error) {
 	return firewall.Table{
 		Name:        name,
 		Ports:       append([]int(nil), ports...),
+		UDPPorts:    append([]int(nil), c.Firewall.UDPPorts...),
 		SSHFrom:     prefixes,
 		DefaultDeny: c.Firewall.DenyOthers(),
 		Scan:        c.Scan(),

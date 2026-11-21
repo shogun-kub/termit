@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/shogun-kub/termit/internal/acme"
@@ -54,6 +55,22 @@ func (s *certificateStep) manager() (*acme.Manager, error) {
 	return manager, nil
 }
 
+// transportReadable gives the QUIC transport read access to the private key. It runs after every issue,
+// because a renewal replaces the file and a key the transport cannot read means every handshake fails.
+// The key stays 0640: the core's user is not in the transport's group, so the core cannot read it.
+func (s *certificateStep) transportReadable(ctx context.Context, keyPath string) error {
+	if s.e.cfg.Hysteria == nil {
+		return nil
+	}
+	if _, err := s.e.exec.Run(ctx, Cmd{Name: "chgrp", Args: []string{transportUser, keyPath}}); err != nil {
+		return fmt.Errorf("give %s to group %s: %w", keyPath, transportUser, err)
+	}
+	if _, err := s.e.exec.Run(ctx, Cmd{Name: "chmod", Args: []string{"0640", keyPath}}); err != nil {
+		return fmt.Errorf("chmod %s: %w", keyPath, err)
+	}
+	return nil
+}
+
 func (s *certificateStep) Check(context.Context) (CheckResult, error) {
 	certPath, keyPath := s.paths()
 	if !readable(certPath) || !readable(keyPath) {
@@ -69,6 +86,18 @@ func (s *certificateStep) Check(context.Context) (CheckResult, error) {
 	}
 	if recorded := s.e.st.Certificate; recorded == nil || !recorded.NotAfter.Equal(notAfter) {
 		return CheckResult{Detail: "the state file does not record the certificate on disk"}, nil
+	}
+	// The transport reads this key, and a renewal replaces the file: the group and the mode are part of
+	// what this step guarantees, not a side effect of the first issue.
+	if s.e.cfg.Hysteria != nil {
+		res, err := s.e.exec.Run(context.Background(), Cmd{Name: "stat", Args: []string{"-c", "%G %a", keyPath}})
+		if err == nil {
+			if fields := strings.Fields(strings.TrimSpace(res.Stdout)); len(fields) == 2 {
+				if fields[0] != transportUser || fields[1] != "640" {
+					return CheckResult{Detail: fmt.Sprintf("%s is %s:%s, want %s:640", keyPath, fields[0], fields[1], transportUser)}, nil
+				}
+			}
+		}
 	}
 	return CheckResult{Satisfied: true, Detail: "valid until " + notAfter.Format(time.RFC3339)}, nil
 }
@@ -99,6 +128,9 @@ func (s *certificateStep) Run(ctx context.Context) error {
 	s.e.st.AddPath(result.CertPath, state.KindFile, "certificate", now)
 	s.e.st.AddPath(result.KeyPath, state.KindFile, "certificate", now)
 	s.e.st.Touch()
+	if err := s.transportReadable(ctx, result.KeyPath); err != nil {
+		return err
+	}
 
 	// A certificate changes the vhost's shape and has to be served. If the web step still has work to
 	// do it rewrites and reloads; otherwise only the reload is missing, which is the renewal case.

@@ -3,8 +3,75 @@ What each release changed, written for the people who run Termit. Newest first;
 carries every section back to the last release: the versions in between were handed out only as
 pre-releases, and whoever installs the release skipped them.
 
-## 0.4.2 — 2026-11-20
+## 0.5.0 — 2026-11-21
 
+The node syncs when the server said to, and a new node reaches the rest of the mesh in minutes instead
+of at everyone's next cycle.
+
+### Added
+
+- **The server can check a node that serves only QUIC.** The prober used to be an xray worker aimed at a
+  VLESS inbound, which a QUIC-only node does not have. The hysteria client now runs inside the server
+  process for those nodes: same probe URL, same certificate pin, same classification vocabulary, so the
+  state machine reads one kind of result and `unknown` still means unknown.
+
+- **The subscription carries the QUIC transport too.** A node reports what it serves in its sync request —
+  a kind and a version — and the server renders a `hy2://` link beside the `vless://` one, plus a
+  `hysteria2` outbound in the sing-box profile. The user name and password in that link are the same
+  UUID-derived values the node writes into its own user set, so nothing is stored and nothing has to be
+  asked of the node. A kind this server does not know is dropped rather than refused, and a node that stops
+  serving one loses its link at the next sync.
+
+- **A second transport over QUIC.** A node can serve Hysteria2 beside the TLS profile: UDP/443, the same
+  certificate, and a decoy that answers a visitor exactly as the site does. A `hysteria:` block in the
+  configuration turns it on; absent, nothing is installed and no port is opened. It runs as its own user
+  (`termit-hy`) because it reads the certificate's private key and the core must not, and its traffic
+  enters the core through a loopback SOCKS inbound — so WARP, the blocklist and the torrent rule apply to
+  it exactly as they do to a client's. Pinned to 2.14.0 by version and digest, with no Brutal congestion
+  control and no obfuscation (`congestion.type: bbr`, `ignoreClientBandwidth: true`). An unlisted UDP port
+  is what the scan meter counts, so enabling the transport without `443` in `security.firewall.udp_ports`
+  is refused when the configuration is read rather than discovered as a ban later.
+
+- **A table can publish UDP ports.** `security.firewall.udp_ports` adds them to the node's own ruleset,
+  accepted before the kernel's scan meter — which is the point: an unlisted UDP port falls through to the
+  meter, and the guard then bans the participants for the traffic the port exists to carry. Nothing uses
+  it yet; a QUIC transport will.
+
+- **The mesh tells the nodes when it changed.** `{prefix}/healthz` carries `mesh_generation`, a digest of
+  who is in the mesh and in what shape, and the sync answer carries the same value so a node knows which
+  mesh it applied. Between the scheduled syncs the agent reads it on the interval the server states in
+  `policy.mesh_poll_seconds` — fifteen minutes by default, `mesh_poll: 0` turns the poll off — and
+  reconciles at once when it differs: a join, a block, a removal or a move reaches the rest of the
+  mesh within one interval instead of at each node's next cycle. The digest names nothing — an id, a
+  domain and a state go in, only the digest comes out — and a poll it cannot read changes nothing.
+
+### Fixed
+
+- **A service that exits cleanly is started again.** The core's unit said `Restart=on-failure`, and Xray
+  handles SIGTERM by exiting 0 — a stop signal, or any other clean exit, left the node without a core
+  until someone looked: a production node sat dead for ten minutes on 2026-11-21 before an operator
+  noticed. `termit-xray`, `termit-uv-agent`, `termit-uv-guard` and the two server units now use
+  `Restart=always`; `systemctl stop` is still a stop, and the start limits still end a crash loop.
+
+- **The agent honours `next_sync_after`.** It woke at the server's time but ran a full cycle on every
+  wake anyway, because the wake had no "is it due?" check: `status` promised `next sync: +24h` while the
+  node reconciled every hour — twenty-four times the traffic, the self-checks and the page renders the
+  design asks for. The loop now waits for the scheduled time and uses the five-minute wake only for the
+  cheap mesh poll, which also means a manual `termit-uv sync` no longer races a cycle that was never due.
+
+- **The transport can be turned off again.** Removing the `hysteria:` block and running `termit-uv init`
+  now stops and disables the unit, removes its configuration and the pinned binary, and reports
+  `hysteria-off` in the journal. Before this the switch only turned one way: the unit kept running with
+  nothing in the configuration explaining it, and `uninstall` was the only way back. The `termit-hy` user
+  stays — no shell, no home, no writable path — and so does the manifest entry that lets `uninstall` find
+  what is already gone.
+- **IPv6 no longer leaves on the node's own address.** The tunnel carries one address family, and
+  destinations of the other one were routed `direct` — out through the node's own IPv6, the identifier the
+  tunnel exists to hide. They are refused now: a client sees a connection that fails instead of an address
+  it never asked for. The price is named in `OPERATIONS.md` §7 — a service reachable only over the untaken
+  family does not work through the node, which with the IPv4 default means IPv6-only services.
+
+## 0.4.2 — 2026-11-20
 The grace period does what its key promised, the subscription stops answering for nodes that are not
 there, and the installer runs on a box that has wget and no curl.
 

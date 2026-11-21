@@ -16,9 +16,11 @@ that is [the interactive menu](menu.md).
 
 Download the installer and run it: it resolves the newest release, verifies its checksum, installs the
 binary and its unit, installs the probe worker, creates the configuration, starts the service and prints
-the status. `wget` is part of a standard Debian 13 install; `curl -fsSLO <same URL>` works too:
+the status. `wget` is not guaranteed: Debian's minimal and netinst images ship neither it nor `curl`, so
+install one first (`apt-get update && apt-get install -y wget`); `curl -fsSLO <same URL>` works too:
 
 ```bash
+apt-get update && apt-get install -y wget   # only when the image has neither
 wget -q https://github.com/shogun-kub/termit/releases/latest/download/mn.sh
 sh mn.sh --domain mn.example.com --email you@example.com --admin-token-out /etc/termit/mn/admin.token
 ```

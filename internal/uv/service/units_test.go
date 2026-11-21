@@ -20,7 +20,7 @@ func TestXrayUnit(t *testing.T) {
 		"[Install]",
 		"ExecStart=/usr/lib/termit/bin/xray run -config /etc/termit/uv/xray.json",
 		"User=termit",
-		"Restart=on-failure",
+		"Restart=always",
 		// The hardening the design promises: no privilege, no writable system, no home, no devices.
 		"NoNewPrivileges=yes",
 		"ProtectSystem=strict",
@@ -84,7 +84,7 @@ func TestAgentUnit(t *testing.T) {
 	text := string(unit)
 	for _, want := range []string{
 		"ExecStart=/usr/bin/termit-uv agent -v --config /etc/termit/uv/config.yaml",
-		"Restart=on-failure",
+		"Restart=always",
 		"NoNewPrivileges=yes",
 		"ProtectSystem=strict",
 		"ReadWritePaths=/etc/termit/uv /var/lib/termit/uv",
@@ -159,5 +159,71 @@ func TestRenewTimer(t *testing.T) {
 		if !strings.Contains(text, want) {
 			t.Errorf("timer is missing %q", want)
 		}
+	}
+}
+
+// TestLongRunningUnitsRestartAfterACleanExit: Xray handles SIGTERM and exits 0, which on-failure
+// leaves dead — a node stayed without a core until someone looked. Every long-running unit must come
+// back by itself; systemctl stop is still a stop, restart policy does not override it.
+func TestLongRunningUnitsRestartAfterACleanExit(t *testing.T) {
+	t.Parallel()
+	xray, err := service.Xray("/usr/lib/termit/bin/xray", "/etc/termit/uv/xray.json")
+	if err != nil {
+		t.Fatalf("Xray: %v", err)
+	}
+	agent, err := service.Agent("/usr/bin/termit-uv", "/etc/termit/uv/config.yaml",
+		[]string{"/etc/termit/uv"}, nil)
+	if err != nil {
+		t.Fatalf("Agent: %v", err)
+	}
+	guard, err := service.Guard("/usr/bin/termit-uv", "/etc/termit/uv/config.yaml", "/var/lib/termit/uv",
+		"/etc/termit/uv", "/var/log/nginx")
+	if err != nil {
+		t.Fatalf("Guard: %v", err)
+	}
+	for name, unit := range map[string][]byte{"xray": xray, "agent": agent, "guard": guard} {
+		text := string(unit)
+		if !strings.Contains(text, "Restart=always") {
+			t.Errorf("%s unit does not restart after a clean exit", name)
+		}
+		if strings.Contains(text, "Restart=on-failure") {
+			t.Errorf("%s unit still restarts only on failure", name)
+		}
+	}
+}
+
+// TestHysteriaUnit: the transport listens on UDP/443, so it needs exactly one capability and nothing
+// else, and it must come back after a clean exit like the core does.
+func TestHysteriaUnit(t *testing.T) {
+	t.Parallel()
+	unit, err := service.Hysteria("/usr/lib/termit/bin/hysteria", "/etc/termit/uv/hysteria.yaml")
+	if err != nil {
+		t.Fatalf("Hysteria: %v", err)
+	}
+	text := string(unit)
+	for _, want := range []string{
+		"ExecStart=/usr/lib/termit/bin/hysteria server -c /etc/termit/uv/hysteria.yaml",
+		"User=termit-hy",
+		"Group=termit-hy",
+		"Restart=always",
+		"AmbientCapabilities=CAP_NET_BIND_SERVICE",
+		"CapabilityBoundingSet=CAP_NET_BIND_SERVICE",
+		"NoNewPrivileges=yes",
+		"ProtectSystem=strict",
+		"PrivateDevices=yes",
+		"MemoryDenyWriteExecute=yes",
+		"After=network-online.target termit-xray.service",
+		"WantedBy=multi-user.target",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("transport unit is missing %q", want)
+		}
+	}
+	// It writes nothing, so it must not be given a writable path: the narrower unit is the point.
+	if strings.Contains(text, "ReadWritePaths=") {
+		t.Error("the transport unit asks for a writable path; it writes nothing")
+	}
+	if _, err := service.Hysteria("hysteria", "/etc/termit/uv/hysteria.yaml"); err == nil {
+		t.Error("Hysteria accepted a relative binary path")
 	}
 }

@@ -24,7 +24,8 @@ StartLimitBurst=5
 [Service]
 Type=simple
 ExecStart=/usr/bin/termit-mn serve --config /etc/termit/mn/config.yaml
-Restart=on-failure
+# A clean exit is still a dead server: always restarts it, and systemctl stop is still a stop.
+Restart=always
 RestartSec=5s
 LimitNOFILE=65535
 UMask=0077

@@ -22,6 +22,7 @@ const ConfirmWindow = 5 * time.Minute
 type Applied struct {
 	Table       string    `json:"table"`
 	Ports       []int     `json:"ports"`
+	UDPPorts    []int     `json:"udp_ports,omitempty"`
 	SSHFrom     []string  `json:"ssh_from,omitempty"`
 	DefaultDeny bool      `json:"default_deny"`
 	AppliedAt   time.Time `json:"applied_at"`

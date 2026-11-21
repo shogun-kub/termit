@@ -25,10 +25,13 @@ is [the interactive menu](menu.md), and every entry prints the command it runs.
 
 ## Install
 
-Download the installer, then run it — never pipe a URL into a shell. `wget` is part of a standard
-Debian 13 install; `curl -fsSLO <same URL>` works too:
+Download the installer, then run it — never pipe a URL into a shell. `wget` is not guaranteed: Debian's
+minimal and netinst images ship neither it nor `curl`, so install one first (`apt-get update &&
+apt-get install -y wget`). `curl -fsSLO <same URL>` works too:
 
 ```bash
+apt-get update && apt-get install -y wget   # only when the image has neither
+
 wget -q https://github.com/shogun-kub/termit/releases/latest/download/uv.sh
 
 sh uv.sh \
@@ -150,6 +153,38 @@ The client fetches the list again on its own schedule; when a peer comes or goes
 it takes. The URL is a secret: it carries your credentials. If it leaks, rotate it on the server
 (`termit-mn sub rotate node1.example.com --domain mn.example.com`) and the old one stops working.
 
+## A second transport over QUIC (optional)
+
+The node can serve its certificate on UDP/443 too, with Hysteria2 — a protocol built for lossy mobile
+networks. Voice calls and video feel the difference first; ordinary browsing does not need it, and nothing
+is installed until you ask.
+
+```yaml
+# /etc/termit/uv/config.yaml
+hysteria: {}            # the block is the switch
+security:
+  firewall:
+    udp_ports: [443]    # required while the firewall is on
+```
+
+`termit-uv init` then installs the pinned binary, writes `/etc/termit/uv/hysteria.yaml`, and starts
+`termit-hysteria` as its own unprivileged user. From that point:
+
+- `termit-uv uri` and the page from `termit-uv options` hand out a `hy2://` link beside the `vless://` one,
+  labelled `(QUIC)`;
+- the subscription from your server carries the same second link, and the sing-box profile gets a
+  `hysteria2` outbound;
+- `termit-uv sync` is what tells the server about it — nothing on the server needs configuring.
+
+What it costs: about 50 MB of memory, and its unit caps it at 256 MB; 4–9 % of one core per 100 Mbit/s
+carried. The pinned release also carries one known issue (GO-2026-5288): a crafted packet can exhaust the
+transport's memory. The cap turns that into a restart of the transport alone — the TLS profile and every
+other service on the node keep running — and the next release is not allowed to ship the advisory:
+`deploy/vulnerabilities.json` names `0.6.0` as the version that must not.
+
+To turn it off, delete the `hysteria:` block and run `termit-uv init` again: the unit stops, the port
+closes, and the next sync removes the second link from the subscription.
+
 ## Day to day
 
 ```bash
@@ -181,9 +216,12 @@ warp:         on (via 104.28.1.1 (AMS))
 self-check:   ok 2026-11-10T11:17:04Z
 ```
 
-The agent wakes once a day at the server-given time plus a small per-node jitter, checks itself
-(the node's own view of the internet), syncs, and goes back to sleep. You do not need a timer of your
-own; the systemd units are installed by `termit-uv init`.
+The agent syncs at the server-given time plus a small per-node jitter, checks itself (the node's own
+view of the internet), applies the peer set and goes back to sleep. Between those cycles it wakes on the
+interval the server gives it — fifteen minutes by default, `mesh_poll` in the server's configuration —
+and reads the server's `healthz`, which carries a digest of the mesh: when the mesh has changed (a node
+joined, left, was blocked or moved) it syncs at once, so a new node appears everywhere within one
+interval. You do not need a timer of your own; the systemd units are installed by `termit-uv init`.
 
 ## Command reference
 

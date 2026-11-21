@@ -54,6 +54,12 @@ type workerProber struct {
 	worker *probe.Worker
 }
 
+// ProbeTargets hands the scheduler's targets to the worker unchanged: the transport they carry is what
+// decides which check runs.
+func (p workerProber) ProbeTargets(ctx context.Context, targets []probe.Target) ([]probe.Result, error) {
+	return p.worker.Probe(ctx, targets)
+}
+
 func (p workerProber) Probe(ctx context.Context, target enroll.Target) enroll.Outcome {
 	results, err := p.worker.Probe(ctx, []probe.Target{{
 		ID:               target.Domain,

@@ -30,8 +30,11 @@ healthy node, with a credential that is valid for exactly one pair of nodes.
              └──────────────────┘
 ```
 
-## Documentation
+Optionally a node serves the **same certificate over QUIC** as well — Hysteria2 on UDP/443, off by
+default — for participants whose network treats UDP better than it treats TCP. Its traffic still leaves
+through the node's WARP tunnel, because it enters the same core rather than going around it.
 
+## Documentation
 Start with the guide. It is written for the person installing a node, not for the maintainer, and there
 is a Russian version beside every page.
 
@@ -113,7 +116,7 @@ Deliberate design choices worth knowing before you deploy it:
 linux/amd64 and linux/arm64. Since `0.4.0` the WARP tunnel runs inside the proxy core instead of a
 sidecar, so it needs no `/dev/net/tun`, and `warp.family` decides which address family leaves through it.
 The passes behind the releases are recorded in [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md)
-(M5.8 for `0.3.2`, §11.9 for `0.4.0`): three production hosts — a management server in a container and two
+(M5-8 for `0.3.2`, §11.9 for `0.4.0`): three production hosts — a management server in a container and two
 nodes behind real domains — with the host firewall confirmed and surviving a reboot, the ban engine and
 the blocklist active, WARP egress verified through Cloudflare's own trace, the owner's page reachable over
 TLS, and a phone app passing traffic through both nodes. `v0.3.2` and its predecessors carry their own

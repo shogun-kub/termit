@@ -152,5 +152,5 @@ func (a *application) runEnroll(args []string) int {
 	// The design's first sync follows enrollment: the probe credential has to reach the core before the
 	// server's first check, or the node looks broken the moment it is registered.
 	fmt.Fprintln(a.stdout)
-	return a.runSync(nil)
+	return a.runSync([]string{"--config", *configPath})
 }

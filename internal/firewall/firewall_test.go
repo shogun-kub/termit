@@ -52,6 +52,14 @@ func serverTable() Table {
 	}
 }
 
+// quicTable publishes one port over both protocols, which is what a node with a QUIC transport looks
+// like: 443 for nginx over TCP and for the transport over UDP.
+func quicTable() Table {
+	table := nodeTable(true)
+	table.UDPPorts = []int{443}
+	return table
+}
+
 // TestRenderGolden pins every shape of the table. The file is what nft executes, so a change a
 // reviewer cannot see in a diff is a change nobody can review.
 func TestRenderGolden(t *testing.T) {
@@ -64,6 +72,7 @@ func TestRenderGolden(t *testing.T) {
 		{"node-open", nodeTable(false)},
 		{"node-sshfrom", sshTable("192.0.2.0/24", "2001:db8::/32")},
 		{"server", serverTable()},
+		{"node-quic", quicTable()},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -95,6 +104,32 @@ func TestRenderGolden(t *testing.T) {
 
 // TestRenderIsDeterministic guards the property the golden files rest on: two renders of the same
 // table are the same bytes, whatever order the ports and networks were given in.
+// TestUDPAcceptComesBeforeTheMeter: the meter counts what was not accepted, and the guard bans for what
+// the meter counted. A published UDP port placed after the meter would ban the very participants it is
+// there for — a QUIC transport banning its own users.
+func TestUDPAcceptComesBeforeTheMeter(t *testing.T) {
+	t.Parallel()
+	data, err := quicTable().Render()
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	text := string(data)
+	udp := strings.Index(text, "udp dport 443 accept")
+	meter := strings.Index(text, "meter scan4m")
+	if udp < 0 {
+		t.Fatalf("no UDP accept line:\n%s", text)
+	}
+	if meter < 0 {
+		t.Fatalf("no scan meter:\n%s", text)
+	}
+	if udp > meter {
+		t.Error("the UDP accept comes after the meter, so published QUIC traffic would be counted as scanning")
+	}
+	if !strings.Contains(text, "tcp dport { 22, 80, 443 } accept") {
+		t.Errorf("the TCP accept is missing:\n%s", text)
+	}
+}
+
 func TestRenderIsDeterministic(t *testing.T) {
 	t.Parallel()
 	first, err := sshTable("2001:db8::/32", "192.0.2.0/24").Render()
@@ -133,6 +168,8 @@ func TestRenderRejects(t *testing.T) {
 		{"scan threshold of one", func(t *Table) { t.Scan.Attempts = 1 }, "at least 2 attempts"},
 		{"scan window with no spelling", func(t *Table) { t.Scan.Window = 10 * time.Minute }, "exactly 1s, 1m, 1h, 1d or 1w"},
 		{"scan memory of zero", func(t *Table) { t.Scan.Remember = 0 }, "positive duration"},
+		{"udp port zero", func(t *Table) { t.UDPPorts = []int{0} }, "outside 1-65535"},
+		{"udp duplicate port", func(t *Table) { t.UDPPorts = []int{443, 443} }, "listed twice"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

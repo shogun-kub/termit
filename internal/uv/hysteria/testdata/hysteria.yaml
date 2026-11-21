@@ -1,0 +1,25 @@
+listen: :443
+tls:
+  cert: /var/lib/termit/uv/certs/fullchain.pem
+  key: /var/lib/termit/uv/certs/privkey.pem
+auth:
+  type: userpass
+  userpass:
+    owner: Kf3s0Q2rZx8pWv1nYb6tLd4hJm9cRa5u
+congestion:
+  type: bbr
+ignoreClientBandwidth: true
+masquerade:
+  type: proxy
+  proxy:
+    url: https://127.0.0.1:443
+    rewriteHost: true
+    insecure: true
+outbounds:
+  - name: core
+    type: socks5
+    socks5:
+      addr: 127.0.0.1:10801
+acl:
+  rules:
+    - outbound: core

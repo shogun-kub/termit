@@ -16,9 +16,12 @@
 
 Скачайте установщик и запустите его: он находит самый свежий релиз, сверяет его контрольную сумму,
 ставит бинарник и юнит, ставит prober, создаёт конфигурацию, запускает службу и печатает состояние.
-`wget` есть в стандартной установке Debian 13; `curl -fsSLO <тот же URL>` тоже подойдёт:
+`wget` есть не всегда: в минимальном и netinst-образе Debian нет ни его, ни `curl`, поэтому сначала
+поставьте что-то одно (`apt-get update && apt-get install -y wget`); `curl -fsSLO <тот же URL>` тоже
+подойдёт:
 
 ```bash
+apt-get update && apt-get install -y wget   # только если в образе нет ни curl, ни wget
 wget -q https://github.com/shogun-kub/termit/releases/latest/download/mn.sh
 sh mn.sh --domain mn.example.com --email you@example.com --admin-token-out /etc/termit/mn/admin.token
 ```

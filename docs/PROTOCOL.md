@@ -432,7 +432,7 @@ because a prober or a resolver failed.
 | admin CLI | `pending → active` (approve), `pending → removed` (reject), any → `blocked`, `unavailable/blocked → active` (unblock), any → `removed` |
 
 The full table, including every path that changes nothing, is in [`DESCRIPTION.md`](DESCRIPTION.md)
-§7.2 and is covered by tests in `internal/mn/sched`.
+`DESCRIPTION.md` §7.2 and is covered by tests in `internal/mn/sched`.
 
 ## 6. Versioning
 

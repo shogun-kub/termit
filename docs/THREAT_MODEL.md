@@ -144,7 +144,7 @@ pair credential without touching a database.
 | The prober is used as a weapon | a prober failure is `unknown`, never `failed`; a DNS resolver that cannot answer is skipped, not counted against the node; only a genuine negative result moves a state, and only after the configured number of retries | a compromised server can of course lie in the other direction — the admission policy is cooperative |
 | A node's own report is believed | the sync body's `check` is stored beside the probe and never moves a state; the server's verdict comes from its own probe, from its own address, pinned to the leaf it read | a node that also controls the network path to the server could satisfy both; that is a compromised node, not a protocol flaw |
 | An attacker forces re-enrollment of a domain | the domain is unique, the invite is consumed transactionally, and a change of identity requires either an unblock/relocate that passes the same checks or an operator command | an operator can always be socially engineered |
-| SQLite is the single point of failure | the database is opened read-only for backups (`VACUUM INTO`), migrations are forward-only, and `termit-mn backup` captures database, configuration, certificate and master key | a corrupt database without a backup loses the mesh's credentials (§5.7) |
+| SQLite is the single point of failure | the database is opened read-only for backups (`VACUUM INTO`), migrations are forward-only, and `termit-mn backup` captures database, configuration, certificate and master key | a corrupt database without a backup loses the mesh's credentials (§5.8) |
 
 ### 5.5 The endpoints (S5, S9, S10)
 
@@ -176,7 +176,25 @@ What this does **not** do: it does not hide the node from a targeted observer (a
 port), it does not defeat a scan that stays under the threshold, and it does not rate-limit proxied
 traffic — the operator owns their traffic, and a limiter adds latency and a timing fingerprint.
 
-### 5.7 Loss scenarios
+### 5.7 The QUIC transport (S1, S5, S10)
+
+The transport is a second listener the operator may enable: a pinned third-party binary, its own unit and
+unprivileged user, reading the node's certificate and key through group membership, speaking QUIC on
+UDP/443 and reaching the core through a loopback SOCKS inbound. It carries no routing of its own.
+
+| Threat | Mitigation | Residual |
+|---|---|---|
+| The transport binary is compromised or replaced | the version and digest are pinned in `internal/uv/install` and verified before it runs; its unit is `NoNewPrivileges`, `ProtectSystem=strict`, with no writable path and `MemoryMax=256M`; it runs as `termit-hy` holding only `CAP_NET_BIND_SERVICE` | a binary that passes the digest check is trusted; there is no sandbox beyond the unit's own boundary |
+| The certificate key becomes readable by another user | the certificate directory is `0750 root:termit-hy` and the key `0640 root:termit-hy`; the core's own user cannot traverse `certs`, so the node's working process never sees the key | root on the node reads it, as before (§5.5) |
+| The new UDP port is attack surface | it answers QUIC only, and only with a credential from the node's user set; the node's firewall carries `udp: 443` only when the operator asked for it (`security.firewall.udp_ports`, refused otherwise) | a client that is blocked from UDP/443 has no fallback from this link; it uses the TLS profile |
+| The transport is distinguished from the node's website | QUIC to the same domain and port, presenting the node's own certificate, with a masquerade that proxies to the decoy | a network that treats QUIC differently does so anyway; nothing here hides that it is QUIC |
+
+One accepted advisory belongs here rather than in a footnote: **GO-2026-5288**, a crafted QUIC packet that
+drives a sniffing server out of memory, has no fix in the pinned release. The unit's memory cap turns that
+into a restart of the transport rather than an OOM that takes nginx and the core with it, and the advisory
+is recorded in `deploy/vulnerabilities.json` with the release that must not carry it.
+
+### 5.8 Loss scenarios
 
 | Scenario | Consequence | Mitigation |
 |---|---|---|
@@ -219,7 +237,12 @@ These are decisions, not bugs, and each one is a sentence an operator should be 
    is there to stop automated probing and to let an operator block what they already know is hostile.
 10. **Compromised endpoints are out of scope.** Root on a client, on a node, or on the server defeats
    every control above, by definition.
-11. **The system is new.** The threat model is reviewed with the code it describes; the parts with
+11. **An accepted advisory is a dated exception, not a fix.** The pinned QUIC transport release carries
+    GO-2026-5288, which no release fixes yet; `deploy/vulnerabilities.json` records it with the release
+    that must not carry it, and `deploy/release` refuses to cut that version while the entry is present.
+    Until the entry is gone, the mitigation is the unit's own boundary: unprivileged, no writable path,
+    256 MB.
+12. **The system is new.** The threat model is reviewed with the code it describes; the parts with
     real-world evidence behind them are listed in §7. Anything not listed there is reasoning, not
     measurement.
 

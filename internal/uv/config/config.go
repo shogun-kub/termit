@@ -18,6 +18,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -104,6 +105,9 @@ type Config struct {
 	Xray         Xray   `yaml:"xray"`
 	Decoy        Decoy  `yaml:"decoy"`
 	Warp         Warp   `yaml:"warp"`
+	// Hysteria is the QUIC transport. Absent means off: the block exists only when an operator turned it
+	// on, so a node that never wanted it writes no key at all.
+	Hysteria *Hysteria `yaml:"hysteria,omitempty"`
 	// Security is off by default in every part; see Security.
 	Security Security `yaml:"security"`
 	Paths    Paths    `yaml:"paths"`
@@ -221,6 +225,55 @@ func (w Warp) TransportOrDefault() string {
 // UsesWireGuard reports whether the tunnel lives inside the core.
 func (w Warp) UsesWireGuard() bool { return w.TransportOrDefault() == WarpTransportWireGuard }
 
+// Hysteria is the QUIC transport: a second process beside the core, off by default because it costs a
+// listener on UDP/443 and about 50 MB of resident memory. Its traffic enters the core through the
+// loopback SOCKS inbound, so WARP, the blocklist and the direct rules stay the core's decisions
+// (IMPLEMENTATION_PLAN.md §10.3, DESCRIPTION.md §11.8). Its presence in the configuration is the switch.
+type Hysteria struct {
+	// SocksPort is the core's loopback SOCKS inbound the transport's traffic enters through. Empty means
+	// DefaultHysteriaSocksPort.
+	SocksPort int `yaml:"socks_port,omitempty"`
+}
+
+// HysteriaUser is the name a client presents beside the password. The server lowercases names, so this
+// one is lower case to begin with.
+const HysteriaUser = "owner"
+
+// DefaultHysteriaSocksPort is the core's loopback inbound for the transport's traffic. It must not
+// collide with the core's own ports (8443 and 10085).
+const DefaultHysteriaSocksPort = 10801
+
+// HopPort is the loopback port the transport's traffic enters through.
+func (h Hysteria) HopPort() int {
+	if h.SocksPort == 0 {
+		return DefaultHysteriaSocksPort
+	}
+	return h.SocksPort
+}
+
+// validate reports what a configuration cannot mean. The users are derived from the pairs' UUIDs, so
+// there is no password to check here.
+func (h Hysteria) validate() []error {
+	var problems []error
+	if port := h.HopPort(); port < 1 || port > 65535 {
+		problems = append(problems, fmt.Errorf("hysteria.socks_port %d is out of range", port))
+	}
+	return problems
+}
+
+// withFirewall couples the transport to the table: an unlisted UDP port is counted by the scan meter, and
+// the guard bans for what the meter counted — a QUIC transport that bans its own users. It is a separate
+// method because the firewall block lives in the security half.
+func (c *Config) checkHysteriaFirewall() []error {
+	if c.Hysteria == nil || !c.Security.Firewall.Enabled {
+		return nil
+	}
+	if slices.Contains(c.Security.Firewall.UDPPorts, 443) {
+		return nil
+	}
+	return []error{errors.New("hysteria needs UDP/443 in security.firewall.udp_ports, or its traffic is counted as scanning")}
+}
+
 // WARP modes.
 const (
 	WarpOff      = "off"
@@ -241,21 +294,22 @@ func (w Warp) UsesWarp() bool { return w.Mode == WarpAll || w.Mode == WarpSelect
 // layout; they are configurable for tests and for an owner who keeps state on another filesystem,
 // not as a way to scatter files around the host.
 type Paths struct {
-	ConfigDir    string `yaml:"config_dir"`
-	StateDir     string `yaml:"state_dir"`
-	CertDir      string `yaml:"cert_dir"`
-	ACMEWebroot  string `yaml:"acme_webroot"`
-	SiteDir      string `yaml:"site_dir"`
-	BinDir       string `yaml:"bin_dir"`
-	XrayConfig   string `yaml:"xray_config"`
-	NginxSite    string `yaml:"nginx_site"`
-	SitesEnabled string `yaml:"sites_enabled"`
-	UnitDir      string `yaml:"unit_dir"`
-	ConfigFile   string `yaml:"config_file"`
-	NginxDropIn  string `yaml:"nginx_drop_in"`
-	DecoySnippet string `yaml:"decoy_snippet"`
-	AccessLog    string `yaml:"access_log"`
-	ErrorLog     string `yaml:"error_log"`
+	ConfigDir      string `yaml:"config_dir"`
+	StateDir       string `yaml:"state_dir"`
+	CertDir        string `yaml:"cert_dir"`
+	ACMEWebroot    string `yaml:"acme_webroot"`
+	SiteDir        string `yaml:"site_dir"`
+	BinDir         string `yaml:"bin_dir"`
+	XrayConfig     string `yaml:"xray_config"`
+	HysteriaConfig string `yaml:"hysteria_config"`
+	NginxSite      string `yaml:"nginx_site"`
+	SitesEnabled   string `yaml:"sites_enabled"`
+	UnitDir        string `yaml:"unit_dir"`
+	ConfigFile     string `yaml:"config_file"`
+	NginxDropIn    string `yaml:"nginx_drop_in"`
+	DecoySnippet   string `yaml:"decoy_snippet"`
+	AccessLog      string `yaml:"access_log"`
+	ErrorLog       string `yaml:"error_log"`
 }
 
 // Default returns a configuration with every default applied and no domain. It is what `termit-uv doctor`
@@ -408,6 +462,10 @@ func (c *Config) Validate() error {
 	}
 	problems = append(problems, c.Security.validate()...)
 	problems = append(problems, c.Paths.validate()...)
+	if c.Hysteria != nil {
+		problems = append(problems, c.Hysteria.validate()...)
+		problems = append(problems, c.checkHysteriaFirewall()...)
+	}
 
 	if len(problems) > 0 {
 		return fmt.Errorf("invalid configuration: %w", errors.Join(problems...))
@@ -517,6 +575,9 @@ func (p *Paths) applyDefaults() {
 	if p.XrayConfig == "" {
 		p.XrayConfig = path.Join(p.ConfigDir, "xray.json")
 	}
+	if p.HysteriaConfig == "" {
+		p.HysteriaConfig = path.Join(p.ConfigDir, "hysteria.yaml")
+	}
 	if p.NginxSite == "" {
 		p.NginxSite = "/etc/nginx/sites-available/termit.conf"
 	}
@@ -566,7 +627,11 @@ func (p Paths) WarpIdentityPath() string { return path.Join(p.StateDir, "warp.ya
 func (p Paths) BlocklistPath() string { return path.Join(p.StateDir, "blocklist.txt") }
 
 // XrayBinary is the pinned core's installed location.
+// XrayBinary is the installed proxy core.
 func (p Paths) XrayBinary() string { return path.Join(p.BinDir, "xray") }
+
+// HysteriaBinary is the installed QUIC transport.
+func (p Paths) HysteriaBinary() string { return path.Join(p.BinDir, "hysteria") }
 
 func (p Paths) validate() []error {
 	var problems []error

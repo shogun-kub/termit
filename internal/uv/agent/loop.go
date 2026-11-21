@@ -21,9 +21,9 @@ const (
 	// maxJitter spreads the fleet's cycles. The server already spreads its own schedule; this is the
 	// node's own drift, so a group that enrolled together does not stay synchronised for life.
 	maxJitter = 10 * time.Minute
-	// maxSleep keeps the loop responsive to a state change made by an operator (`termit-uv enroll`,
-	// `termit-uv unblock`) without asking the network again.
-	maxSleep = time.Hour
+	// defaultMeshPoll is the poll interval used until the server states one: often enough that a join
+	// lands in minutes, seldom enough to be a rounding error on a node's traffic.
+	defaultMeshPoll = 15 * time.Minute
 	// notEnrolledPoll is how often an installed but unenrolled node looks for credentials.
 	notEnrolledPoll = time.Minute
 )
@@ -97,8 +97,10 @@ type CycleReport struct {
 	Apply  Result
 }
 
-// Loop is the long-running agent: one cycle a day, at the node's own time, with the server's
-// answer as the authority on both the peer set and when the next cycle is due.
+// Loop is the long-running agent: one cycle at the time the server asked for, with its answer as the
+// authority on both the peer set and when the next cycle is due. Between cycles it wakes on the mesh
+// poll and reconciles early when the digest says the mesh it applied is no longer the mesh the server
+// holds — that is what makes a join land in minutes instead of at the next scheduled sync.
 type Loop struct {
 	Remote    Remote
 	Logger    *slog.Logger
@@ -114,6 +116,7 @@ type Loop struct {
 	Check func(ctx context.Context, st *state.State) state.SelfCheckReport
 	// Apply reconciles the core with the answer. Required.
 	Apply func(ctx context.Context, st *state.State, answer proto.SyncResponse) (Result, error)
+
 	// AfterSync is the last act of a cycle that applied an answer, and it runs after the state was
 	// saved: the owner's page uses it to list the mesh that was just reconciled. A failure is logged
 	// and never fails the cycle — the core is already correct, and a page is a convenience.
@@ -135,11 +138,15 @@ func (l *Loop) logger() *slog.Logger {
 }
 
 // Run cycles until the context is cancelled. A failed cycle is logged and retried with backoff; it
-// never stops the loop and never changes the core.
+// never stops the loop and never changes the core. Between the cycles the loop wakes on the mesh poll
+// and reconciles early when the server reports a mesh it has not applied yet.
 func (l *Loop) Run(ctx context.Context) error {
 	for {
 		if !l.sleep(ctx, l.untilNext(ctx)) {
 			return ctx.Err()
+		}
+		if !l.due() && !l.meshChanged(ctx) {
+			continue
 		}
 		// The cycle owns the lock, not the sleep: a manual `termit-uv sync` must not wait on a node that is
 		// merely waiting for tomorrow.
@@ -150,8 +157,56 @@ func (l *Loop) Run(ctx context.Context) error {
 	}
 }
 
-// untilNext reads the persisted schedule. It never sleeps past maxSleep, so an enrollment or an
-// operator action is noticed without waiting for the whole interval.
+// due reports whether the schedule the server handed out says the node may sync now.
+func (l *Loop) due() bool {
+	st, err := state.LoadInstalled(l.StatePath)
+	if err != nil || st.Credentials == nil || st.Credentials.AgentKey == "" {
+		return false
+	}
+	next := st.Schedule.NextSyncAt
+	return next.IsZero() || !l.now().Before(next)
+}
+
+// meshPoll is how often this node asks /healthz for the mesh digest, and whether it asks at all: the
+// server states the interval in its policy, and a stated 0 means the operator does not want the poll.
+func (l *Loop) meshPoll(st *state.State) time.Duration {
+	if st.MeshPollSeconds == nil {
+		return defaultMeshPoll
+	}
+	return time.Duration(*st.MeshPollSeconds) * time.Second
+}
+
+// meshChanged polls the server's mesh digest and reports whether it differs from the one this node
+// last applied. A digest it cannot read changes nothing: the scheduled cycle will report the outage
+// with the backoff it deserves.
+func (l *Loop) meshChanged(ctx context.Context) bool {
+	st, err := state.LoadInstalled(l.StatePath)
+	if err != nil || st.Credentials == nil || st.Credentials.AgentKey == "" {
+		return false
+	}
+	if l.meshPoll(st) <= 0 {
+		return false
+	}
+	generation, err := l.Remote.Mesh(ctx)
+	if err != nil {
+		l.logger().Debug("agent: mesh poll", "err", err)
+		return false
+	}
+	if generation == "" || generation == st.MeshGeneration {
+		return false
+	}
+	// Remembered before the sync: a sync that fails is retried by the schedule, not by every poll.
+	st.MeshGeneration = generation
+	if err := st.Save(l.StatePath); err != nil {
+		l.logger().Warn("agent: remember the mesh generation", "err", err)
+		return false
+	}
+	l.logger().Info("mesh changed", "generation", generation)
+	return true
+}
+
+// untilNext reads the persisted schedule. It never sleeps past the poll interval, so a join, an
+// enrollment or an operator action is noticed without waiting for the whole interval.
 func (l *Loop) untilNext(ctx context.Context) time.Duration {
 	st, err := state.LoadInstalled(l.StatePath)
 	if err != nil {
@@ -173,8 +228,8 @@ func (l *Loop) untilNext(ctx context.Context) time.Duration {
 	if wait <= 0 {
 		return 0
 	}
-	if wait > maxSleep {
-		wait = maxSleep
+	if poll := l.meshPoll(st); poll > 0 && wait > poll {
+		wait = poll
 	}
 	return wait
 }
@@ -273,6 +328,13 @@ func (l *Loop) cycle(ctx context.Context) (CycleReport, error) {
 	report.Result = "ok"
 
 	st.Peers = PeersFrom(answer)
+	if answer.MeshGeneration != "" {
+		// The answer names the mesh it described; remembering it is what keeps the poll from syncing
+		// again for a change this cycle already applied.
+		st.MeshGeneration = answer.MeshGeneration
+	}
+	poll := answer.Policy.MeshPollSeconds
+	st.MeshPollSeconds = &poll
 	RememberSubscription(st, answer)
 	RememberProbe(st, answer)
 	st.Schedule.Failures = 0

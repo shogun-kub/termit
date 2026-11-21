@@ -68,11 +68,14 @@ func (a *application) runAgent(args []string) int {
 // newLoop wires the loop the service and `termit-uv agent --once` share.
 func (a *application) newLoop(cfg *config.Config) *agent.Loop {
 	return &agent.Loop{
-		Remote:    agent.Remote{BaseURL: cfg.MN.URL, CAFile: cfg.MN.CAFile},
+		Remote: agent.Remote{BaseURL: cfg.MN.URL, CAFile: cfg.MN.CAFile,
+			// The server renders a link per kind, so it has to know which kinds this node serves.
+			Transports: proto.NodeTransports(cfg.Hysteria != nil)},
 		Logger:    slog.Default(),
 		StatePath: cfg.Paths.StatePath(),
 		CertPath:  install.LeafCertPath(cfg),
-		Now:       a.now,
+
+		Now: a.now,
 		Check: func(ctx context.Context, st *state.State) state.SelfCheckReport {
 			return agent.RunSelfCheck(ctx, agent.SelfCheckOptions{
 				Config: cfg,
@@ -88,7 +91,34 @@ func (a *application) newLoop(cfg *config.Config) *agent.Loop {
 			if err != nil {
 				return agent.Result{}, err
 			}
-			return applier.Apply(ctx, answer, st.LocalUsers)
+			result, err := applier.Apply(ctx, answer, st.LocalUsers)
+			if err != nil {
+				return result, err
+			}
+			// The QUIC transport has no API: its users are one file, and a changed file means one
+			// restart of that unit alone. It runs after the core, because its traffic enters the core.
+			if cfg.Hysteria != nil {
+				uuids := make([]string, 0, len(answer.Peers)+len(st.LocalUsers)+1)
+				if answer.Self.ProbeUUID != "" {
+					uuids = append(uuids, answer.Self.ProbeUUID)
+				}
+				for _, user := range st.LocalUsers {
+					uuids = append(uuids, user.ID)
+				}
+				for _, peer := range agent.PeersFrom(answer) {
+					uuids = append(uuids, peer.UUID)
+				}
+				transport := agent.Transport{
+					ConfigPath: cfg.Paths.HysteriaConfig,
+					Unit:       service.HysteriaUnitName,
+					Owner:      "root:" + service.HysteriaUser,
+					Runner:     execRunner{},
+				}
+				if _, err := transport.Apply(ctx, install.TransportSpec(cfg, st.Identity.SelfUUID, uuids)); err != nil {
+					return result, err
+				}
+			}
+			return result, nil
 		},
 		// The page lists the mesh, so a cycle that reconciled it must not leave yesterday's peers on
 		// the page. A node whose owner never asked for the page has nothing to refresh.
@@ -157,6 +187,7 @@ func (a *application) applier(cfg *config.Config, st *state.State) (agent.Applie
 		},
 		Warp:            warpSpec,
 		BlockBitTorrent: cfg.Security.BitTorrentBlock,
+		Hysteria:        install.HysteriaHopFor(cfg),
 		Canary: agent.Canary{
 			Binary:    binary,
 			ProxyAddr: xray.DefaultListen + ":" + strconv.Itoa(xray.DefaultPort),

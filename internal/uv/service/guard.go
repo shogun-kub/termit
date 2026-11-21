@@ -46,7 +46,7 @@ StartLimitBurst=10
 [Service]
 Type=simple
 ExecStart=%s guard run --config %s
-Restart=on-failure
+Restart=always
 RestartSec=30s
 Nice=10
 

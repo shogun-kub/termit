@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/shogun-kub/termit/internal/uv/service"
 	"log/slog"
 	"os"
 	"path"
@@ -12,6 +11,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/shogun-kub/termit/internal/uv/service"
 
 	"github.com/shogun-kub/termit/internal/firewall"
 	"github.com/shogun-kub/termit/internal/uv/config"
@@ -24,6 +25,7 @@ import (
 // generator wrote, so a rename cannot leave a running process behind.
 var unitNames = []string{
 	service.XrayUnitName,
+	service.HysteriaUnitName,
 	service.AgentUnitName,
 	service.RenewTimerName,
 	service.RenewUnitName,

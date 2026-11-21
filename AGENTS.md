@@ -94,6 +94,8 @@ deploy/systemd    installed copies of the units, for readers; the node's are ren
                   `internal/uv/service` because paths come from the configuration
 deploy/install    bootstrap shell script and release checks
 deploy/release    the release builder (`go run ./deploy/release`), which CI runs too
+deploy/vulngate   the vulnerability gate CI runs; `deploy/vulns` is its list of accepted advisories
+                  (`deploy/vulnerabilities.json`), each with the release that must not carry it
 test/lab          SSH-driven acceptance suite (build tag `lab`); test/integration is a planned
                   Compose suite — the lab is the gate
 docs, docs/guide  design and operations docs; `docs/guide/ru` is the Russian mirror
@@ -135,7 +137,9 @@ go build ./cmd/... ./internal/...     # compile everything we own
 go test ./cmd/... ./internal/...      # unit tests
 go test -race ./internal/...          # race detector on library code
 go vet ./cmd/... ./internal/...       # cheap correctness pass
-go test ./deploy/release              # the release tool's own tests
+go test ./deploy/...                  # the release tool, the vulnerability gate and the exclusion list
+go run ./deploy/vulngate ./cmd/... ./internal/...   # what CI's govulncheck step runs, with the
+                                      # accepted advisories from deploy/vulnerabilities.json
 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0   # once per toolchain
 "$(go env GOPATH)/bin/golangci-lint" run ./cmd/... ./internal/...           # lint (CI gate)
 go run ./cmd/uv --help                # and: go run ./cmd/mn init --domain mn.localhost --data-dir ./.dev/mn
@@ -196,7 +200,11 @@ the mesh scenarios, resource usage — is testable.
 Rules: tests are re-runnable and tolerate a previous failed run; never leave a machine needing manual
 repair (on failure dump the logs and a `termit-uv doctor` report into the output); never put lab
 addresses, keys, domains or ACME URLs in the repository; destructive actions (uninstall, reboot) only in
-tests explicitly tagged for them.
+tests explicitly tagged for them. **A red test is repeated once, three minutes later, before it is
+investigated.** The lab's egress and GitHub's release CDN hand out TLS and read timeouts that do not
+reproduce — a probe whose worker listened but whose SOCKS handshake timed out is the usual shape — and a
+single re-run tells that apart from a defect for the price of three minutes. Only a failure that repeats
+is a bug; quote both runs when it does.
 
 ## 5. Coding conventions
 
@@ -309,8 +317,12 @@ already passed CI and the lab.
 - **Final release:** merge `release/<version>` into `dev` and into `main`, delete the branch, then create
   an annotated tag `v<version>` on `main`. Pushing the tag runs the final build and publishes the GitHub
   Release. The release stays marked pre-release until that release's own production pass is recorded in
-  `docs/IMPLEMENTATION_PLAN.md` (M4.3 for `0.2.1`, M5.8 for `0.3.2`); flipping the flag is a deliberate,
-  recorded act.
+  `docs/IMPLEMENTATION_PLAN.md` (M4.3 for `0.2.1`, M5-8 for `0.3.2`); flipping the flag is a deliberate,
+  recorded act. **Flipping `prerelease` does not move the "latest" pointer.** A release published as a
+  pre-release keeps `make_latest` on the previous one, so `releases/latest` — and therefore `uv.sh` and
+  `mn.sh` without `--version` — go on offering the old build. Patch the release with `make_latest: "true"`
+  after the flip; the API answers immediately and the `github.com/.../releases/latest` redirect lags
+  minutes behind it while its cache expires.
 - **The release body is the changelog, from that version back to the last release** — `go run
   ./deploy/release --version v<version> --notes` prints the section, and for a release (never for a
   `v<version>p<n>` build) the extra `--since <last released version>` makes it print every section down
@@ -326,6 +338,13 @@ already passed CI and the lab.
   the tunnel's exit, what a client sees — not the one the code intends. Only then does the final tag
   exist. Purely local code (the decoy generator, the terminal interface, the docs) may ship on CI and the
   lab alone.
+- **An accepted advisory is a debt with a due date.** `govulncheck` has no exclusion flag, so
+  `deploy/vulngate` is the gate: it fails on any finding that is not named in
+  `deploy/vulnerabilities.json`, and prints the action for every entry that is. Each entry also carries
+  `must_be_gone_by` — the first release that must not see it — and `go run ./deploy/release` refuses that
+  version while the entry is still there. **Before every release: update the module that carries an
+  accepted advisory and delete its entry.** Moving the deadline is a deliberate act that needs a reason in
+  the commit, not a way to make the reminder stop.
 - **A tag points at a commit that has already been tested.** Retagging is allowed only while the release
   is unpublished; `v0.1.0` is published and stays where it is. Never retag a released commit — a version
   that means two different trees is worse than a wrong one.

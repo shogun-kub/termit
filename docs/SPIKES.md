@@ -396,3 +396,52 @@ about the *probe* until proven otherwise.
 A third, smaller finding: `openssl verify -CAfile root.pem fullchain.pem` failing does not mean the
 root is wrong. It does not use the second certificate in the file as an intermediate; `-untrusted`
 does. One more way to misread a certificate problem as a trust problem.
+## S16 (0.5.0) — what a QUIC transport looks like on the wire, and what it costs
+
+Hysteria2 was evaluated on 2026-11-20/21 as the second transport (§10.3): one production node (1 vCPU,
+KVM), hysteria 2.14.0 (its `hysteria-linux-amd64` checksum is the one in the upstream release's
+`hashes.txt`, `apernet/hysteria` tag `app/v2.14.0`), the node's Let's Encrypt leaf, BBR, no obfuscation.
+
+**A QUIC Initial is not opaque, so a fingerprint is a measurement, not an opinion.** The Initial is
+encrypted with keys derived from the client's destination connection id and a fixed salt (RFC 9001 §5.2),
+so a capture yields the `ClientHello` without the server's cooperation. One script — HKDF per DCID, group
+by DCID, walk the CRYPTO frames, skip PADDING and ACK — turned every handshake in every capture into a
+readable bytes-and-extensions record. That is what made the comparison below possible, and it is the tool
+to reach for the next time a transport is judged by its shape.
+
+**Hysteria's QUIC handshake is Chrome-shaped out of the box**, and this is the reason to take it. Measured
+against a capture of the same session from Opera 140 (Chromium 157): 1,886 bytes of `ClientHello` from
+hysteria 2.14.0, 1,935–1,951 from the browser. Same twelve extensions, GREASE at both ends, ECH grease
+`0xfe0d`, and none of the Go-only `0xff01`. `disable_chrome_parrot: true` drops the same binary to 1,524
+bytes with the Go extension order — the A/B that shows the shape is deliberate. sing-box 1.14.4 measured
+1,889 bytes (podkop's build 1,919), curl with ngtcp2 1,513, so the field is not divided into "browsers" and
+"libraries" by size alone: the extension set decides, and a handshake can be the right size with the wrong
+order inside.
+
+**The certificate decides whether the parrot speaks at all.** The default handshake is built to look like
+a browser's, which means it carries the server's certificate chain in a TLS-level handshake that expects a
+key type browsers meet. An Ed25519 leaf breaks it; the node's Let's Encrypt leaf (ECDSA P-384) does not.
+A node that ever switches its certificate type must re-measure this, because the leaf is not the thing that
+was fingerprinted — the shape is, and the shape depends on the leaf.
+
+**The decoy survives.** `masquerade: proxy` forwards a visitor that is not speaking hysteria to the node's
+own vhost, so the answer is nginx's headers and nginx's 404, byte for byte, on UDP/443.
+
+**Its egress is its own, and that is the trap.** Hysteria dials the destination itself: WARP, the
+blocklist, the direct rules and the opt-in BitTorrent block are all bypassed. Measured on a node that
+refuses BitTorrent — torrent traffic went straight out through hysteria, with the block still on. The
+answer is a `socks5` outbound to the core's own loopback `socks` inbound, so the core classifies the flow.
+On the lab, 2026-11-21: 25 of 25 requests through that hop succeeded (20 MB and 100 MB payloads), 80–95
+MB/s, and the core added about 0.02 s of CPU per 100 MB.
+
+**What it costs on one vCPU.** 100 MB across the WAN at 44–52 MB/s (355–415 Mbit/s), 0.45–0.9 s of CPU per
+100 MB — 4–9 % of one core per 100 Mbit/s carried — a 50 MB resident set and about 2 % idle. For scale, the
+same node's Xray+WARP path measured 41 MB/s against 98 MB/s direct, so the userspace WARP stack (not the
+proxy) is what caps a saturated node first.
+
+**A bench that pipes loopback through WARP measures nothing.** Four of five requests through the hop failed
+with 502 after exactly ten seconds, which looked like a defect in the hop and cost an hour: the bench had
+two core instances, and the one holding the port still had the old routing — `127.0.0.1` went into WARP,
+which cannot reach a loopback target, so the stream hung until the client gave up. The lesson is not about
+WARP: a bench of a policy path must use `direct` and a target it controls, and it must verify the config of
+the process that is actually running, not the file on disk.

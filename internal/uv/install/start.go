@@ -58,6 +58,21 @@ func (s *startStep) Run(ctx context.Context) error {
 		return fmt.Errorf("the proxy core is running but does not answer on %s: %w", spec.APIAddress(), err)
 	}
 
+	// The transport is a second process: it starts after the core, because its traffic enters the core
+	// through the loopback hop the core's document provides.
+	if s.e.cfg.Hysteria != nil {
+		_, _ = s.e.exec.Run(ctx, Cmd{Name: "systemctl", Args: []string{"reset-failed", service.HysteriaUnitName}})
+		if _, err := s.e.exec.Run(ctx, Cmd{Name: "systemctl", Args: []string{"enable", "--now", service.HysteriaUnitName}}); err != nil {
+			return fmt.Errorf("enable %s: %w", service.HysteriaUnitName, err)
+		}
+		if _, err := s.e.exec.Run(ctx, Cmd{Name: "systemctl", Args: []string{"restart", service.HysteriaUnitName}}); err != nil {
+			return fmt.Errorf("restart %s: %w", service.HysteriaUnitName, err)
+		}
+		if !s.e.serviceActive(ctx, service.HysteriaUnitName) {
+			return fmt.Errorf("%s did not stay running", service.HysteriaUnitName)
+		}
+	}
+
 	// The agent starts last. `enable --now` leaves an already-running unit on the old binary after an
 	// upgrade, so it is restarted rather than merely started: its job changes with the build.
 	//

@@ -103,6 +103,7 @@ Two binaries, one repository:
 | `127.0.0.1:8443/tcp` | `xray` | VLESS+XHTTP, plaintext, loopback only |
 | `127.0.0.1:10085/tcp` | `xray` | management API (inbounds, users), loopback only |
 | `127.0.0.1:40000/tcp` | `warp-cli` (only on `warp.transport: proxy`) | WARP SOCKS5 proxy |
+| `:443/udp` | `hysteria` (only when the QUIC transport is enabled) | that transport; a browser finds it through the `Alt-Svc` the vhost advertises |
 
 The front is nginx because the routing decision is a **prefix** match. Xray's `fallbacks` compare the
 request path exactly, while an XHTTP client appends a per-request identifier to its configured path
@@ -114,6 +115,12 @@ TLS for browsers, and provides a battle-tested streaming proxy for the XHTTP hop
 Xray therefore holds no certificate and speaks no TLS. The agent generates both configurations,
 serves nothing itself, and owns certificate issuance and renewal. The decoy is a static tree that
 nginx serves; an owner who wants a real site can point the fallback location at it later.
+
+The one exception to "one proxy process" is a transport the core cannot speak. It stays narrow: a pinned
+binary with a checksum, its own unit, user and state directory, a management listener on loopback only,
+a handshake whose shape is re-tested with every upgrade, and no policy of its own — its traffic enters
+the core through a loopback `socks` inbound, so WARP, the blocklist and the direct rules stay the core's
+decisions. `IMPLEMENTATION_PLAN.md` §10.3 is where that is being built.
 
 > Design note: this is the same three-layer shape the references use. The difference is that we
 > generate and own one nginx configuration file instead of overwriting the distribution's default
@@ -196,7 +203,7 @@ own credential.
 | `self_uuid` | UV at init | as part of the registered URL | `identity.json` | owner reaches own server |
 | `probe_uuid` | MN at enrollment | DB | `identity.json` | MN health probe |
 | `pair_uuid(A,B)` | derived | derivable | in `state.json` + Xray config | A↔B access |
-| `agent_key` | MN at enrollment | Argon2id hash | `identity.json` (0600) | authenticates agent API calls |
+| `agent_key` | MN at enrollment | SHA-256 digest | `identity.json` (0600) | authenticates agent API calls |
 | `sub_token` | MN at enrollment | hash | not needed by UV | read-only subscription URL |
 | local user UUIDs | UV owner | no | `state.json` (`local_users`) | family devices, managed with `termit-uv device` |
 
@@ -236,8 +243,16 @@ For UV `A`:
 
 ```
 self              vless://self_uuid(A)@A.domain:443?…params(A)…#A-label
+                  hy2://user(self_uuid(A)):pass(self_uuid(A))@A.domain:443?sni=A.domain#A-label (QUIC)
 peer P (active)   vless://pair_uuid(A,P)@P.domain:443?…params(P)…#P-label
+                  hy2://user(pair_uuid(A,P)):pass(pair_uuid(A,P))@P.domain:443?sni=P.domain#P-label (QUIC)
 ```
+
+The `hy2://` line exists only for a node that reported the QUIC transport (§5.1): the user name and the
+password are a one-way derivation of the same credential the `vless://` line carries, so the server stores
+nothing extra, and a node that stops serving the transport simply loses its second line at the next sync.
+A subscription therefore has one to two links per node, never more, and the plain and JSON forms carry the
+same set.
 
 Peers are ordered by label then id so that the rendered subscription is stable (ETag-friendly).
 `unavailable` peers are included but marked in the label suffix (e.g. `·degraded`) — clients keep
@@ -310,6 +325,12 @@ Rules (all thresholds configurable on MN, defaults in parentheses):
 
 - **Check cadence**: one cycle per UV per ~24 h, random minute, never earlier than 2 h after
   enrollment. MN may override `next_sync_after` in the sync response.
+- **Convergence between cycles**: the agent wakes on the interval the server states in
+  `policy.mesh_poll_seconds` (default fifteen minutes, `0` turns it off) and reads `{prefix}/healthz`,
+  which carries a digest of the mesh's shape. When the digest differs from the one its last sync
+  applied, the node reconciles immediately — so a join, a block or a removal reaches the rest of the
+  mesh in one interval rather than at each node's next cycle. The poll carries no credential and no
+  peer data, and with the interval at `0` the node makes no request at all between cycles.
 - **Retries inside a cycle**: 3 attempts, 10 min apart (adjustable), before a cycle counts as failed.
   Attempts never count towards a block: one cycle is one check, however many attempts it took.
 - **Active → unavailable**: first failed cycle. Stays in peers' configs.
@@ -317,7 +338,7 @@ Rules (all thresholds configurable on MN, defaults in parentheses):
 - **Unavailable → blocked**: when the consecutive failure streak reaches
   `policy.block_after_failed_cycles` (default 2, i.e. one grace check; ≈24–30 h at the daily cadence).
   A successful cycle resets the streak; a check that could not run neither advances nor resets it.
-  Peers drop it at their next sync (convergence ≤ 24 h + jitter).
+  Peers drop it at their next sync or at the next mesh poll (convergence ≤ 5 min).
 - **Blocked → active**: only an explicit, successful unblock request (Scenario B) or an admin action.
   No automatic un-blocking, to avoid flapping.
 - **MN never blocks on a check it could not perform.** A prober outage, MN-side DNS failure, or a
@@ -427,13 +448,18 @@ against an API it does not understand. Errors are RFC 9457-style problem objects
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
 | `POST` | `{prefix}/enroll` | invite code | register a new UV |
-| `POST` | `{prefix}/agent/sync` | agent key | report self-check and the leaf pin, fetch desired state + subscription URL |
+| `POST` | `{prefix}/agent/sync` | agent key | report self-check, the leaf pin and what the node serves (`transports`), fetch desired state + subscription URL |
 | `POST` | `{prefix}/agent/unblock` | agent key | Scenario B |
 | `POST` | `{prefix}/agent/relocate` | agent key | Scenario C |
 | `GET` | `/` and every other path | none | the masking site: a generated page, or its own 404 |
-| `GET` | `/sub/{token}` | token | base64 `vless://` list |
+| `GET` | `/sub/{token}` | token | base64 `vless://` list, plus `hy2://` where a node serves the transport |
 | `GET` | `/sub/{token}/json` | token | sing-box profile (same peers, richer routing) |
 | `GET` | `{prefix}/healthz`, `/metrics` | none / loopback | liveness, Prometheus |
+
+The sync body also carries `transports`: one `{kind, version}` per transport the node serves — `vless`
+always, `hysteria2` when the operator enabled it. That report is what the subscription renders links from,
+so the server keeps no second copy of a node's configuration; a kind or a version it does not know is
+dropped rather than refused, which keeps a newer node usable against an older server.
 
 `{prefix}` is `api_prefix`: the path the node API is served under, random on a fresh install so that a
 server is not discoverable by probing the names everyone uses. It is not a secret — every node carries
@@ -461,8 +487,9 @@ Sync response shape (abridged; the whole set is in `internal/proto/sync.go`):
   ],
   "subscription_url": "https://mn.example.com/sub/<token>",
   "policy": {"check_interval_seconds": 86400, "sync_interval_seconds": 86400,
-             "min_sync_delay_seconds": 300},
-  "next_sync_after": "2026-11-10T07:31:00Z"
+             "min_sync_delay_seconds": 300, "mesh_poll_seconds": 900},
+  "next_sync_after": "2026-11-10T07:31:00Z",
+  "mesh_generation": "9f3c1a2b4d5e7788"
 }
 ```
 
@@ -575,6 +602,12 @@ These are non-negotiable and must be enforced by tests:
    MN check results, and (optionally) on stderr of the timer.
 7. **Direct traffic stays direct.** Any feature that would capture host traffic is out of scope by
    construction, not by configuration.
+8. **One core, and at most one transport the core cannot speak.** A node runs exactly one `xray`. The only
+   other long-running proxy process is a QUIC transport, present only when the operator enables it, and it
+   brings its own pinned version and checksum, unit, user and state directory, a loopback-only management
+   listener, a handshake fingerprint that is re-tested on every upgrade, and no routing of its own: its
+   traffic reaches the core through a loopback inbound, so the core's routing stays the only place policy
+   lives.
 
 ## 12. Lessons taken from the references
 
@@ -785,7 +818,7 @@ termit-mn uv list                      # state, last seen, agent version
 termit-mn uv approve uv_…   |  termit-mn uv block uv_…  |  termit-mn uv unblock uv_…  |  termit-mn uv rm uv_…
 termit-mn check now uv_…    |  termit-mn check now --all
 termit-mn policy show       |  termit-mn policy set check_interval 12h   # or probe_retries 3, block_after_failed_cycles 4
-termit-mn sub show uv_…     |  termit-mn sub rotate uv_…
+termit-mn sub rotate uv_…   # the only way to hand out a lost subscription URL again: the old one stops
 termit-mn status            # state counts, per-node last/next check, effective interval
 ```
 
@@ -809,7 +842,10 @@ audit 1 year, `uv_event` forever (small).
 ## 15. Security summary
 
 - TLS 1.3 only between UV and MN; certificates from Let's Encrypt via built-in ACME on both sides.
-- Agent keys hashed with Argon2id; compared in constant time; per-key and per-IP rate limits.
+- Agent keys are 256-bit random values, stored as SHA-256 digests and found by digest through an index,
+  so there is no byte-by-byte comparison to observe and nothing to brute-force; per-key and per-IP rate
+  limits bound the online guesses a leaked digest would invite. A slow KDF buys nothing here: the secret is
+  already unguessable, and it would be paid on every agent request.
 - Subscription tokens separate, revocable, rotatable, and never accepted on agent endpoints. Their
   rate limit (60 requests per 15 minutes, per token) is load control, not brute-force defence: the
   token is unguessable, and a client that refreshes at launch must not see `429`.

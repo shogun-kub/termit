@@ -69,7 +69,8 @@ func (a *application) runSync(args []string) int {
 	}
 	defer unlock()
 
-	remote := agent.Remote{BaseURL: cfg.MN.URL, CAFile: cfg.MN.CAFile, CertPin: agent.CertFingerprint(install.LeafCertPath(cfg))}
+	remote := agent.Remote{BaseURL: cfg.MN.URL, CAFile: cfg.MN.CAFile, CertPin: agent.CertFingerprint(install.LeafCertPath(cfg)),
+		Transports: proto.NodeTransports(cfg.Hysteria != nil)}
 	answer, err := remote.Fetch(ctx, st.Credentials.AgentKey, proto.SyncRequest{AgentVersion: version.Agent("termit-uv")})
 	if err != nil {
 		fmt.Fprintf(stderr, "termit-uv sync: %v\n", err)
@@ -134,6 +135,11 @@ func (a *application) runSync(args []string) int {
 	}
 
 	st.Peers = agent.PeersFrom(answer)
+	if answer.MeshGeneration != "" {
+		st.MeshGeneration = answer.MeshGeneration
+	}
+	poll := answer.Policy.MeshPollSeconds
+	st.MeshPollSeconds = &poll
 	agent.RememberSubscription(st, answer)
 	agent.RememberProbe(st, answer)
 	now := a.now().UTC()

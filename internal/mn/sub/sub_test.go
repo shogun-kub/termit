@@ -282,3 +282,108 @@ func TestETagChangesWithTheBody(t *testing.T) {
 		t.Errorf("the tag %q is not quoted the way HTTP wants it", first)
 	}
 }
+
+// TestRenderListAddsAQUICLinkOnlyForANodeThatServesOne: a link to a transport the node does not run is
+// worse than no link, so the second line appears only when the node reported that kind.
+func TestRenderListAddsAQUICLinkOnlyForANodeThatServesOne(t *testing.T) {
+	t.Parallel()
+	nodes := peers()
+	nodes[0].Transports = []string{proto.KindVLESS, proto.KindHysteria2}
+	nodes[1].Transports = []string{proto.KindVLESS}
+	body, err := sub.RenderList(nodes, sub.Options{})
+	if err != nil {
+		t.Fatalf("RenderList: %v", err)
+	}
+	lines := decodeList(t, body)
+	if len(lines) != 3 {
+		t.Fatalf("the list has %d entries, want 3:\n%s", len(lines), strings.Join(lines, "\n"))
+	}
+	want := proto.HysteriaUser(nodes[0].UUID) + ":" + proto.HysteriaPassword(nodes[0].UUID) + "@" + nodes[0].Domain + ":443"
+	var found bool
+	for _, line := range lines {
+		if strings.HasPrefix(line, "hy2://"+want) {
+			found = true
+		}
+		if strings.Contains(line, nodes[1].Domain) && strings.HasPrefix(line, "hy2://") {
+			t.Errorf("a node that serves only the TLS profile got a QUIC link: %s", line)
+		}
+	}
+	if !found {
+		t.Errorf("no QUIC link for %s in:\n%s", nodes[0].Domain, strings.Join(lines, "\n"))
+	}
+}
+
+// TestRenderJSONAddsAHysteria2Outbound: the sing-box profile carries the same second transport, with the
+// password derived from the same pair credential the URI uses.
+func TestRenderJSONAddsAHysteria2Outbound(t *testing.T) {
+	t.Parallel()
+	nodes := peers()
+	nodes[0].Transports = []string{proto.KindVLESS, proto.KindHysteria2}
+	body, err := sub.RenderJSON(nodes, sub.Options{})
+	if err != nil {
+		t.Fatalf("RenderJSON: %v", err)
+	}
+	var profile struct {
+		Outbounds []struct {
+			Type       string `json:"type"`
+			Tag        string `json:"tag"`
+			Server     string `json:"server"`
+			ServerPort int    `json:"server_port"`
+			Password   string `json:"password"`
+		} `json:"outbounds"`
+	}
+	if err := json.Unmarshal(body, &profile); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	var found bool
+	for _, outbound := range profile.Outbounds {
+		if outbound.Type != "hysteria2" {
+			continue
+		}
+		if outbound.Server != nodes[0].Domain || outbound.ServerPort != 443 {
+			t.Errorf("the QUIC outbound points at %s:%d", outbound.Server, outbound.ServerPort)
+		}
+		if outbound.Password != proto.HysteriaPassword(nodes[0].UUID) {
+			t.Errorf("the password is not the pair's derivation")
+		}
+		found = true
+	}
+	if !found {
+		t.Error("the profile has no hysteria2 outbound")
+	}
+}
+
+// TestRenderJSONUsesTheDNSFormatSingBoxReads: sing-box 1.14 removed the legacy DNS server format and
+// refuses the whole profile when it meets one, so the servers must be typed. Nothing in the unit tests
+// would notice a regression here; a client would, with "decode config: legacy DNS server formats".
+func TestRenderJSONUsesTheDNSFormatSingBoxReads(t *testing.T) {
+	t.Parallel()
+	body, err := sub.RenderJSON(peers(), sub.Options{})
+	if err != nil {
+		t.Fatalf("RenderJSON: %v", err)
+	}
+	var profile struct {
+		DNS struct {
+			Servers []struct {
+				Type   string `json:"type"`
+				Tag    string `json:"tag"`
+				Server string `json:"server"`
+			} `json:"servers"`
+			Final string `json:"final"`
+		} `json:"dns"`
+	}
+	if err := json.Unmarshal(body, &profile); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if len(profile.DNS.Servers) != 2 {
+		t.Fatalf("the profile has %d DNS servers", len(profile.DNS.Servers))
+	}
+	for _, server := range profile.DNS.Servers {
+		if server.Type == "" {
+			t.Errorf("a DNS server has no type (legacy format): %+v", server)
+		}
+	}
+	if profile.DNS.Final == "" {
+		t.Error("the profile names no default DNS server")
+	}
+}

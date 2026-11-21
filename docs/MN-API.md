@@ -73,8 +73,8 @@ agent: the server has no API at https://mn.example.com/enroll: does the MN URL i
 |---|---|---|---|
 | `POST` | `{prefix}/enroll` | a node, once | Exchange an invite for credentials |
 | `POST` | `{prefix}/agent/sync` | a node, daily | Fetch the complete desired peer set |
-| `POST` | `{prefix}/agent/unblock` | a blocked node | Ask to be let back in (§4.2 of `PROTOCOL.md`) |
-| `POST` | `{prefix}/agent/relocate` | a moved node | Announce a new host (§4.3) |
+| `POST` | `{prefix}/agent/unblock` | a blocked node | Ask to be let back in (`PROTOCOL.md` §3.5) |
+| `POST` | `{prefix}/agent/relocate` | a moved node | Announce a new host (`PROTOCOL.md` §3.6) |
 | `GET` | `{prefix}/healthz` | monitoring | Liveness and version |
 | `GET` | `/sub/{token}` | a client | Peer list, base64 VLESS URIs |
 | `GET` | `/sub/{token}/json` | a client | Peer list, sing-box JSON |
@@ -259,9 +259,18 @@ Request:
 ```json
 {
   "agent_version": "termit-uv v0.3.1",
-  "check": {"ok": true, "latency_ms": 84, "at": "2026-11-10T18:16:11Z"}
+  "check": {"ok": true, "latency_ms": 84, "at": "2026-11-10T18:16:11Z"},
+  "transports": [{"kind": "vless", "version": 1}, {"kind": "hysteria2", "version": 1}]
 }
 ```
+
+`transports` is what the node serves, and it is what decides which links its participants get. `kind`
+names a client-facing transport (`vless` for the TLS profile, `hysteria2` for the QUIC one) and `version`
+says which shape of that kind's parameters the node speaks. A node that predates the field sends nothing,
+which every server reads as the TLS profile alone. A kind or a version this server does not know is
+**dropped, not refused**: a newer node must still be usable, and a link this server cannot write correctly
+is worse than no link. The record is the node's latest answer, so a node that stops serving a kind loses
+that link at its next sync.
 
 `check` is the node's own last self-check, folded into the server's history for that node. It is
 informational: it never moves a node's state, because a node that cannot reach the internet is exactly
@@ -278,8 +287,10 @@ Response `200 OK`:
      "path": "/p/", "mode": "packet-up", "state": "active"}
   ],
   "subscription_url": "https://mn.example.com/sub/...",
-  "policy": {"check_interval_seconds": 86400, "sync_interval_seconds": 86400, "min_sync_delay_seconds": 7200},
-  "next_sync_after": "2026-11-11T18:16:11Z"
+  "policy": {"check_interval_seconds": 86400, "sync_interval_seconds": 86400, "min_sync_delay_seconds": 7200,
+             "mesh_poll_seconds": 900},
+  "next_sync_after": "2026-11-11T18:16:11Z",
+  "mesh_generation": "9f3c1a2b4d5e7788"
 }
 ```
 
@@ -294,6 +305,16 @@ Two invariants matter more than the fields:
 `next_sync_after` is a hint, not an instruction: a node that syncs early is welcome, a node that syncs
 late is not a crisis. `state` is the *peer's* state; `degraded` is set when a peer is still usable but
 currently failing its checks.
+
+`mesh_generation` is a digest of who is in the mesh and in what shape — it changes when a node joins,
+leaves, is blocked or moves, and not when a node merely syncs. The node stores it and compares it with
+the one `healthz` reports between scheduled syncs, so a join reaches the rest of the mesh within one
+poll instead of at each node's next cycle. It names nothing: an id, a domain and a state enter the
+digest, and only the digest leaves.
+
+`policy.mesh_poll_seconds` is how often the node may make that comparison; it comes from
+`policy.mesh_poll` in the server's configuration, where the default is `15m` and `0` turns the poll off
+(the node then makes no request between its cycles).
 
 Refusals: `unauthorized` (no key, unknown key, key of another node), `pending_approval`,
 `node_inactive`, `relocate_required` (the stored domain no longer matches what the node presents).
@@ -356,6 +377,14 @@ with `subscription.record_fragment` on, so they also carry `tls.record_fragment`
 ClientHello across records on the client side; `subscription.fragment` (the segment-level variant,
 off by default) adds `tls.fragment` instead, and a configuration that predates the keys gets neither.
 
+A node that also serves the QUIC transport appears **twice** in both forms: a `hy2://` link beside its
+`vless://` one, labelled `<label> (QUIC)`, and a `hysteria2` outbound with the same tag in the JSON. That
+link carries no profile parameters — it is QUIC to the same domain and port, with `sni` and nothing else —
+and its user name and password are derived from the credential the `vless://` line already carries
+(`proto.HysteriaUser`, `proto.HysteriaPassword`), so nothing extra is stored and a node that stops serving
+the transport loses its second link at the next sync. Which kinds a node yields is what it reported in
+`transports` (§3.2); a kind this server does not know is dropped, not refused.
+
 Fragmentation reaches the plain list by a different route, because it has to: Happ reads a
 `fragment=length,interval,packets[,maxSplit]` query parameter from the link itself, so
 `subscription.happ_fragment` appends it to every URI before the `#label`. The parameter is not part of
@@ -386,13 +415,15 @@ working immediately.
 
 ```json
 {"api_version": "1", "build": "v0.3.1", "domain": "mn.example.com",
- "schema_version": 5, "status": "ok"}
+ "schema_version": 5, "status": "ok", "mesh_generation": "9f3c1a2b4d5e7788"}
 ```
 
 `200` when the database answers a ping inside 2 seconds, `503` with `status: "degraded"` and
 `database: "unavailable"` added when it does not. There is no `database` field on the healthy answer:
-the absence of the failure field is the success signal. It carries no node data: a health endpoint that leaks the
-registry is a health endpoint an attacker polls.
+the absence of the failure field is the success signal. `mesh_generation` is the digest the nodes poll
+between their scheduled syncs; the answer is the same shape and changes when the mesh does, and it
+carries no id, domain or address — a health endpoint that leaks the registry is a health endpoint an
+attacker polls.
 
 ### 5.2 The masking site: `GET /` and every other path
 
@@ -518,7 +549,7 @@ its own access is never entitled to re-issue somebody else's.
 
 The CLI (`termit-mn invite|uv|check|policy|sub|status|admin`) is a thin client of this table; use the
 CLI unless you are writing an integration. `termit-mn firewall`, `bans` and `guard` are the exception:
-they act on the machine they run on and never reach the socket ([`OPERATIONS.md`](OPERATIONS.md) §18.6).
+they act on the machine they run on and never reach the socket ([`OPERATIONS.md`](OPERATIONS.md) §13.6).
 
 ---
 

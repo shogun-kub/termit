@@ -61,6 +61,17 @@ func (t profileTargeter) Target(ctx context.Context, node store.UV) (probe.Targe
 			}
 		}
 	}
+	// A node that serves only the QUIC transport has no VLESS inbound for the worker to dial, so the
+	// check goes through its QUIC endpoint instead. Reading the record here keeps the choice with the
+	// node's own report rather than with a guess about what it runs.
+	transport := proto.KindVLESS
+	if t.store != nil {
+		if kinds, err := t.store.UVTransports(ctx); err == nil {
+			if served := kinds[node.ID]; len(served) > 0 && !proto.Serves(served, proto.KindVLESS) {
+				transport = proto.KindHysteria2
+			}
+		}
+	}
 	return probe.Target{
 		ID:               node.ID,
 		Address:          node.Domain,
@@ -70,6 +81,7 @@ func (t profileTargeter) Target(ctx context.Context, node store.UV) (probe.Targe
 		Mode:             "packet-up",
 		UUID:             node.ProbeUUID,
 		PinnedCertSHA256: pin,
+		Transport:        transport,
 	}, true
 }
 
@@ -113,7 +125,17 @@ type enrollProberAdapter struct {
 	inner enroll.Prober
 }
 
+// batchProber is a prober that takes the scheduler's own targets, transport and all. The enrollment
+// interface has no field for the transport, so an adapter that always went through it would quietly
+// check every node the TLS way - including one that serves nothing but QUIC.
+type batchProber interface {
+	ProbeTargets(ctx context.Context, targets []probe.Target) ([]probe.Result, error)
+}
+
 func (a enrollProberAdapter) Probe(ctx context.Context, targets []probe.Target) ([]probe.Result, error) {
+	if batch, ok := a.inner.(batchProber); ok {
+		return batch.ProbeTargets(ctx, targets)
+	}
 	results := make([]probe.Result, 0, len(targets))
 	for _, target := range targets {
 		outcome := a.inner.Probe(ctx, enroll.Target{

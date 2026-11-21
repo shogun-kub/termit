@@ -341,3 +341,27 @@ func TestNotFoundNamesThePrefix(t *testing.T) {
 		t.Errorf("Fetch error = %v, want one that names the api_prefix", err)
 	}
 }
+
+// TestFetchReportsWhatTheNodeServes: the report lives on Remote, because the agent and the one-shot sync
+// both send it and one of them forgetting was a silent gap - the server then knew nothing about the
+// transport and rendered no link for it.
+func TestFetchReportsWhatTheNodeServes(t *testing.T) {
+	t.Parallel()
+	var got []proto.Transport
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request proto.SyncRequest
+		_ = json.NewDecoder(r.Body).Decode(&request)
+		got = request.Transports
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(answer())
+	}))
+	defer server.Close()
+
+	remote := agent.Remote{BaseURL: server.URL, Transports: proto.NodeTransports(true)}
+	if _, err := remote.Fetch(context.Background(), "agent-key", proto.SyncRequest{}); err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if len(got) != 2 || got[1].Kind != proto.KindHysteria2 {
+		t.Fatalf("the request reported %v", got)
+	}
+}

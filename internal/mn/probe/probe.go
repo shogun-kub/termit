@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/shogun-kub/termit/internal/mn/certcheck"
+	"github.com/shogun-kub/termit/internal/proto"
 )
 
 // Class describes why a probe failed. The empty class means success.
@@ -64,6 +65,9 @@ type Target struct {
 	// PinnedCertSHA256 pins the node certificate (lowercase hex). Required in production; empty means
 	// the worker verifies the chain against the system roots instead.
 	PinnedCertSHA256 string
+	// Transport is the kind the check goes through (proto.KindVLESS when empty). A node that serves only
+	// the QUIC transport has no VLESS inbound to aim the worker at, so it is dialled in this process.
+	Transport string
 }
 
 // Result is one node's outcome.
@@ -223,33 +227,67 @@ func (w *Worker) Probe(ctx context.Context, targets []Target) ([]Result, error) 
 		return results, nil
 	}
 
-	outcome := func(err error) ([]Result, error) {
-		w.breaker.record(err == nil)
-		return nil, err
+	// A node that serves only the QUIC transport has no VLESS inbound to aim the worker at, so those
+	// targets are split off and dialled in this process; the rest go through one xray run as before.
+	results := make([]Result, len(targets))
+	tlsTargets := make([]Target, 0, len(targets))
+	tlsIndex := make([]int, 0, len(targets))
+	for i, target := range targets {
+		if target.Transport == proto.KindHysteria2 {
+			continue
+		}
+		tlsTargets = append(tlsTargets, target)
+		tlsIndex = append(tlsIndex, i)
 	}
+	if len(tlsTargets) > 0 {
+		partial, err := w.probeTLS(ctx, tlsTargets)
+		if err != nil {
+			w.breaker.record(false)
+			return nil, err
+		}
+		w.breaker.record(true)
+		for j, result := range partial {
+			results[tlsIndex[j]] = result
+		}
+	}
+	for i, target := range targets {
+		if target.Transport != proto.KindHysteria2 {
+			continue
+		}
+		if result, failed := w.certificateResult(ctx, target); failed {
+			results[i] = result
+			continue
+		}
+		results[i] = w.quicProbe(ctx, target)
+	}
+	return results, nil
+}
+
+// probeTLS runs the worker binary for the targets that use the TLS profile.
+func (w *Worker) probeTLS(ctx context.Context, targets []Target) ([]Result, error) {
 	ports, err := freePorts(len(targets), w.cfg.BasePort)
 	if err != nil {
-		return outcome(err)
+		return nil, err
 	}
 
 	cfg, err := buildConfig(targets, ports)
 	if err != nil {
-		return outcome(err)
+		return nil, err
 	}
 	cfgPath := filepath.Join(w.cfg.WorkDir, "probe.json")
 	if err := writeJSON(cfgPath, cfg); err != nil {
-		return outcome(err)
+		return nil, err
 	}
 
 	if out, err := exec.CommandContext(ctx, w.cfg.Binary, "run", "-test", "-c", cfgPath).CombinedOutput(); err != nil {
-		return outcome(fmt.Errorf("probe: generated config rejected by xray: %w (%s)", err, firstLine(out)))
+		return nil, fmt.Errorf("probe: generated config rejected by xray: %w (%s)", err, firstLine(out))
 	}
 
 	logPath := filepath.Join(w.cfg.WorkDir, "probe.log")
 	// #nosec G304 -- logPath is under Config.WorkDir.
 	logFile, err := os.Create(logPath)
 	if err != nil {
-		return outcome(fmt.Errorf("probe: create log: %w", err))
+		return nil, fmt.Errorf("probe: create log: %w", err)
 	}
 	defer func() { _ = logFile.Close() }()
 
@@ -262,7 +300,7 @@ func (w *Worker) Probe(ctx context.Context, targets []Target) ([]Result, error) 
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	if err := cmd.Start(); err != nil {
-		return outcome(fmt.Errorf("probe: start xray: %w", err))
+		return nil, fmt.Errorf("probe: start xray: %w", err)
 	}
 	w.breaker.record(true)
 	defer func() {

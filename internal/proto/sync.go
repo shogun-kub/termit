@@ -14,6 +14,9 @@ type CheckReport struct {
 type SyncRequest struct {
 	AgentVersion string       `json:"agent_version"`
 	Check        *CheckReport `json:"check,omitempty"`
+	// Transports is what this node serves. A node that predates the field sends nothing, which every
+	// server reads as the TLS profile alone — the only thing a node could serve before it existed.
+	Transports []Transport `json:"transports,omitempty"`
 }
 
 // HeaderCertSHA256 carries the leaf certificate the node currently serves, lowercase hex, so the
@@ -42,6 +45,9 @@ type SyncPolicy struct {
 	SyncIntervalSeconds  int `json:"sync_interval_seconds"`
 	// MinSyncDelaySeconds is how long a node waits after enrollment before its first own cycle.
 	MinSyncDelaySeconds int `json:"min_sync_delay_seconds"`
+	// MeshPollSeconds is how often the node may ask /healthz whether the mesh changed; 0 turns the
+	// poll off, and the node then learns a join at its next scheduled sync.
+	MeshPollSeconds int `json:"mesh_poll_seconds"`
 }
 
 // SyncResponse is the complete desired state. It is a full set, not a delta: a node that missed a
@@ -58,4 +64,8 @@ type SyncResponse struct {
 	SubscriptionURL string     `json:"subscription_url"`
 	Policy          SyncPolicy `json:"policy"`
 	NextSyncAfter   time.Time  `json:"next_sync_after"`
+	// MeshGeneration identifies the mesh this answer describes. The node remembers it and compares it
+	// with what /healthz reports, so a join reaches the other nodes within a poll instead of at their
+	// next scheduled sync.
+	MeshGeneration string `json:"mesh_generation,omitempty"`
 }

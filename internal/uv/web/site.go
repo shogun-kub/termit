@@ -44,6 +44,10 @@ type SiteSpec struct {
 
 	HTTPPort  int
 	HTTPSPort int
+	// QUIC says the node also serves a QUIC transport on HTTPSPort over UDP. The vhost then advertises
+	// it with Alt-Svc, which makes the port part of this site instead of a port someone finds by
+	// scanning.
+	QUIC bool
 
 	// HTTP2Directive says the host's nginx understands the standalone `http2` directive, which
 	// arrived in 1.25.1. Older nginx treats `http2` as a parameter of `listen` and refuses the
@@ -247,6 +251,11 @@ server {
     ssl_prefer_server_ciphers off;
 
     add_header Strict-Transport-Security "max-age=31536000" always;
+{{- if .QUIC}}
+    # The QUIC transport answers on the same port number over UDP. Alt-Svc is what makes it part of
+    # this site: a browser learns about it from a response it already trusts.
+    add_header Alt-Svc 'h3=":{{.HTTPSPort}}"; ma=86400' always;
+{{- end}}
 
     # A response that changes with Accept-Encoding must say so. Without this line nginx compresses
     # and stays silent about it, which is a configuration tell no real site leaves behind.

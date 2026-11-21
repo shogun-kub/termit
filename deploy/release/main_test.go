@@ -236,3 +236,27 @@ func TestExtraFilesExist(t *testing.T) {
 		}
 	}
 }
+
+// TestReleaseRefusesAVersionPastAnAcceptedAdvisory: the exclusion list is a deadline, not a permission.
+// A version at or past it must not be cut, and the refusal has to carry the action that clears it -
+// otherwise the next person reads "refused" and moves the deadline.
+func TestReleaseRefusesAVersionPastAnAcceptedAdvisory(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/x\n"), 0o600); err != nil {
+		t.Fatalf("write go.mod: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "deploy"), 0o750); err != nil {
+		t.Fatalf("make deploy: %v", err)
+	}
+	exclusions := `{"exclusions": [{"id": "GO-1", "module": "example.com/x", "must_be_gone_by": "0.6.0", "action": "bump the module"}]}`
+	if err := os.WriteFile(filepath.Join(root, "deploy", "vulnerabilities.json"), []byte(exclusions), 0o600); err != nil {
+		t.Fatalf("write exclusions: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	err := run([]string{"--version", "v0.6.0", "--root", root}, &stdout, &stderr)
+	if err == nil || !strings.Contains(err.Error(), "GO-1") || !strings.Contains(err.Error(), "bump the module") {
+		t.Fatalf("a version at the deadline = %v, want a refusal naming the advisory and the action", err)
+	}
+}

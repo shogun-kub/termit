@@ -93,3 +93,11 @@ CREATE TABLE IF NOT EXISTS audit (
 );
 
 CREATE INDEX IF NOT EXISTS audit_at ON audit (at);
+
+-- What each node reported it serves (proto.Transport). Kept beside the node rather than inside its row
+-- so an older build's INSERT list stays valid, and a kind can be dropped without touching the node.
+CREATE TABLE IF NOT EXISTS uv_transport (
+    uv_id TEXT NOT NULL,
+    kind  TEXT NOT NULL,
+    PRIMARY KEY (uv_id, kind)
+);
