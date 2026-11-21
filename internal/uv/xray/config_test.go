@@ -370,3 +370,96 @@ func TestBitTorrentRuleIsFirstAndRouteOnly(t *testing.T) {
 		t.Errorf("the WARP rule disappeared: %+v", rules)
 	}
 }
+
+// TestGenerateHysteriaGolden pins the document with the QUIC transport's hop. The hop must be the only
+// difference from the plain document: one loopback inbound, and a sniffing block when the torrent rule
+// is on, because that rule only sees what an inbound sniffed.
+func TestGenerateHysteriaGolden(t *testing.T) {
+	t.Parallel()
+	spec := testSpec()
+	spec.BlockBitTorrent = true
+	spec.Hysteria = xray.HysteriaHop{Enabled: true, Port: 10801}
+	data, err := xray.Generate(spec)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	golden := filepath.Join("testdata", "xray-hysteria.json")
+	if *update {
+		if err := os.WriteFile(golden, data, 0o644); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
+		return
+	}
+	want, err := os.ReadFile(golden) // #nosec G304 -- a fixed test path.
+	if err != nil {
+		t.Fatalf("read golden file: %v (run `go test ./internal/uv/xray -update`)", err)
+	}
+	if !bytes.Equal(want, data) {
+		t.Errorf("%s differs from the generated config; regenerate with -update and review the diff", golden)
+	}
+}
+
+// TestHysteriaHopIsLocalAndSniffed: the hop is the only inbound without authentication, so its socket
+// has to be loopback - and it has to sniff, or the torrent rule never sees the transport's traffic.
+func TestHysteriaHopIsLocalAndSniffed(t *testing.T) {
+	t.Parallel()
+	type hop struct {
+		Tag      string `json:"tag"`
+		Listen   string `json:"listen"`
+		Port     int    `json:"port"`
+		Protocol string `json:"protocol"`
+		Settings struct {
+			Auth string `json:"auth"`
+			UDP  bool   `json:"udp"`
+		} `json:"settings"`
+		Sniffing *struct {
+			Enabled      bool     `json:"enabled"`
+			DestOverride []string `json:"destOverride"`
+			RouteOnly    bool     `json:"routeOnly"`
+		} `json:"sniffing"`
+	}
+	document := func(spec xray.Spec) []hop {
+		t.Helper()
+		data, err := xray.Generate(spec)
+		if err != nil {
+			t.Fatalf("Generate: %v", err)
+		}
+		var parsed struct {
+			Inbounds []hop `json:"inbounds"`
+		}
+		if err := json.Unmarshal(data, &parsed); err != nil {
+			t.Fatalf("Unmarshal: %v", err)
+		}
+		return parsed.Inbounds
+	}
+
+	spec := testSpec()
+	if inbounds := document(spec); len(inbounds) != 2 {
+		t.Fatalf("the document without the transport has %d inbounds, want 2", len(inbounds))
+	}
+
+	spec.BlockBitTorrent = true
+	spec.Hysteria = xray.HysteriaHop{Enabled: true}
+	var found *hop
+	inbounds := document(spec)
+	for i := range inbounds {
+		if inbounds[i].Tag == xray.HysteriaInboundTag {
+			found = &inbounds[i]
+		}
+	}
+	if found == nil {
+		t.Fatalf("no %q inbound in the document", xray.HysteriaInboundTag)
+	}
+	if found.Listen != "127.0.0.1" {
+		t.Errorf("the hop listens on %q, want loopback", found.Listen)
+	}
+	if found.Port != xray.DefaultHysteriaSocksPort {
+		t.Errorf("the hop listens on port %d, want %d", found.Port, xray.DefaultHysteriaSocksPort)
+	}
+	if found.Protocol != "socks" || found.Settings.Auth != "noauth" || !found.Settings.UDP {
+		t.Errorf("the hop is %q/%q/udp=%v, want a no-auth socks inbound with UDP", found.Protocol, found.Settings.Auth, found.Settings.UDP)
+	}
+	if found.Sniffing == nil || !found.Sniffing.Enabled || !found.Sniffing.RouteOnly || len(found.Sniffing.DestOverride) != 0 {
+		t.Errorf("the hop does not sniff for the torrent rule: %+v", found.Sniffing)
+	}
+}

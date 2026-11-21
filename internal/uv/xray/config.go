@@ -29,6 +29,10 @@ const (
 	InboundTag = "proxy"
 	// APITag names the API's own inbound and its virtual outbound.
 	APITag = "api"
+	// HysteriaInboundTag names the loopback SOCKS inbound the QUIC transport's traffic enters through.
+	HysteriaInboundTag = "hysteria-in"
+	// DefaultHysteriaSocksPort is where that inbound listens on loopback.
+	DefaultHysteriaSocksPort = 10801
 )
 
 var uuidPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
@@ -56,6 +60,26 @@ type Spec struct {
 	// BlockBitTorrent sniffs the first bytes of every connection and blackholes the ones the core
 	// recognises as BitTorrent. It is off by default: sniffing costs a little CPU on every connection.
 	BlockBitTorrent bool
+	// Hysteria is the QUIC transport's loopback hop. When it is on, the document carries a SOCKS inbound
+	// on loopback and the transport dials through it, so its traffic takes the routing decisions below
+	// instead of leaving the node on its own.
+	Hysteria HysteriaHop
+}
+
+// HysteriaHop is the loopback inbound the QUIC transport's traffic enters the core through. It is a
+// local socket: the transport is the only client, and it runs on this host.
+type HysteriaHop struct {
+	Enabled bool
+	// Port is the loopback port. Zero means DefaultHysteriaSocksPort.
+	Port int
+}
+
+// PortOrDefault is the loopback port the hop listens on.
+func (h HysteriaHop) PortOrDefault() int {
+	if h.Port == 0 {
+		return DefaultHysteriaSocksPort
+	}
+	return h.Port
 }
 
 // WarpSpec is the WARP egress the generator must wire in. It is a plain description of the intent;
@@ -192,6 +216,15 @@ func (s Spec) Validate() error {
 	for name, port := range map[string]int{"port": s.Port, "api port": s.APIPort} {
 		if port < 1 || port > 65535 {
 			problems = append(problems, fmt.Errorf("%s %d is out of range", name, port))
+		}
+	}
+	if s.Hysteria.Enabled {
+		hop := s.Hysteria.PortOrDefault()
+		switch {
+		case hop < 1 || hop > 65535:
+			problems = append(problems, fmt.Errorf("hysteria hop port %d is out of range", hop))
+		case hop == s.Port, hop == s.APIPort:
+			problems = append(problems, fmt.Errorf("hysteria hop port %d collides with another inbound", hop))
 		}
 	}
 	switch s.LogLevel {
@@ -386,6 +419,22 @@ func Generate(spec Spec) ([]byte, error) {
 		} else {
 			config.Routing.Rules = append(config.Routing.Rules, warpRules(spec.Warp, "")...)
 		}
+	}
+
+	if spec.Hysteria.Enabled {
+		hop := inbound{
+			Tag:      HysteriaInboundTag,
+			Listen:   DefaultListen,
+			Port:     spec.Hysteria.PortOrDefault(),
+			Protocol: "socks",
+			Settings: socksInboundSettings{Auth: "noauth", UDP: true},
+		}
+		if spec.BlockBitTorrent {
+			// The transport's traffic is the one path the torrent rule would otherwise never see: that
+			// rule matches a sniffed protocol, and sniffing is a per-inbound setting.
+			hop.Sniffing = &sniffing{Enabled: true, DestOverride: []string{}, RouteOnly: true}
+		}
+		config.Inbounds = append(config.Inbounds, hop)
 	}
 
 	data, err := json.MarshalIndent(config, "", "  ")
@@ -603,6 +652,13 @@ type finalRule struct {
 
 type socksSettings struct {
 	Servers []socksServer `json:"servers"`
+}
+
+// socksInboundSettings is the loopback inbound the QUIC transport enters through: no authentication
+// because the socket is local and belongs to the transport, and UDP because half of its traffic is.
+type socksInboundSettings struct {
+	Auth string `json:"auth"`
+	UDP  bool   `json:"udp"`
 }
 
 type socksServer struct {
