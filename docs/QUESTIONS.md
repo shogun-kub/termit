@@ -43,12 +43,27 @@ The remaining questions below are still open; the ones that matter before M1 are
 | Backend | **Our own code on nftables**, one backend for the firewall and the bans. No ufw and no fail2ban: the lab boxes have neither, `nftables 1.1.3` is installed and its service enabled, and a ban lives in one place instead of two. |
 | Firewall model | **Blacklist first, then a service whitelist** — `22/tcp`, `80/tcp`, `443/tcp` — with `default_deny` on by default; anything else inbound is dropped. |
 | Who turns it on | **The operator, explicitly.** `init`, `sync`, the agent and the timers never *apply* a table; a five-minute rollback timer protects the first apply. A boot unit puts back what an operator applied and confirmed — it never applies anything nobody asked for. |
-| Scan threshold | **Configurable, 5 attempts per 1 minute by default**; a repeat within 24 hours → 24-hour ban. One minute and not ten: nftables writes a rate as "N per one unit", so a ten-minute window has no spelling (§5.6). |
+| Scan threshold | **Configurable, 5 attempts per 1 minute by default**; a repeat within 24 hours → 24-hour ban. One minute and not ten: nftables writes a rate as "N per one unit", so a ten-minute window has no spelling (`IMPLEMENTATION_PLAN.md` §5.6). |
 | Permanent block | **A separate persisted list the operator owns**, plus an automatic ban ladder that never becomes permanent by itself. |
 | `ssh_from` | **Opt-in** flag and config list, not a default: a static address is the exception. |
 | Persistence | **Bans on disk with their TTL**, re-applied after a reboot; the table itself comes back from a boot unit that re-applies the recorded table and arms the rollback timer in the same breath. |
 | Scope and defaults | **Nodes and the server, one mechanism**; everything off until the operator asks, with the wizard offering an unchecked "harden this node". |
 | Rate limiting of proxied traffic | **Not implemented.** The operator is responsible for not abusing their own node; a limiter adds latency to the one thing the node exists for and is a timing fingerprint. The single exception is an opt-in BitTorrent block. |
+---
+
+## 0b. The QUIC transport (2026-11-21, decided; plan in `IMPLEMENTATION_PLAN.md` §10.3)
+
+| Question | Decision |
+|---|---|
+| Which second protocol | **Hysteria2** (`apernet/hysteria`, pinned 2.14.0), off by default. It is the one widely used protocol whose congestion control is built for lossy mobile paths, which is what a participant on a bad uplink feels first. TUIC and the rest stay in the backlog. |
+| How its traffic reaches the internet | **Through the core, not around it.** The transport accepts QUIC on UDP/443 and forwards every stream to a loopback SOCKS inbound of the same core, so routing, WARP and the BitTorrent block stay in one place. Rejected: its own outbound stack (two policies to keep in step) and port hopping (a second thing to explain, and a fingerprint of its own). |
+| Credentials | **Derived from the pair's UUID, like everything else**: user name `u<first 8 hex>`, password `base64url(SHA-256("termit/hysteria2/" + uuid))`. Nothing new is stored, the epoch does not move, and the server can render a link without asking the node. `userpass` because hysteria's dynamic auth needs an HTTP backend we do not have; the consequence is one restart per user-set change, which is a daily event at most. |
+| Who may use it | The node's own device, its local devices and every peer — the same set the TLS profile accepts. The server's probe credential is in that set too, because a probe is a client. |
+| How the server learns about it | The node reports `transports` (`{kind, version}`) on every sync. Kinds are additive and forward compatible: an unknown kind is dropped, not refused. |
+| Permissions | The transport runs as its own user, `termit-hy`, which is the group of the certificate directory; the core's user cannot read the key. Its unit carries `CAP_NET_BIND_SERVICE` for UDP/443, no writable path, and `MemoryMax=256M`. |
+| The accepted advisory | **GO-2026-5288 has no fix in 2.14.0**, so the build carries it on purpose: the memory cap turns the OOM into a restart of the transport alone, and `deploy/vulnerabilities.json` names `0.6.0` as the release that must not carry it. Updating the client and deleting the entry is the first item of the next release's checklist, not a wish. |
+| Client-side fingerprint | Not a node setting. The profile's uTLS fingerprint is what a client offers, and fragmentation is a client-side mask; a node can only choose what it presents (its own certificate, the decoy behind masquerade). |
+
 ---
 
 ## 1. Naming, scope, licence

@@ -525,7 +525,7 @@ stopped both nodes (a failed unit also hits systemd's start rate limiter, so a p
 enough); and `openssl verify` without `-untrusted` misreports a valid chain.
 
 Acceptance item deliberately left to M3: "pulling a node's plug makes its probe fail" is the
-scheduler's job (§7.2), not this milestone's.
+scheduler's job (`DESCRIPTION.md` §7.2), not this milestone's.
 
 ### M2 follow-ups, done straight after
 
@@ -732,7 +732,7 @@ config, then migrate the record back) and removes the hosts entries the test add
 
 The same run also covers the mesh with three nodes (`test/lab/mesh_test.go`, skipped when
 `TERMIT_LAB_UV3` is unset). That node is not needed by M3.6's single-node drills, but two nodes cannot
-express the invariants §6.3–§6.5 state: each node must serve exactly its two peers, the three pair
+express the invariants `DESCRIPTION.md` §6.3–§6.5 state: each node must serve exactly its two peers, the three pair
 credentials must be pairwise distinct and symmetric (`uuid(A→P) == uuid(P→A)`), a blocked node leaves
 the surviving pair intact while its own read-only list keeps both peers, and a move of one node leaves
 the pair between the other two untouched. With `TERMIT_LAB_UV3` set, Scenario C adds that last check
@@ -830,8 +830,8 @@ Delivered:
 | In-place certificate renewal on the server: it re-checks every six hours, writes through the CA's chain and serves the new pair on the next handshake — no restart, and a failed attempt keeps the old certificate in service | `internal/mn/cert` (loader + loop), `termit-mn serve` | unit tests for the reload, the broken-pair case and the loop; lab: a certificate swapped under a running server was served immediately, swapped back, and the real chain still validated |
 
 Also outstanding, and a maintainer decision rather than a defect fix: `DESCRIPTION.md` §8 shows a sync
-body shape the server does not send, §15 says agent keys are hashed with Argon2id and compared in
-constant time (they are SHA-256 digests looked up through an index, deliberately), and §13.4 lists
+body shape the server does not send, `DESCRIPTION.md` §15 says agent keys are hashed with Argon2id and compared in
+constant time (they are SHA-256 digests looked up through an index, deliberately), and `DESCRIPTION.md` §13.4 lists
 `termit-mn sub show`, which does not exist. `docs/PROTOCOL.md` is what the build does; the design document
 should be reconciled with it before the first tag.
 
@@ -1545,8 +1545,8 @@ What keeps it a 0.5.0 item:
 | Option | UDP | Host routing | Cost |
 |---|---|---|---|
 | **A. Xray `wireguard` outbound** with WARP credentials (`noKernelTun: true`) | yes | **none** — gVisor netstack inside the core | needs a WARP registration and a stored private key; one fewer service than today |
-| B. `wgcf` + `wg-quick` (what `references/Blitz` does) | yes | `ip rule`, routes, `resolvconf` | contradicts §2.2.1 |
-| C. `warp-cli` in TUN mode | yes | full-tunnel capture | contradicts §2.2.1, and `/dev/net/tun` is absent on the LXC nodes |
+| B. `wgcf` + `wg-quick` (what `references/Blitz` does) | yes | `ip rule`, routes, `resolvconf` | contradicts `AGENTS.md` §2.2, rule 1 |
+| C. `warp-cli` in TUN mode | yes | full-tunnel capture | contradicts `AGENTS.md` §2.2, rule 1, and `/dev/net/tun` is absent on the LXC nodes |
 | D. `usque` (MASQUE, userspace SOCKS5 with TCP and UDP) | yes | none | a third-party service and its netstack, plus a licence to check; MASQUE is where Cloudflare is going |
 
 **Chosen: A, built in 0.4.0 (§11).** Xray has shipped a userspace WireGuard outbound since 1.6.5 and documents the WARP
@@ -1624,7 +1624,7 @@ Constraints, in the order they decide the design:
    rendering, or an explicit refusal — instead of emitting a URI that opens and fails.
 5. **No host routing changes, and no new process unless the core cannot speak the transport.** TUN designs
    and anything needing a port forward stay out. A transport the core cannot speak is the one exception,
-   under the conditions in `DESCRIPTION.md` §11.8; every other kind runs inside the core it already has.
+   under the conditions in `DESCRIPTION.md` §11, invariant 8; every other kind runs inside the core it already has.
 
 Order in 0.5.0: the options first (small, no credential change), and the `{kind, version, params}` envelope
 built for the kind that ships in that release — Hysteria2 (§10.3), which is a binary of its own and
@@ -1665,7 +1665,7 @@ Three things decide the shape, and each one was learned the hard way:
   inbound, whose routing then classifies the flow exactly as it does today. On the lab, 2026-11-21, 25 of
   25 requests through that hop succeeded at 80–95 MB/s, and the core added about 0.02 s of CPU per 100 MB.
 - **It is a second daemon, and the design now says so.** xray-core has no hysteria2, so this is another
-  pinned binary and another unit — allowed on the conditions `DESCRIPTION.md` §11.8 spells out, and pinned
+  pinned binary and another unit — allowed on the conditions `DESCRIPTION.md` §11, invariant 8 spells out, and pinned
   by version and checksum because its handshake is part of the fingerprint: an upgrade is a fingerprint
   change and is tested as one.
 - **Its authentication is a restart.** `auth.userpass` is an inline map in the generated config — there is
@@ -2007,7 +2007,7 @@ Two ways to obtain it, and the plan takes the second:
     "mtu": 1280, "noKernelTun": true } }
 ```
 
-`noKernelTun` is not a tuning knob here: it is what keeps the node out of host routing (invariant §2.2.1)
+`noKernelTun` is not a tuning knob here: it is what keeps the node out of host routing (invariant 1 in `AGENTS.md` §2.2)
 and what makes the outbound work in the LXC containers the lab runs on. The measured cost — two thirds of
 the kernel path's throughput on a one-vCPU node (§10.1) — is accepted and recorded.
 

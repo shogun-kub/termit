@@ -73,8 +73,8 @@ agent: the server has no API at https://mn.example.com/enroll: does the MN URL i
 |---|---|---|---|
 | `POST` | `{prefix}/enroll` | a node, once | Exchange an invite for credentials |
 | `POST` | `{prefix}/agent/sync` | a node, daily | Fetch the complete desired peer set |
-| `POST` | `{prefix}/agent/unblock` | a blocked node | Ask to be let back in (§4.2 of `PROTOCOL.md`) |
-| `POST` | `{prefix}/agent/relocate` | a moved node | Announce a new host (§4.3) |
+| `POST` | `{prefix}/agent/unblock` | a blocked node | Ask to be let back in (`PROTOCOL.md` §3.5) |
+| `POST` | `{prefix}/agent/relocate` | a moved node | Announce a new host (`PROTOCOL.md` §3.6) |
 | `GET` | `{prefix}/healthz` | monitoring | Liveness and version |
 | `GET` | `/sub/{token}` | a client | Peer list, base64 VLESS URIs |
 | `GET` | `/sub/{token}/json` | a client | Peer list, sing-box JSON |
@@ -377,6 +377,14 @@ with `subscription.record_fragment` on, so they also carry `tls.record_fragment`
 ClientHello across records on the client side; `subscription.fragment` (the segment-level variant,
 off by default) adds `tls.fragment` instead, and a configuration that predates the keys gets neither.
 
+A node that also serves the QUIC transport appears **twice** in both forms: a `hy2://` link beside its
+`vless://` one, labelled `<label> (QUIC)`, and a `hysteria2` outbound with the same tag in the JSON. That
+link carries no profile parameters — it is QUIC to the same domain and port, with `sni` and nothing else —
+and its user name and password are derived from the credential the `vless://` line already carries
+(`proto.HysteriaUser`, `proto.HysteriaPassword`), so nothing extra is stored and a node that stops serving
+the transport loses its second link at the next sync. Which kinds a node yields is what it reported in
+`transports` (§3.2); a kind this server does not know is dropped, not refused.
+
 Fragmentation reaches the plain list by a different route, because it has to: Happ reads a
 `fragment=length,interval,packets[,maxSplit]` query parameter from the link itself, so
 `subscription.happ_fragment` appends it to every URI before the `#label`. The parameter is not part of
@@ -541,7 +549,7 @@ its own access is never entitled to re-issue somebody else's.
 
 The CLI (`termit-mn invite|uv|check|policy|sub|status|admin`) is a thin client of this table; use the
 CLI unless you are writing an integration. `termit-mn firewall`, `bans` and `guard` are the exception:
-they act on the machine they run on and never reach the socket ([`OPERATIONS.md`](OPERATIONS.md) §18.6).
+they act on the machine they run on and never reach the socket ([`OPERATIONS.md`](OPERATIONS.md) §13.6).
 
 ---
 
