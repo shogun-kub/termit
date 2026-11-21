@@ -310,6 +310,10 @@ Rules (all thresholds configurable on MN, defaults in parentheses):
 
 - **Check cadence**: one cycle per UV per ~24 h, random minute, never earlier than 2 h after
   enrollment. MN may override `next_sync_after` in the sync response.
+- **Convergence between cycles**: the agent wakes every 5 min and reads `{prefix}/healthz`, which
+  carries a digest of the mesh's shape. When the digest differs from the one its last sync applied, the
+  node reconciles immediately — so a join, a block or a removal reaches the rest of the mesh in minutes
+  rather than at each node's next cycle. The poll carries no credential and no peer data.
 - **Retries inside a cycle**: 3 attempts, 10 min apart (adjustable), before a cycle counts as failed.
   Attempts never count towards a block: one cycle is one check, however many attempts it took.
 - **Active → unavailable**: first failed cycle. Stays in peers' configs.
@@ -317,7 +321,7 @@ Rules (all thresholds configurable on MN, defaults in parentheses):
 - **Unavailable → blocked**: when the consecutive failure streak reaches
   `policy.block_after_failed_cycles` (default 2, i.e. one grace check; ≈24–30 h at the daily cadence).
   A successful cycle resets the streak; a check that could not run neither advances nor resets it.
-  Peers drop it at their next sync (convergence ≤ 24 h + jitter).
+  Peers drop it at their next sync or at the next mesh poll (convergence ≤ 5 min).
 - **Blocked → active**: only an explicit, successful unblock request (Scenario B) or an admin action.
   No automatic un-blocking, to avoid flapping.
 - **MN never blocks on a check it could not perform.** A prober outage, MN-side DNS failure, or a

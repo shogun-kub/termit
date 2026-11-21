@@ -511,7 +511,16 @@ per-node jitter (ten minutes at most), and runs:
    restart as fallback and rollback on failure.
 
 A failed cycle does not retry every minute: the agent keeps the schedule it has, and the server's
-probe decides the node's state. To run one cycle by hand:
+probe decides the node's state.
+
+**Between the cycles the agent polls the mesh.** It wakes every five minutes and reads
+`{prefix}/healthz`, which carries `mesh_generation` — a digest of who is in the mesh and in what shape.
+When the digest differs from the one the last sync applied (a node joined, left, was blocked, moved or
+came back), the agent reconciles at once instead of waiting for its scheduled time: a fresh node
+appears in the rest of the mesh within minutes. The poll needs no credential and names nothing, and a
+poll it cannot read changes nothing — the scheduled cycle will report the outage with its backoff.
+
+To run one cycle by hand:
 
 ```bash
 termit-uv agent --once

@@ -279,7 +279,8 @@ Response `200 OK`:
   ],
   "subscription_url": "https://mn.example.com/sub/...",
   "policy": {"check_interval_seconds": 86400, "sync_interval_seconds": 86400, "min_sync_delay_seconds": 7200},
-  "next_sync_after": "2026-11-11T18:16:11Z"
+  "next_sync_after": "2026-11-11T18:16:11Z",
+  "mesh_generation": "9f3c1a2b4d5e7788"
 }
 ```
 
@@ -294,6 +295,12 @@ Two invariants matter more than the fields:
 `next_sync_after` is a hint, not an instruction: a node that syncs early is welcome, a node that syncs
 late is not a crisis. `state` is the *peer's* state; `degraded` is set when a peer is still usable but
 currently failing its checks.
+
+`mesh_generation` is a digest of who is in the mesh and in what shape — it changes when a node joins,
+leaves, is blocked or moves, and not when a node merely syncs. The node stores it and compares it with
+the one `healthz` reports between scheduled syncs, so a join reaches the rest of the mesh within one
+poll instead of at each node's next cycle. It names nothing: an id, a domain and a state enter the
+digest, and only the digest leaves.
 
 Refusals: `unauthorized` (no key, unknown key, key of another node), `pending_approval`,
 `node_inactive`, `relocate_required` (the stored domain no longer matches what the node presents).
@@ -386,13 +393,15 @@ working immediately.
 
 ```json
 {"api_version": "1", "build": "v0.3.1", "domain": "mn.example.com",
- "schema_version": 5, "status": "ok"}
+ "schema_version": 5, "status": "ok", "mesh_generation": "9f3c1a2b4d5e7788"}
 ```
 
 `200` when the database answers a ping inside 2 seconds, `503` with `status: "degraded"` and
 `database: "unavailable"` added when it does not. There is no `database` field on the healthy answer:
-the absence of the failure field is the success signal. It carries no node data: a health endpoint that leaks the
-registry is a health endpoint an attacker polls.
+the absence of the failure field is the success signal. `mesh_generation` is the digest the nodes poll
+between their scheduled syncs; the answer is the same shape and changes when the mesh does, and it
+carries no id, domain or address — a health endpoint that leaks the registry is a health endpoint an
+attacker polls.
 
 ### 5.2 The masking site: `GET /` and every other path
 

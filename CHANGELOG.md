@@ -3,6 +3,28 @@ What each release changed, written for the people who run Termit. Newest first;
 carries every section back to the last release: the versions in between were handed out only as
 pre-releases, and whoever installs the release skipped them.
 
+## 0.5.0 — unreleased
+
+The node syncs when the server said to, and a new node reaches the rest of the mesh in minutes instead
+of at everyone's next cycle.
+
+### Added
+
+- **The mesh tells the nodes when it changed.** `{prefix}/healthz` carries `mesh_generation`, a digest of
+  who is in the mesh and in what shape, and the sync answer carries the same value so a node knows which
+  mesh it applied. Between the scheduled syncs the agent reads it every five minutes and reconciles at
+  once when it differs: a join, a block, a removal or a move reaches the rest of the mesh within minutes
+  instead of at each node's next cycle. The digest names nothing — an id, a domain and a state go in,
+  only the digest comes out — and a poll it cannot read changes nothing.
+
+### Fixed
+
+- **The agent honours `next_sync_after`.** It woke at the server's time but ran a full cycle on every
+  wake anyway, because the wake had no "is it due?" check: `status` promised `next sync: +24h` while the
+  node reconciled every hour — twenty-four times the traffic, the self-checks and the page renders the
+  design asks for. The loop now waits for the scheduled time and uses the five-minute wake only for the
+  cheap mesh poll, which also means a manual `termit-uv sync` no longer races a cycle that was never due.
+
 ## 0.4.2 — 2026-11-20
 
 The grace period does what its key promised, the subscription stops answering for nodes that are not
