@@ -164,6 +164,58 @@ type Policy struct {
 	CheckInterval time.Duration `yaml:"check_interval"`
 	// SyncInterval is how often a node is asked to sync.
 	SyncInterval time.Duration `yaml:"sync_interval"`
+	// MeshPoll is how often a node is told to ask /healthz whether the mesh changed. 0 turns the poll
+	// off — a node then learns a join at its next scheduled sync — and an absent key means the default.
+	MeshPoll *PollInterval `yaml:"mesh_poll"`
+}
+
+// PollInterval is `policy.mesh_poll`: a duration such as 15m, and the bare 0 that means "do not poll".
+// YAML reads a duration as a string and a bare 0 as an integer, so the two spellings meet here instead
+// of in every operator's error message.
+type PollInterval time.Duration
+
+// UnmarshalYAML accepts both spellings and rejects a negative interval at the door.
+func (p *PollInterval) UnmarshalYAML(node *yaml.Node) error {
+	if node.Tag == "!!int" {
+		var n int64
+		if err := node.Decode(&n); err != nil {
+			return err
+		}
+		if n != 0 {
+			return errors.New("mesh_poll must be a duration such as 15m, or 0 to turn the poll off")
+		}
+		*p = 0
+		return nil
+	}
+	var text string
+	if err := node.Decode(&text); err != nil {
+		return err
+	}
+	parsed, err := time.ParseDuration(text)
+	if err != nil {
+		return fmt.Errorf("mesh_poll %q: %w", text, err)
+	}
+	if parsed < 0 {
+		return errors.New("mesh_poll cannot be negative; 0 turns the poll off")
+	}
+	*p = PollInterval(parsed)
+	return nil
+}
+
+// MarshalYAML keeps the file readable: `15m`, not nanoseconds.
+func (p PollInterval) MarshalYAML() (any, error) { return time.Duration(p).String(), nil }
+
+// DefaultMeshPoll is the poll interval a node is given when the operator has no opinion: often enough
+// that a join lands in minutes, seldom enough to be a rounding error on a node's traffic.
+const DefaultMeshPoll = 15 * time.Minute
+
+// MeshPollInterval is the interval to hand the nodes. A configured 0 is a decision to stop polling,
+// not an omission, so it is returned as it stands.
+func (p Policy) MeshPollInterval() time.Duration {
+	if p.MeshPoll == nil {
+		return DefaultMeshPoll
+	}
+	return time.Duration(*p.MeshPoll)
 }
 
 // Default returns a configuration with every default applied and no domain.
@@ -272,6 +324,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Policy.SyncInterval <= 0 {
 		problems = append(problems, errors.New("policy.sync_interval must be positive"))
+	}
+	if c.Policy.MeshPoll != nil && time.Duration(*c.Policy.MeshPoll) < 0 {
+		problems = append(problems, errors.New("policy.mesh_poll cannot be negative; 0 turns the poll off"))
 	}
 	if c.Enrollment.Attempts < 1 {
 		problems = append(problems, errors.New("enrollment.attempts must be at least 1"))
@@ -387,6 +442,10 @@ func (c *Config) applyDefaults() {
 	}
 	if c.Policy.SyncInterval == 0 {
 		c.Policy.SyncInterval = 24 * time.Hour
+	}
+	if c.Policy.MeshPoll == nil {
+		poll := PollInterval(DefaultMeshPoll)
+		c.Policy.MeshPoll = &poll
 	}
 }
 

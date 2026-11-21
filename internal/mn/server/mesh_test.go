@@ -6,7 +6,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
+	"github.com/shogun-kub/termit/internal/mn/server"
 	"github.com/shogun-kub/termit/internal/mn/store"
 	"github.com/shogun-kub/termit/internal/proto"
 )
@@ -71,5 +73,30 @@ func TestTheMeshDigestChangesWhenTheMeshDoes(t *testing.T) {
 	}
 	if after := fx.meshGeneration(t); after == before {
 		t.Error("blocking a node left the digest unchanged")
+	}
+}
+
+func TestThePolicyCarriesTheMeshPollInterval(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name    string
+		poll    time.Duration
+		wantSec int
+	}{
+		{"the operator's interval", 90 * time.Second, 90},
+		{"polling turned off", 0, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			fx := newFixtureWith(t, okProber{}, func(o *server.Options) { o.MeshPoll = tc.poll })
+			synced := fx.sync(t, fx.agentKey, `{"agent_version":"termit-uv/test"}`)
+			var answer proto.SyncResponse
+			if err := json.Unmarshal(synced.Body.Bytes(), &answer); err != nil {
+				t.Fatalf("decode the sync: %v", err)
+			}
+			if answer.Policy.MeshPollSeconds != tc.wantSec {
+				t.Errorf("mesh_poll_seconds = %d, want %d", answer.Policy.MeshPollSeconds, tc.wantSec)
+			}
+		})
 	}
 }

@@ -51,6 +51,9 @@ type Options struct {
 	SyncInterval  time.Duration
 	// MinSyncDelay is how long a fresh node waits before its first own cycle.
 	MinSyncDelay time.Duration
+	// MeshPoll is how often a node may ask /healthz whether the mesh changed. Zero turns the poll off
+	// and every node learns a join at its next scheduled sync.
+	MeshPoll time.Duration
 	// Fragment and RecordFragment are carried into the sing-box subscription: they split the TLS
 	// ClientHello, and the server itself never looks at them.
 	Fragment       bool

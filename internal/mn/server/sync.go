@@ -95,6 +95,7 @@ func (h *Handler) sync(w http.ResponseWriter, r *http.Request) {
 		CheckIntervalSeconds: int(h.opts.CheckInterval.Seconds()),
 		SyncIntervalSeconds:  int(h.opts.SyncInterval.Seconds()),
 		MinSyncDelaySeconds:  int(h.opts.MinSyncDelay.Seconds()),
+		MeshPollSeconds:      int(h.opts.MeshPoll / time.Second),
 	}
 	// Jitter keeps a group that enrolled together from checking together for the rest of its life.
 	interval := h.opts.CheckInterval

@@ -21,10 +21,9 @@ const (
 	// maxJitter spreads the fleet's cycles. The server already spreads its own schedule; this is the
 	// node's own drift, so a group that enrolled together does not stay synchronised for life.
 	maxJitter = 10 * time.Minute
-	// meshPoll is how often a node that is not due yet asks the server whether the mesh changed. It is
-	// one unauthenticated read of /healthz, and it is what makes a join reach the other nodes in
-	// minutes instead of at their next scheduled sync.
-	meshPoll = 5 * time.Minute
+	// defaultMeshPoll is the poll interval used until the server states one: often enough that a join
+	// lands in minutes, seldom enough to be a rounding error on a node's traffic.
+	defaultMeshPoll = 15 * time.Minute
 	// notEnrolledPoll is how often an installed but unenrolled node looks for credentials.
 	notEnrolledPoll = time.Minute
 )
@@ -167,12 +166,24 @@ func (l *Loop) due() bool {
 	return next.IsZero() || !l.now().Before(next)
 }
 
+// meshPoll is how often this node asks /healthz for the mesh digest, and whether it asks at all: the
+// server states the interval in its policy, and a stated 0 means the operator does not want the poll.
+func (l *Loop) meshPoll(st *state.State) time.Duration {
+	if st.MeshPollSeconds == nil {
+		return defaultMeshPoll
+	}
+	return time.Duration(*st.MeshPollSeconds) * time.Second
+}
+
 // meshChanged polls the server's mesh digest and reports whether it differs from the one this node
 // last applied. A digest it cannot read changes nothing: the scheduled cycle will report the outage
 // with the backoff it deserves.
 func (l *Loop) meshChanged(ctx context.Context) bool {
 	st, err := state.LoadInstalled(l.StatePath)
 	if err != nil || st.Credentials == nil || st.Credentials.AgentKey == "" {
+		return false
+	}
+	if l.meshPoll(st) <= 0 {
 		return false
 	}
 	generation, err := l.Remote.Mesh(ctx)
@@ -216,8 +227,8 @@ func (l *Loop) untilNext(ctx context.Context) time.Duration {
 	if wait <= 0 {
 		return 0
 	}
-	if wait > meshPoll {
-		wait = meshPoll
+	if poll := l.meshPoll(st); poll > 0 && wait > poll {
+		wait = poll
 	}
 	return wait
 }
@@ -321,6 +332,8 @@ func (l *Loop) cycle(ctx context.Context) (CycleReport, error) {
 		// again for a change this cycle already applied.
 		st.MeshGeneration = answer.MeshGeneration
 	}
+	poll := answer.Policy.MeshPollSeconds
+	st.MeshPollSeconds = &poll
 	RememberSubscription(st, answer)
 	RememberProbe(st, answer)
 	st.Schedule.Failures = 0

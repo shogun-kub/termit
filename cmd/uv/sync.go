@@ -137,6 +137,8 @@ func (a *application) runSync(args []string) int {
 	if answer.MeshGeneration != "" {
 		st.MeshGeneration = answer.MeshGeneration
 	}
+	poll := answer.Policy.MeshPollSeconds
+	st.MeshPollSeconds = &poll
 	agent.RememberSubscription(st, answer)
 	agent.RememberProbe(st, answer)
 	now := a.now().UTC()

@@ -42,6 +42,9 @@ type SyncPolicy struct {
 	SyncIntervalSeconds  int `json:"sync_interval_seconds"`
 	// MinSyncDelaySeconds is how long a node waits after enrollment before its first own cycle.
 	MinSyncDelaySeconds int `json:"min_sync_delay_seconds"`
+	// MeshPollSeconds is how often the node may ask /healthz whether the mesh changed; 0 turns the
+	// poll off, and the node then learns a join at its next scheduled sync.
+	MeshPollSeconds int `json:"mesh_poll_seconds"`
 }
 
 // SyncResponse is the complete desired state. It is a full set, not a delta: a node that missed a

@@ -29,6 +29,21 @@ func scheduled(t *testing.T, next time.Time, mesh string) string {
 	return path
 }
 
+// withMeshPoll states the poll interval the server asked for; nil means it never said.
+func withMeshPoll(t *testing.T, path string, seconds *int) {
+	t.Helper()
+	st, err := state.Load(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	st.MeshPollSeconds = seconds
+	if err := st.SaveAt(path, cycleNow); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+}
+
+func seconds(n int) *int { return &n }
+
 // drain stops the loop after a few wake-ups without sleeping, and records every requested wait.
 func drain(loop *agent.Loop, wakeups int, waits *[]time.Duration) {
 	loop.Sleep = func(_ context.Context, d time.Duration) bool {
@@ -67,7 +82,7 @@ func TestTheLoopWaitsForTheSchedule(t *testing.T) {
 	}
 	for i, wait := range waits {
 		// A node that is not due must wake on the cheap poll, not sleep the whole interval away.
-		if want := 5 * time.Minute; wait != want {
+		if want := 15 * time.Minute; wait != want {
 			t.Errorf("wait %d = %s, want %s", i, wait, want)
 		}
 	}
@@ -150,5 +165,66 @@ func TestAnUnreadableMeshDigestChangesNothing(t *testing.T) {
 	}
 	if st.MeshGeneration != "mesh-one" {
 		t.Errorf("generation = %q, a failed poll must not change the state", st.MeshGeneration)
+	}
+}
+
+func TestTheLoopPollsOnTheIntervalTheServerSet(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok", "mesh_generation": "mesh-one"})
+	}))
+	defer server.Close()
+
+	statePath := scheduled(t, cycleNow.Add(time.Hour), "mesh-one")
+	withMeshPoll(t, statePath, seconds(60))
+	loop := &agent.Loop{
+		Remote:    agent.Remote{BaseURL: server.URL},
+		StatePath: statePath,
+		Now:       func() time.Time { return cycleNow },
+		Apply: func(context.Context, *state.State, proto.SyncResponse) (agent.Result, error) {
+			t.Error("the core was reconciled before the schedule allowed it")
+			return agent.Result{}, nil
+		},
+	}
+	var waits []time.Duration
+	drain(loop, 2, &waits)
+	_ = loop.Run(context.Background())
+	for i, wait := range waits {
+		if want := time.Minute; wait != want {
+			t.Errorf("wait %d = %s, want the server's %s", i, wait, want)
+		}
+	}
+}
+
+func TestTheLoopStopsPollingWhenTheServerSaysZero(t *testing.T) {
+	t.Parallel()
+	var polls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		polls++
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok", "mesh_generation": "mesh-two"})
+	}))
+	defer server.Close()
+
+	statePath := scheduled(t, cycleNow.Add(time.Hour), "mesh-one")
+	withMeshPoll(t, statePath, seconds(0))
+	loop := &agent.Loop{
+		Remote:    agent.Remote{BaseURL: server.URL},
+		StatePath: statePath,
+		Now:       func() time.Time { return cycleNow },
+		Apply: func(context.Context, *state.State, proto.SyncResponse) (agent.Result, error) {
+			t.Error("a disabled poll still reconciled the core")
+			return agent.Result{}, nil
+		},
+	}
+	var waits []time.Duration
+	drain(loop, 2, &waits)
+	_ = loop.Run(context.Background())
+	if polls != 0 {
+		t.Errorf("the node made %d health requests with the poll turned off", polls)
+	}
+	for i, wait := range waits {
+		if want := time.Hour; wait != want {
+			t.Errorf("wait %d = %s, want the whole interval %s", i, wait, want)
+		}
 	}
 }
