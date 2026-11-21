@@ -154,6 +154,13 @@ func (h *Handler) health(w http.ResponseWriter, r *http.Request) {
 		"schema_version": store.SchemaVersion,
 		"domain":         h.opts.Domain,
 	}
+	// The nodes poll this unauthenticated read between scheduled syncs: the digest tells them the mesh
+	// they are in has changed, and the answer carries no names, only a shape.
+	if mesh, err := h.meshGeneration(ctx); err != nil {
+		h.opts.Logger.Error("health check: mesh generation", "err", err)
+	} else {
+		body["mesh_generation"] = mesh
+	}
 	if err := h.opts.Store.Ping(ctx); err != nil {
 		body["status"] = "degraded"
 		body["database"] = "unavailable"

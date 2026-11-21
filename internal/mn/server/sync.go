@@ -84,6 +84,13 @@ func (h *Handler) sync(w http.ResponseWriter, r *http.Request) {
 	response.Self.State = string(node.State)
 	response.Self.ProbeUUID = node.ProbeUUID
 	response.SubscriptionURL = h.subscriptionURLFor(node)
+	// The digest is what this node remembers to notice a change between scheduled syncs; a registry it
+	// cannot read is not a reason to refuse the answer.
+	if mesh, err := h.meshGeneration(r.Context()); err != nil {
+		h.opts.Logger.Error("sync: mesh generation", "err", err)
+	} else {
+		response.MeshGeneration = mesh
+	}
 	response.Policy = proto.SyncPolicy{
 		CheckIntervalSeconds: int(h.opts.CheckInterval.Seconds()),
 		SyncIntervalSeconds:  int(h.opts.SyncInterval.Seconds()),

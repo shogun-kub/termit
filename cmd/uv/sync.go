@@ -134,6 +134,9 @@ func (a *application) runSync(args []string) int {
 	}
 
 	st.Peers = agent.PeersFrom(answer)
+	if answer.MeshGeneration != "" {
+		st.MeshGeneration = answer.MeshGeneration
+	}
 	agent.RememberSubscription(st, answer)
 	agent.RememberProbe(st, answer)
 	now := a.now().UTC()

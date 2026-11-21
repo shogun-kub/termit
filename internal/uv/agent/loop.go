@@ -21,9 +21,10 @@ const (
 	// maxJitter spreads the fleet's cycles. The server already spreads its own schedule; this is the
 	// node's own drift, so a group that enrolled together does not stay synchronised for life.
 	maxJitter = 10 * time.Minute
-	// maxSleep keeps the loop responsive to a state change made by an operator (`termit-uv enroll`,
-	// `termit-uv unblock`) without asking the network again.
-	maxSleep = time.Hour
+	// meshPoll is how often a node that is not due yet asks the server whether the mesh changed. It is
+	// one unauthenticated read of /healthz, and it is what makes a join reach the other nodes in
+	// minutes instead of at their next scheduled sync.
+	meshPoll = 5 * time.Minute
 	// notEnrolledPoll is how often an installed but unenrolled node looks for credentials.
 	notEnrolledPoll = time.Minute
 )
@@ -97,8 +98,10 @@ type CycleReport struct {
 	Apply  Result
 }
 
-// Loop is the long-running agent: one cycle a day, at the node's own time, with the server's
-// answer as the authority on both the peer set and when the next cycle is due.
+// Loop is the long-running agent: one cycle at the time the server asked for, with its answer as the
+// authority on both the peer set and when the next cycle is due. Between cycles it wakes on the mesh
+// poll and reconciles early when the digest says the mesh it applied is no longer the mesh the server
+// holds — that is what makes a join land in minutes instead of at the next scheduled sync.
 type Loop struct {
 	Remote    Remote
 	Logger    *slog.Logger
@@ -135,11 +138,15 @@ func (l *Loop) logger() *slog.Logger {
 }
 
 // Run cycles until the context is cancelled. A failed cycle is logged and retried with backoff; it
-// never stops the loop and never changes the core.
+// never stops the loop and never changes the core. Between the cycles the loop wakes on the mesh poll
+// and reconciles early when the server reports a mesh it has not applied yet.
 func (l *Loop) Run(ctx context.Context) error {
 	for {
 		if !l.sleep(ctx, l.untilNext(ctx)) {
 			return ctx.Err()
+		}
+		if !l.due() && !l.meshChanged(ctx) {
+			continue
 		}
 		// The cycle owns the lock, not the sleep: a manual `termit-uv sync` must not wait on a node that is
 		// merely waiting for tomorrow.
@@ -150,8 +157,44 @@ func (l *Loop) Run(ctx context.Context) error {
 	}
 }
 
-// untilNext reads the persisted schedule. It never sleeps past maxSleep, so an enrollment or an
-// operator action is noticed without waiting for the whole interval.
+// due reports whether the schedule the server handed out says the node may sync now.
+func (l *Loop) due() bool {
+	st, err := state.LoadInstalled(l.StatePath)
+	if err != nil || st.Credentials == nil || st.Credentials.AgentKey == "" {
+		return false
+	}
+	next := st.Schedule.NextSyncAt
+	return next.IsZero() || !l.now().Before(next)
+}
+
+// meshChanged polls the server's mesh digest and reports whether it differs from the one this node
+// last applied. A digest it cannot read changes nothing: the scheduled cycle will report the outage
+// with the backoff it deserves.
+func (l *Loop) meshChanged(ctx context.Context) bool {
+	st, err := state.LoadInstalled(l.StatePath)
+	if err != nil || st.Credentials == nil || st.Credentials.AgentKey == "" {
+		return false
+	}
+	generation, err := l.Remote.Mesh(ctx)
+	if err != nil {
+		l.logger().Debug("agent: mesh poll", "err", err)
+		return false
+	}
+	if generation == "" || generation == st.MeshGeneration {
+		return false
+	}
+	// Remembered before the sync: a sync that fails is retried by the schedule, not by every poll.
+	st.MeshGeneration = generation
+	if err := st.Save(l.StatePath); err != nil {
+		l.logger().Warn("agent: remember the mesh generation", "err", err)
+		return false
+	}
+	l.logger().Info("mesh changed", "generation", generation)
+	return true
+}
+
+// untilNext reads the persisted schedule. It never sleeps past the poll interval, so a join, an
+// enrollment or an operator action is noticed without waiting for the whole interval.
 func (l *Loop) untilNext(ctx context.Context) time.Duration {
 	st, err := state.LoadInstalled(l.StatePath)
 	if err != nil {
@@ -173,8 +216,8 @@ func (l *Loop) untilNext(ctx context.Context) time.Duration {
 	if wait <= 0 {
 		return 0
 	}
-	if wait > maxSleep {
-		wait = maxSleep
+	if wait > meshPoll {
+		wait = meshPoll
 	}
 	return wait
 }
@@ -273,6 +316,11 @@ func (l *Loop) cycle(ctx context.Context) (CycleReport, error) {
 	report.Result = "ok"
 
 	st.Peers = PeersFrom(answer)
+	if answer.MeshGeneration != "" {
+		// The answer names the mesh it described; remembering it is what keeps the poll from syncing
+		// again for a change this cycle already applied.
+		st.MeshGeneration = answer.MeshGeneration
+	}
 	RememberSubscription(st, answer)
 	RememberProbe(st, answer)
 	st.Schedule.Failures = 0

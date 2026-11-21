@@ -58,4 +58,8 @@ type SyncResponse struct {
 	SubscriptionURL string     `json:"subscription_url"`
 	Policy          SyncPolicy `json:"policy"`
 	NextSyncAfter   time.Time  `json:"next_sync_after"`
+	// MeshGeneration identifies the mesh this answer describes. The node remembers it and compares it
+	// with what /healthz reports, so a join reaches the other nodes within a poll instead of at their
+	// next scheduled sync.
+	MeshGeneration string `json:"mesh_generation,omitempty"`
 }
