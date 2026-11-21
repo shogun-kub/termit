@@ -189,6 +189,13 @@ are what the tests read. The key is a PuTTY `.ppk` that OpenSSH cannot read, so 
 `plink`/`pscp` (M0.5) and pins each machine by fingerprint. A missing variable skips the suite rather
 than failing it: the lab is a manual gate, not part of `go test ./cmd/... ./internal/...`.
 
+Credentials for this host live beside it, also gitignored: `.spike-out/github-token` (a fine-grained
+token for `shogun-kub/termit` with Actions read/write and Contents read, which
+`node .spike-out/dispatch-release.js` uses to start `release.yaml` on a `release/<version>` branch and read
+the run back), `.spike-out/mn-admin.token` (the lab server's admin token) and `.spike-out/sonar-token` (the
+scanner's). `lab.md` lists them with what each opens. None of them may appear in the repository, a
+document, a commit message or a log line — the repository is public and the documents are read by everyone.
+
 Acceptance budget: UV = 1 vCPU / 1 GB RAM / 10 GB disk, MN = 2 vCPU / 2 GB. The containers are
 unprivileged LXC with **no `/dev/net/tun`**, and a lab's egress may block the WARP API — the very block
 this project exists to route around. A node must still install, serve and say why: `wireguard` needs no
