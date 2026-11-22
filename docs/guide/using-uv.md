@@ -190,10 +190,11 @@ server in a sync request and nowhere else. From that point:
   nothing on the server needs configuring.
 
 What it costs: about 50 MB of memory, and its unit caps it at 256 MB; 4–9 % of one core per 100 Mbit/s
-carried. The pinned release also carries one known issue (GO-2026-5288): a crafted packet can exhaust the
-transport's memory. The cap turns that into a restart of the transport alone — the TLS profile and every
-other service on the node keep running — and `0.6.0` is the first release that must not carry it,
-as `deploy/vulnerabilities.json` says.
+carried. The pinned release is also named in one advisory, GO-2026-5288, whose record in the Go database is
+unreviewed and describes no fixed version — the advisory behind it (GHSA-9fw6-xgg2-mq9q) lists 2.8.1 as the
+last affected release and 2.8.2 as the fix, while this node runs 2.14.0 and never enables the sniffing the
+proof of concept needs. The 256 MB cap and `Restart=always` still stand, so a blow-up in the transport cannot
+take the TLS profile or anything else on the node with it.
 
 To turn it off, run `termit-uv init --no-hysteria`: the unit is stopped,
 disabled and removed with its configuration and the pinned binary, the port closes, and the next sync

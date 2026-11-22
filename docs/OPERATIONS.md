@@ -1310,13 +1310,15 @@ else, so without one the mesh keeps the previous set — an old second link, or 
 was just turned on — until the node's next cycle, which can be a day away. A node that is not enrolled is
 told that the server will learn it at the first sync after enrollment.
 
-**A known advisory, and what it costs.** GO-2026-5288 says a crafted QUIC packet can drive the server out
-of memory when sniffing is on, and v2.14.0 is the newest release — there is no fixed version to install.
-What the node does about it: the transport runs as an unprivileged user, its unit caps it at
-`MemoryMax=256M`, and `Restart=always` turns a blow-up into a restart of the transport alone instead of an
-OOM that takes nginx and the core with it. Sniffing is on only when `block_bittorrent` is, so a node that
-does not block BitTorrent never reaches the vulnerable path. When a release with a fix appears, bump
-`hysteriaVersion` and its digests in `internal/uv/install/hysteria.go`.
+**A stale advisory, and what it costs.** GO-2026-5288 says a crafted QUIC packet can drive the server out of
+memory when sniffing is on. The record is unreviewed and names no fixed version, but the advisory behind it
+(GHSA-9fw6-xgg2-mq9q, CVE-2026-134457) lists 2.8.1 as the last affected release and 2.8.2 as the fix — this
+node pins 2.14.0, and it never enables the vulnerable path either: the generated `hysteria.yaml` has no
+`sniff` block, which the proof of concept requires. What the node does anyway, and keeps doing: the transport
+runs as an unprivileged user, its unit caps it at `MemoryMax=256M`, and `Restart=always` turns a blow-up into a
+restart of the transport alone instead of an OOM that takes nginx and the core with it. Because `govulncheck`
+follows the stale record, `deploy/vulnerabilities.json` keeps the exclusion and prints its action on every
+gate run; the entry is deleted when the record gains a fixed version, not by bumping the module.
 
 `termit-uv init` then installs the pinned binary, writes `/etc/termit/uv/hysteria.yaml`, installs
 `termit-hysteria.service` and starts it after the core.

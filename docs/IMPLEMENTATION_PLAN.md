@@ -1520,10 +1520,11 @@ the envelope for a second kind (10.2), and Hysteria2 as that kind (10.3). Each u
 first two are worth shipping even if the third slips. The first two shipped in `0.5.0`; the third went in
 with them and was finished in `0.5.1`, and what is left of each is named below.
 
-**Numbering, until the advisory list is clear again.** `deploy/vulnerabilities.json` refuses any version at
-or past `0.6.0` while GO-2026-5288 is accepted, and hysteria `v2.14.0` is still the newest module release
-(checked 2026-11-22), so `0.6.0` cannot be cut today: the next release is a `0.5.x` patch. Moving the
-deadline to `0.7.0` is the alternative, and it needs the recorded reason that no fixed release exists.
+**Numbering.** `0.6.0` is free to cut: GO-2026-5288 is a stale record, not a live advisory. Its source,
+GHSA-9fw6-xgg2-mq9q, lists 2.8.1 as the last affected release and 2.8.2 as the fix; this build pins 2.14.0 and
+never enables the sniffing the PoC needs. `vuln.go.dev` never got the fixed version — the record is
+`UNREVIEWED` — so `govulncheck` still reports the module, `deploy/vulnerabilities.json` still needs the entry,
+and its deadline now tracks the record's correction (`0.7.0`), not a module bump.
 
 Everything after them is postponed to a later release: understood and wanted, but nothing in 0.5.0
 depends on it. Each postponed item still names the rule that keeps it out, so nobody re-discovers the
