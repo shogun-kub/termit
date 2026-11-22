@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"net"
 	"strconv"
+	"time"
 
 	"github.com/shogun-kub/termit/internal/uv/config"
 	"github.com/shogun-kub/termit/internal/uv/state"
@@ -49,6 +50,13 @@ func (s *warpProbeStep) Check(ctx context.Context) (CheckResult, error) {
 
 // Run fetches Cloudflare's trace through the node's own tunnel and reads where it came from.
 func (s *warpProbeStep) Run(ctx context.Context) error {
+	// The MASQUE relay was enabled by the previous step; probing before it listens sends the request
+	// through the balancer's direct fallback and reports the node's own address, which reads like a
+	// broken tunnel rather than a race. Wait for it, and if it never comes up, say exactly that.
+	if s.e.cfg.Warp.UsesUsque() && !listeningFor(ctx, xray.DefaultUsqueSocks, s.e.readyWait) {
+		return &Warning{Reason: "the MASQUE sidecar is not listening yet, so the egress through it was not " +
+			"verified; `termit-uv warp status` says when it comes up"}
+	}
 	st, err := state.LoadInstalled(s.e.cfg.Paths.StatePath())
 	if err != nil {
 		return &Warning{Reason: "the tunnel was not verified: " + err.Error()}
@@ -64,6 +72,22 @@ func (s *warpProbeStep) Run(ctx context.Context) error {
 	}
 	s.e.log.Info("the tunnel exits through WARP", "ip", trace.IP)
 	return nil
+}
+
+// listeningFor reports whether addr accepts a TCP connection within wait; zero means one attempt.
+func listeningFor(ctx context.Context, addr string, wait time.Duration) bool {
+	deadline := time.Now().Add(wait)
+	for {
+		conn, err := (&net.Dialer{Timeout: 300 * time.Millisecond}).DialContext(ctx, "tcp", addr)
+		if err == nil {
+			_ = conn.Close()
+			return true
+		}
+		if time.Now().After(deadline) || ctx.Err() != nil {
+			return false
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 }
 
 // probeWarpEgress is the production probe: the node's own core, started as a temporary client, fetches

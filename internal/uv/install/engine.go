@@ -139,6 +139,7 @@ func New(opts Options) (*Installer, error) {
 	}
 	env.registrar = opts.Registrar
 	env.probeWarp = probeWarpEgress
+	env.readyWait = 3 * time.Second
 	if opts.WarpProbe != nil {
 		env.probeWarp = opts.WarpProbe
 	}
