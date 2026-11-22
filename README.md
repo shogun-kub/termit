@@ -71,7 +71,7 @@ server has its own page in [Running the server](docs/guide/using-mn.md).
 ```bash
 # on the server (Debian 13, ports 80/443 free, DNS pointing at it)
 wget -q https://github.com/shogun-kub/termit/releases/latest/download/mn.sh
-sh mn.sh --domain mn.example.com --email you@example.com   # --version v0.4.2 pins a release
+sh mn.sh --domain mn.example.com --email you@example.com   # --version v0.6.0 pins a release
 termit-mn invite create --note "node-a"                    # prints the code once
 
 # on the node (Debian 13, ports 80/443 free, DNS pointing at it)
@@ -143,7 +143,7 @@ go test ./cmd/... ./internal/...                  # unit tests
 go vet ./cmd/... ./internal/...
 gofmt -l cmd internal deploy test                 # must print nothing
 
-go run ./deploy/release --version v0.4.2 --out dist   # the release directory, as CI builds it
+go run ./deploy/release --version v0.6.0 --out dist   # the release directory, as CI builds it
 ```
 
 Package patterns are explicit on purpose: `references/` holds third-party Go source inside this

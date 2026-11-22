@@ -382,46 +382,54 @@ down; the surface is wider than the command:
 `--help` summaries are code and nobody reads them until an operator does: `invite` and `uv` carried
 incomplete ones through a whole release.
 
-**3. Grep for the truth you just invalidated.** For every rename, removal or reversed decision, search the
+**3. Make the README true.** `README.md` and `README.ru.md` are the project's face and the first thing
+anyone reads: they name the newest release, list what works, and say what does not. Before tagging, read
+both end to end against the release — the status line names this version and nothing later, every feature
+claimed is in this release and not the next one, no claim is unverified (a pass that was never recorded does
+not count), the quick-start commands run as written, "what is not here yet" is still true, and the two
+languages say the same thing. A release left the README naming a version two releases back: it is a
+five-minute read and the only document a stranger judges us by.
+
+**4. Grep for the truth you just invalidated.** For every rename, removal or reversed decision, search the
 tree, not the diff: `rg 'warp\.family|status and doctor|§1[01]\.' docs README* AGENTS.md`. Every hit is
 either updated or still true, and the answer goes in the commit message if it is not obvious. The audit
 after `0.7.0` found five stale claims that no test could see — a key documented as ignored when the loader
 refused it, a diagnostic that did not exist, a forwarded command that could not work.
 
-**4. Renumbering is a change to every document that points at you.** Moving a section in
+**5. Renumbering is a change to every document that points at you.** Moving a section in
 `docs/IMPLEMENTATION_PLAN.md` breaks `§x.y` in `DESCRIPTION.md`, `OPERATIONS.md`, `RUNBOOK*.md`,
 `QUESTIONS.md`, `SPIKES.md`, `AGENTS.md` and in the plan's own prose. Keep the old→new map, then
 `rg '§\d' docs README* AGENTS.md` and fix each hit.
 
-**5. Prove it on a machine, not only in tests.** Build both binaries for `linux/amd64` with `-ldflags`
+**6. Prove it on a machine, not only in tests.** Build both binaries for `linux/amd64` with `-ldflags`
 version stamping, copy them to the lab, run the scenario, then put the lab back on a normal build. The
 `0.7.0` run paid for itself twice: `upgrade` converged the node with `init` and no `--config` (the rollback
 kept it serving), and the server's update asked `api.github.com`, which answered `403` where `github.com`
 worked. Neither was reachable from a unit test, and both would have shipped.
 
-**6. Prove the way back.** For anything that replaces a binary, a config or a unit: break the release on
+**7. Prove the way back.** For anything that replaces a binary, a config or a unit: break the release on
 purpose (a corrupted `SHA256SUMS`, a bad asset), run the swap, and watch the previous file return and the
 service stay up. An unproven rollback is a rumour; the lab is where it is cheap.
 
-**7. Prove the network on production.** A change under `internal/uv/xray`, `internal/uv/warp` or the network
+**8. Prove the network on production.** A change under `internal/uv/xray`, `internal/uv/warp` or the network
 half of `internal/uv/install` is not released on the lab's word: install the pre-release on the production
 nodes, read `warp status`, the tunnel's exit and what a client actually sees, and record the pass. §9 above
 says what counts as recorded.
 
-**8. Make the versions agree.** Branch name, tag, `deploy/release --version` and the changelog heading are
+**9. Make the versions agree.** Branch name, tag, `deploy/release --version` and the changelog heading are
 one version; `p<n>` continues from the existing tags, never resets; `--notes --since <last release>` prints
 every section since the last release, because the pre-releases in between were skipped by whoever installs
 this one. Print the notes and read them before publishing.
 
-**9. Run the gate deliberately.** `go run ./deploy/vulngate ./cmd/... ./internal/...`, then
+**10. Run the gate deliberately.** `go run ./deploy/vulngate ./cmd/... ./internal/...`, then
 `go run ./deploy/release --version v<version> --notes`. It refuses while an accepted advisory names this
 version; clear it by moving the dependency, or move `must_be_gone_by` in a commit that says why.
 
-**10. Publish, then move the pointer.** Tag `main`, publish, and check the release body. When the production
+**11. Publish, then move the pointer.** Tag `main`, publish, and check the release body. When the production
 pass exists, flip `prerelease` **and** set `make_latest` — a flipped pre-release otherwise leaves
 `releases/latest`, and therefore `uv.sh` and `mn.sh` without `--version`, on the previous build.
 
-**11. Leave nothing behind.** No `<binary>.prev` on a machine you return to service, no lab host on a dev
+**12. Leave nothing behind.** No `<binary>.prev` on a machine you return to service, no lab host on a dev
 build, no secret or address in a document, `go run ./deploy/clean` after the push, and the next release's
 section absent from the changelog until it is written.
 
