@@ -3,7 +3,24 @@ What each release changed, written for the people who run Termit. Newest first;
 carries every section back to the last release: the versions in between were handed out only as
 pre-releases, and whoever installs the release skipped them.
 
-## 0.5.1 — 2026-11-21
+## Unreleased
+
+## Unreleased
+
+### Fixed
+
+- **Turning the transport on or off now tells the server.** What a node serves travels in its sync request
+  and in nothing else, so a node that enabled the QUIC transport went on being advertised with the TLS
+  profile alone until its next cycle — up to a day — and nothing said so. `init --hysteria` and
+  `init --no-hysteria` now sync at the end (and say so), which is the same request `termit-uv sync` sends.
+  A node that is not enrolled gets a line saying when the server will learn it.
+- **A node that stops serving a transport loses its second link.** The server wrote the transport record
+  only when a node announced something, and since 0.5.0 a node serving the TLS profile alone announces
+  nothing — so a retired transport's row stayed for ever and the subscription kept handing out a link the
+  node no longer had. The record is now written on every sync, with "nothing announced" read as the TLS
+  profile alone.
+
+## 0.5.1 — 2026-11-21## 0.5.1 — 2026-11-21
 
 ### Added
 

@@ -1301,6 +1301,11 @@ QUIC traffic, so the flag adds it. The applied table is not touched — the fire
 `termit-uv firewall confirm`. `--no-hysteria` removes the block and leaves the port in the list: it is the
 operator's line, and a node may publish it for something else.
 
+Both flags end the run with a sync: what a node serves reaches the server in a sync request and nowhere
+else, so without one the mesh keeps the previous set — an old second link, or none for a transport that
+was just turned on — until the node's next cycle, which can be a day away. A node that is not enrolled is
+told that the server will learn it at the first sync after enrollment.
+
 **A known advisory, and what it costs.** GO-2026-5288 says a crafted QUIC packet can drive the server out
 of memory when sniffing is on, and v2.14.0 is the newest release — there is no fixed version to install.
 What the node does about it: the transport runs as an unprivileged user, its unit caps it at

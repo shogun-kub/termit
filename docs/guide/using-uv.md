@@ -175,13 +175,15 @@ termit-uv firewall on && termit-uv firewall confirm
 ```
 
 `init` then installs the pinned binary, writes `/etc/termit/uv/hysteria.yaml`, and starts
-`termit-hysteria` as its own unprivileged user. From that point:
+`termit-hysteria` as its own unprivileged user. It ends with a sync, because what a node serves reaches the
+server in a sync request and nowhere else. From that point:
 
 - `termit-uv uri`, `termit-uv device add` and `termit-uv device list` print the `hy2://` link beside the
   `vless://` one, labelled `(QUIC)`, and so does the page from `termit-uv options`;
 - the subscription from your server carries the same second link, and the sing-box profile gets a
   `hysteria2` outbound;
-- `termit-uv sync` is what tells the server about it — nothing on the server needs configuring.
+- the transport is announced by the sync `init` ends with; `termit-uv sync` does the same by hand, and
+  nothing on the server needs configuring.
 
 What it costs: about 50 MB of memory, and its unit caps it at 256 MB; 4–9 % of one core per 100 Mbit/s
 carried. The pinned release also carries one known issue (GO-2026-5288): a crafted packet can exhaust the
