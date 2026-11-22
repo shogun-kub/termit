@@ -167,8 +167,9 @@ func ParseList(body []byte) ([]Link, error) {
 			// showing `%20` there is a defect, and so is losing the "(degraded)" marker to it, because
 			// that suffix arrives encoded as well.
 			label := unescapeLabel(line[hash+1:])
-			link.Label = label
 			link.Degraded = strings.HasSuffix(label, " (degraded)")
+			// The marker is shown as a tag of its own, so the word does not belong in the name too.
+			link.Label = strings.TrimSuffix(label, " (degraded)")
 		}
 		if link.Label == "" {
 			link.Label = line

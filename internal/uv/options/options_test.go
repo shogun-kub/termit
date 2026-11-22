@@ -80,8 +80,8 @@ func TestParseListReadsTheSubscriptionLikeAClient(t *testing.T) {
 	if links[3].Label != "three.example.com (QUIC)" {
 		t.Errorf("an encoded label is shown encoded: %+v", links[3])
 	}
-	if !links[4].Degraded {
-		t.Errorf("an encoded degraded marker was not recognised: %+v", links[4])
+	if !links[4].Degraded || links[4].Label != "four.example.com" {
+		t.Errorf("an encoded degraded marker was not recognised and removed: %+v", links[4])
 	}
 
 	if _, err := options.ParseList([]byte("not base64 %%%")); err == nil {
