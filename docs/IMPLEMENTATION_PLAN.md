@@ -1709,7 +1709,7 @@ document, run by hand against an IPv4 endpoint, handshook in half a second.
 nodes rotated onto `162.159.192.1:2408` and reported `egress: on` with a Cloudflare address — including
 the one the first pass had written off.
 
-The lesson is a rule in `AGENTS.md` §9 now: a release that touches the network is proved on the
+The lesson is a rule in `docs/RELEASE.md` §5 now: a release that touches the network is proved on the
 production nodes as a pre-release, and the final tag waits for that.
 
 #### 3.5.13 The family, the same day

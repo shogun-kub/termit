@@ -57,6 +57,9 @@ The reference documents go deeper, and assume you are comfortable with TLS, ACME
 | [`docs/OPERATIONS.md`](docs/OPERATIONS.md) | the reference: what runs where, sizing, WARP, certificates, clients, monitoring |
 | [`docs/PROTOCOL.md`](docs/PROTOCOL.md) | the wire contract: endpoints, payloads, problem codes, subscription formats |
 | [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) | adversaries, mitigations, residual risk, and what is deliberately not defended |
+| [`docs/RELEASE.md`](docs/RELEASE.md) | the release process and the checklist that runs before every tag |
+| [`docs/QUESTIONS.md`](docs/QUESTIONS.md) | decisions made, and the ones still open |
+| [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) | milestones, acceptance criteria, risks; why the releases look the way they do |
 | [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) | milestones, acceptance criteria, risks |
 | [`docs/QUESTIONS.md`](docs/QUESTIONS.md) | decisions taken and questions still open |
 | [`CHANGELOG.md`](CHANGELOG.md) | what each release changed — [`CHANGELOG.ru.md`](CHANGELOG.ru.md) is the same in Russian |
@@ -153,7 +156,7 @@ Acceptance runs against real machines over SSH — three Debian boxes (one serve
 a fourth for the mesh test:
 
 ```bash
-export TERMIT_LAB_MN=root@mn.example.lan          # and the rest of AGENTS.md §4.3
+export TERMIT_LAB_MN=root@mn.example.lan          # and the rest of docs/LAB.md
 go test -tags=lab ./test/lab -v -timeout 30m
 ```
 

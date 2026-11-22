@@ -216,7 +216,7 @@ github.com, not a signature.
 | Threat | Mitigation | Residual |
 |---|---|---|
 | A tampered release is installed | the asset's SHA-256 must equal the digest in the release's `SHA256SUMS`; a mismatch aborts before anything is replaced | binary and checksum come from the same origin, so whoever can publish to the release directory can publish both. There is no signature and no pinned signing key: a compromise of the maintainer's account or of GitHub is code execution as root on every node that updates |
-| An update bricks a node or the server | the running binary is kept as `<binary>.prev`; a node whose new binary fails to converge, and a server whose new build fails to restart, are put back automatically and the command fails loudly | a build that starts and then misbehaves is not detected by this. That case is what the release process is for: a pre-release is proved on the production nodes first (AGENTS §9) |
+| An update bricks a node or the server | the running binary is kept as `<binary>.prev`; a node whose new binary fails to converge, and a server whose new build fails to restart, are put back automatically and the command fails loudly | a build that starts and then misbehaves is not detected by this. That case is what the release process is for: a pre-release is proved on the production nodes first (`RELEASE.md` §5) |
 | A node moves to a build the mesh was not proved against | the default target is `server_version`, never `latest`, and the version pattern refuses a pre-release | an operator's `--to` is trusted: naming a version is a deliberate act |
 
 ## 6. Residual risk and known limitations

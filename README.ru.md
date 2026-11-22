@@ -57,6 +57,7 @@ WARP, а собственный трафик машины — никогда. О
 | [`docs/OPERATIONS.md`](docs/OPERATIONS.md) | справочник: что где работает, размеры, WARP, сертификаты, клиенты, мониторинг |
 | [`docs/PROTOCOL.md`](docs/PROTOCOL.md) | контракт обмена: эндпоинты, тела, коды проблем, форматы подписок |
 | [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) | противники, меры защиты, остаточный риск и то, что сознательно не защищается |
+| [`docs/RELEASE.md`](docs/RELEASE.md) | процесс релиза и чек-лист, который проходит перед каждым тегом |
 | [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) | этапы, критерии приёмки, риски |
 | [`docs/QUESTIONS.md`](docs/QUESTIONS.md) | принятые решения и открытые вопросы |
 | [`CHANGELOG.ru.md`](CHANGELOG.ru.md) | что изменилось в каждом выпуске — [`CHANGELOG.md`](CHANGELOG.md) — то же самое на английском |
@@ -152,7 +153,7 @@ go run ./deploy/release --version v0.6.0 --out dist   # каталог рели�
 необходимости четвёртая для теста сети:
 
 ```bash
-export TERMIT_LAB_MN=root@mn.example.lan          # и остальное из AGENTS.md §4.3
+export TERMIT_LAB_MN=root@mn.example.lan          # и остальное из docs/LAB.md
 go test -tags=lab ./test/lab -v -timeout 30m
 ```
 

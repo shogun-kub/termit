@@ -1082,7 +1082,7 @@ go run ./deploy/release --version v0.4.1 --out /tmp/b --commit "$(git rev-parse 
 diff /tmp/a/v0.4.1/SHA256SUMS /tmp/b/v0.4.1/SHA256SUMS
 ```
 
-Publishing is a tag push on `main`, after the branch process in `AGENTS.md` §9 has put a tested tree there:
+Publishing is a tag push on `main`, after the branch process in `docs/RELEASE.md` §1 has put a tested tree there:
 `.github/workflows/release.yaml` builds the directory, runs `sha256sum -c SHA256SUMS`, asserts `uv.sh` is
 executable and attaches everything to the GitHub release, `uv.sh` included — the install URLs in the
 documentation point at `releases/download/<version>/uv.sh`. The workflow marks the release
@@ -1114,7 +1114,7 @@ silently publish everything or nothing.
 CI gates every push to `main`, `dev` and `release/**`, and every tag and pull request: `gofmt`, `go vet`,
 the unit suite with `-race`, the cross-build, the release tool's own tests and `govulncheck`. It never
 publishes except through the two doors above. The lab suite is the acceptance gate and is run by hand
-(`AGENTS.md` §4.3); CI does not claim it.
+(`docs/LAB.md`); CI does not claim it.
 
 After the push, drop what the build left behind:
 
