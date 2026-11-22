@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/shogun-kub/termit/internal/uv/config"
+	"github.com/shogun-kub/termit/internal/uv/service"
 	"github.com/shogun-kub/termit/internal/uv/state"
 )
 
@@ -33,9 +34,10 @@ func TestUsqueAssetURL(t *testing.T) {
 	}
 }
 
-// TestUsqueRegisterAcceptsTheTerms pins the flag the sidecar needs. `usque register` prompts for
+// TestUsqueRegisterAcceptsTheTerms pins what the sidecar is told. `usque register` prompts for
 // Cloudflare's terms on stdin unless --accept-tos is passed and an install has no stdin, so the first
-// production switch stopped at "failed to read user input: EOF".
+// production switch stopped at "failed to read user input: EOF"; and the device file has to end up
+// readable by the unit's user, which is why the registration is followed by a chown.
 func TestUsqueRegisterAcceptsTheTerms(t *testing.T) {
 	t.Parallel()
 	cfg := testConfig(t)
@@ -64,12 +66,49 @@ func TestUsqueRegisterAcceptsTheTerms(t *testing.T) {
 	if err := (&usqueRegisterStep{env}).Run(context.Background()); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if len(fake.calls) != 1 {
-		t.Fatalf("%d commands, want one: %+v", len(fake.calls), fake.calls)
+
+	want := []string{
+		cfg.Paths.UsqueBinary() + " register -c " + cfg.Paths.UsqueConfig + " -n termit-uv --accept-tos",
+		"chown root:" + service.UsqueUser + " " + cfg.Paths.UsqueConfig,
 	}
-	got := strings.Join(fake.calls[0].Args, " ")
-	want := "register -c " + cfg.Paths.UsqueConfig + " -n termit-uv --accept-tos"
-	if got != want {
-		t.Errorf("register args = %q, want %q", got, want)
+	if len(fake.calls) != len(want) {
+		t.Fatalf("%d commands, want %d: %+v", len(fake.calls), len(want), fake.calls)
+	}
+	for i, cmd := range fake.calls {
+		if got := cmd.Name + " " + strings.Join(cmd.Args, " "); got != want[i] {
+			t.Errorf("command %d = %q, want %q", i, got, want[i])
+		}
+	}
+	if chmodIsReal {
+		info, err := os.Stat(cfg.Paths.UsqueConfig)
+		if err != nil {
+			t.Fatalf("stat the device file: %v", err)
+		}
+		if perm := info.Mode().Perm(); perm != 0o640 {
+			t.Errorf("device file mode = %04o, want 0640 (the unit's user reads it, the world does not)", perm)
+		}
+	}
+}
+
+// TestInitStartsTheSidecar: the units step only writes the unit, so the sidecar stays "loaded;
+// disabled; inactive" unless the start step enables it — which is exactly what the first production
+// switch left behind, with the core's SOCKS hop pointing at a closed port.
+func TestInitStartsTheSidecar(t *testing.T) {
+	t.Parallel()
+	cfg := testConfig(t)
+	cfg.Warp.Transport = config.WarpTransportUsque
+	cfg.Paths.UsqueConfig = filepath.Join(cfg.Paths.ConfigDir, "usque.json")
+	sb := newSandbox()
+
+	installer := newTestInstaller(t, cfg, sb)
+	report, err := installer.Run(context.Background(), RunOptions{
+		Command: "init",
+		Skip:    []string{"preflight", "certificate", "warp", "usque-binary", "usque-register", "warp-egress"},
+	})
+	if err != nil {
+		t.Fatalf("Run: %v\n%+v", err, report)
+	}
+	if !sb.active[service.UsqueUnitName] {
+		t.Errorf("init left %s inactive", service.UsqueUnitName)
 	}
 }

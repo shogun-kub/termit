@@ -138,7 +138,8 @@ func (s *usqueRegisterStep) Check(context.Context) (CheckResult, error) {
 	if err != nil {
 		return CheckResult{Detail: "the sidecar has no registered device"}, nil
 	}
-	if info.Mode().Perm()&0o077 != 0 {
+	// Group-read is what lets the unit's own user open it; the world must not.
+	if info.Mode().Perm()&0o007 != 0 {
 		return CheckResult{Detail: "the sidecar's device file is readable by others"}, nil
 	}
 	body, err := os.ReadFile(path) // #nosec G304 -- a path from the configuration.
@@ -182,7 +183,12 @@ func (s *usqueRegisterStep) Run(ctx context.Context) error {
 	if _, err := s.e.exec.Run(ctx, Cmd{Name: binary, Args: args}); err != nil {
 		return fmt.Errorf("usque: register the device: %w", err)
 	}
-	if err := os.Chmod(path, 0o600); err != nil {
+	// The sidecar runs as its own user and reads this file at start, so it becomes root:termit-usque 0640
+	// instead of root-only: the device key stays out of the world's reach either way.
+	if _, err := s.e.exec.Run(ctx, Cmd{Name: "chown", Args: []string{"root:" + service.UsqueUser, path}}); err != nil {
+		return fmt.Errorf("usque: give %s to root:%s: %w", path, service.UsqueUser, err)
+	}
+	if err := os.Chmod(path, 0o640); err != nil {
 		return fmt.Errorf("usque: chmod %s: %w", path, err)
 	}
 	s.e.st.AddPath(path, state.KindFile, "usque-register", s.e.now())

@@ -73,6 +73,18 @@ func (s *startStep) Run(ctx context.Context) error {
 		}
 	}
 
+	// The MASQUE sidecar is a second process too, and the core's SOCKS hop carries nothing until it
+	// listens: a sidecar that failed its first start sits in a start-limit grave, so clear it first.
+	if s.e.cfg.Warp.UsesUsque() {
+		_, _ = s.e.exec.Run(ctx, Cmd{Name: "systemctl", Args: []string{"reset-failed", service.UsqueUnitName}})
+		if _, err := s.e.exec.Run(ctx, Cmd{Name: "systemctl", Args: []string{"enable", "--now", service.UsqueUnitName}}); err != nil {
+			return fmt.Errorf("enable %s: %w", service.UsqueUnitName, err)
+		}
+		if !s.e.serviceActive(ctx, service.UsqueUnitName) {
+			return fmt.Errorf("%s did not stay running", service.UsqueUnitName)
+		}
+	}
+
 	// The agent starts last. `enable --now` leaves an already-running unit on the old binary after an
 	// upgrade, so it is restarted rather than merely started: its job changes with the build.
 	//
