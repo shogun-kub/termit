@@ -3,9 +3,20 @@ What each release changed, written for the people who run Termit. Newest first;
 carries every section back to the last release: the versions in between were handed out only as
 pre-releases, and whoever installs the release skipped them.
 
-## Unreleased
+## 0.5.2 — 2026-11-22
 
-## Unreleased
+### Added
+
+- **A QR code beside every client link on the owner's page.** A phone has no shared clipboard with the node,
+  so the page that exists to hand out links now lets the camera read them: every row — the node's own, each
+  local device's, each peer's — opens a code under the copy button. It is drawn by the node's own Go code
+  (`rsc.io/qr`, BSD-3, no dependencies) and never by an encoder service or a CDN: the page must reference no
+  external host, and the credentials must not leave the node. The code carries the full link, so it is the
+  same secret as the text and a screenshot leaks it the same way.
+- **`warp status` says when the transport cannot carry UDP.** The `proxy` transport is `warp-cli`'s SOCKS5
+  listener, which has no UDP association, so UDP exits directly while the report said `warp=on`. The status
+  now names the gap in text and carries it in `--json` as `"udp": "direct"`; the core's own stack reports
+  `"udp": "warp"`.
 
 ### Fixed
 
@@ -20,7 +31,7 @@ pre-releases, and whoever installs the release skipped them.
   node no longer had. The record is now written on every sync, with "nothing announced" read as the TLS
   profile alone.
 
-## 0.5.1 — 2026-11-21## 0.5.1 — 2026-11-21
+## 0.5.1 — 2026-11-21
 
 ### Added
 

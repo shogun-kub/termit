@@ -743,9 +743,13 @@ termit-uv options            # renders it and prints the address
 termit-uv options --rotate   # new address; the old one answers 404
 ```
 
-`https://<node-domain>/<32 hex characters>/` shows this node's own device, every mesh peer the subscription
-describes, and the two subscription forms, each with a copy button. It is a **static file in the decoy
-site's tree**, so nginx needs no new location, and the consequences are worth knowing:
+`https://<node-domain>/<32 hex characters>/` shows this node's own device, every local device, every mesh
+peer the subscription describes, and the two subscription forms, each with a copy button and — for the links
+— a QR code the phone's camera can read. The code is drawn in-process by `internal/uv/options`: no encoder
+service and no CDN, because the page must reference no external host and the credentials must not leave the
+node. It is the same secret as the text, so a screenshot is a leak in exactly the way a copied link is. It is
+a **static file in the decoy site's tree**, so nginx needs no new location, and the consequences are worth
+knowing:
 
 - The path is generated once and lives in the state file (`options.token`), not in the configuration;
   `termit-uv status` prints the address, so it can be found again months later.

@@ -1588,9 +1588,10 @@ leave from the node's own. No `ip rule`/`ip route` change exists on the host.
 
 The hysteria half of that is proved on production (§11.13): a client through the QUIC transport on then5
 exited at `104.28.222.18` with `warp=on`, and the address families the node does not serve were refused
-rather than answered with the node's own address. What is still open is the `proxy` transport, whose UDP
-`warp-cli` cannot carry at all — for it the acceptance is the second half of the sentence, and `warp status`
-has to say so.
+rather than answered with the node's own address. The `proxy` transport cannot carry UDP at all — `warp-cli`
+has no UDP association — and since `0.5.2` `warp status` says so instead of reporting a bare `warp=on`, in
+text and in `--json` as `udp: not carried` / `"udp": "direct"`. That leaves option D (MASQUE) as the only way
+to close the gap for `proxy`, which is the swap the tag indirection exists for.
 
 ### 10.2 More protocols and protocol options
 
@@ -1962,7 +1963,15 @@ only by the peer and reaches `active` on the peer's `ok`; stopping the peer leav
 in decision 1, recorded in the guide; a stale result never moves the node; the state-machine tests are
 unchanged, because no transition was added.
 
-### 10.8 A QR code beside every client link
+### 10.8 A QR code beside every client link — shipped in 0.5.2
+
+**Shipped in `0.5.2`**, with the decisions this section argues for settled this way: the code is drawn by
+the node's own Go code (`rsc.io/qr`, BSD-3 and dependency-free, rather than ~300 lines of encoder nobody
+could verify without a phone), one `<svg>` per link inside a `<details>` so the page keeps its size, level L,
+the quiet zone in the viewBox, and a code on every row — the node's own, each local device's, each peer's.
+The full link is encoded rather than a shortened form, because the code has to be exactly what the copy
+button copies; at level L a 570-byte mesh URI is an 81×81 grid, which a 320-pixel-wide element shows at about
+four pixels a module. What follows is the reasoning that led there.
 
 Every row of the owner's page (`termit-uv options`) carries a copy button, and copying is the wrong gesture
 for the device the links exist for: a phone has no shared clipboard with the node, so the owner either types
@@ -1970,7 +1979,7 @@ a 600-character URI or sends it through a messenger. A QR next to the link turns
 and it is the same secret, only drawn — the page is behind the node's unguessable token, so nothing new is
 exposed, though a screenshot of the screen becomes scannable by whoever sees it, which the docs will say.
 
-The obvious implementation is forbidden by a rule this repository already has: no `img src="https://api.
+The obvious implementation was forbidden by a rule this repository already has: no `img src="https://api.
 qrserver.com/…"` and no CDN copy of a QR library, because the page would (a) send the node's credentials to
 a third party and (b) reference an external host — the decoy's whole point is that a page which phones home
 is a fingerprint (`AGENTS.md` §5, "Decoy site"). So the encoder is ours, in one of two shapes:
@@ -2003,9 +2012,8 @@ What decides the real design, before any code:
 - **The terminal.** `termit-uv uri --qr` printing half-block characters is a nice-to-have, not part of this
   item: the phone case needs the page, and a terminal QR is a second renderer to keep right.
 
-It rides with the next feature release, `0.6.0` — the release the advisory list already forces, once a
-fixed hysteria exists (§10 intro); a `0.5.x` patch, the only release that can be cut today, carries fixes
-and not this.
+A `0.5.x` patch carried it after all: the advisory list blocks `0.6.0` until hysteria ships a fix (§10
+intro), and a page nobody can scan is not worth waiting for that.
 
 Acceptance: on a phone, the camera opens a row's code and the client imports the link; the page references
 no external host and still passes the existing test that fails a page referencing one (`internal/uv/options/options_test.go`); a Go test round-trips the encoder

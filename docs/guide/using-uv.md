@@ -138,7 +138,11 @@ devices and the mesh, and it re-renders itself when a device is added or removed
 agent's daily cycle included, so a peer that joins or leaves the mesh reaches the page without a command.
 Every link it shows carries both dialects of the fragmentation switch — Happ's `fragment=…` and
 `sb.tls.fragment=1`/`sb.tls.record_fragment=1`, which `podkop-engine` and the patched sing-box builds read
-from the URI — so the same link works in either client without being edited by hand.
+from the URI — so the same link works in either client without being edited by hand. Each row also opens a
+QR code under the copy button: point the phone's camera at it and the client imports the link, which is the
+one gesture a phone has and the reason the page exists. The code is drawn by the node itself — the page
+references no external host — and it is the same secret as the text, so a screenshot of it is as much of a
+leak as a copied link.
 
 ```bash
 termit-uv status
