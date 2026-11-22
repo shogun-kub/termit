@@ -35,6 +35,7 @@ func TestWizardRemembersAnswersBetweenRuns(t *testing.T) {
 		"nope",             // not a template this build generates
 		"portal",           // the template
 		"all",              // egress
+		"n",                // TLS only: no Hysteria2 on UDP/443
 		"n",                // do not harden this node
 		"",                 // no invite code
 		"n",                // do not install
@@ -62,7 +63,7 @@ func TestWizardRemembersAnswersBetweenRuns(t *testing.T) {
 
 	// A second run offers the same answers, and Enter alone accepts them: the script has one empty line
 	// per question and then declines the install again.
-	again, againOut := wizardApp(t, "en\n\n\n\n\n\nn\n\nn\n")
+	again, againOut := wizardApp(t, "en\n\n\n\n\n\n\nn\n\nn\n")
 	// The draft lives beside the configuration, so the second run has to look at the same file.
 	again.configPath = app.configPath
 	if code := again.run([]string{"wizard", "--config", again.configPath}); code != exitOK {
@@ -78,7 +79,7 @@ func TestWizardRemembersAnswersBetweenRuns(t *testing.T) {
 
 func TestWizardFreshDiscardsTheDraft(t *testing.T) {
 	t.Parallel()
-	app, _ := wizardApp(t, "en\nnode.example.com\n\n\nportal\nall\nn\n\nn\n")
+	app, _ := wizardApp(t, "en\nnode.example.com\n\n\nportal\nall\nn\nn\n\nn\n")
 	if code := app.run([]string{"wizard", "--config", app.configPath}); code != exitOK {
 		t.Fatalf("exit = %d, want 0", code)
 	}
@@ -89,7 +90,7 @@ func TestWizardFreshDiscardsTheDraft(t *testing.T) {
 
 	// --fresh forgets the answers, so the domain question comes back without a default. The run then
 	// writes a new draft, which is correct: the operator started over, not stopped.
-	app.in = strings.NewReader("en\n\n\n\n\n\nn\n\nn\n")
+	app.in = strings.NewReader("en\n\n\n\n\n\n\nn\n\nn\n")
 	app.stdout = &strings.Builder{}
 	if code := app.run([]string{"wizard", "--fresh", "--config", app.configPath}); code != exitOK {
 		t.Fatalf("exit = %d, want 0", code)
@@ -102,7 +103,7 @@ func TestWizardFreshDiscardsTheDraft(t *testing.T) {
 func TestWizardRequiresADomain(t *testing.T) {
 	t.Parallel()
 	// An empty answer with no default must not become an empty domain, and the wizard must ask again.
-	app, out := wizardApp(t, "en\n\nnode.example.com\n\n\nportal\nall\nn\n\nn\n")
+	app, out := wizardApp(t, "en\n\nnode.example.com\n\n\nportal\nall\nn\nn\n\nn\n")
 	if code := app.run([]string{"wizard", "--config", app.configPath}); code != exitOK {
 		t.Fatalf("exit = %d, want 0", code)
 	}
@@ -169,7 +170,7 @@ func TestWizardSaysWhatToRunOnAnOutdatedNode(t *testing.T) {
 func TestWizardHandsInstallTheFlagsWithoutTheSubcommand(t *testing.T) {
 	t.Parallel()
 	app, _, configPath := optionsFixture(t, "")
-	app.in = strings.NewReader("en\n\n\n\n\nportal\noff\nn\n\ny\n")
+	app.in = strings.NewReader("en\n\n\n\n\nportal\noff\nn\nn\n\ny\n")
 	if code := app.run([]string{"wizard", "--config", configPath}); code == exitUsage {
 		t.Fatalf("the wizard handed init an argument it does not parse:\n%v", app.stderr)
 	}
@@ -290,7 +291,7 @@ func TestEnrolledReportsWhetherTheNodeJoinedTheMesh(t *testing.T) {
 // the certificate step fails a second time; the summary has to name what it will use.
 func TestWizardKeepsTheCertificateAuthorityInTheDraft(t *testing.T) {
 	t.Parallel()
-	app, out := wizardApp(t, "en\nnode.example.com\nops@example.com\nhttps://ca.lan:14000/dir\ny\nportal\nall\nn\n\nn\n")
+	app, out := wizardApp(t, "en\nnode.example.com\nops@example.com\nhttps://ca.lan:14000/dir\ny\nportal\nall\nn\nn\n\nn\n")
 	if code := app.run([]string{"wizard", "--config", app.configPath}); code != exitOK {
 		t.Fatalf("exit = %d, want 0", code)
 	}
@@ -305,5 +306,39 @@ func TestWizardKeepsTheCertificateAuthorityInTheDraft(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "https://ca.lan:14000/dir") {
 		t.Errorf("the summary does not name the certificate authority:\n%s", out.String())
+	}
+}
+
+// The QUIC answer is the one that changes what a client can pick on the first day, so it has to reach
+// init as a flag and stay in the draft for a resumed run.
+func TestWizardKeepsTheQuicAnswerInTheDraft(t *testing.T) {
+	t.Parallel()
+	app, out := wizardApp(t, "en\nnode.example.com\n\n\nportal\nall\ny\nn\n\nn\n")
+	if code := app.run([]string{"wizard", "--config", app.configPath}); code != exitOK {
+		t.Fatalf("exit = %d, want 0", code)
+	}
+	draft, err := os.ReadFile(wizardDraftPath(app.configPath))
+	if err != nil {
+		t.Fatalf("the answers were not kept: %v", err)
+	}
+	if !strings.Contains(string(draft), "hysteria: true") {
+		t.Errorf("the draft does not contain the transport answer:\n%s", draft)
+	}
+	if !strings.Contains(out.String(), "UDP/443") {
+		t.Errorf("the summary does not name the port the answer opens:\n%s", out.String())
+	}
+}
+
+func TestWizardInitArgsCarryTheQuicTransport(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		on   bool
+		want bool
+	}{{true, true}, {false, false}} {
+		answers := wizardAnswers{Domain: "node.example.com", Warp: config.WarpAll, Hysteria: tc.on}
+		args := strings.Join(wizardInitArgs(answers, "/etc/termit/uv/config.yaml"), " ")
+		if got := strings.Contains(args, "--hysteria"); got != tc.want {
+			t.Errorf("hysteria=%v: --hysteria in %q = %v, want %v", tc.on, args, got, tc.want)
+		}
 	}
 }

@@ -33,6 +33,7 @@ type wizardAnswers struct {
 	Template     string   `yaml:"decoy_template,omitempty"`
 	Warp         string   `yaml:"warp,omitempty"`
 	WarpSelected []string `yaml:"warp_selected,omitempty"`
+	Hysteria     bool     `yaml:"hysteria,omitempty"`
 	Harden       bool     `yaml:"harden,omitempty"`
 	MNURL        string   `yaml:"mn,omitempty"`
 	Invite       string   `yaml:"invite,omitempty"`
@@ -168,6 +169,17 @@ re-installs a working node.`)
 		return wizardInputEnded(ui, err)
 	}
 	answers.Warp, answers.WarpSelected = mode, selected
+	if err := save(); err != nil {
+		return a.wizardSaveFailed(err)
+	}
+
+	// The second transport is a "what clients can use" decision like egress, so it comes next, and
+	// before the hardening question, which is about the host's own doors.
+	hysteria, err := a.wizardAskTransport(ui, answers, cfg)
+	if err != nil {
+		return wizardInputEnded(ui, err)
+	}
+	answers.Hysteria = hysteria
 	if err := save(); err != nil {
 		return a.wizardSaveFailed(err)
 	}
@@ -380,6 +392,9 @@ func wizardInitArgs(answers wizardAnswers, configPath string) []string {
 	if answers.Harden {
 		args = append(args, "--harden")
 	}
+	if answers.Hysteria {
+		args = append(args, "--hysteria")
+	}
 	switch answers.Warp {
 	case config.WarpOff:
 		args = append(args, "--no-warp")
@@ -483,6 +498,24 @@ func (a *application) wizardAskWarp(ui *termui.UI, answers wizardAnswers, cfg *c
 	}
 }
 
+// wizardAskTransport asks whether the node serves Hysteria2 beside the TLS profile. The answer is the
+// only one that changes what a client can pick on the first day, so the summary repeats it.
+func (a *application) wizardAskTransport(ui *termui.UI, answers wizardAnswers, cfg *config.Config) (bool, error) {
+	tr := a.translator()
+	ui.Blank()
+	ui.Say(tr.T(i18n.WizardTransportIntro))
+	return ui.Confirm(tr.T(i18n.WizardTransport), answers.Hysteria || cfg.Hysteria != nil)
+}
+
+// transportNote renders the second transport in the summary: the port is the part the operator has to
+// open, so it is named even though the answer was one word.
+func transportNote(on bool) string {
+	if !on {
+		return "off"
+	}
+	return "on (UDP/443)"
+}
+
 // wizardAskEnrollment asks for the server and the invite code. Both are optional: a node can be
 // installed now and joined to the mesh later with `termit-uv enroll`.
 func (a *application) wizardAskEnrollment(ui *termui.UI, answers wizardAnswers, cfg *config.Config) (string, string, error) {
@@ -529,6 +562,7 @@ func (a *application) wizardSummary(ui *termui.UI, answers wizardAnswers) {
 	ui.KV("acme", orPublic(answers.ACME))
 	ui.KV("site", answers.Template)
 	ui.KV("egress", answers.Warp+selectedNote(answers.WarpSelected))
+	ui.KV("quic", transportNote(answers.Hysteria))
 	ui.KV("mesh", orNone(answers.MNURL))
 	ui.KV(tr.T(i18n.WizardKVIndeed), orNone(maskInvite(answers.Invite)))
 }

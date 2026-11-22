@@ -106,6 +106,7 @@ The questions, in the order they come, and what to answer:
 | `ACME directory (empty = the public one)` | `Enter` — Let's Encrypt | a test lab or a company certificate authority: its directory URL, e.g. `https://ca.example.net/acme/dir`. You are then asked whether to skip verifying its certificate |
 | `Masking site` | press `Enter` (`portal`) | `product` gives a different-looking ordinary page at your node's address |
 | `Egress (all, selected, off)` | `all` — everything proxied leaves through Cloudflare | `off` if you do not want traffic to touch Cloudflare, or if your hoster blocks it; `selected` if only some sites should |
+| `Also serve Hysteria2 on UDP/443 beside the TLS profile (yes/no) [y/N]` | `n` or `Enter` — one TLS profile is enough to start | `y` if TCP/TLS is throttled where your people are, or if they need voice and video to work well: the node then also answers on UDP/443, which the firewall must allow |
 | `Harden this node (yes/no) [y/N]` | `y` if this machine is only a Termit node | `n` or `Enter` if other services you need run on it (the firewall would cut them off), or you already have your own firewall |
 | `Invite code from the server operator` | the code from step 2 | press `Enter` to skip and stay a standalone node for now |
 | `Management server URL` | `https://mn.example.com/6rfjdqfn5nno` — the full address, with the prefix from step 1 | — required if you typed an invite |

@@ -172,6 +172,8 @@ const (
 	WizardHardenIntro    Key = "wizard.harden_intro"
 	WizardHarden         Key = "wizard.harden"
 	WizardHardenHint     Key = "wizard.harden_hint"
+	WizardTransport      Key = "wizard.transport"
+	WizardTransportIntro Key = "wizard.transport_intro"
 	WizardDoneDetail     Key = "wizard.done_detail"
 	WizardInstalled      Key = "wizard.installed"
 	WizardOutdated       Key = "wizard.outdated"
@@ -368,6 +370,8 @@ var messagesUVRU = map[Key]string{
 	WizardHardenIntro:    "Узел может закрыть себя: таблица nftables с SSH, портами 80 и 443 и остальным входящим трафиком закрытым, плюс движок банов. Она не включается сама — вы включите её одной командой, когда убедитесь, что доступ не потерян.",
 	WizardHarden:         "Закрыть узел (да/нет)",
 	WizardHardenHint:     "Да настроит firewalls и движок банов; таблица применится командой termit-uv firewall on",
+	WizardTransport:      "Нести ещё и Hysteria2 на UDP/443 рядом с TLS-профилем (да/нет)",
+	WizardTransportIntro: "QUIC проходит там, где TLS душат, и это транспорт, на котором лучше всего работают голос и видео. Ему нужен открытый UDP/443; в ссылках тогда будут оба профиля.",
 	WizardDoneDetail:     "узел установлен",
 	WizardInstalled:      "Этот узел уже установлен; спрашивать нечего.",
 	WizardOutdated:       "Узел установлен, но эта сборка изменила бы его конфигурацию: %s.",
@@ -562,6 +566,8 @@ var messagesUVEN = map[Key]string{
 	WizardHardenIntro:    "The node can close itself: an nftables table that keeps SSH, ports 80 and 443 and drops the rest of the inbound traffic, plus the ban engine. It is not switched on from here — that is one command, run when you know your access survives.",
 	WizardHarden:         "Harden this node (yes/no)",
 	WizardHardenHint:     "Yes configures the firewall and the ban engine; the table itself is applied by termit-uv firewall on",
+	WizardTransport:      "Also serve Hysteria2 on UDP/443 beside the TLS profile (yes/no)",
+	WizardTransportIntro: "QUIC gets through where TLS is throttled, and it is the transport voice and video work best on. It needs UDP/443 open; the links then carry both profiles.",
 	WizardDoneDetail:     "this node is installed",
 	WizardInstalled:      "This node is already installed; nothing to ask.",
 	WizardOutdated:       "This node is installed, but this build would change its configuration: %s.",
