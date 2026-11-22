@@ -2060,6 +2060,40 @@ without a clear error; `go test` grows no dependency.
 Documents when this ships: `docs/guide/ru/using-uv.md` and its English counterpart (the page description),
 `docs/OPERATIONS.md` §8 for the owner's page, `--help` for the optional flag, and a changelog entry that
 names the screenshot consequence.
+### 10.9 Update offers: the node follows the server, the server follows GitHub
+
+Two problems that look alike and are not, deliberately kept as two code paths.
+
+**The node.** The server is the mesh's authority and already knows which build every node runs — `agent_version`
+in the sync request, printed by `termit-mn uv list`. The missing half is the reverse: a node does not know what
+its server runs. `server_version` joins the sync answer (`omitempty`, and the node's decoder is lenient, so an
+old node ignores it and an old server simply sends nothing), the node stores it beside the last sync, and the
+menu, on launch, compares it with the running build. The policy is the owner's, and both halves have a reason
+beyond caution: **offer the server's version and never "latest"** — the server is what the mesh has been proved
+against, and a node that outruns its server is a node whose links that server may not know how to render; and
+**never a prerelease** — a `p` suffix names a build that exists to be proved on one box, and offering it in a
+menu would turn the prompt into noise. Equal or older is not an update, so the prompt stays silent.
+
+The *execution* is where the care is, because it replaces the binary the process is running from. The shape:
+fetch the release's `SHA256SUMS` and the asset for the architecture, check the digest before anything else,
+swap with a rename in the same directory while keeping the previous binary, run `termit-uv init --no-enroll`
+with the new one, and put the old one back if that fails. That is `termit-uv upgrade --to <version>`, and the
+menu entry wraps it; it is not `curl | bash` (§12) — the digest is from the release itself and is checked
+before the swap, and a convergence that fails rolls back. An unattended node never updates itself: an updater
+on a timer is a remote-code path, and the prompt exists so a human is in the loop.
+
+**The server.** An MN cannot learn "the newest release" from itself; it has to ask GitHub, which would make it
+the one place in the project that talks to a host it does not otherwise need. So the offer is explicit:
+`termit-mn update --check` prints the newest release above the running build, `--apply` runs the same verified
+download and restart, and the menu offers it. Its policy is the mirror of the node's — **it may offer what
+GitHub says is newest, prereleases excluded**, because there is no higher authority to follow. The GitHub call
+must tolerate no network and rate limiting (a reminder, not a check), and its result must never enter `status`
+or `doctor`: a server that cannot reach GitHub is not an unhealthy server.
+
+Open when this is implemented: whether the menu line is the only door (for the node, yes — the menu is the
+interactive door and the prompt is the point), and whether `upgrade` should accept a version the server never
+offered (yes, with the operator naming it; the prompt is the convenience, not the permission).
+
 ## 11. Planned: WARP over WireGuard inside the core (0.5.0)
 
 The one thing `0.3.2` gave up is that UDP leaves from the node's address: `warp-cli`'s proxy mode cannot
