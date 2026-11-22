@@ -604,7 +604,9 @@ and `warp status` saying so. `usque` is the third: the MASQUE client runs as a p
 listener associates UDP, both protocols reach WARP without the core speaking MASQUE and without a host
 route. It exists for the day Cloudflare's client cannot carry UDP, and for the day MASQUE is the only
 door: the core's outbound is a SOCKS hop either way, so switching between `proxy` and `usque` changes the
-sidecar, not the routing.
+sidecar, not the routing. Registering the device accepts Cloudflare's terms of service on the operator's
+behalf (`usque register --accept-tos`), the same acceptance a `warp-cli` registration already makes; an
+install has no stdin to answer the prompt with.
 
 ```bash
 termit-uv init --warp-transport wireguard   # registers the node, writes the identity, applies it

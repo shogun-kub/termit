@@ -176,7 +176,10 @@ func (s *usqueRegisterStep) Run(ctx context.Context) error {
 		_ = os.Chmod(backup, 0o600)
 	}
 	binary := s.e.cfg.Paths.UsqueBinary()
-	if _, err := s.e.exec.Run(ctx, Cmd{Name: binary, Args: []string{"register", "-c", path, "-n", "termit-uv"}}); err != nil {
+	// --accept-tos: without it the sidecar asks for Cloudflare's terms on stdin, and an install has none
+	// ("failed to read user input: EOF"). Registering already means accepting them, as `warp-cli` does.
+	args := []string{"register", "-c", path, "-n", "termit-uv", "--accept-tos"}
+	if _, err := s.e.exec.Run(ctx, Cmd{Name: binary, Args: args}); err != nil {
 		return fmt.Errorf("usque: register the device: %w", err)
 	}
 	if err := os.Chmod(path, 0o600); err != nil {
