@@ -41,9 +41,11 @@ operator sees the traffic — but the group gains the resilience of many indepen
 
 ## 3. Non-goals (v1)
 
-- Hysteria2, TUIC, Shadowsocks, MTProto or any second proxy protocol. VLESS+XHTTP+TLS only.
-- REALITY. It is a good transport, but "self-steal with XHTTP+TLS" is the chosen profile; REALITY can
-  become a second profile later behind the same interfaces.
+- TUIC, Shadowsocks, MTProto, Trojan. VLESS+XHTTP+TLS is the client-facing profile; Hysteria2 joined it as a
+  second transport in `0.5.0` (§10.3 of the plan), which is a kind the mesh reports, not a second profile.
+- REALITY. Dropped on 2026-11-22: in its honest form (`dest` = the node's own vhost) it is externally the
+  TLS the node already serves, and the variant that is cheaper to deploy is the one active probing catches
+  (§10.2 of the plan).
 - Traffic accounting, quotas, expiry, billing, Telegram bots.
 - A web admin UI on MN. v1 is an HTTP API plus the `termit-mn` CLI.
 - Multi-tenant MN (several independent groups on one instance), federation between MNs, or

@@ -1446,7 +1446,8 @@ These are not separate milestones; they must be updated in the milestone that to
 
 v0.5.0 takes part of this list back off it (§10); everything here without a 0.5.0 item stays deferred.
 
-- REALITY and the other xray-core protocol kinds; MTProto (§10.2).
+- Other xray-core protocol kinds; MTProto (§10.2). REALITY and Shadowsocks were dropped on 2026-11-22, with
+  the reasons recorded in §10.2; Trojan was considered and left out there too.
 - Multi-vantage probing (§10.7); federation between independent MNs; MN replication in one mesh
   (§10.4); node reputation.
 - One machine running both the MN and a node (§10.6).
@@ -1615,23 +1616,38 @@ The request has two sizes, and the smaller one may be enough:
   the URI fails silently, and because some values are already known-bad here: an `h2` ALPN cannot cross
   nginx's HTTP/1.1 hop, and a `chrome` hello was frozen on a measured path. These change the URI builder,
   the generator and the prober together.
-- **A second protocol** — REALITY, Trojan/VMess/Shadowsocks, Hysteria2/TUIC. The profile becomes
-  `{kind, version, params}` with a codec per kind. REALITY first: same core, same VLESS payload, and
-  already named as a later profile in `DESCRIPTION.md` §3. Shadowsocks and Trojan are also xray-core
-  protocols. Hysteria2/TUIC are UDP, need another client on MN and another listener on UV; MTProto is a
-  different product.
+- **A second protocol** — Hysteria2/TUIC are UDP, need another client on MN and another listener on UV;
+  Hysteria2 shipped in `0.5.0` (§10.3) and is the one that answered a real block. MTProto is a different
+  product. The profile becomes `{kind, version, params}` with a codec per kind, and that envelope is what a
+  new kind plugs into — but only when a kind is actually coming, because a map with no consumer is a schema
+  nobody can check.
+
+**Dropped on 2026-11-22, with the reasons**, so nobody re-opens them from scratch:
+
+- **REALITY.** In its honest form — `dest` = the node's own vhost, `serverNames` = its own domain — it is
+  externally very nearly our current TLS: the same certificate, the same nginx answers a prober byte for
+  byte, the same SNI resolves to the same IP. What it changes is internal: the core takes TCP/443, nginx
+  moves to a loopback port, the decoy becomes a relay target instead of the terminator, and a dead nginx
+  becomes a dead TLS server, which is a signal of its own. And the variant that is easier to deploy, a
+  foreign `dest`, is the one active probing catches — the domain's real address is somewhere else than the
+  IP being probed. So: real work, no gain over what the node already does.
+- **Shadowsocks.** Its own credential shape (a password, not the per-pair UUID), and no TLS of its own: the
+  protocol has a fixed, well-fingerprinted handshake, so a node running it stops passing for a website. The
+  derived-password trick used for Hysteria2 could be repeated, but the fingerprint argument is the one that
+  decides it.
+- **Trojan.** Reasons and the alternative are in the next paragraph.
 
 Constraints, in the order they decide the design:
 
-1. **The credential model is VLESS-shaped.** Pair access is a UUID derived per pair; Shadowsocks and
-   Hysteria2 use passwords, REALITY keeps the UUID. For Hysteria2 the password is a one-way derivation of
-   that UUID (§10.3), so the mesh still expresses "A may use B" with what both sides already hold and the
-   epoch does not move. A kind whose secret cannot be derived from the UUID would change
-   `DESCRIPTION.md` §6.2, which is a new `credential_epoch` and a migration.
-2. **Port 443 is shared with the decoy and ACME.** nginx owns TCP/443 today. REALITY wants the core on
-   443 and takes the client-facing handshake from nginx, so the decoy becomes REALITY's fallback and the
-   certificate flow changes. QUIC protocols use UDP/443 and do not collide with nginx, but need their
-   own probe path.
+1. **The credential model is VLESS-shaped.** Pair access is a UUID derived per pair (Shadowsocks and Trojan
+   use passwords; Hysteria2 uses a password derived from that UUID, §10.3, so the mesh still expresses "A may
+   use B" with what both sides already hold and the epoch does not move). A kind whose secret cannot be
+   derived from the UUID would change `DESCRIPTION.md` §6.2, which is a new `credential_epoch` and a
+   migration. Only a kind we actually adopt should pay that.
+2. **Port 443 is shared with the decoy and ACME.** nginx owns TCP/443 today, and that is now a decision, not
+   an accident: the profile rides *behind* nginx, so the decoy, the certificate and the ACME path stay in
+   one place, and a QUIC protocol takes UDP/443 without colliding. A kind that wanted the client-facing
+   handshake for itself — REALITY was the candidate — would end that, and is dropped.
 3. **The prober is one binary.** MN's `xray-core` speaks every xray-core protocol; Hysteria2/TUIC need
    another client there. Decided: MN links hysteria's own client module
    (`github.com/apernet/hysteria/core/v2/client`), so the probe carries the same handshake by construction
@@ -1647,12 +1663,21 @@ Constraints, in the order they decide the design:
    and anything needing a port forward stay out. A transport the core cannot speak is the one exception,
    under the conditions in `DESCRIPTION.md` §11, invariant 8; every other kind runs inside the core it already has.
 
+- **Trojan.** The one real merit it has is client compatibility: `trojan://` is read by stock sing-box,
+  Mihomo and older apps, while the XHTTP profile is not. Everything else argues against it. In Xray it is an
+  inbound *with its own TLS*, so it wants TCP/443 exactly as REALITY does — the same rework of the port, the
+  certificate path and the decoy — and it does not bring REALITY's active-probing story to pay for it: a
+  prober that knows what to send gets a distinguishable answer, and the encapsulated traffic is TLS inside
+  TLS, which is a statistical tell of its own. The password could be derived from the pair UUID the way
+  Hysteria2's is, so credentials are not the blocker; the shape of the deployment is. **If client
+  compatibility ever bites, the cheaper answer is a second rendering of the same profile behind nginx** —
+  VLESS over WebSocket on a loopback port with an nginx `location` in front, TLS still nginx's, nothing
+  taking 443, and stock sing-box able to read it. That is a profile option, not a new kind.
+
 Order in 0.5.0: the options first (small, no credential change), and the `{kind, version, params}` envelope
 built for the kind that ships in that release — Hysteria2 (§10.3), which is a binary of its own and
-therefore the expensive one. REALITY and the other xray-core kinds reuse the envelope and come later: they
-are cheaper, because the prober already speaks them and no second daemon appears. Never expose raw Xray
-JSON: a per-kind schema with validation is the only thing that keeps the generator, parser and prober from
-drifting apart.
+therefore the expensive one. Never expose raw Xray JSON: a per-kind schema with validation is the only thing
+that keeps the generator, parser and prober from drifting apart.
 
 Acceptance: a second kind end to end on the lab — URI build/parse round-trip, generated document golden
 plus `xray -test`, an MN probe through it, both subscription forms, a client that does not support it

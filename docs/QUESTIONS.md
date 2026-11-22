@@ -158,7 +158,9 @@ phone apps, so it must not grant API access; it is rotatable and revocable per U
 443**, anti-DPI `path` randomised per install, `Host` = own domain, ALPN `h2,http/1.1`, uTLS
 fingerprint `chrome`, no `flow`, fallback to nginx for everything else (decoy site, ACME, subscription
 page), `xtls-rprx-vision` and REALITY deliberately left out.
-**Rec** Accept. Add a second profile (`reality`) later behind the same interface.
+**Rec** Accept. A second profile stays possible behind the same interface, but REALITY is no longer the
+planned one: it was dropped on 2026-11-22 (§10.2 of the implementation plan), and Hysteria2 shipped instead
+as a second transport rather than a second profile.
 **Why** This is what the UV script installs, what the MN probe must speak, and what the subscription
 URIs encode. It must be versioned (`profile: v1`) so MN can refuse incompatible UVs.
 
