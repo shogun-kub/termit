@@ -633,6 +633,12 @@ through the node, which with the default family means IPv6-only services. IPv4 i
 Cloudflare's IPv6 egress is what large services tend to mark as unsafe, and because a provider's own IPv6
 is not something the node can fix.
 
+**`warp.family` is a `wireguard` setting.** On the `usque` transport the sidecar is dual-stack and takes no
+family flag, so the key is ignored there: a v6 destination goes through the tunnel over IPv6 and exits at
+Cloudflare's v6 address. That is not the node's own address and so not the leak this section closes, but it
+is not "refused" either — `warp status` shows the address Cloudflare saw, which names the family actually
+used.
+
 A domain is not matched by these rules — the node's document resolves names in the outbound — so the
 refusal covers destinations that arrive as an address, which is what a client that resolved AAAA sends.
 Nothing in the node chooses to send IPv6 traffic out; a client that needs an IPv4 path for a v6-only name
