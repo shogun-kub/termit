@@ -10,12 +10,23 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/shogun-kub/termit/internal/firewall"
 	"github.com/shogun-kub/termit/internal/i18n"
 	"github.com/shogun-kub/termit/internal/proto"
 	"github.com/shogun-kub/termit/internal/uv/config"
 	"github.com/shogun-kub/termit/internal/uv/install"
 	"github.com/shogun-kub/termit/internal/uv/state"
 )
+
+// firewallHasQUIC reports whether the table in force already carries the QUIC port. The hint after
+// `--hysteria` is only true when it does not; before anything was applied there is nothing to re-render.
+func firewallHasQUIC(cfg *config.Config) bool {
+	applied, err := firewall.LoadApplied(cfg.Paths.FirewallPath())
+	if err != nil || applied == nil {
+		return false
+	}
+	return slices.Contains(applied.UDPPorts, proto.HysteriaPort)
+}
 
 func (a *application) runInit(args []string) int {
 	flags := a.newFlagSet("init", `Installs this node: host checks, packages, the pinned proxy core and the node
@@ -258,7 +269,7 @@ credential is ever regenerated.`)
 		fmt.Fprintln(a.stdout, "next: termit-uv unblock                              (the node keeps its domain)")
 		fmt.Fprintln(a.stdout, "      termit-uv migrate --relocate                   (the node moved to a new domain)")
 	}
-	if set["hysteria"] && cfg.Security.Firewall.Enabled && !*dryRun {
+	if set["hysteria"] && cfg.Security.Firewall.Enabled && !*dryRun && !firewallHasQUIC(cfg) {
 		fmt.Fprintf(a.stdout, "\nQUIC transport: UDP/%d is in the configuration; the table already in force was rendered without it.\n", proto.HysteriaPort)
 		fmt.Fprintln(a.stdout, "next: termit-uv firewall on        (it removes itself in five minutes unless you confirm)")
 	}
