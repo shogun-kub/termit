@@ -3,12 +3,15 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 
 	"github.com/shogun-kub/termit/internal/uv/config"
 	"github.com/shogun-kub/termit/internal/uv/install"
+	"github.com/shogun-kub/termit/internal/uv/service"
 	"github.com/shogun-kub/termit/internal/uv/state"
 	"github.com/shogun-kub/termit/internal/uv/tunnelprobe"
 	"github.com/shogun-kub/termit/internal/uv/warp"
@@ -370,6 +373,42 @@ func tunnelExit(ctx context.Context, cfg *config.Config) (warp.Status, error) {
 	return status, nil
 }
 
+// rotateUsque registers the sidecar again with Cloudflare. The device key is the credential the sidecar
+// holds, so the old file goes first and a failed registration leaves the node without WARP rather than
+// with two identities it cannot tell apart.
+func (a *application) rotateUsque(cfg *config.Config) int {
+	path := cfg.Paths.UsqueConfig
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		fmt.Fprintf(a.stderr, "termit-uv warp rotate: %v\n", err)
+		return exitFailure
+	}
+	if _, err := a.exec.Run(context.Background(), install.Cmd{
+		Name: cfg.Paths.UsqueBinary(), Args: []string{"register", "-c", path, "-n", "termit-uv"},
+	}); err != nil {
+		fmt.Fprintf(a.stderr, "termit-uv warp rotate: %v\n", err)
+		return exitFailure
+	}
+	if err := os.Chmod(path, 0o600); err != nil {
+		fmt.Fprintf(a.stderr, "termit-uv warp rotate: %v\n", err)
+		return exitFailure
+	}
+	if _, err := a.exec.Run(context.Background(), install.Cmd{
+		Name: "systemctl", Args: []string{"restart", service.UsqueUnitName},
+	}); err != nil {
+		fmt.Fprintf(a.stderr, "termit-uv warp rotate: restart the sidecar: %v\n", err)
+		return exitFailure
+	}
+	fmt.Fprintln(a.stdout, "warp: registered a new MASQUE device; the sidecar was restarted")
+	// The address is what the operator actually asked about, and it is the one fact the command can leave
+	// them with when everything else succeeded.
+	if trace, err := (warp.Client{Socks: xray.DefaultUsqueSocks}).Trace(context.Background()); err == nil {
+		fmt.Fprintf(a.stdout, "warp: exits at %s (warp=%s)\n", trace.IP, trace.Warp)
+	} else {
+		fmt.Fprintf(a.stderr, "termit-uv warp rotate: the trace did not answer: %v\n", err)
+	}
+	return exitOK
+}
+
 // runWarpRotate replaces the node's WARP registration on the wireguard transport. It is a deliberate
 // act: a new identity is a new device on Cloudflare's side, and the old one keeps existing there. The
 // proxy transport has nothing to rotate — warp-cli owns its registration.
@@ -385,6 +424,9 @@ new one.`)
 	if err != nil {
 		fmt.Fprintf(a.stderr, "termit-uv warp rotate: %v\n", err)
 		return exitFailure
+	}
+	if cfg.Warp.UsesUsque() {
+		return a.rotateUsque(cfg)
 	}
 	if !cfg.Warp.UsesWireGuard() {
 		fmt.Fprintf(a.stderr, "termit-uv warp rotate: this node uses the proxy transport, where warp-cli owns the registration\n")

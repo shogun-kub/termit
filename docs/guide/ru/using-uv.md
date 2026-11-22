@@ -67,7 +67,7 @@ sh uv.sh \
 | сверить с известным вам дайджестом | `--sha256 <hex>` (или `--checksum-file SHA256SUMS`) |
 | своя сборка, не релиз | поставить бинарь самому и запустить `termit-uv init` |
 | отказаться от WARP | `--no-warp`, позже `termit-uv warp mode off` |
-| сменить, как WARP несёт трафик | `termit-uv init --warp-transport wireguard` (внутри ядра, TCP и UDP) или `proxy` (сайдкар `warp-cli`, только TCP) |
+| сменить, как WARP несёт трафик | `termit-uv init --warp-transport wireguard` (внутри ядра, TCP и UDP), `usque` (сайдкар MASQUE, TCP и UDP, для машины, чей `warp-cli` не умеет UDP) или `proxy` (сайдкар `warp-cli`, только TCP) |
 | выбрать, какое семейство выходит через WARP | `termit-uv init --warp-family ipv4` (по умолчанию; назначения другого семейства отклоняются) или `ipv6` |
 
 Непроверенные байты скрипт не ставит. Если он остановился — в сообщении есть файл и ожидаемый дайджест.

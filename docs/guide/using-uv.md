@@ -65,7 +65,7 @@ Useful variations:
 | verify against a digest you have | `--sha256 <hex>` (or `--checksum-file SHA256SUMS`) |
 | your own build, not a release | install the binary yourself and run `termit-uv init` |
 | opt out of WARP | `--no-warp`, later `termit-uv warp mode off` |
-| change how WARP carries traffic | `termit-uv init --warp-transport wireguard` (inside the core, TCP and UDP) or `proxy` (the `warp-cli` sidecar, TCP only) |
+| change how WARP carries traffic | `termit-uv init --warp-transport wireguard` (inside the core, TCP and UDP), `usque` (the MASQUE sidecar, TCP and UDP, for a box whose `warp-cli` cannot carry UDP) or `proxy` (the `warp-cli` sidecar, TCP only) |
 | choose which family leaves through WARP | `termit-uv init --warp-family ipv4` (the default; destinations of the other family are refused) or `ipv6` |
 
 The script refuses to install bytes it cannot verify. If it stops, the message names the file and the

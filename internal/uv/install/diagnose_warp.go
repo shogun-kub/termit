@@ -29,6 +29,9 @@ func diagnoseWarp(ctx context.Context, cfg *config.Config, st *state.State, clie
 	if cfg.Warp.UsesWireGuard() {
 		return diagnoseWireGuardWarp(ctx, cfg, st)
 	}
+	if cfg.Warp.UsesUsque() {
+		return diagnoseUsqueWarp(ctx)
+	}
 	if err := client.Host.Check(); err != nil {
 		check.Status = StatusSkip
 		check.Detail = err.Error()
@@ -101,6 +104,30 @@ func diagnoseWireGuardWarp(ctx context.Context, cfg *config.Config, st *state.St
 	check.Status = StatusFail
 	check.Detail = "the tunnel exits at " + trace.IP + " without WARP"
 	check.Hint = "the core's WireGuard outbound is not being used for this egress; check `termit-uv warp status`"
+	return check
+}
+
+// diagnoseUsqueWarp checks the MASQUE sidecar. It has no status command, so the evidence is the one the
+// node's traffic produces: a trace fetched through its loopback SOCKS5 listener. A listener that is not
+// there is a failure, not a skip — this transport exists precisely to carry the traffic, and its absence
+// puts the node's own address on the wire.
+func diagnoseUsqueWarp(ctx context.Context) Check {
+	check := Check{Name: "warp"}
+	trace, err := warp.Client{Socks: xray.DefaultUsqueSocks}.Trace(ctx)
+	if err != nil {
+		check.Status = StatusFail
+		check.Detail = "the MASQUE sidecar is not answering on " + xray.DefaultUsqueSocks + ": " + errorText(err)
+		check.Hint = "systemctl status termit-usque.service, then `termit-uv init --only warp`"
+		return check
+	}
+	if trace.ThroughWarp() {
+		check.Status = StatusOK
+		check.Detail = "usque (MASQUE), via " + trace.IP
+		return check
+	}
+	check.Status = StatusFail
+	check.Detail = "the sidecar exits at " + trace.IP + " without WARP"
+	check.Hint = "the sidecar is up but the tunnel is not; check `termit-uv warp status`"
 	return check
 }
 

@@ -26,6 +26,7 @@ import (
 var unitNames = []string{
 	service.XrayUnitName,
 	service.HysteriaUnitName,
+	service.UsqueUnitName,
 	service.AgentUnitName,
 	service.RenewTimerName,
 	service.RenewUnitName,
