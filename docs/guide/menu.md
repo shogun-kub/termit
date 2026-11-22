@@ -51,6 +51,14 @@ trusts. The questions a step asks follow the same rule: a value the command cann
 again when it is left empty, and a yes/no answer that is neither is asked again too, so a typo never
 answers for you. Closed stdin (a pipe that ran out) ends the session cleanly with status 0.
 
+The server's menu asks which node an action is about by showing the mesh: a domain is what you remember,
+an id is not. Answer with the number, with a domain, with an id, or with any unique part of a domain —
+`then5` finds `then5.bookinet.ru`. A part that matches several nodes asks again with the list, `0`
+cancels, and when the server cannot be reached the question says so and takes the domain you type. A
+question that names something already in existence — a node, an invite code — treats an empty answer as
+cancel and says so in its label; a question that sets a new value (a domain being installed) still asks
+again.
+
 ## Node menu (`termit-uv`)
 
 | Item | What it does | The command it runs |

@@ -1,15 +1,18 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/shogun-kub/termit/internal/i18n"
 	"github.com/shogun-kub/termit/internal/menuplan"
+	"github.com/shogun-kub/termit/internal/mn/admin"
 	"github.com/shogun-kub/termit/internal/mn/config"
 	"github.com/shogun-kub/termit/internal/termui"
 	"github.com/shogun-kub/termit/internal/version"
@@ -38,6 +41,9 @@ type menu struct {
 	base []string
 	// credential names where the admin token comes from, or "" when nothing is configured.
 	credential string
+	// nodes is how the picker sees the mesh. It is a seam: production asks the admin socket, a test
+	// answers from a table, and nil means the server cannot be asked at all.
+	nodes func(context.Context) ([]admin.NodeView, error)
 	// tr is the language the operator is spoken to in, resolved once when the menu opens.
 	tr i18n.Translator
 }
@@ -56,7 +62,7 @@ func (m *menu) translator() i18n.Translator {
 // dropped: `termit-mn menu --token-file /etc/termit/mn/admin.token` warned that no token was configured
 // while holding one, and every admin action then refused to run.
 func runMenu(stdout, stderr *os.File, in io.Reader, style termui.Style, args []string) int {
-	flags, configPath, _, token, tokenFile := inviteFlags("termit-mn menu", stderr)
+	flags, configPath, socket, token, tokenFile := inviteFlags("termit-mn menu", stderr)
 	if err := flags.Parse(flagsFirst(args, map[string]bool{})); err != nil {
 		return flagExit(err)
 	}
@@ -82,7 +88,18 @@ func runMenu(stdout, stderr *os.File, in io.Reader, style termui.Style, args []s
 		run:        func(argv []string) int { return run(argv, stdout, stderr) },
 		base:       setFlagArgs(flags),
 		credential: source,
-		tr:         i18n.New(i18n.Console(lang, os.Getenv)),
+		nodes: func(ctx context.Context) ([]admin.NodeView, error) {
+			client, err := adminClient(*configPath, *socket, *token, *tokenFile)
+			if err != nil {
+				return nil, err
+			}
+			var nodes []admin.NodeView
+			if err := client.Call(ctx, "uv.list", nil, &nodes); err != nil {
+				return nil, err
+			}
+			return nodes, nil
+		},
+		tr: i18n.New(i18n.Console(lang, os.Getenv)),
 	}
 	return m.loop()
 }
@@ -215,6 +232,97 @@ func fixedMn(argv ...string) func(*termui.UI) ([][]string, error) {
 	return func(*termui.UI) ([][]string, error) { return [][]string{argv}, nil }
 }
 
+// pickNode asks which node an action is about. The mesh is drawn as a list, because a domain is what an
+// operator remembers and an id is not; a number, a domain, an id or any unique part of a domain answers
+// the question, and an empty answer cancels. When the server cannot be asked the list is skipped: the
+// admin CLI resolves a domain on its own, so the action is still possible.
+func (m *menu) pickNode(ui *termui.UI) (string, error) {
+	tr := m.translator()
+	nodes, err := m.meshNodes()
+	if err != nil {
+		ui.Say(tr.T(i18n.MnPickNodeOffline))
+		return m.promptNode(ui)
+	}
+	if len(nodes) == 0 {
+		ui.Say(tr.T(i18n.MnPickNodeNone))
+		return "", nil
+	}
+
+	items := make([]termui.Item, 0, len(nodes)+1)
+	for _, node := range nodes {
+		items = append(items, termui.Item{Label: node.Domain, Hint: string(node.State)})
+	}
+	items = append(items, termui.Item{Key: "0", Label: tr.T(i18n.MnPickNodeCancel)})
+
+	ui.Blank()
+	ui.Say(tr.T(i18n.MnPickNodePrompt))
+	for {
+		answer, err := ui.MenuFree(items)
+		if err != nil {
+			return "", err
+		}
+		if answer == "" || answer == "0" {
+			return "", nil
+		}
+		if index, err := termui.Index(answer); err == nil {
+			if index < len(nodes) {
+				return nodes[index].Domain, nil
+			}
+			continue
+		}
+		switch matches := matchNodes(nodes, answer); len(matches) {
+		case 1:
+			return matches[0].Domain, nil
+		case 0:
+			ui.Error(tr.Tf(i18n.MnPickNodeMiss, answer))
+		default:
+			ui.Say(tr.Tf(i18n.MnPickNodeMany, len(matches)))
+		}
+	}
+}
+
+// matchNodes answers "which node did they mean" for anything that is not a menu number: an exact id or
+// domain, then a part of a domain. It never guesses between two matches.
+func matchNodes(nodes []admin.NodeView, typed string) []admin.NodeView {
+	typed = strings.ToLower(strings.TrimSpace(typed))
+	if typed == "" {
+		return nil
+	}
+	for _, node := range nodes {
+		if strings.ToLower(node.ID) == typed || strings.ToLower(node.Domain) == typed {
+			return []admin.NodeView{node}
+		}
+	}
+	var matches []admin.NodeView
+	for _, node := range nodes {
+		if strings.Contains(strings.ToLower(node.Domain), typed) {
+			matches = append(matches, node)
+		}
+	}
+	return matches
+}
+
+// promptNode is the fallback when the list is unavailable: a domain or an id typed by hand, with an empty
+// answer cancelling, which the label says.
+func (m *menu) promptNode(ui *termui.UI) (string, error) {
+	answer, err := ui.Prompt(m.translator().T(i18n.MnPromptNode), "")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(answer), nil
+}
+
+// meshNodes is the list the picker draws. The timeout is short because a menu that waits a minute for a
+// dead socket is worse than asking for the domain by hand.
+func (m *menu) meshNodes() ([]admin.NodeView, error) {
+	if m.nodes == nil {
+		return nil, errors.New("no mesh connection")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return m.nodes(ctx)
+}
+
 func (m *menu) planNodes(ui *termui.UI) ([][]string, error) {
 	tr := m.translator()
 	ui.Blank()
@@ -244,9 +352,12 @@ func (m *menu) planNodes(ui *termui.UI) ([][]string, error) {
 	if verb == "list" {
 		return [][]string{{"uv", "list"}}, nil
 	}
-	node, err := ui.Required(tr.T(i18n.MnPromptNode), "")
+	node, err := m.pickNode(ui)
 	if err != nil {
 		return nil, err
+	}
+	if node == "" {
+		return nil, nil
 	}
 
 	argv := []string{"uv", verb, node}
@@ -302,11 +413,14 @@ func (m *menu) planInvites(ui *termui.UI) ([][]string, error) {
 		}
 		return [][]string{argv}, nil
 	default:
-		code, err := ui.Required(tr.T(i18n.MnPromptInviteCode), "")
+		code, err := ui.Prompt(tr.T(i18n.MnPromptInviteCode), "")
 		if err != nil {
 			return nil, err
 		}
-
+		code = strings.TrimSpace(code)
+		if code == "" {
+			return nil, nil
+		}
 		return [][]string{{"invite", "revoke", code}}, nil
 	}
 }
@@ -320,11 +434,13 @@ func (m *menu) planCheck(ui *termui.UI) ([][]string, error) {
 	if whole {
 		return [][]string{{"check", "now", "--all"}}, nil
 	}
-	node, err := ui.Required(tr.T(i18n.MnPromptNode), "")
+	node, err := m.pickNode(ui)
 	if err != nil {
 		return nil, err
 	}
-
+	if node == "" {
+		return nil, nil
+	}
 	return [][]string{{"check", "now", node}}, nil
 }
 
@@ -417,9 +533,12 @@ func (m *menu) planSubscription(ui *termui.UI) ([][]string, error) {
 	if choice != "1" {
 		return nil, fmt.Errorf("%q is not one of the choices", choice)
 	}
-	node, err := ui.Required(tr.T(i18n.MnPromptNode), "")
+	node, err := m.pickNode(ui)
 	if err != nil {
 		return nil, err
+	}
+	if node == "" {
+		return nil, nil
 	}
 
 	domain, err := ui.Prompt(tr.T(i18n.MnPromptPublicName), "")

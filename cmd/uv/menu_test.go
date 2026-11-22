@@ -219,17 +219,17 @@ func TestInstallConvergesAnInstalledNodeWithoutQuestions(t *testing.T) {
 	}
 }
 
-// The invite is the one value enroll cannot do without, so an empty answer asks again instead of ending
-// the entry.
-func TestEnrollAsksAgainForAnEmptyInvite(t *testing.T) {
+// The invite names a code the operator may not have at hand: an empty answer cancels the entry, and the
+// label says so, instead of asking for the code until the session ends.
+func TestEnrollCancelsOnAnEmptyInvite(t *testing.T) {
 	t.Parallel()
-	app, _ := menuApp(t, "\n\nABCD-EFGH-IJKL\n", false)
+	app, _ := menuApp(t, "\n\n", false)
 	plan, err := entryNamed(t, app, "join the mesh").plan(termui.New(app.in, &strings.Builder{}, termui.Style{}))
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
-	if got := strings.Join(plan[0], " "); got != "enroll --invite ABCD-EFGH-IJKL --mn https://mn.example.com" {
-		t.Errorf("plan = %q", got)
+	if plan != nil {
+		t.Errorf("plan = %v, want a cancel", plan)
 	}
 }
 

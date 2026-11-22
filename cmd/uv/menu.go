@@ -375,9 +375,13 @@ func (a *application) planEnroll(ui *termui.UI) ([][]string, error) {
 		}
 		mn = answer
 	}
-	invite, err := ui.Required(tr.T(i18n.PromptInvite), "")
+	invite, err := ui.Prompt(tr.T(i18n.PromptInvite), "")
 	if err != nil {
 		return nil, err
+	}
+	invite = strings.TrimSpace(invite)
+	if invite == "" {
+		return nil, nil
 	}
 	return [][]string{{"enroll", "--invite", invite, "--mn", mn}}, nil
 }

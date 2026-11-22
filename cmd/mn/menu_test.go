@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"io"
 	"os"
 	"strings"
 	"testing"
 
 	"github.com/shogun-kub/termit/internal/i18n"
+	"github.com/shogun-kub/termit/internal/mn/admin"
 	"github.com/shogun-kub/termit/internal/termui"
 )
 
@@ -101,11 +104,20 @@ func TestNodeMenuAsksForTheNodeItActsOn(t *testing.T) {
 	}
 }
 
-// A node is the value the whole sub-menu acts on, so an empty answer asks again rather than giving up.
-func TestNodeMenuAsksAgainForAnEmptyNode(t *testing.T) {
+// A node is the value the whole sub-menu acts on. The picker lists the mesh when the server answers;
+// without one, the question takes a typed domain, and an empty answer cancels the action — the operator
+// changed their mind, and asking again would not let them out.
+func TestNodeMenuCancelsOnAnEmptyNode(t *testing.T) {
 	t.Parallel()
 	m, _, _ := newMenu("")
-	plan, err := planOf(t, m, "nodes", "2\n\nnode1.example.com\n")
+	plan, err := planOf(t, m, "nodes", "2\n\n")
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if plan != nil {
+		t.Errorf("plan = %v, want a cancel", plan)
+	}
+	plan, err = planOf(t, m, "nodes", "2\nnode1.example.com\n")
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
@@ -513,5 +525,111 @@ func TestServerMenuSpeaksTheConfiguredLanguage(t *testing.T) {
 				t.Errorf("the menu does not say %q:\n%s", tc.want, out.String())
 			}
 		})
+	}
+}
+
+// pickNode is the answer to "which node?": a list of domains, a number, a typed domain, a unique part of
+// one, or nothing at all.
+func TestPickNodeChoosesANumber(t *testing.T) {
+	t.Parallel()
+	m, _, _ := newMenu("2\n")
+	m.nodes = func(context.Context) ([]admin.NodeView, error) {
+		return []admin.NodeView{
+			{ID: "a", Domain: "node-a.example.com", State: "active"},
+			{ID: "b", Domain: "then5.bookinet.ru", State: "active"},
+		}, nil
+	}
+	got, err := m.pickNode(m.ui)
+	if err != nil {
+		t.Fatalf("pickNode: %v", err)
+	}
+	if got != "then5.bookinet.ru" {
+		t.Errorf("picked %q, want then5.bookinet.ru", got)
+	}
+}
+
+func TestPickNodeAcceptsAPartOfADomain(t *testing.T) {
+	t.Parallel()
+	m, _, _ := newMenu("then\n")
+	m.nodes = func(context.Context) ([]admin.NodeView, error) {
+		return []admin.NodeView{
+			{ID: "a", Domain: "node-a.example.com"},
+			{ID: "b", Domain: "then5.bookinet.ru"},
+		}, nil
+	}
+	got, err := m.pickNode(m.ui)
+	if err != nil {
+		t.Fatalf("pickNode: %v", err)
+	}
+	if got != "then5.bookinet.ru" {
+		t.Errorf("picked %q, want then5.bookinet.ru", got)
+	}
+}
+
+func TestPickNodeCancelsOnZero(t *testing.T) {
+	t.Parallel()
+	m, _, _ := newMenu("0\n")
+	m.nodes = func(context.Context) ([]admin.NodeView, error) {
+		return []admin.NodeView{{ID: "a", Domain: "node-a.example.com"}}, nil
+	}
+	got, err := m.pickNode(m.ui)
+	if err != nil {
+		t.Fatalf("pickNode: %v", err)
+	}
+	if got != "" {
+		t.Errorf("picked %q, want a cancel", got)
+	}
+}
+
+// The list needs the server; the action does not. When the socket is unreachable the picker says so and
+// takes what the operator types, still cancelling on an empty answer.
+func TestPickNodeFallsBackToTyping(t *testing.T) {
+	t.Parallel()
+	m, _, out := newMenu("node-a.example.com\n")
+	m.nodes = func(context.Context) ([]admin.NodeView, error) { return nil, errors.New("no socket") }
+	got, err := m.pickNode(m.ui)
+	if err != nil {
+		t.Fatalf("pickNode: %v", err)
+	}
+	if got != "node-a.example.com" {
+		t.Errorf("picked %q, want the typed domain", got)
+	}
+	if !strings.Contains(out.String(), "did not answer") {
+		t.Errorf("the picker did not say why the list is missing:\n%s", out.String())
+	}
+
+	m.ui = termui.New(strings.NewReader("\n"), &strings.Builder{}, termui.Style{})
+	if got, _ := m.pickNode(m.ui); got != "" {
+		t.Errorf("an empty answer picked %q, want a cancel", got)
+	}
+}
+
+func TestPickNodeAsksAgainOnAMiss(t *testing.T) {
+	t.Parallel()
+	m, _, _ := newMenu("zzz\n1\n")
+	m.nodes = func(context.Context) ([]admin.NodeView, error) {
+		return []admin.NodeView{{ID: "a", Domain: "node-a.example.com"}}, nil
+	}
+	got, err := m.pickNode(m.ui)
+	if err != nil {
+		t.Fatalf("pickNode: %v", err)
+	}
+	if got != "node-a.example.com" {
+		t.Errorf("picked %q, want node-a.example.com", got)
+	}
+}
+
+func TestMatchNodesNeverGuesses(t *testing.T) {
+	t.Parallel()
+	nodes := []admin.NodeView{
+		{ID: "AbC", Domain: "node-a.example.com"},
+		{ID: "b", Domain: "node-b.example.com"},
+		{ID: "c", Domain: "then5.bookinet.ru"},
+	}
+	cases := map[string]int{"abc": 1, "Node-A.Example.com": 1, "then": 1, "node": 2, "elsewhere": 0, "": 0}
+	for typed, want := range cases {
+		if got := len(matchNodes(nodes, typed)); got != want {
+			t.Errorf("%q matched %d nodes, want %d", typed, got, want)
+		}
 	}
 }

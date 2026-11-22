@@ -2153,6 +2153,12 @@ the only part a production pass has to see — the upgrade path itself.
 - **The QUIC question in the wizard.** Between WARP and `harden`, one yes/no: serve Hysteria2 on UDP/443
   beside the TLS profile. The answer is stored in the draft, becomes `--hysteria` in `wizardInitArgs`, and
   appears in the summary. Default stays "no", so a TLS-only node is what pressing Enter gives.
+- **A picker instead of an id.** The server's menu draws the mesh and takes a domain, an id, or a unique
+  part of a domain (`then5` finds `then5.bookinet.ru`); `0` cancels, and `ui.MenuFree` is what lets a
+  picker accept a value its list does not contain. When the server cannot be reached the question says so
+  and takes a typed domain. An empty answer to a question that names something already in existence — a
+  node, an invite code — cancels, and the label says so; a question that sets a new value still asks
+  again.
 
 **A server item of its own: the invite policy.** `enrollment.mode` (`invite`, `invite+approval`, `open`)
 is read at startup, so today changing it means editing YAML by hand and restarting. It gets a command and a

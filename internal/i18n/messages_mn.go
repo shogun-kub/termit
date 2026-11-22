@@ -73,6 +73,12 @@ const (
 	MnSubRotateLabel     Key = "mn.sub.rotate.label"
 	MnSubRotateHint      Key = "mn.sub.rotate.hint"
 	MnPromptNode         Key = "mn.prompt.node"
+	MnPickNodePrompt     Key = "mn.pick_node.prompt"
+	MnPickNodeCancel     Key = "mn.pick_node.cancel"
+	MnPickNodeNone       Key = "mn.pick_node.none"
+	MnPickNodeOffline    Key = "mn.pick_node.offline"
+	MnPickNodeMiss       Key = "mn.pick_node.miss"
+	MnPickNodeMany       Key = "mn.pick_node.many"
 	MnPromptReason       Key = "mn.prompt.reason"
 	MnPromptNote         Key = "mn.prompt.note"
 	MnPromptInviteCode   Key = "mn.prompt.invite_code"
@@ -158,10 +164,16 @@ var messagesMNRU = map[Key]string{
 	MnSubRotateLabel: "сменить токен",
 	MnSubRotateHint:  "напечатать новый токен; старый URL перестанет работать",
 
-	MnPromptNode:        "ID или домен узла",
+	MnPromptNode:        "Узел: домен, ID или часть домена (пусто — отмена)",
+	MnPickNodePrompt:    "какой узел?",
+	MnPickNodeCancel:    "отмена",
+	MnPickNodeNone:      "в сети пока нет узлов",
+	MnPickNodeOffline:   "сервер не ответил, списка нет: введите домен или ID вручную",
+	MnPickNodeMiss:      "нет такого узла: %s",
+	MnPickNodeMany:      "под это подходит несколько узлов (%d) — выберите номер из списка",
 	MnPromptReason:      "Причина, она попадёт в историю состояния",
 	MnPromptNote:        "Заметка, чтобы помнить, для кого он",
-	MnPromptInviteCode:  "Код приглашения для отзыва",
+	MnPromptInviteCode:  "Код приглашения для отзыва (пусто — отмена)",
 	MnPromptCheckAll:    "Проверить все узлы вместо одного?",
 	MnPromptSetting:     "Настройка, например check_interval",
 	MnPromptValue:       "Значение, пусто — снять переопределение",
@@ -244,10 +256,16 @@ var messagesMNEN = map[Key]string{
 	MnSubRotateLabel: "rotate",
 	MnSubRotateHint:  "print a new token; the old URL stops working",
 
-	MnPromptNode:        "Node id or domain",
+	MnPromptNode:        "Node: domain, id or part of a domain (empty cancels)",
+	MnPickNodePrompt:    "which node?",
+	MnPickNodeCancel:    "cancel",
+	MnPickNodeNone:      "the mesh has no nodes yet",
+	MnPickNodeOffline:   "the server did not answer, so there is no list: type the domain or id",
+	MnPickNodeMiss:      "no such node: %s",
+	MnPickNodeMany:      "that matches %d nodes — pick one by its number",
 	MnPromptReason:      "Reason, recorded with the state change",
 	MnPromptNote:        "Note, so you remember who it is for",
-	MnPromptInviteCode:  "Invite code to revoke",
+	MnPromptInviteCode:  "Invite code to revoke (empty cancels)",
 	MnPromptCheckAll:    "Check every node instead of one?",
 	MnPromptSetting:     "Setting, for example check_interval",
 	MnPromptValue:       "Value, empty to clear the override",
