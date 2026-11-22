@@ -85,7 +85,7 @@ func resolveAdminTokenSource(token, tokenFile string) (string, string, error) {
 // runInvite dispatches `termit-mn invite …`.
 func runInvite(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "termit-mn invite: one of create, list, revoke is required")
+		fmt.Fprintln(stderr, "termit-mn invite: one of create, list, revoke, policy is required")
 		return exitUsage
 	}
 	switch args[0] {
@@ -95,6 +95,8 @@ func runInvite(args []string, stdout, stderr io.Writer) int {
 		return runInviteList(args[1:], stdout, stderr)
 	case "revoke":
 		return runInviteRevoke(args[1:], stdout, stderr)
+	case "policy":
+		return runInvitePolicy(args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "termit-mn invite: unknown subcommand %q\n", args[0])
 		return exitUsage

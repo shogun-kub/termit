@@ -263,6 +263,7 @@ func (m *menu) entries() []menuEntry {
 				{labelKey: i18n.MnInvitesListLabel, hintKey: i18n.MnInvitesListHint, plan: fixedMn("invite", "list")},
 				{labelKey: i18n.MnInvitesCreateLabel, hintKey: i18n.MnInvitesCreateHint, plan: m.planInviteCreate},
 				{labelKey: i18n.MnInvitesRevokeLabel, hintKey: i18n.MnInvitesRevokeHint, plan: m.planInviteRevoke},
+				{labelKey: i18n.MnInvitesPolicyLabel, hintKey: i18n.MnInvitesPolicyHint, plan: m.planInvitePolicy},
 			}
 		}},
 		{labelKey: i18n.MnEntrySubLabel, hintKey: i18n.MnEntrySubHint, plan: m.planSubscription},
@@ -352,6 +353,36 @@ func (m *menu) planInviteCreate(ui *termui.UI) ([][]string, error) {
 		argv = append(argv, "--note", note)
 	}
 	return [][]string{argv}, nil
+}
+
+// planInvitePolicy picks the rule a new node meets: a code, a code plus an approval, or nothing at all.
+// The last one widens the door, so it asks a second time; the command itself refuses it without --force,
+// and the menu passes the flag only after that answer.
+func (m *menu) planInvitePolicy(ui *termui.UI) ([][]string, error) {
+	tr := m.translator()
+	ui.Blank()
+	choice, err := ui.Menu([]termui.Item{
+		{Label: tr.T(i18n.MnPolicyByInviteLabel), Hint: tr.T(i18n.MnPolicyByInviteHint)},
+		{Label: tr.T(i18n.MnPolicyByApprovalLabel), Hint: tr.T(i18n.MnPolicyByApprovalHint)},
+		{Label: tr.T(i18n.MnPolicyOpenLabel), Hint: tr.T(i18n.MnPolicyOpenHint)},
+	})
+	if err != nil || choice == "" {
+		return nil, err
+	}
+	switch choice {
+	case "1":
+		return [][]string{{"invite", "policy", "--mode", config.ModeInvite}}, nil
+	case "2":
+		return [][]string{{"invite", "policy", "--mode", config.ModeInviteApproval}}, nil
+	}
+	sure, err := ui.Confirm(tr.T(i18n.MnPromptOpenMode), false)
+	if err != nil {
+		return nil, err
+	}
+	if !sure {
+		return nil, nil
+	}
+	return [][]string{{"invite", "policy", "--mode", config.ModeOpen, "--force"}}, nil
 }
 
 // planInviteRevoke revokes a code. An empty answer cancels: the code is a thing the operator either has

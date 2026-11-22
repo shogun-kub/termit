@@ -10,90 +10,99 @@ const (
 	MnTokenFrom Key = "mn.token_from"
 	MnBadChoice Key = "mn.bad_choice"
 
-	MnEntryStatusLabel   Key = "mn.entry.status.label"
-	MnEntryStatusHint    Key = "mn.entry.status.hint"
-	MnEntryNodesLabel    Key = "mn.entry.nodes.label"
-	MnEntryNodesHint     Key = "mn.entry.nodes.hint"
-	MnEntryInvitesLabel  Key = "mn.entry.invites.label"
-	MnEntryInvitesHint   Key = "mn.entry.invites.hint"
-	MnEntryCheckLabel    Key = "mn.entry.check.label"
-	MnEntryCheckHint     Key = "mn.entry.check.hint"
-	MnEntryPolicyLabel   Key = "mn.entry.policy.label"
-	MnEntryPolicyHint    Key = "mn.entry.policy.hint"
-	MnEntrySubLabel      Key = "mn.entry.sub.label"
-	MnEntrySubHint       Key = "mn.entry.sub.hint"
-	MnEntryAdminLabel    Key = "mn.entry.admin.label"
-	MnEntryAdminHint     Key = "mn.entry.admin.hint"
-	MnEntryBackupLabel   Key = "mn.entry.backup.label"
-	MnEntryBackupHint    Key = "mn.entry.backup.hint"
-	MnEntryHelpLabel     Key = "mn.entry.help.label"
-	MnEntryHelpHint      Key = "mn.entry.help.hint"
-	MnEntryFirewallLabel Key = "mn.entry.firewall.label"
-	MnEntryFirewallHint  Key = "mn.entry.firewall.hint"
-	MnEntryBansLabel     Key = "mn.entry.bans.label"
-	MnEntryBansHint      Key = "mn.entry.bans.hint"
-	MnEntryGuardLabel    Key = "mn.entry.guard.label"
-	MnEntryGuardHint     Key = "mn.entry.guard.hint"
-	MnEntryRestoreLabel  Key = "mn.entry.restore.label"
-	MnEntryRestoreHint   Key = "mn.entry.restore.hint"
-	MnNodesHead          Key = "mn.nodes.head"
-	MnNodesListLabel     Key = "mn.nodes.list.label"
-	MnNodesListHint      Key = "mn.nodes.list.hint"
-	MnNodesShowLabel     Key = "mn.nodes.show.label"
-	MnNodesShowHint      Key = "mn.nodes.show.hint"
-	MnNodesApproveLabel  Key = "mn.nodes.approve.label"
-	MnNodesApproveHint   Key = "mn.nodes.approve.hint"
-	MnNodesRejectLabel   Key = "mn.nodes.reject.label"
-	MnNodesRejectHint    Key = "mn.nodes.reject.hint"
-	MnNodesBlockLabel    Key = "mn.nodes.block.label"
-	MnNodesBlockHint     Key = "mn.nodes.block.hint"
-	MnNodesUnblockLabel  Key = "mn.nodes.unblock.label"
-	MnNodesUnblockHint   Key = "mn.nodes.unblock.hint"
-	MnNodesRemoveLabel   Key = "mn.nodes.remove.label"
-	MnNodesRemoveHint    Key = "mn.nodes.remove.hint"
-	MnNodesReissueLabel  Key = "mn.nodes.reissue.label"
-	MnNodesReissueHint   Key = "mn.nodes.reissue.hint"
-	MnNodesAgentKeyLabel Key = "mn.nodes.agentkey.label"
-	MnNodesAgentKeyHint  Key = "mn.nodes.agentkey.hint"
-	MnNodesForgetLabel   Key = "mn.nodes.forget.label"
-	MnNodesForgetHint    Key = "mn.nodes.forget.hint"
-	MnInvitesHead        Key = "mn.invites.head"
-	MnInvitesListLabel   Key = "mn.invites.list.label"
-	MnInvitesListHint    Key = "mn.invites.list.hint"
-	MnInvitesCreateLabel Key = "mn.invites.create.label"
-	MnInvitesCreateHint  Key = "mn.invites.create.hint"
-	MnInvitesRevokeLabel Key = "mn.invites.revoke.label"
-	MnInvitesRevokeHint  Key = "mn.invites.revoke.hint"
-	MnPolicyHead         Key = "mn.policy.head"
-	MnPolicyShowLabel    Key = "mn.policy.show.label"
-	MnPolicyShowHint     Key = "mn.policy.show.hint"
-	MnPolicySetLabel     Key = "mn.policy.set.label"
-	MnPolicySetHint      Key = "mn.policy.set.hint"
-	MnSubHead            Key = "mn.sub.head"
-	MnSubRotateLabel     Key = "mn.sub.rotate.label"
-	MnSubRotateHint      Key = "mn.sub.rotate.hint"
-	MnGroupStateLabel    Key = "mn.group.state.label"
-	MnGroupStateHint     Key = "mn.group.state.hint"
-	MnGroupDefenceLabel  Key = "mn.group.defence.label"
-	MnGroupDefenceHint   Key = "mn.group.defence.hint"
-	MnGroupServiceLabel  Key = "mn.group.service.label"
-	MnGroupServiceHint   Key = "mn.group.service.hint"
-	MnPromptNode         Key = "mn.prompt.node"
-	MnPickNodePrompt     Key = "mn.pick_node.prompt"
-	MnPickNodeCancel     Key = "mn.pick_node.cancel"
-	MnPickNodeNone       Key = "mn.pick_node.none"
-	MnPickNodeOffline    Key = "mn.pick_node.offline"
-	MnPickNodeMiss       Key = "mn.pick_node.miss"
-	MnPickNodeMany       Key = "mn.pick_node.many"
-	MnPromptReason       Key = "mn.prompt.reason"
-	MnPromptNote         Key = "mn.prompt.note"
-	MnPromptInviteCode   Key = "mn.prompt.invite_code"
-	MnPromptCheckAll     Key = "mn.prompt.check_all"
-	MnPromptSetting      Key = "mn.prompt.setting"
-	MnPromptValue        Key = "mn.prompt.value"
-	MnPromptRotateAdmin  Key = "mn.prompt.rotate_admin"
-	MnPromptTokenFile    Key = "mn.prompt.token_file"
-	MnPromptPublicName   Key = "mn.prompt.public_name"
+	MnEntryStatusLabel      Key = "mn.entry.status.label"
+	MnEntryStatusHint       Key = "mn.entry.status.hint"
+	MnEntryNodesLabel       Key = "mn.entry.nodes.label"
+	MnEntryNodesHint        Key = "mn.entry.nodes.hint"
+	MnEntryInvitesLabel     Key = "mn.entry.invites.label"
+	MnEntryInvitesHint      Key = "mn.entry.invites.hint"
+	MnEntryCheckLabel       Key = "mn.entry.check.label"
+	MnEntryCheckHint        Key = "mn.entry.check.hint"
+	MnEntryPolicyLabel      Key = "mn.entry.policy.label"
+	MnEntryPolicyHint       Key = "mn.entry.policy.hint"
+	MnEntrySubLabel         Key = "mn.entry.sub.label"
+	MnEntrySubHint          Key = "mn.entry.sub.hint"
+	MnEntryAdminLabel       Key = "mn.entry.admin.label"
+	MnEntryAdminHint        Key = "mn.entry.admin.hint"
+	MnEntryBackupLabel      Key = "mn.entry.backup.label"
+	MnEntryBackupHint       Key = "mn.entry.backup.hint"
+	MnEntryHelpLabel        Key = "mn.entry.help.label"
+	MnEntryHelpHint         Key = "mn.entry.help.hint"
+	MnEntryFirewallLabel    Key = "mn.entry.firewall.label"
+	MnEntryFirewallHint     Key = "mn.entry.firewall.hint"
+	MnEntryBansLabel        Key = "mn.entry.bans.label"
+	MnEntryBansHint         Key = "mn.entry.bans.hint"
+	MnEntryGuardLabel       Key = "mn.entry.guard.label"
+	MnEntryGuardHint        Key = "mn.entry.guard.hint"
+	MnEntryRestoreLabel     Key = "mn.entry.restore.label"
+	MnEntryRestoreHint      Key = "mn.entry.restore.hint"
+	MnNodesHead             Key = "mn.nodes.head"
+	MnNodesListLabel        Key = "mn.nodes.list.label"
+	MnNodesListHint         Key = "mn.nodes.list.hint"
+	MnNodesShowLabel        Key = "mn.nodes.show.label"
+	MnNodesShowHint         Key = "mn.nodes.show.hint"
+	MnNodesApproveLabel     Key = "mn.nodes.approve.label"
+	MnNodesApproveHint      Key = "mn.nodes.approve.hint"
+	MnNodesRejectLabel      Key = "mn.nodes.reject.label"
+	MnNodesRejectHint       Key = "mn.nodes.reject.hint"
+	MnNodesBlockLabel       Key = "mn.nodes.block.label"
+	MnNodesBlockHint        Key = "mn.nodes.block.hint"
+	MnNodesUnblockLabel     Key = "mn.nodes.unblock.label"
+	MnNodesUnblockHint      Key = "mn.nodes.unblock.hint"
+	MnNodesRemoveLabel      Key = "mn.nodes.remove.label"
+	MnNodesRemoveHint       Key = "mn.nodes.remove.hint"
+	MnNodesReissueLabel     Key = "mn.nodes.reissue.label"
+	MnNodesReissueHint      Key = "mn.nodes.reissue.hint"
+	MnNodesAgentKeyLabel    Key = "mn.nodes.agentkey.label"
+	MnNodesAgentKeyHint     Key = "mn.nodes.agentkey.hint"
+	MnNodesForgetLabel      Key = "mn.nodes.forget.label"
+	MnNodesForgetHint       Key = "mn.nodes.forget.hint"
+	MnInvitesHead           Key = "mn.invites.head"
+	MnInvitesListLabel      Key = "mn.invites.list.label"
+	MnInvitesListHint       Key = "mn.invites.list.hint"
+	MnInvitesCreateLabel    Key = "mn.invites.create.label"
+	MnInvitesCreateHint     Key = "mn.invites.create.hint"
+	MnInvitesPolicyLabel    Key = "mn.invites.policy.label"
+	MnInvitesPolicyHint     Key = "mn.invites.policy.hint"
+	MnPolicyByInviteLabel   Key = "mn.policy.mode.invite.label"
+	MnPolicyByInviteHint    Key = "mn.policy.mode.invite.hint"
+	MnPolicyByApprovalLabel Key = "mn.policy.mode.approval.label"
+	MnPolicyByApprovalHint  Key = "mn.policy.mode.approval.hint"
+	MnPolicyOpenLabel       Key = "mn.policy.mode.open.label"
+	MnPolicyOpenHint        Key = "mn.policy.mode.open.hint"
+	MnPromptOpenMode        Key = "mn.prompt.open_mode"
+	MnInvitesRevokeLabel    Key = "mn.invites.revoke.label"
+	MnInvitesRevokeHint     Key = "mn.invites.revoke.hint"
+	MnPolicyHead            Key = "mn.policy.head"
+	MnPolicyShowLabel       Key = "mn.policy.show.label"
+	MnPolicyShowHint        Key = "mn.policy.show.hint"
+	MnPolicySetLabel        Key = "mn.policy.set.label"
+	MnPolicySetHint         Key = "mn.policy.set.hint"
+	MnSubHead               Key = "mn.sub.head"
+	MnSubRotateLabel        Key = "mn.sub.rotate.label"
+	MnSubRotateHint         Key = "mn.sub.rotate.hint"
+	MnGroupStateLabel       Key = "mn.group.state.label"
+	MnGroupStateHint        Key = "mn.group.state.hint"
+	MnGroupDefenceLabel     Key = "mn.group.defence.label"
+	MnGroupDefenceHint      Key = "mn.group.defence.hint"
+	MnGroupServiceLabel     Key = "mn.group.service.label"
+	MnGroupServiceHint      Key = "mn.group.service.hint"
+	MnPromptNode            Key = "mn.prompt.node"
+	MnPickNodePrompt        Key = "mn.pick_node.prompt"
+	MnPickNodeCancel        Key = "mn.pick_node.cancel"
+	MnPickNodeNone          Key = "mn.pick_node.none"
+	MnPickNodeOffline       Key = "mn.pick_node.offline"
+	MnPickNodeMiss          Key = "mn.pick_node.miss"
+	MnPickNodeMany          Key = "mn.pick_node.many"
+	MnPromptReason          Key = "mn.prompt.reason"
+	MnPromptNote            Key = "mn.prompt.note"
+	MnPromptInviteCode      Key = "mn.prompt.invite_code"
+	MnPromptCheckAll        Key = "mn.prompt.check_all"
+	MnPromptSetting         Key = "mn.prompt.setting"
+	MnPromptValue           Key = "mn.prompt.value"
+	MnPromptRotateAdmin     Key = "mn.prompt.rotate_admin"
+	MnPromptTokenFile       Key = "mn.prompt.token_file"
+	MnPromptPublicName      Key = "mn.prompt.public_name"
 )
 
 var messagesMNRU = map[Key]string{
@@ -152,13 +161,21 @@ var messagesMNRU = map[Key]string{
 	MnNodesForgetLabel:   "забыть запись",
 	MnNodesForgetHint:    "удалить запись домена, чтобы его можно было зарегистрировать заново",
 
-	MnInvitesHead:        "приглашения",
-	MnInvitesListLabel:   "список",
-	MnInvitesListHint:    "коды, остаток использований и срок",
-	MnInvitesCreateLabel: "создать",
-	MnInvitesCreateHint:  "напечатать код один раз для нового узла",
-	MnInvitesRevokeLabel: "отозвать",
-	MnInvitesRevokeHint:  "сделать код непригодным",
+	MnInvitesHead:           "приглашения",
+	MnInvitesListLabel:      "список",
+	MnInvitesListHint:       "коды, остаток использований и срок",
+	MnInvitesCreateLabel:    "создать",
+	MnInvitesCreateHint:     "напечатать код один раз для нового узла",
+	MnInvitesPolicyLabel:    "правила вступления",
+	MnInvitesPolicyHint:     "кого сервер пускает и с чьего разрешения",
+	MnPolicyByInviteLabel:   "по приглашению",
+	MnPolicyByInviteHint:    "код от оператора, и узел сразу активен после проверок",
+	MnPolicyByApprovalLabel: "по приглашению и одобрению",
+	MnPolicyByApprovalHint:  "код от оператора, но узел ждёт одобрения",
+	MnPolicyOpenLabel:       "открыто, без приглашения",
+	MnPolicyOpenHint:        "каждый, кто знает адрес, может зарегистрироваться",
+	MnPromptOpenMode:        "Открыть вступление без приглашений? Любой, кто узнает адрес, станет узлом", MnInvitesRevokeLabel: "отозвать",
+	MnInvitesRevokeHint: "сделать код непригодным",
 
 	MnPolicyHead:      "политика",
 	MnPolicyShowLabel: "показать",
@@ -250,13 +267,21 @@ var messagesMNEN = map[Key]string{
 	MnNodesForgetLabel:   "forget",
 	MnNodesForgetHint:    "drop the record so the domain can be enrolled again",
 
-	MnInvitesHead:        "invites",
-	MnInvitesListLabel:   "list",
-	MnInvitesListHint:    "codes, uses left and expiry",
-	MnInvitesCreateLabel: "create",
-	MnInvitesCreateHint:  "print a code once for one new node",
-	MnInvitesRevokeLabel: "revoke",
-	MnInvitesRevokeHint:  "make a code unusable",
+	MnInvitesHead:           "invites",
+	MnInvitesListLabel:      "list",
+	MnInvitesListHint:       "codes, uses left and expiry",
+	MnInvitesCreateLabel:    "create",
+	MnInvitesCreateHint:     "print a code once for one new node",
+	MnInvitesPolicyLabel:    "enrollment rules",
+	MnInvitesPolicyHint:     "who the server lets in, and on whose word",
+	MnPolicyByInviteLabel:   "by invite",
+	MnPolicyByInviteHint:    "a code from the operator, and the node is active once its checks pass",
+	MnPolicyByApprovalLabel: "by invite and approval",
+	MnPolicyByApprovalHint:  "a code from the operator, and the node waits for an approval",
+	MnPolicyOpenLabel:       "open, no invite",
+	MnPolicyOpenHint:        "anyone who knows the address can register",
+	MnPromptOpenMode:        "Open enrollment to anyone? Whoever learns the address becomes a node", MnInvitesRevokeLabel: "revoke",
+	MnInvitesRevokeHint: "make a code unusable",
 
 	MnPolicyHead:      "policy",
 	MnPolicyShowLabel: "show",

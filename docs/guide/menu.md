@@ -134,6 +134,8 @@ Seven choices; `0` goes back up.
 **Invites** — *codes for new nodes*
 
 - `invite list`, `invite create` (with a note), `invite revoke`
+- `invite policy` — the rule a new node meets: a code, a code and an approval, or nothing at all; a change
+  takes effect when the server restarts, and the command says so
 
 **Subscription** — *rotate a node's subscription token*
 

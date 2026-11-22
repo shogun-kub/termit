@@ -37,6 +37,11 @@ passed through to `init`:
 | `invite+approval` (default) | the node waits as `pending` until you run `termit-mn uv approve` |
 | `open` | no invite needed — only sensible on a private network |
 
+Changing the mode later is `termit-mn invite policy --mode <mode>`, which edits the one value in
+`config.yaml`, keeps your comments, and refuses `open` without `--force`. The mode is read at startup, so
+the command ends by saying so: the running server keeps the old rule until `systemctl restart termit-mn`.
+`termit-mn invite policy` without `--mode` prints the rule in force.
+
 `termit-mn init` creates the configuration, the database, the master key and the first admin token, and
 prints the secrets **once** (`--admin-token-out` sends the token to a file instead of printing it):
 
