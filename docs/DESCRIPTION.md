@@ -789,10 +789,13 @@ the wizard says so — while the page uses it unconditionally, because a browser
 Everything else a node prints (commands, logs, errors, `--json`) stays English: it is read by scripts and
 quoted in bug reports, and translating it would make the tool untranslatable in practice.
 
-`termit-uv doctor` answers two different questions. The host half ("could this machine be a node") is the
-preflight checks; the node half ("is it working") covers the state, the three units, the certificate
-window, the decoy against its seed, and whether the core accepts its generated config. A check that
-cannot be performed is a skip, never a failure: an unavailable `systemctl` says nothing about a node.
+`termit-uv doctor` answers three different questions, one screen each. The host group ("could this machine
+be a node") is the preflight checks; the node group ("is it working") covers the state, the three units,
+the certificate window, the decoy against its seed, and whether the core accepts its generated config; the
+tunnel group covers the WARP transport, which is neither the machine's fault nor the node's. Each group
+ends with its own tally and the report ends with one verdict — problems found, ok with warnings, or ok —
+so the reader does not scan twenty lines to answer "is anything wrong". A check that cannot be performed is
+a skip, never a failure: an unavailable `systemctl` says nothing about a node.
 
 The node's clock belongs to `termit-uv-agent`: it wakes at the server-given `next_sync_at` (a day out,
 jittered per node), runs the local self-check, syncs, and retries a failed cycle on a 5 min → 1 h
