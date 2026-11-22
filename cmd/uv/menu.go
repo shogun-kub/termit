@@ -12,6 +12,7 @@ import (
 	"github.com/shogun-kub/termit/internal/i18n"
 	"github.com/shogun-kub/termit/internal/menuplan"
 	"github.com/shogun-kub/termit/internal/proto"
+	"github.com/shogun-kub/termit/internal/release"
 	"github.com/shogun-kub/termit/internal/termui"
 	"github.com/shogun-kub/termit/internal/uv/config"
 	"github.com/shogun-kub/termit/internal/uv/state"
@@ -503,7 +504,7 @@ func (a *application) planUpgrade(ui *termui.UI) ([][]string, error) {
 		return nil, nil
 	}
 	node, err := state.LoadInstalled(cfg.Paths.StatePath())
-	if err != nil || !releaseVersion.MatchString(node.ServerVersion) {
+	if err != nil || !release.Version.MatchString(node.ServerVersion) {
 		ui.Say(tr.T(i18n.MenuUpgradeNoOffer))
 		return nil, nil
 	}

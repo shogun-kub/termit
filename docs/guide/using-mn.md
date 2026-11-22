@@ -42,6 +42,13 @@ Changing the mode later is `termit-mn invite policy --mode <mode>`, which edits 
 the command ends by saying so: the running server keeps the old rule until `systemctl restart termit-mn`.
 `termit-mn invite policy` without `--mode` prints the rule in force.
 
+Upgrading the server itself is `termit-mn update`: without a flag it asks GitHub for the newest published
+release and says whether this build is behind; `--apply` downloads it, checks the digest against the
+release's `SHA256SUMS`, keeps the previous binary as `termit-mn.prev`, restarts the unit and puts the old
+binary back if that restart fails. It is deliberately absent from `status` and `doctor` — the server
+answers questions about the mesh, and a check that reached GitHub on every status call would be its only
+network dependency besides its own nodes. `--release-base` points it at a mirror.
+
 `termit-mn init` creates the configuration, the database, the master key and the first admin token, and
 prints the secrets **once** (`--admin-token-out` sends the token to a file instead of printing it):
 

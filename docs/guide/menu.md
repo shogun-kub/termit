@@ -163,6 +163,8 @@ Seven choices; `0` goes back up.
 - `admin rotate` — replace the admin token you are using
 - `backup` — write a consistent snapshot
 - `restore` — put the database and certificates back; asks for the archive and says the server must be stopped
+- `update` — install the newest published release and restart the server; asks first, keeps the previous
+  binary beside it, and puts it back if the restart fails
 
 **Help** — every command and flag.
 ## Colour

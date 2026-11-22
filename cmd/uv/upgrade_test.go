@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/shogun-kub/termit/internal/release"
 	"github.com/shogun-kub/termit/internal/termui"
 )
 
@@ -23,7 +24,7 @@ func releaseServer(t *testing.T, ver, body string) *httptest.Server {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/" + ver + "/SHA256SUMS":
-			fmt.Fprintf(w, "%s  %s\n%s  termit-mn_%s_linux_amd64\n", digestOfBytes([]byte(body)), asset,
+			fmt.Fprintf(w, "%s  %s\n%s  termit-mn_%s_linux_amd64\n", release.Digest([]byte(body)), asset,
 				strings.Repeat("a", 64), ver)
 		case "/" + ver + "/" + asset:
 			fmt.Fprint(w, body)
@@ -129,7 +130,7 @@ func TestUpgradeOnlyFollowsReleases(t *testing.T) {
 		"v0.7.0-dev": false,
 	}
 	for version, want := range cases {
-		if got := releaseVersion.MatchString(version); got != want {
+		if got := release.Version.MatchString(version); got != want {
 			t.Errorf("%q accepted = %v, want %v", version, got, want)
 		}
 	}

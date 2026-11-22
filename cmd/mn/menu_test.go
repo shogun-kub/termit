@@ -702,8 +702,8 @@ func TestTheServerMenuTreeFitsOnOneScreen(t *testing.T) {
 		}
 	}
 	walk(top)
-	// 14 commands, with the node verb menu and the two hardening tables turned into levels of their own.
-	if leaves != 34 {
-		t.Errorf("the tree has %d leaves, want 34", leaves)
+	// 15 commands, with the node verb menu and the two hardening tables turned into levels of their own.
+	if leaves != 35 {
+		t.Errorf("the tree has %d leaves, want 35", leaves)
 	}
 }

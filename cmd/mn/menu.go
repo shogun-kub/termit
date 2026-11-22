@@ -280,6 +280,7 @@ func (m *menu) entries() []menuEntry {
 		{labelKey: i18n.MnGroupServiceLabel, hintKey: i18n.MnGroupServiceHint, children: func() []menuEntry {
 			return []menuEntry{
 				{labelKey: i18n.MnEntryAdminLabel, hintKey: i18n.MnEntryAdminHint, plan: m.planAdminToken},
+				{labelKey: i18n.MnEntryUpdateLabel, hintKey: i18n.MnEntryUpdateHint, plan: m.planUpdate, local: true},
 				{labelKey: i18n.MnEntryBackupLabel, hintKey: i18n.MnEntryBackupHint, plan: fixedMn("backup"), local: true},
 				{labelKey: i18n.MnEntryRestoreLabel, hintKey: i18n.MnEntryRestoreHint, plan: m.planRestore, local: true},
 			}
@@ -556,6 +557,19 @@ func (m *menu) planRestore(ui *termui.UI) ([][]string, error) {
 	}
 	// --force because the point of a restore is to replace what is there.
 	return [][]string{{"restore", "--from", archive, "--force"}}, nil
+}
+
+// planUpdate asks before replacing the server's own binary and restarting it. The command publishes what
+// it found before it touches anything, and puts the previous binary back if the restart fails.
+func (m *menu) planUpdate(ui *termui.UI) ([][]string, error) {
+	sure, err := ui.Confirm(m.translator().T(i18n.MnPromptUpdate), false)
+	if err != nil {
+		return nil, err
+	}
+	if !sure {
+		return nil, nil
+	}
+	return [][]string{{"update", "--apply"}}, nil
 }
 
 // planAdminToken rotates the credential the menu itself is running on. It asks first, and says what

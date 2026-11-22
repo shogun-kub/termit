@@ -26,6 +26,9 @@ const (
 	MnEntryAdminHint        Key = "mn.entry.admin.hint"
 	MnEntryBackupLabel      Key = "mn.entry.backup.label"
 	MnEntryBackupHint       Key = "mn.entry.backup.hint"
+	MnEntryUpdateLabel      Key = "mn.entry.update.label"
+	MnEntryUpdateHint       Key = "mn.entry.update.hint"
+	MnPromptUpdate          Key = "mn.prompt.update"
 	MnEntryHelpLabel        Key = "mn.entry.help.label"
 	MnEntryHelpHint         Key = "mn.entry.help.hint"
 	MnEntryFirewallLabel    Key = "mn.entry.firewall.label"
@@ -128,6 +131,9 @@ var messagesMNRU = map[Key]string{
 	MnEntryAdminHint:     "сменить учётные данные всех админ-команд",
 	MnEntryBackupLabel:   "резервная копия",
 	MnEntryBackupHint:    "записать согласованный снимок",
+	MnEntryUpdateLabel:   "обновить сервер",
+	MnEntryUpdateHint:    "поставить свежий релиз и перезапустить сервер; прошлый бинарник остаётся рядом",
+	MnPromptUpdate:       "Заменить бинарник сервера и перезапустить его?",
 	MnEntryHelpLabel:     "справка",
 	MnEntryHelpHint:      "все команды и флаги",
 	MnEntryFirewallLabel: "межсетевой экран",
@@ -234,6 +240,9 @@ var messagesMNEN = map[Key]string{
 	MnEntryAdminHint:     "rotate the credential every admin command uses",
 	MnEntryBackupLabel:   "backup",
 	MnEntryBackupHint:    "write a consistent snapshot",
+	MnEntryUpdateLabel:   "update the server",
+	MnEntryUpdateHint:    "install the newest release and restart; the previous binary stays beside it",
+	MnPromptUpdate:       "Replace the server's binary and restart it?",
 	MnEntryHelpLabel:     "help",
 	MnEntryHelpHint:      "every command and flag",
 	MnEntryFirewallLabel: "firewall",

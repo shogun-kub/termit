@@ -2139,6 +2139,12 @@ planning discussion, and the three debts §11.15 recorded (already on `dev`). Ev
 local: the menu, the wizard and the printed reports. §10.9 is the release's one network-facing piece, and
 the only part a production pass has to see — the upgrade path itself.
 
+**State on 2026-11-22.** The menu tree, the node picker, the wizard's QUIC question, the invite block, the
+invite policy, the grouped doctor, the node card, the page's egress line and QUIC note, `termit-uv upgrade`
+and `termit-mn update` are on `dev`. Completion is deferred out of this release: both binaries declare their
+flags inside each command, so there is no registry to generate a script from — building one is a 0.8.0
+item, not a polish task. What is left here is the lab run and the production pass.
+
 **Two menu items that join §10.10.**
 
 - **A tree instead of a list.** Both menus grow one level: at most ten choices per screen, grouped by

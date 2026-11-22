@@ -77,6 +77,8 @@ func run(args []string, stdout, stderr *os.File) int {
 		return runGuard(args[1:], stdout, stderr)
 	case "admin":
 		return runAdmin(args[1:], stdout, stderr)
+	case "update":
+		return runUpdate(args[1:], stdout, stderr)
 	case "menu":
 		// Flags after `menu` are the admin credential and the socket every admin action needs; they are
 		// parsed there and handed to each command the menu runs.
@@ -106,6 +108,7 @@ Admin:
   check        run health checks now (one node, or the whole mesh with --all)
   policy       read and change scheduler thresholds
   admin        rotate the admin token (the credential every admin command uses)
+  update       replace the binary with the newest release; --check reports, --apply installs and restarts
   sub          show and rotate subscription tokens
   status       show server, nodes and the check schedule
 
