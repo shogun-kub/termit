@@ -125,7 +125,7 @@ carries UDP. The passes behind the releases are recorded in
 nodes behind real domains — with the host firewall confirmed and surviving a reboot, the ban engine and
 the blocklist active, WARP egress verified through Cloudflare's own trace, the owner's page reachable over
 TLS, and a phone app passing traffic through both nodes. `v0.3.2` and its predecessors carry their own
-sections of the same changelog. See [what is not here yet](#what-is-not-here-yet).
+sections of the same changelog. See [what is planned](#what-is-planned).
 
 ## Requirements
 
@@ -164,12 +164,35 @@ Without those variables the lab suite skips: it is a manual gate, not part of `g
 ./internal/...`. CI runs format, vet, lint, the unit suite with `-race`, a cross-build, the release
 tool's tests and `govulncheck`.
 
-## What is not here yet
+## What is planned
 
-- **WARP through the `proxy` transport**: the lab has no `/dev/net/tun`, so the suite covers the default
-  `wireguard` transport, which needs no device; installing and connecting the `warp-cli` sidecar needs a
-  KVM VM or a privileged container.
-- **A Docker Compose harness** for development without lab hardware.
+No dates: the order is the order it will be attempted, and a release takes an item only once the previous
+one is proved on production. The constraints behind each are in
+[`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) §5.
+
+**Next — 0.8.0**
+
+- **Several management servers in one mesh.** Today one server is the mesh's authority. Replication inside
+  one cooperative group: every node keeps one home server, and the others carry the registry, the verdicts
+  and the subscriptions.
+- **A traffic limit per node.** A provider suspends a node that crosses its plan without warning. A cap the
+  node enforces itself takes it out of rotation with headroom left for SSH, ACME and the agent, and brings
+  it back when the period resets.
+- **The server and a node on one machine.** Two boxes are the expensive part of a small mesh. One box must
+  keep exactly one listener per port, one certificate per name, and two separate units that still never
+  proxy each other's traffic.
+- **A second vantage for checks.** A node co-located with its server can only be checked from that server,
+  which is not evidence of external reachability. A second server, on another network, observes and hands
+  the verdict back.
+- **Shell completion** for both binaries, generated from the same flag definitions the parser uses.
+- **A second rendering of the profile**, VLESS over WebSocket behind nginx, for clients that cannot read the
+  XHTTP profile.
+
+**Later**
+
+- Other protocol kinds (MTProto), a web admin interface, a Telegram bot, traffic accounting, federation
+  between independent meshes, node reputation, IPv6-only nodes, non-Debian distributions, and reloading a
+  certificate without a restart.
 
 ## Licence
 

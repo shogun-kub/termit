@@ -38,6 +38,9 @@ production pass (`docs/RELEASE.md` §5) and the lab proves the degradation: traf
 reason is reported. Everything else — TLS, ACME against a local directory, the mesh scenarios, resource
 usage — is testable.
 
+The opt-in `proxy` transport cannot run there at all: the `warp-cli` sidecar needs a KVM VM or a privileged
+container, so the suite covers the default `wireguard` transport, which needs no device.
+
 ## 4. Rules of engagement
 
 Tests are re-runnable and tolerate a previous failed run; never leave a machine needing manual repair (on

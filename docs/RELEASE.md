@@ -98,8 +98,8 @@ incomplete ones through a whole release.
 anyone reads: they name the newest release, list what works, and say what does not. Before tagging, read
 both end to end against the release — the status line names this version and nothing later, every feature
 claimed is in this release and not the next one, no claim is unverified (a pass that was never recorded
-does not count), the quick-start commands run as written, "what is not here yet" is still true, and the
-two languages say the same thing. A release left the README naming a version two releases back: it is a
+does not count), the quick-start commands run as written, "what is planned" is still planned and not
+described as shipped, and the two languages say the same thing. A release left the README naming a version two releases back: it is a
 five-minute read and the only document a stranger judges us by.
 
 **4. Grep for the truth you just invalidated.** For every rename, removal or reversed decision, search the
