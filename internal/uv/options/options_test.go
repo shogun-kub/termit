@@ -217,3 +217,32 @@ func TestRenderInRussian(t *testing.T) {
 		t.Error("the Russian page still carries the English badge")
 	}
 }
+
+// A QUIC link is the one a person picks for a call, and the page says so next to it — that sentence is the
+// whole reason the second transport exists on the page at all.
+func TestQuicLinkSaysWhatItIsFor(t *testing.T) {
+	t.Parallel()
+	page := renderPage(t, options.Data{
+		Domain: "node.example.com",
+		Lang:   i18n.EN,
+		Local: []options.Link{
+			{Label: "node.example.com", URI: "vless://x@node.example.com:443?type=xhttp"},
+			{Label: "node.example.com (QUIC)", URI: "hysteria2://x@node.example.com:443"},
+		},
+	})
+	if !strings.Contains(page, "голос и видео") {
+		t.Errorf("the QUIC link does not say what it is for:\n%s", page)
+	}
+	if got := strings.Count(page, "голос и видео"); got != 1 {
+		t.Errorf("the note appears %d times, want it on the QUIC row alone", got)
+	}
+}
+
+// The page answers "what does this node do" without `warp status`: the egress line is part of it.
+func TestPageNamesTheEgress(t *testing.T) {
+	t.Parallel()
+	page := renderPage(t, options.Data{Domain: "node.example.com", Lang: i18n.EN, Egress: "all via usque"})
+	if !strings.Contains(page, "выход: all via usque") {
+		t.Errorf("the page does not name the egress:\n%s", page)
+	}
+}

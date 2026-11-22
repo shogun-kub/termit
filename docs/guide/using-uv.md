@@ -150,6 +150,11 @@ one gesture a phone has and the reason the page exists. The code is drawn by the
 references no external host — and it is the same secret as the text, so a screenshot of it is as much of a
 leak as a copied link.
 
+The page also answers "what does this node do" without a second command: the header carries its egress
+(`egress: all via wireguard`, `off (direct)`, …), and a link from the second transport is marked
+`(QUIC)` with the note that it is the one to pick for voice and video — that is the transport a call
+uses, and the page is where an owner is when they need to know it.
+
 ```bash
 termit-uv status
 # subscribe:  https://mn.example.com/sub/AbCdEf...

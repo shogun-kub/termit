@@ -29,6 +29,9 @@ const TokenBytes = 16
 type Link struct {
 	Label string
 	URI   string
+	// Note is a short hint under the label: what this link is better at than its neighbours. Empty for
+	// most links — a page where every row shouts is a page nobody reads.
+	Note string
 	// Degraded marks a mesh peer the server currently considers degraded. It is a hint, not a
 	// verdict: the client still connects, the server is just less sure it should.
 	Degraded bool
@@ -45,6 +48,9 @@ type Data struct {
 	// PageURL is the address the owner should keep; it is printed on the page too, so a screenshot
 	// still tells them how to open it again.
 	PageURL string
+	// Egress is where proxied traffic leaves ("all via wireguard"), already worded by the caller: the
+	// page is the one place an owner can see what the links do without a second command.
+	Egress string
 	// Local is this node's own device, one link per transport it serves. It is what survives a
 	// management server that cannot be reached, so it is always present. A second transport is another
 	// way into the same node — not a local device, which is why it belongs here and not in Devices.
@@ -89,6 +95,7 @@ type pageText struct {
 	Mesh, NoPeers, Warning, PlainName, PlainNote                          string
 	JSONName, JSONNote, ThisPage, ThisPageNote                            string
 	Copy, QR, Copied, CopyFailed, Footer, Degraded                        string
+	Quic, Egress                                                          string
 }
 
 func textFor(lang i18n.Lang) pageText {
@@ -116,6 +123,8 @@ func textFor(lang i18n.Lang) pageText {
 		CopyFailed:   tr.T(i18n.PageCopyFailed),
 		Footer:       tr.T(i18n.PageFooter),
 		Degraded:     tr.T(i18n.PageDegraded),
+		Quic:         tr.T(i18n.PageQuicNote),
+		Egress:       tr.T(i18n.PageEgress),
 	}
 }
 
@@ -253,6 +262,7 @@ li.link { border-top: 1px solid var(--line); padding-top: .9rem; }
 li.link:first-child { border-top: 0; padding-top: 0; }
 .label { display: flex; flex-wrap: wrap; gap: .5rem; align-items: baseline; margin-bottom: .35rem; }
 .name { font-weight: 600; }
+.hint { font-size: .78rem; color: var(--dim); }
 .tag { font-size: .75rem; color: var(--warn); border: 1px solid currentColor; border-radius: 999px; padding: 0 .45rem; }
 .uri { display: flex; gap: .5rem; align-items: start; }
 code { flex: 1 1 auto; min-width: 0; font: .8rem/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -274,6 +284,7 @@ footer { margin-top: 2.5rem; color: var(--dim); font-size: .8rem; text-align: ce
 <main>
 <h1>{{printf .Text.Title .Domain}}</h1>
 <p class="meta">{{printf .Text.Subtitle (when .Generated)}}</p>
+{{if .Egress}}<p class="meta">{{.Text.Egress}}{{.Egress}}</p>{{end}}
 
 <h2>{{.Text.Local}}</h2>
 <section>
@@ -356,6 +367,7 @@ document.addEventListener('click', function (event) {
 <li class="link">
   <div class="label">
     <span class="name">{{.Label}}</span>
+    {{if .Note}}<span class="hint">{{.Note}}</span>{{end}}
     {{if .Degraded}}<span class="tag">{{.Text.Degraded}}</span>{{end}}
   </div>
   <div class="uri"><code>{{.URI}}</code><button type="button" data-copy>{{.Text.Copy}}</button></div>
@@ -364,6 +376,20 @@ document.addEventListener('click', function (event) {
 {{end}}
 `))
 
+// views pairs each link with the words its row needs. A QUIC link gets the one sentence that makes it
+// worth picking: it is the transport voice and video work best on, which is what the second transport is
+// for. The caller already labels it "(QUIC)", so the marker and the transport cannot drift.
+func views(links []Link, text pageText) []LinkView {
+	out := make([]LinkView, 0, len(links))
+	for _, link := range links {
+		if strings.HasSuffix(link.Label, " (QUIC)") {
+			link.Note = text.Quic
+		}
+		out = append(out, LinkView{Link: link, Text: text, QR: qrSVG(link.URI)})
+	}
+	return out
+}
+
 // Render produces the page in d.Lang. The result depends only on d, which keeps the command honest
 // about what it is about to write.
 func Render(d Data) ([]byte, error) {
@@ -371,18 +397,9 @@ func Render(d Data) ([]byte, error) {
 		d.Lang = i18n.Default
 	}
 	d.Text = textFor(d.Lang)
-	d.LocalView = make([]LinkView, 0, len(d.Local))
-	for _, link := range d.Local {
-		d.LocalView = append(d.LocalView, LinkView{Link: link, Text: d.Text, QR: qrSVG(link.URI)})
-	}
-	d.DevicesView = make([]LinkView, 0, len(d.Devices))
-	for _, device := range d.Devices {
-		d.DevicesView = append(d.DevicesView, LinkView{Link: device, Text: d.Text, QR: qrSVG(device.URI)})
-	}
-	d.PeersView = make([]LinkView, 0, len(d.Peers))
-	for _, peer := range d.Peers {
-		d.PeersView = append(d.PeersView, LinkView{Link: peer, Text: d.Text, QR: qrSVG(peer.URI)})
-	}
+	d.LocalView = views(d.Local, d.Text)
+	d.DevicesView = views(d.Devices, d.Text)
+	d.PeersView = views(d.Peers, d.Text)
 	var buf strings.Builder
 	if err := pageTemplate.Execute(&buf, d); err != nil {
 		return nil, fmt.Errorf("options: render: %w", err)

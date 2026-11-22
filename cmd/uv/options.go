@@ -130,6 +130,7 @@ func (a *application) optionsData(ctx context.Context, cfg *config.Config, node 
 		Token:   token,
 		Lang:    cfg.Lang(),
 		PageURL: options.PageURL(cfg.Domain, token),
+		Egress:  egressLine(cfg),
 		Local: []options.Link{{
 			Label: cfg.Domain,
 			URI:   localURI(cfg, node),

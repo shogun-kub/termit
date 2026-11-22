@@ -223,6 +223,8 @@ const (
 	PageCopied       Key = "page.copied"
 	PageCopyFailed   Key = "page.copy_failed"
 	PageFooter       Key = "page.footer"
+	PageQuicNote     Key = "page.quic_note"
+	PageEgress       Key = "page.egress"
 	PageDegraded     Key = "page.degraded"
 )
 
@@ -436,6 +438,8 @@ var messagesUVRU = map[Key]string{
 	PageCopied:       "скопировано",
 	PageCopyFailed:   "не удалось",
 	PageFooter:       "Страница секретная: любой, кто знает её адрес, видит эти же ссылки. Не оставляйте её на скриншотах, которые уходят из ваших рук.",
+	PageQuicNote:     "голос и видео",
+	PageEgress:       "выход: ",
 	PageDegraded:     "замедлен",
 }
 
@@ -648,6 +652,8 @@ var messagesUVEN = map[Key]string{
 	PageCopied:       "copied",
 	PageCopyFailed:   "copy failed",
 	PageFooter:       "This page is secret: anyone with its address sees the same links. Keep it out of screenshots that leave your hands.",
+	PageQuicNote:     "voice and video",
+	PageEgress:       "egress: ",
 	PageDegraded:     "degraded",
 }
 
