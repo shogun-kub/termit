@@ -13,6 +13,7 @@ import (
 	"github.com/shogun-kub/termit/internal/mn/secret"
 	"github.com/shogun-kub/termit/internal/mn/store"
 	"github.com/shogun-kub/termit/internal/proto"
+	"github.com/shogun-kub/termit/internal/version"
 )
 
 // sync serves POST /api/v1/agent/sync: the complete desired peer set for one node.
@@ -94,7 +95,9 @@ func (h *Handler) sync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := proto.SyncResponse{APIVersion: proto.APIVersion}
+	// The node is told what build it is talking to, so a menu can offer exactly this version as an update
+	// target. It is the only authority in the mesh: there is nothing above it for the node to follow.
+	response := proto.SyncResponse{APIVersion: proto.APIVersion, ServerVersion: version.Version}
 	response.Self.ID = node.ID
 	response.Self.Domain = node.Domain
 	response.Self.State = string(node.State)

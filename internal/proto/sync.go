@@ -68,4 +68,8 @@ type SyncResponse struct {
 	// with what /healthz reports, so a join reaches the other nodes within a poll instead of at their
 	// next scheduled sync.
 	MeshGeneration string `json:"mesh_generation,omitempty"`
+	// ServerVersion is the build the server runs. The node remembers it so a menu can offer exactly the
+	// version the mesh was proved against — never "latest", never a prerelease. Older servers omit it and
+	// older nodes ignore it: the field is additive in both directions.
+	ServerVersion string `json:"server_version,omitempty"`
 }

@@ -14,6 +14,11 @@ pre-releases, and whoever installs the release skipped them.
   `warp status` says which transport carried the flow and whether UDP went through the tunnel, and
   `warp rotate` registers a new device.
 
+- **The node learns which build its server runs.** The sync answer carries `server_version`, the node
+  remembers it beside the last sync and `termit-uv status` prints it as `server:`. Nothing follows from it yet
+  — the menu offer and the update command are `0.7.0` — but the field is what they will read, and it costs one
+  line in the answer. An older server sends nothing and an older node ignores it, so the mesh can mix builds.
+
 ### Fixed
 
 - **The page shows a peer's label as words, not as escapes.** The label travels in the URI fragment, where a

@@ -333,6 +333,11 @@ func (l *Loop) cycle(ctx context.Context) (CycleReport, error) {
 		// again for a change this cycle already applied.
 		st.MeshGeneration = answer.MeshGeneration
 	}
+	if answer.ServerVersion != "" {
+		// Remembered rather than asked for later: an update offer must work with no network at the
+		// moment it is shown.
+		st.ServerVersion = answer.ServerVersion
+	}
 	poll := answer.Policy.MeshPollSeconds
 	st.MeshPollSeconds = &poll
 	RememberSubscription(st, answer)

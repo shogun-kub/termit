@@ -290,7 +290,8 @@ Response `200 OK`:
   "policy": {"check_interval_seconds": 86400, "sync_interval_seconds": 86400, "min_sync_delay_seconds": 7200,
              "mesh_poll_seconds": 900},
   "next_sync_after": "2026-11-11T18:16:11Z",
-  "mesh_generation": "9f3c1a2b4d5e7788"
+  "mesh_generation": "9f3c1a2b4d5e7788",
+  "server_version": "v0.6.0"
 }
 ```
 

@@ -210,6 +210,9 @@ type State struct {
 	// MeshGeneration is the mesh digest that came with the last sync. The loop compares it with the
 	// server's /healthz between scheduled syncs, so a join is noticed in minutes, not the next day.
 	MeshGeneration string `json:"mesh_generation,omitempty"`
+	// ServerVersion is the build the management server reported with the last sync. It is what an update
+	// offer compares against, so nothing has to ask the network at the moment the menu opens.
+	ServerVersion string `json:"server_version,omitempty"`
 	// MeshPollSeconds is how often the server asked this node to poll for that digest; nil means it
 	// never said, and 0 means it asked for no poll at all.
 	MeshPollSeconds *int `json:"mesh_poll_seconds,omitempty"`

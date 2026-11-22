@@ -2065,8 +2065,8 @@ names the screenshot consequence.
 Two problems that look alike and are not, deliberately kept as two code paths.
 
 **The node.** The server is the mesh's authority and already knows which build every node runs — `agent_version`
-in the sync request, printed by `termit-mn uv list`. The missing half is the reverse: a node does not know what
-its server runs. `server_version` joins the sync answer (`omitempty`, and the node's decoder is lenient, so an
+in the sync request, printed by `termit-mn uv list`. The reverse half shipped in `0.6.0`: `server_version` in
+the sync answer, remembered in the node's state beside the last sync and printed by `termit-uv status`. `server_version` joins the sync answer (`omitempty`, and the node's decoder is lenient, so an
 old node ignores it and an old server simply sends nothing), the node stores it beside the last sync, and the
 menu, on launch, compares it with the running build. The policy is the owner's, and both halves have a reason
 beyond caution: **offer the server's version and never "latest"** — the server is what the mesh has been proved

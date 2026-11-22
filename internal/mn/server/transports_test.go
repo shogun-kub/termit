@@ -2,10 +2,12 @@ package server_test
 
 import (
 	"context"
+	"encoding/json"
 	"slices"
 	"testing"
 
 	"github.com/shogun-kub/termit/internal/proto"
+	"github.com/shogun-kub/termit/internal/version"
 )
 
 // The transport record follows the report, in both directions. A node that turns the transport on must
@@ -60,5 +62,23 @@ func assertKinds(t *testing.T, f *fixture, ctx context.Context, want []string) {
 	slices.Sort(want)
 	if !slices.Equal(got, want) {
 		t.Errorf("the node serves %v, want %v (all: %v)", got, want, served)
+	}
+}
+
+// The node has to know which build its server runs, and the sync answer is where it learns: a menu offers
+// exactly this version as an update target, because the server is what the mesh was proved against.
+func TestSyncTellsTheNodeWhichBuildTheServerRuns(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	response := f.sync(t, f.agentKey, `{"agent_version":"v0.1.0"}`)
+	if response.Code != 200 {
+		t.Fatalf("sync: %d %s", response.Code, response.Body.String())
+	}
+	var answer proto.SyncResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &answer); err != nil {
+		t.Fatalf("the answer is not JSON: %v", err)
+	}
+	if answer.ServerVersion != version.Version {
+		t.Errorf("server_version = %q, want %q", answer.ServerVersion, version.Version)
 	}
 }
