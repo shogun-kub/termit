@@ -199,6 +199,7 @@ const (
 	PageThisPage     Key = "page.this_page"
 	PageThisPageNote Key = "page.this_page_note"
 	PageCopy         Key = "page.copy"
+	PageQR           Key = "page.qr"
 	PageCopied       Key = "page.copied"
 	PageCopyFailed   Key = "page.copy_failed"
 	PageFooter       Key = "page.footer"
@@ -393,6 +394,7 @@ var messagesUVRU = map[Key]string{
 	PageThisPage:     "Эта страница",
 	PageThisPageNote: "Адрес и есть секрет: у кого он есть, тот видит эти же ссылки. Если адрес утёк — `termit-uv options --rotate` выдаст новый.",
 	PageCopy:         "копировать",
+	PageQR:           "QR-код",
 	PageCopied:       "скопировано",
 	PageCopyFailed:   "не удалось",
 	PageFooter:       "Страница секретная: любой, кто знает её адрес, видит эти же ссылки. Не оставляйте её на скриншотах, которые уходят из ваших рук.",
@@ -586,6 +588,7 @@ var messagesUVEN = map[Key]string{
 	PageThisPage:     "This page",
 	PageThisPageNote: "The address is the only secret: anyone who has it sees the same links. Rotate it with `termit-uv options --rotate` if it leaks.",
 	PageCopy:         "copy",
+	PageQR:           "QR",
 	PageCopied:       "copied",
 	PageCopyFailed:   "copy failed",
 	PageFooter:       "This page is secret: anyone with its address sees the same links. Keep it out of screenshots that leave your hands.",
