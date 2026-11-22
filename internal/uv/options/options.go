@@ -163,8 +163,13 @@ func ParseList(body []byte) ([]Link, error) {
 		}
 		link := Link{URI: line}
 		if hash := strings.IndexByte(line, '#'); hash >= 0 {
-			link.Label = line[hash+1:]
-			link.Degraded = strings.HasSuffix(link.Label, " (degraded)")
+			// The fragment is percent-encoded in the URI, and it is what the owner reads on the page:
+			// showing `%20` there is a defect, and so is losing the "(degraded)" marker to it, because
+			// that suffix arrives encoded as well.
+			label := unescapeLabel(line[hash+1:])
+			link.Degraded = strings.HasSuffix(label, " (degraded)")
+			// The marker is shown as a tag of its own, so the word does not belong in the name too.
+			link.Label = strings.TrimSuffix(label, " (degraded)")
 		}
 		if link.Label == "" {
 			link.Label = line
@@ -172,6 +177,16 @@ func ParseList(body []byte) ([]Link, error) {
 		links = append(links, link)
 	}
 	return links, nil
+}
+
+// unescapeLabel decodes a URI fragment for display. A fragment that does not decode is shown as it came:
+// a broken escape is not worth losing the label over.
+func unescapeLabel(label string) string {
+	decoded, err := url.PathUnescape(label)
+	if err != nil {
+		return label
+	}
+	return decoded
 }
 
 // WithoutLocal drops the entry that describes this node itself. A subscription is rendered for every

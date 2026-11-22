@@ -155,6 +155,9 @@ func New(opts Options) (*Installer, error) {
 	if cfg.Hysteria != nil {
 		steps = append(steps, &hysteriaBinStep{env})
 	}
+	if cfg.Warp.UsesUsque() {
+		steps = append(steps, &usqueBinaryStep{env})
+	}
 	steps = append(steps,
 		&identityStep{env},
 		&decoyStep{env},
@@ -162,6 +165,9 @@ func New(opts Options) (*Installer, error) {
 	)
 	if cfg.Hysteria != nil {
 		steps = append(steps, &hysteriaConfigStep{env})
+	}
+	if cfg.Warp.UsesUsque() {
+		steps = append(steps, &usqueRegisterStep{env})
 	}
 	steps = append(steps,
 		&webStep{env},
@@ -171,6 +177,9 @@ func New(opts Options) (*Installer, error) {
 	// up without the unit, the config and the binary, or `init` would converge only one way.
 	if cfg.Hysteria == nil {
 		steps = append(steps, &hysteriaOffStep{env})
+	}
+	if !cfg.Warp.UsesUsque() {
+		steps = append(steps, &usqueOffStep{env})
 	}
 	steps = append(steps,
 		&certificateStep{env},

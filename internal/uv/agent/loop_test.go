@@ -118,9 +118,11 @@ func TestBackoffDoublesAndCaps(t *testing.T) {
 func TestCycleAppliesTheAnswerAndPersistsTheSchedule(t *testing.T) {
 	t.Parallel()
 	var seen proto.SyncRequest
+	answer := answerAt(cycleNow.Add(24 * time.Hour))
+	answer.ServerVersion = "v9.9.9"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewDecoder(r.Body).Decode(&seen)
-		_ = json.NewEncoder(w).Encode(answerAt(cycleNow.Add(24 * time.Hour)))
+		_ = json.NewEncoder(w).Encode(answer)
 	}))
 	defer server.Close()
 
@@ -166,6 +168,49 @@ func TestCycleAppliesTheAnswerAndPersistsTheSchedule(t *testing.T) {
 	}
 	if st.LastSelfCheck == nil || !st.LastSelfCheck.OK {
 		t.Errorf("the self-check was not persisted: %+v", st.LastSelfCheck)
+	}
+	// The build the server runs is remembered with the answer: an update offer must not need the network
+	// at the moment it is shown.
+	if st.ServerVersion != "v9.9.9" {
+		t.Errorf("server version = %q, want the one the answer carried", st.ServerVersion)
+	}
+}
+
+// An answer without the field — an older server — must not erase what an earlier one said.
+func TestCycleKeepsTheServerVersionWhenAnAnswerOmitsIt(t *testing.T) {
+	t.Parallel()
+	statePath := enrolled(t, cycleNow.Add(-3*time.Hour))
+	st, err := state.Load(statePath)
+	if err != nil {
+		t.Fatalf("load state: %v", err)
+	}
+	st.ServerVersion = "v9.9.9"
+	if err := st.Save(statePath); err != nil {
+		t.Fatalf("save state: %v", err)
+	}
+
+	bare := answerAt(cycleNow.Add(24 * time.Hour))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(bare)
+	}))
+	defer server.Close()
+	loop := &agent.Loop{
+		Remote:    agent.Remote{BaseURL: server.URL},
+		StatePath: statePath,
+		Now:       func() time.Time { return cycleNow },
+		Apply: func(context.Context, *state.State, proto.SyncResponse) (agent.Result, error) {
+			return agent.Result{}, nil
+		},
+	}
+	if _, err := loop.Once(context.Background()); err != nil {
+		t.Fatalf("Once: %v", err)
+	}
+	after, err := state.Load(statePath)
+	if err != nil {
+		t.Fatalf("load state: %v", err)
+	}
+	if after.ServerVersion != "v9.9.9" {
+		t.Errorf("server version = %q, an answer without the field erased it", after.ServerVersion)
 	}
 }
 

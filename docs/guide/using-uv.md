@@ -65,7 +65,7 @@ Useful variations:
 | verify against a digest you have | `--sha256 <hex>` (or `--checksum-file SHA256SUMS`) |
 | your own build, not a release | install the binary yourself and run `termit-uv init` |
 | opt out of WARP | `--no-warp`, later `termit-uv warp mode off` |
-| change how WARP carries traffic | `termit-uv init --warp-transport wireguard` (inside the core, TCP and UDP) or `proxy` (the `warp-cli` sidecar, TCP only) |
+| change how WARP carries traffic | `termit-uv init --warp-transport wireguard` (inside the core, TCP and UDP), `usque` (the MASQUE sidecar, TCP and UDP, for a box whose `warp-cli` cannot carry UDP) or `proxy` (the `warp-cli` sidecar, TCP only) |
 | choose which family leaves through WARP | `termit-uv init --warp-family ipv4` (the default; destinations of the other family are refused) or `ipv6` |
 
 The script refuses to install bytes it cannot verify. If it stops, the message names the file and the
@@ -138,7 +138,13 @@ devices and the mesh, and it re-renders itself when a device is added or removed
 agent's daily cycle included, so a peer that joins or leaves the mesh reaches the page without a command.
 Every link it shows carries both dialects of the fragmentation switch — Happ's `fragment=…` and
 `sb.tls.fragment=1`/`sb.tls.record_fragment=1`, which `podkop-engine` and the patched sing-box builds read
-from the URI — so the same link works in either client without being edited by hand. Each row also opens a
+from the URI — so the same link works in either client without being edited by hand. That is not universal:
+**Throne** and the Nekoray family it comes from parse neither, because they keep TLS fragmentation in their
+own settings — in Throne for Android it is *Edit profile → “TLS Client Hello fragment”* (a tri-state, default
+“Keep default”, beside “TLS record fragment”), or, once for everything, *Settings → Presets → “TLS Client
+Hello fragment”* with its implementation and size; on the desktop build the same three live in the profile
+under “TLS Camouflage Settings”. The JSON form of the subscription carries it as `"fragment": true` and
+`"record_fragment": true`, so a client that imports the profile instead of the link gets it without a click. Each row also opens a
 QR code under the copy button: point the phone's camera at it and the client imports the link, which is the
 one gesture a phone has and the reason the page exists. The code is drawn by the node itself — the page
 references no external host — and it is the same secret as the text, so a screenshot of it is as much of a
@@ -190,10 +196,11 @@ server in a sync request and nowhere else. From that point:
   nothing on the server needs configuring.
 
 What it costs: about 50 MB of memory, and its unit caps it at 256 MB; 4–9 % of one core per 100 Mbit/s
-carried. The pinned release also carries one known issue (GO-2026-5288): a crafted packet can exhaust the
-transport's memory. The cap turns that into a restart of the transport alone — the TLS profile and every
-other service on the node keep running — and `0.6.0` is the first release that must not carry it,
-as `deploy/vulnerabilities.json` says.
+carried. The pinned release is also named in one advisory, GO-2026-5288, whose record in the Go database is
+unreviewed and describes no fixed version — the advisory behind it (GHSA-9fw6-xgg2-mq9q) lists 2.8.1 as the
+last affected release and 2.8.2 as the fix, while this node runs 2.14.0 and never enables the sniffing the
+proof of concept needs. The 256 MB cap and `Restart=always` still stand, so a blow-up in the transport cannot
+take the TLS profile or anything else on the node with it.
 
 To turn it off, run `termit-uv init --no-hysteria`: the unit is stopped,
 disabled and removed with its configuration and the pinned binary, the port closes, and the next sync

@@ -594,11 +594,22 @@ direct while WARP does not answer. Recovery is equally automatic. With `fail_ope
 names the WARP outbound directly, so the node fails closed instead — the right choice for an owner who
 would rather lose connectivity than expose the address.
 
-### 6.1 The transport: WireGuard inside the core, or the proxy
+### 6.1 The transport: WireGuard inside the core, the proxy, or the sidecar
 
 `warp.transport` decides where the tunnel lives. `wireguard` is a WireGuard outbound inside the core —
 one process, no package, no loopback port — and it carries UDP as well as TCP. `proxy` is the older
-path, still opt-in: `warp-cli` in proxy mode, a SOCKS5 listener carrying TCP only.
+path, still opt-in: `warp-cli` in proxy mode, a SOCKS5 listener carrying TCP only, with UDP going direct
+and `warp status` saying so. `usque` is the third: the MASQUE client runs as a pinned sidecar
+(`termit-usque.service`, user `termit-usque`, loopback SOCKS5 on `127.0.0.1:40002`), and because that
+listener associates UDP, both protocols reach WARP without the core speaking MASQUE and without a host
+route. The core does not dial the sidecar directly: `termit-usque-relay.service` listens on
+`127.0.0.1:40001` and forwards each association from the very port of the control connection it opened,
+because usque refuses a datagram that does not come from it and the core's SOCKS client does not reuse
+the port. It exists for the day Cloudflare's client cannot carry UDP, and for the day MASQUE is the only
+door: the core's outbound is a SOCKS hop either way, so switching between `proxy` and `usque` changes the
+sidecar, not the routing. Registering the device accepts Cloudflare's terms of service on the operator's
+behalf (`usque register --accept-tos`), the same acceptance a `warp-cli` registration already makes; an
+install has no stdin to answer the prompt with.
 
 ```bash
 termit-uv init --warp-transport wireguard   # registers the node, writes the identity, applies it
@@ -1310,13 +1321,15 @@ else, so without one the mesh keeps the previous set — an old second link, or 
 was just turned on — until the node's next cycle, which can be a day away. A node that is not enrolled is
 told that the server will learn it at the first sync after enrollment.
 
-**A known advisory, and what it costs.** GO-2026-5288 says a crafted QUIC packet can drive the server out
-of memory when sniffing is on, and v2.14.0 is the newest release — there is no fixed version to install.
-What the node does about it: the transport runs as an unprivileged user, its unit caps it at
-`MemoryMax=256M`, and `Restart=always` turns a blow-up into a restart of the transport alone instead of an
-OOM that takes nginx and the core with it. Sniffing is on only when `block_bittorrent` is, so a node that
-does not block BitTorrent never reaches the vulnerable path. When a release with a fix appears, bump
-`hysteriaVersion` and its digests in `internal/uv/install/hysteria.go`.
+**A stale advisory, and what it costs.** GO-2026-5288 says a crafted QUIC packet can drive the server out of
+memory when sniffing is on. The record is unreviewed and names no fixed version, but the advisory behind it
+(GHSA-9fw6-xgg2-mq9q, CVE-2026-134457) lists 2.8.1 as the last affected release and 2.8.2 as the fix — this
+node pins 2.14.0, and it never enables the vulnerable path either: the generated `hysteria.yaml` has no
+`sniff` block, which the proof of concept requires. What the node does anyway, and keeps doing: the transport
+runs as an unprivileged user, its unit caps it at `MemoryMax=256M`, and `Restart=always` turns a blow-up into a
+restart of the transport alone instead of an OOM that takes nginx and the core with it. Because `govulncheck`
+follows the stale record, `deploy/vulnerabilities.json` keeps the exclusion and prints its action on every
+gate run; the entry is deleted when the record gains a fixed version, not by bumping the module.
 
 `termit-uv init` then installs the pinned binary, writes `/etc/termit/uv/hysteria.yaml`, installs
 `termit-hysteria.service` and starts it after the core.

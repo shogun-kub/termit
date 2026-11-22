@@ -35,7 +35,7 @@ credential is ever regenerated.`)
 	flags.Bool("no-warp", false, "opt out of WARP and exit directly")
 	warpSelected := flags.String("warp-selected", "", "domains that use WARP in selected mode, comma separated")
 	warpTransport := flags.String("warp-transport", "",
-		"how WARP carries traffic: wireguard (inside the core, TCP and UDP) or proxy (warp-cli's SOCKS, TCP only)")
+		"how WARP carries traffic: wireguard (inside the core, TCP and UDP), usque (MASQUE sidecar, TCP and UDP) or proxy (warp-cli's SOCKS, TCP only)")
 	warpFamily := flags.String("warp-family", "",
 		"address family the WARP tunnel carries: ipv4 (default) or ipv6; destinations of the other family are refused")
 	xrayVersion := flags.String("xray-version", "", "Xray-core release to install")

@@ -61,7 +61,7 @@ The remaining questions below are still open; the ones that matter before M1 are
 | Who may use it | The node's own device, its local devices and every peer — the same set the TLS profile accepts. The server's probe credential is in that set too, because a probe is a client. |
 | How the server learns about it | The node reports `transports` (`{kind, version}`) on every sync. Kinds are additive and forward compatible: an unknown kind is dropped, not refused. |
 | Permissions | The transport runs as its own user, `termit-hy`, which is the group of the certificate directory; the core's user cannot read the key. Its unit carries `CAP_NET_BIND_SERVICE` for UDP/443, no writable path, and `MemoryMax=256M`. |
-| The accepted advisory | **GO-2026-5288 has no fix in 2.14.0**, so the build carries it on purpose: the memory cap turns the OOM into a restart of the transport alone, and `deploy/vulnerabilities.json` names `0.6.0` as the release that must not carry it. Updating the client and deleting the entry is the first item of the next release's checklist, not a wish. |
+| The accepted advisory | **The record is stale, the code is not.** GO-2026-5288 on `vuln.go.dev` is `UNREVIEWED` and names no fixed version, so the build carries it on purpose: `deploy/vulnerabilities.json` still needs the entry for `govulncheck`. The advisory behind it, GHSA-9fw6-xgg2-mq9q, lists 2.8.1 as the last affected release and 2.8.2 as the fix, and this build pins 2.14.0; the node also never enables the sniffing the PoC needs. The memory cap turns an OOM into a restart of the transport alone. The entry's deadline (`0.7.0`) tracks the record's correction, not a module bump — deleting it early would turn the gate red for a finding the code cannot fix. |
 | Client-side fingerprint | Not a node setting. The profile's uTLS fingerprint is what a client offers, and fragmentation is a client-side mask; a node can only choose what it presents (its own certificate, the decoy behind masquerade). |
 
 ---
@@ -158,7 +158,9 @@ phone apps, so it must not grant API access; it is rotatable and revocable per U
 443**, anti-DPI `path` randomised per install, `Host` = own domain, ALPN `h2,http/1.1`, uTLS
 fingerprint `chrome`, no `flow`, fallback to nginx for everything else (decoy site, ACME, subscription
 page), `xtls-rprx-vision` and REALITY deliberately left out.
-**Rec** Accept. Add a second profile (`reality`) later behind the same interface.
+**Rec** Accept. A second profile stays possible behind the same interface, but REALITY is no longer the
+planned one: it was dropped on 2026-11-22 (§10.2 of the implementation plan), and Hysteria2 shipped instead
+as a second transport rather than a second profile.
 **Why** This is what the UV script installs, what the MN probe must speak, and what the subscription
 URIs encode. It must be versioned (`profile: v1`) so MN can refuse incompatible UVs.
 

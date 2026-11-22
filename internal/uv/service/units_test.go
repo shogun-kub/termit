@@ -227,3 +227,40 @@ func TestHysteriaUnit(t *testing.T) {
 		t.Error("Hysteria accepted a relative binary path")
 	}
 }
+
+// TestUsqueUnit: the sidecar binds a loopback port, so it needs no capability at all - and the address it
+// listens on has to be the one the core was told, or every proxied flow hits a closed port.
+func TestUsqueUnit(t *testing.T) {
+	t.Parallel()
+	unit, err := service.Usque("/usr/lib/termit/bin/usque", "/etc/termit/uv/usque.json", "127.0.0.1:40001")
+	if err != nil {
+		t.Fatalf("Usque: %v", err)
+	}
+	text := string(unit)
+	for _, want := range []string{
+		"ExecStart=/usr/lib/termit/bin/usque socks -b 127.0.0.1 -p 40001 -c /etc/termit/uv/usque.json",
+		"User=termit-usque",
+		"Restart=always",
+		"MemoryMax=256M",
+		"NoNewPrivileges=yes",
+		"ProtectSystem=strict",
+		"PrivateDevices=yes",
+		"WantedBy=multi-user.target",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("sidecar unit is missing %q", want)
+		}
+	}
+	if strings.Contains(text, "AmbientCapabilities=") {
+		t.Error("the sidecar binds a high port and needs no capability")
+	}
+	if strings.Contains(text, "ReadWritePaths=") {
+		t.Error("the sidecar unit asks for a writable path; it writes nothing")
+	}
+	if _, err := service.Usque("usque", "/etc/termit/uv/usque.json", ""); err == nil {
+		t.Error("Usque accepted a relative binary path")
+	}
+	if _, err := service.Usque("/usr/lib/termit/bin/usque", "/etc/termit/uv/usque.json", "nonsense"); err == nil {
+		t.Error("Usque accepted a socks address without a port")
+	}
+}

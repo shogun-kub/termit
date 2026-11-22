@@ -148,7 +148,12 @@ func TestUninstallStopsEveryUnit(t *testing.T) {
 	if disabled == nil {
 		t.Fatal("uninstall never disabled a unit")
 	}
-	for _, unit := range []string{service.XrayUnitName, service.AgentUnitName, service.RenewTimerName} {
+	// Every supervised unit has to be stopped, including one for a transport this build may never have
+	// enabled: the list exists so an older or a switched transport leaves no process behind.
+	for _, unit := range []string{
+		service.XrayUnitName, service.AgentUnitName, service.RenewTimerName,
+		service.HysteriaUnitName, service.UsqueUnitName,
+	} {
 		found := false
 		for _, arg := range disabled {
 			if arg == unit {

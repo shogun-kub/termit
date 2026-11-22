@@ -41,9 +41,11 @@ operator sees the traffic — but the group gains the resilience of many indepen
 
 ## 3. Non-goals (v1)
 
-- Hysteria2, TUIC, Shadowsocks, MTProto or any second proxy protocol. VLESS+XHTTP+TLS only.
-- REALITY. It is a good transport, but "self-steal with XHTTP+TLS" is the chosen profile; REALITY can
-  become a second profile later behind the same interfaces.
+- TUIC, Shadowsocks, MTProto, Trojan. VLESS+XHTTP+TLS is the client-facing profile; Hysteria2 joined it as a
+  second transport in `0.5.0` (§10.3 of the plan), which is a kind the mesh reports, not a second profile.
+- REALITY. Dropped on 2026-11-22: in its honest form (`dest` = the node's own vhost) it is externally the
+  TLS the node already serves, and the variant that is cheaper to deploy is the one active probing catches
+  (§10.2 of the plan).
 - Traffic accounting, quotas, expiry, billing, Telegram bots.
 - A web admin UI on MN. v1 is an HTTP API plus the `termit-mn` CLI.
 - Multi-tenant MN (several independent groups on one instance), federation between MNs, or
@@ -547,8 +549,10 @@ Egress, from `config.yaml`:
   use WARP; everything else is direct.
 - **Transport** — `warp.transport` names where the tunnel lives. `wireguard` (a fresh configuration, and
   the default) is a WireGuard outbound inside the core: one rule, `tcp,udp`, so UDP goes through Cloudflare
-  like everything else; `proxy` is warp-cli's loopback SOCKS5 listener, which carries TCP only. A file
-  written before the key existed reads as `proxy` and is not migrated silently.
+  like everything else; `proxy` is warp-cli's loopback SOCKS5 listener, which carries TCP only; `usque` is
+  the MASQUE client as a pinned sidecar whose loopback SOCKS5 listener carries both protocols, so the split
+  below does not apply to it. A file written before the key existed reads as `proxy` and is not migrated
+  silently.
 - **UDP on the proxy transport** — never through WARP, because SOCKS5 has no UDP ASSOCIATE. The catch-all
   rule is split, TCP to the tunnel (the balancer when fail-open is on) and UDP to `direct`, so DNS and
   QUIC leave from the node's address instead of disappearing.
@@ -565,13 +569,19 @@ asks the internet what address it is coming from, and a node whose address is th
 that can be probed and blocked. `termit-uv init --no-warp` (or `warp.mode: off`) opts out, and an existing
 configuration written before modes existed keeps the choice its old `warp.enabled` switch recorded.
 
-WARP has two transports and neither touches host routing, which is exactly the "direct traffic intact"
-guarantee; full-tunnel WARP is rejected by design. `wireguard` (the default) is a WireGuard outbound
+WARP has three transports and none of them touches host routing, which is exactly the "direct traffic
+intact" guarantee; full-tunnel WARP is rejected by design. `wireguard` (the default) is a WireGuard outbound
 inside the core, carrying TCP and UDP, and it needs no device: the install step registers the node with
 Cloudflare's API over HTTPS and writes the identity to the state directory. `proxy` is `warp-cli` in
 **proxy mode** — a SOCKS5 listener on loopback carrying TCP only — installed from Cloudflare's signed apt
-repository, and it does need `/dev/net/tun`. `termit-uv warp status` reports the mode, the transport's own
-state and where a real fetch through the tunnel came out; `termit-uv warp mode` changes the mode. If the
+repository, and it does need `/dev/net/tun`. `usque` is the MASQUE sidecar: a pinned release with a checked
+digest, its own unit, user and state directory, and no routing of its own. The core does not dial it
+directly: `termit-usque-relay.service` listens on `127.0.0.1:40001` and the sidecar on `40002`, because
+usque keys a UDP association on the control connection's own address and the core's SOCKS client does not
+reuse it. Through that pair both protocols reach WARP; it is the answer for a box whose WARP client cannot
+carry UDP, and for the day Cloudflare's client speaks only MASQUE. `termit-uv warp status` reports the
+mode, the transport's own state and where a real fetch through the tunnel came out; `termit-uv warp mode`
+changes the mode. If the
 chosen transport cannot work on the box, the step and the command refuse with that exact reason, the mode
 stays recorded, and the node keeps working with direct egress; nothing is silently degraded.
 `termit-uv uninstall` disconnects the tunnel and leaves the package installed.
@@ -607,7 +617,10 @@ These are non-negotiable and must be enforced by tests:
    brings its own pinned version and checksum, unit, user and state directory, a loopback-only management
    listener, a handshake fingerprint that is re-tested on every upgrade, and no routing of its own: its
    traffic reaches the core through a loopback inbound, so the core's routing stays the only place policy
-   lives.
+   lives. The WARP sidecar is the second kind of exception, and only one of it ever runs, chosen by
+   `warp.transport`: `warp-cli` in proxy mode (Cloudflare's package) or `usque` (ours to pin and check). It
+   gets the same terms — its own unit, user and state, a loopback listener, no routing of its own — and the
+   core reaches it through a SOCKS outbound, so nothing about it can capture host traffic.
 
 ## 12. Lessons taken from the references
 

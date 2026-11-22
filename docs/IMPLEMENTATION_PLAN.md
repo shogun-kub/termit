@@ -1446,7 +1446,8 @@ These are not separate milestones; they must be updated in the milestone that to
 
 v0.5.0 takes part of this list back off it (§10); everything here without a 0.5.0 item stays deferred.
 
-- REALITY and the other xray-core protocol kinds; MTProto (§10.2).
+- Other xray-core protocol kinds; MTProto (§10.2). REALITY and Shadowsocks were dropped on 2026-11-22, with
+  the reasons recorded in §10.2; Trojan was considered and left out there too.
 - Multi-vantage probing (§10.7); federation between independent MNs; MN replication in one mesh
   (§10.4); node reputation.
 - One machine running both the MN and a node (§10.6).
@@ -1520,10 +1521,11 @@ the envelope for a second kind (10.2), and Hysteria2 as that kind (10.3). Each u
 first two are worth shipping even if the third slips. The first two shipped in `0.5.0`; the third went in
 with them and was finished in `0.5.1`, and what is left of each is named below.
 
-**Numbering, until the advisory list is clear again.** `deploy/vulnerabilities.json` refuses any version at
-or past `0.6.0` while GO-2026-5288 is accepted, and hysteria `v2.14.0` is still the newest module release
-(checked 2026-11-22), so `0.6.0` cannot be cut today: the next release is a `0.5.x` patch. Moving the
-deadline to `0.7.0` is the alternative, and it needs the recorded reason that no fixed release exists.
+**Numbering.** `0.6.0` is free to cut: GO-2026-5288 is a stale record, not a live advisory. Its source,
+GHSA-9fw6-xgg2-mq9q, lists 2.8.1 as the last affected release and 2.8.2 as the fix; this build pins 2.14.0 and
+never enables the sniffing the PoC needs. `vuln.go.dev` never got the fixed version — the record is
+`UNREVIEWED` — so `govulncheck` still reports the module, `deploy/vulnerabilities.json` still needs the entry,
+and its deadline now tracks the record's correction (`0.7.0`), not a module bump.
 
 Everything after them is postponed to a later release: understood and wanted, but nothing in 0.5.0
 depends on it. Each postponed item still names the rule that keeps it out, so nobody re-discovers the
@@ -1586,6 +1588,15 @@ Acceptance for the remainder: a node on the `proxy` transport either carries UDP
 enabled, a UDP payload from a client exits at Cloudflare's address, while SSH, ACME and the decoy still
 leave from the node's own. No `ip rule`/`ip route` change exists on the host.
 
+**Option D is in `0.6.0`** (`warp.transport: usque`): the MASQUE client runs as a pinned, digest-checked
+sidecar with its own unit, user and loopback SOCKS5 listener, and its listener carries UDP, so the document
+sends both protocols to the WARP hop and the split disappears. The proof it must still collect is the
+production pass — the exit address and a UDP flow (DNS) through the tunnel — because every part of this
+crosses a network nobody here controls. The pass found that the sidecar alone cannot carry UDP for this
+core — `usque` keys a SOCKS5 UDP association on the control connection's own address — so the released form
+puts a small loopback relay (`termit-usque-relay.service`) in front of it; §11.15 has the measurement and
+the code in question.
+
 The hysteria half of that is proved on production (§11.13): a client through the QUIC transport on then5
 exited at `104.28.222.18` with `warp=on`, and the address families the node does not serve were refused
 rather than answered with the node's own address. The `proxy` transport cannot carry UDP at all — `warp-cli`
@@ -1608,23 +1619,38 @@ The request has two sizes, and the smaller one may be enough:
   the URI fails silently, and because some values are already known-bad here: an `h2` ALPN cannot cross
   nginx's HTTP/1.1 hop, and a `chrome` hello was frozen on a measured path. These change the URI builder,
   the generator and the prober together.
-- **A second protocol** — REALITY, Trojan/VMess/Shadowsocks, Hysteria2/TUIC. The profile becomes
-  `{kind, version, params}` with a codec per kind. REALITY first: same core, same VLESS payload, and
-  already named as a later profile in `DESCRIPTION.md` §3. Shadowsocks and Trojan are also xray-core
-  protocols. Hysteria2/TUIC are UDP, need another client on MN and another listener on UV; MTProto is a
-  different product.
+- **A second protocol** — Hysteria2/TUIC are UDP, need another client on MN and another listener on UV;
+  Hysteria2 shipped in `0.5.0` (§10.3) and is the one that answered a real block. MTProto is a different
+  product. The profile becomes `{kind, version, params}` with a codec per kind, and that envelope is what a
+  new kind plugs into — but only when a kind is actually coming, because a map with no consumer is a schema
+  nobody can check.
+
+**Dropped on 2026-11-22, with the reasons**, so nobody re-opens them from scratch:
+
+- **REALITY.** In its honest form — `dest` = the node's own vhost, `serverNames` = its own domain — it is
+  externally very nearly our current TLS: the same certificate, the same nginx answers a prober byte for
+  byte, the same SNI resolves to the same IP. What it changes is internal: the core takes TCP/443, nginx
+  moves to a loopback port, the decoy becomes a relay target instead of the terminator, and a dead nginx
+  becomes a dead TLS server, which is a signal of its own. And the variant that is easier to deploy, a
+  foreign `dest`, is the one active probing catches — the domain's real address is somewhere else than the
+  IP being probed. So: real work, no gain over what the node already does.
+- **Shadowsocks.** Its own credential shape (a password, not the per-pair UUID), and no TLS of its own: the
+  protocol has a fixed, well-fingerprinted handshake, so a node running it stops passing for a website. The
+  derived-password trick used for Hysteria2 could be repeated, but the fingerprint argument is the one that
+  decides it.
+- **Trojan.** Reasons and the alternative are in the next paragraph.
 
 Constraints, in the order they decide the design:
 
-1. **The credential model is VLESS-shaped.** Pair access is a UUID derived per pair; Shadowsocks and
-   Hysteria2 use passwords, REALITY keeps the UUID. For Hysteria2 the password is a one-way derivation of
-   that UUID (§10.3), so the mesh still expresses "A may use B" with what both sides already hold and the
-   epoch does not move. A kind whose secret cannot be derived from the UUID would change
-   `DESCRIPTION.md` §6.2, which is a new `credential_epoch` and a migration.
-2. **Port 443 is shared with the decoy and ACME.** nginx owns TCP/443 today. REALITY wants the core on
-   443 and takes the client-facing handshake from nginx, so the decoy becomes REALITY's fallback and the
-   certificate flow changes. QUIC protocols use UDP/443 and do not collide with nginx, but need their
-   own probe path.
+1. **The credential model is VLESS-shaped.** Pair access is a UUID derived per pair (Shadowsocks and Trojan
+   use passwords; Hysteria2 uses a password derived from that UUID, §10.3, so the mesh still expresses "A may
+   use B" with what both sides already hold and the epoch does not move). A kind whose secret cannot be
+   derived from the UUID would change `DESCRIPTION.md` §6.2, which is a new `credential_epoch` and a
+   migration. Only a kind we actually adopt should pay that.
+2. **Port 443 is shared with the decoy and ACME.** nginx owns TCP/443 today, and that is now a decision, not
+   an accident: the profile rides *behind* nginx, so the decoy, the certificate and the ACME path stay in
+   one place, and a QUIC protocol takes UDP/443 without colliding. A kind that wanted the client-facing
+   handshake for itself — REALITY was the candidate — would end that, and is dropped.
 3. **The prober is one binary.** MN's `xray-core` speaks every xray-core protocol; Hysteria2/TUIC need
    another client there. Decided: MN links hysteria's own client module
    (`github.com/apernet/hysteria/core/v2/client`), so the probe carries the same handshake by construction
@@ -1640,12 +1666,21 @@ Constraints, in the order they decide the design:
    and anything needing a port forward stay out. A transport the core cannot speak is the one exception,
    under the conditions in `DESCRIPTION.md` §11, invariant 8; every other kind runs inside the core it already has.
 
+- **Trojan.** The one real merit it has is client compatibility: `trojan://` is read by stock sing-box,
+  Mihomo and older apps, while the XHTTP profile is not. Everything else argues against it. In Xray it is an
+  inbound *with its own TLS*, so it wants TCP/443 exactly as REALITY does — the same rework of the port, the
+  certificate path and the decoy — and it does not bring REALITY's active-probing story to pay for it: a
+  prober that knows what to send gets a distinguishable answer, and the encapsulated traffic is TLS inside
+  TLS, which is a statistical tell of its own. The password could be derived from the pair UUID the way
+  Hysteria2's is, so credentials are not the blocker; the shape of the deployment is. **If client
+  compatibility ever bites, the cheaper answer is a second rendering of the same profile behind nginx** —
+  VLESS over WebSocket on a loopback port with an nginx `location` in front, TLS still nginx's, nothing
+  taking 443, and stock sing-box able to read it. That is a profile option, not a new kind.
+
 Order in 0.5.0: the options first (small, no credential change), and the `{kind, version, params}` envelope
 built for the kind that ships in that release — Hysteria2 (§10.3), which is a binary of its own and
-therefore the expensive one. REALITY and the other xray-core kinds reuse the envelope and come later: they
-are cheaper, because the prober already speaks them and no second daemon appears. Never expose raw Xray
-JSON: a per-kind schema with validation is the only thing that keeps the generator, parser and prober from
-drifting apart.
+therefore the expensive one. Never expose raw Xray JSON: a per-kind schema with validation is the only thing
+that keeps the generator, parser and prober from drifting apart.
 
 Acceptance: a second kind end to end on the lab — URI build/parse round-trip, generated document golden
 plus `xray -test`, an MN probe through it, both subscription forms, a client that does not support it
@@ -1653,7 +1688,11 @@ getting a clear refusal, and the decoy/ACME/direct-traffic invariants unchanged.
 must show an old MN and a new UV (and the reverse) refusing the mismatch instead of writing a config
 that cannot work.
 
-### 10.3 Hysteria2 as a second transport
+### 10.3 Hysteria2 as a second transport — done in 0.5.0 and 0.5.1
+
+**Completed.** Phase 1 (the pinned binary, the unit, the generated config, the loopback hop) shipped in
+`0.5.0`; phase 2 (the envelope the mesh reads, the links in `uri`/`device`/the page) in `0.5.1`; the
+production passes are §11.12 and §11.13. What this section argued is what the code does.
 
 The node's profile is TLS that nginx terminates. Where a network interferes with that shape, the answer
 that works today is a QUIC transport: it runs on UDP, so the interference aimed at TCP/443 does not see
@@ -2012,8 +2051,9 @@ What decides the real design, before any code:
 - **The terminal.** `termit-uv uri --qr` printing half-block characters is a nice-to-have, not part of this
   item: the phone case needs the page, and a terminal QR is a second renderer to keep right.
 
-A `0.5.x` patch carried it after all: the advisory list blocks `0.6.0` until hysteria ships a fix (§10
-intro), and a page nobody can scan is not worth waiting for that.
+A `0.5.x` patch carried it after all: `0.6.0` was reserved for a hysteria bump that never had anything to
+bump (GO-2026-5288 turned out to be a stale record, §10 intro), and a page nobody can scan is not worth
+waiting for that.
 
 Acceptance: on a phone, the camera opens a row's code and the client imports the link; the page references
 no external host and still passes the existing test that fails a page referencing one (`internal/uv/options/options_test.go`); a Go test round-trips the encoder
@@ -2023,6 +2063,40 @@ without a clear error; `go test` grows no dependency.
 Documents when this ships: `docs/guide/ru/using-uv.md` and its English counterpart (the page description),
 `docs/OPERATIONS.md` §8 for the owner's page, `--help` for the optional flag, and a changelog entry that
 names the screenshot consequence.
+### 10.9 Update offers: the node follows the server, the server follows GitHub
+
+Two problems that look alike and are not, deliberately kept as two code paths.
+
+**The node.** The server is the mesh's authority and already knows which build every node runs — `agent_version`
+in the sync request, printed by `termit-mn uv list`. The reverse half shipped in `0.6.0`: `server_version` in
+the sync answer, remembered in the node's state beside the last sync and printed by `termit-uv status`. `server_version` joins the sync answer (`omitempty`, and the node's decoder is lenient, so an
+old node ignores it and an old server simply sends nothing), the node stores it beside the last sync, and the
+menu, on launch, compares it with the running build. The policy is the owner's, and both halves have a reason
+beyond caution: **offer the server's version and never "latest"** — the server is what the mesh has been proved
+against, and a node that outruns its server is a node whose links that server may not know how to render; and
+**never a prerelease** — a `p` suffix names a build that exists to be proved on one box, and offering it in a
+menu would turn the prompt into noise. Equal or older is not an update, so the prompt stays silent.
+
+The *execution* is where the care is, because it replaces the binary the process is running from. The shape:
+fetch the release's `SHA256SUMS` and the asset for the architecture, check the digest before anything else,
+swap with a rename in the same directory while keeping the previous binary, run `termit-uv init --no-enroll`
+with the new one, and put the old one back if that fails. That is `termit-uv upgrade --to <version>`, and the
+menu entry wraps it; it is not `curl | bash` (§12) — the digest is from the release itself and is checked
+before the swap, and a convergence that fails rolls back. An unattended node never updates itself: an updater
+on a timer is a remote-code path, and the prompt exists so a human is in the loop.
+
+**The server.** An MN cannot learn "the newest release" from itself; it has to ask GitHub, which would make it
+the one place in the project that talks to a host it does not otherwise need. So the offer is explicit:
+`termit-mn update --check` prints the newest release above the running build, `--apply` runs the same verified
+download and restart, and the menu offers it. Its policy is the mirror of the node's — **it may offer what
+GitHub says is newest, prereleases excluded**, because there is no higher authority to follow. The GitHub call
+must tolerate no network and rate limiting (a reminder, not a check), and its result must never enter `status`
+or `doctor`: a server that cannot reach GitHub is not an unhealthy server.
+
+Open when this is implemented: whether the menu line is the only door (for the node, yes — the menu is the
+interactive door and the prompt is the point), and whether `upgrade` should accept a version the server never
+offered (yes, with the operator naming it; the prompt is the convenience, not the permission).
+
 ## 11. Planned: WARP over WireGuard inside the core (0.5.0)
 
 The one thing `0.3.2` gave up is that UDP leaves from the node's address: `warp-cli`'s proxy mode cannot
@@ -2457,3 +2531,57 @@ UDP association, so UDP exits directly`, and `--json` carries `"udp": "direct"`;
 met for the one transport that cannot do better.
 
 Backups: `sh uv.sh` and `sh mn.sh` wrote their own before the install (see `.spike-out/prod.md`).
+### 11.15 Production pass, 0.6.0, 2026-11-22
+
+`0.6.0` adds the MASQUE transport (`warp.transport: usque`), carries the server's build in the sync answer,
+decodes a peer's label on the page, and records the advisory and the three protocol decisions. The pass was
+required because option D is a third-party daemon plus a loopback hop, and Cloudflare's MASQUE endpoints are
+not reachable from the lab.
+
+**It found four bugs before it found the transport working**, each invisible to the unit tests and to the
+lab because each is a fact about a real host:
+
+1. The pinned release URL carried the tag twice (`.../download/v4.2.1/v4.2.1/...`, a 404); the base now
+   stops at `download`, and a test pins the URL the release really serves.
+2. `usque register` asks for Cloudflare's terms on stdin unless `--accept-tos` is passed, and an install has
+   no stdin: `failed to read user input: EOF`. The flag is passed and OPERATIONS says whose acceptance it is.
+3. The unit was written and nothing started it — `units` only reloads systemd, and the start step knew
+   `termit-hysteria` but not `termit-usque`: `loaded; disabled; inactive`, with the core's SOCKS hop pointing
+   at a closed port. The start step enables it.
+4. The unit's `User=termit-usque` did not exist (`Failed to determine user credentials: No such process`,
+   status 217/USER), and the device file was `root:root 0600`, which the sidecar's account could not read.
+   The user step creates the account and joins it to the core's group; the file is `root:termit-usque 0640`,
+   and a registration written before that rule is repaired instead of registering a second device.
+
+**Then the real blocker.** With the sidecar up, TCP through it worked and UDP did not. `usque`'s SOCKS5
+(upstream `txthinking/socks5`, `request.go`) keys the association on the client address of the control
+connection — for a wildcard request it takes `c.RemoteAddr()` — and `UDPHandle` refuses a datagram from any
+other source: `udp address 127.0.0.1:53284 is not associated with tcp`. Xray's socks client opens a fresh
+UDP socket, so every flow died there; a plain `socks -> socks(127.0.0.1:40002)` config with no VLESS in it
+reproduced it. `internal/socks5.go` on usque's `main` is identical to `v4.2.1`, and `v4.2.1` is still the
+newest release, so there was no upstream fix to wait for.
+
+**The relay.** `termit-usque-relay.service` (`termit-uv warp-relay`) listens on `127.0.0.1:40001`, which is
+what the core dials, and the sidecar moved to `40002`. Per association the relay opens its own control
+connection to the sidecar, binds the UDP socket to that connection's port and forwards the SOCKS5 datagrams
+verbatim; TCP goes through the same relay as a plain CONNECT. A unit test drives a fake sidecar that refuses
+a mismatched source port, so the property the relay exists for is checked without usque.
+
+**What production proved, on then5 with `v0.6.0p7`.** Through `127.0.0.1:40001`:
+`curl` exits at `2a09:bac5:31cd:…` with `warp=on`, and a STUN query — the same ICE/STUN a voice client uses —
+returns `104.28.222.16:…`, i.e. UDP leaves at Cloudflare and not at the node's own `144.31.53.114`.
+`warp status` reports `udp: through warp (the MASQUE sidecar)`. With the sidecar and the relay stopped it
+reports `egress: unavailable` and `udp: direct`, the decoy still answers `200`, and direct traffic leaves at
+the node's address: the document's balancer carries `fallbackTag: direct`, which is the fail-open. The node
+then went back to `wireguard`: `egress: on via 104.28.222.16`, the sidecar's unit, binary and device file
+gone, `doctor` 20 ok, `in sync: 5 client(s), 3 peer(s)`.
+
+One observation recorded rather than fixed: `warp.family: ipv4` is not applied on this transport — the MASQUE
+tunnel is dual-stack and the trace egressed over IPv6 (`2a09:…`). That is not the node's own address and so
+not the 0.5.0 leak, but it is not what the key says either; the sidecar would have to be told, which it
+cannot be through its command line today.
+
+Pre-releases on the way: `v0.6.0p1` (`9445a9b`), p2 (`d3ddce1`), p3 (`9738ee2`), p4 (`bdd963d`), p5
+(`295931a`), p6 (`9a53ab2`, whose CI failed on the relay's spoof test), p7 (`8e4fe30`). The MN took p1, p2
+and later `v0.6.0`; then5 took p1–p7. Backups: `/root/termit-mn-pre-060p1-20261122-153137`,
+`/root/termit-pre-060p1-20261122-173207`, and the p2/p5 copies beside them.

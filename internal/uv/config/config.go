@@ -183,8 +183,10 @@ type Warp struct {
 	// configuration still loads, and never written again.
 	Enabled *bool `yaml:"enabled,omitempty"`
 	// Transport is how proxied traffic reaches WARP: "proxy" hands it to warp-cli's loopback SOCKS5
-	// listener (TCP only), "wireguard" keeps a WireGuard tunnel inside the core (TCP and UDP). A
-	// configuration written before this key existed means proxy; fresh installs write wireguard.
+	// listener (TCP only), "wireguard" keeps a WireGuard tunnel inside the core (TCP and UDP), and
+	// "usque" runs the MASQUE client as a sidecar whose SOCKS5 listener carries TCP and UDP, which is
+	// the only way to close proxy mode's UDP gap without the core speaking MASQUE. A configuration
+	// written before this key existed means proxy; fresh installs write wireguard.
 	Transport string `yaml:"transport,omitempty"`
 	// Family is the address family the tunnel carries: "ipv4" or "ipv6". Empty means ipv4, which is
 	// what a fresh configuration writes. Destinations of the other family go direct: Cloudflare's IPv6
@@ -211,6 +213,9 @@ func (w Warp) FamilyOrDefault() string {
 const (
 	WarpTransportProxy     = "proxy"
 	WarpTransportWireGuard = "wireguard"
+	// WarpTransportUsque is the MASQUE sidecar: a pinned usque binary exposing loopback SOCKS5 with
+	// UDP, so both protocols reach WARP without a kernel tunnel or a host route.
+	WarpTransportUsque = "usque"
 )
 
 // TransportOrDefault is the transport this configuration asks for, with the historical default filled
@@ -224,6 +229,13 @@ func (w Warp) TransportOrDefault() string {
 
 // UsesWireGuard reports whether the tunnel lives inside the core.
 func (w Warp) UsesWireGuard() bool { return w.TransportOrDefault() == WarpTransportWireGuard }
+
+// UsesUsque reports whether proxied traffic reaches WARP through the MASQUE sidecar.
+func (w Warp) UsesUsque() bool { return w.TransportOrDefault() == WarpTransportUsque }
+
+// CarriesUDP reports whether the transport can hand a UDP flow to WARP. warp-cli's SOCKS5 listener
+// cannot, which is why UDP went direct there and why the status says so.
+func (w Warp) CarriesUDP() bool { return w.UsesWireGuard() || w.UsesUsque() }
 
 // Hysteria is the QUIC transport: a second process beside the core, off by default because it costs a
 // listener on UDP/443 and about 50 MB of resident memory. Its traffic enters the core through the
@@ -302,14 +314,17 @@ type Paths struct {
 	BinDir         string `yaml:"bin_dir"`
 	XrayConfig     string `yaml:"xray_config"`
 	HysteriaConfig string `yaml:"hysteria_config"`
-	NginxSite      string `yaml:"nginx_site"`
-	SitesEnabled   string `yaml:"sites_enabled"`
-	UnitDir        string `yaml:"unit_dir"`
-	ConfigFile     string `yaml:"config_file"`
-	NginxDropIn    string `yaml:"nginx_drop_in"`
-	DecoySnippet   string `yaml:"decoy_snippet"`
-	AccessLog      string `yaml:"access_log"`
-	ErrorLog       string `yaml:"error_log"`
+	// UsqueConfig is the MASQUE sidecar's own device file, written by `usque register`. It holds the
+	// device key and the access token, so it is a credential: 0600, and never rewritten once written.
+	UsqueConfig  string `yaml:"usque_config"`
+	NginxSite    string `yaml:"nginx_site"`
+	SitesEnabled string `yaml:"sites_enabled"`
+	UnitDir      string `yaml:"unit_dir"`
+	ConfigFile   string `yaml:"config_file"`
+	NginxDropIn  string `yaml:"nginx_drop_in"`
+	DecoySnippet string `yaml:"decoy_snippet"`
+	AccessLog    string `yaml:"access_log"`
+	ErrorLog     string `yaml:"error_log"`
 }
 
 // Default returns a configuration with every default applied and no domain. It is what `termit-uv doctor`
@@ -451,9 +466,14 @@ func (c *Config) Validate() error {
 		}
 	}
 	switch c.Warp.Transport {
-	case "", WarpTransportProxy, WarpTransportWireGuard:
+	case "", WarpTransportProxy, WarpTransportWireGuard, WarpTransportUsque:
 	default:
-		problems = append(problems, fmt.Errorf("warp.transport %q must be proxy or wireguard", c.Warp.Transport))
+		problems = append(problems, fmt.Errorf("warp.transport %q must be proxy, wireguard or usque", c.Warp.Transport))
+	}
+	if c.Warp.UsesUsque() && c.Warp.Family != "" && c.Warp.Family != WarpFamilyIPv4 {
+		// The MASQUE tunnel carries both families; the family switch only means anything for the
+		// WireGuard outbound, where the core takes one default route.
+		problems = append(problems, errors.New("warp.family only applies to the wireguard transport"))
 	}
 	switch c.Warp.Family {
 	case "", WarpFamilyIPv4, WarpFamilyIPv6:
@@ -578,6 +598,9 @@ func (p *Paths) applyDefaults() {
 	if p.HysteriaConfig == "" {
 		p.HysteriaConfig = path.Join(p.ConfigDir, "hysteria.yaml")
 	}
+	if p.UsqueConfig == "" {
+		p.UsqueConfig = path.Join(p.ConfigDir, "usque.json")
+	}
 	if p.NginxSite == "" {
 		p.NginxSite = "/etc/nginx/sites-available/termit.conf"
 	}
@@ -632,6 +655,9 @@ func (p Paths) XrayBinary() string { return path.Join(p.BinDir, "xray") }
 
 // HysteriaBinary is the installed QUIC transport.
 func (p Paths) HysteriaBinary() string { return path.Join(p.BinDir, "hysteria") }
+
+// UsqueBinary is the installed MASQUE sidecar.
+func (p Paths) UsqueBinary() string { return path.Join(p.BinDir, "usque") }
 
 func (p Paths) validate() []error {
 	var problems []error

@@ -126,6 +126,13 @@ func (w WarpSpec) Enabled() bool { return w.Mode == "all" || w.Mode == "selected
 // UsesWireGuard reports whether the tunnel lives inside the core rather than in the warp-cli sidecar.
 func (w WarpSpec) UsesWireGuard() bool { return w.Transport == WarpTransportWireGuard }
 
+// UsesUsque reports whether the sidecar is the MASQUE client, whose SOCKS5 listener carries UDP.
+func (w WarpSpec) UsesUsque() bool { return w.Transport == WarpTransportUsque }
+
+// CarriesUDP reports whether the egress can carry a UDP flow. The warp-cli sidecar cannot, and the
+// rules below split UDP to direct for it; everything else takes both protocols the same way.
+func (w WarpSpec) CarriesUDP() bool { return w.UsesWireGuard() || w.UsesUsque() }
+
 // FamilyOrDefault is the address family the tunnel carries; the default is IPv4.
 func (w WarpSpec) FamilyOrDefault() string {
 	if w.Family == "" {
@@ -168,9 +175,17 @@ func familyAddresses(addresses []string, family string) []string {
 const (
 	// DefaultWarpSocks is warp-cli's proxy-mode SOCKS5 listener on loopback.
 	DefaultWarpSocks = "127.0.0.1:40000"
+	// DefaultUsqueSocks is the address the core hands proxied traffic to on the MASQUE transport. It is
+	// the relay's listener, not the sidecar's: usque keys a UDP association on the TCP connection that
+	// asked for it, so a relay sits in front and sends the flow from that connection's own port.
+	DefaultUsqueSocks = "127.0.0.1:40001"
+	// DefaultUsqueSidecar is where the MASQUE sidecar itself listens, behind the relay.
+	DefaultUsqueSidecar = "127.0.0.1:40002"
 	// WarpTransportProxy is the sidecar path: the core hands proxied traffic to warp-cli's SOCKS5
 	// listener. It carries TCP only, which is why UDP is routed direct on this transport.
 	WarpTransportProxy = "proxy"
+	// WarpTransportUsque is the MASQUE sidecar, whose SOCKS5 listener carries UDP behind the relay.
+	WarpTransportUsque = "usque"
 	// WarpTransportWireGuard keeps the tunnel inside the core. UDP and TCP take the same path, and no
 	// package, daemon or loopback port is involved.
 	WarpTransportWireGuard = "wireguard"
@@ -293,8 +308,10 @@ func (s Spec) Validate() error {
 				problems = append(problems, fmt.Errorf("the wireguard identity has no %s tunnel address", s.Warp.FamilyOrDefault()))
 			}
 		}
+	case WarpTransportUsque:
+		// The sidecar is a process, not a document: the spec only has to agree on where it listens.
 	default:
-		problems = append(problems, fmt.Errorf("warp transport %q must be proxy or wireguard", s.Warp.Transport))
+		problems = append(problems, fmt.Errorf("warp transport %q must be proxy, wireguard or usque", s.Warp.Transport))
 	}
 	if len(s.Clients) == 0 {
 		problems = append(problems, errors.New("at least one client is required"))
@@ -507,6 +524,9 @@ func warpSocks(w WarpSpec) (string, int) {
 	address := w.Socks
 	if address == "" {
 		address = DefaultWarpSocks
+		if w.UsesUsque() {
+			address = DefaultUsqueSocks
+		}
 	}
 	host, rawPort, err := net.SplitHostPort(address)
 	if err != nil {
@@ -515,6 +535,9 @@ func warpSocks(w WarpSpec) (string, int) {
 	port, err := strconv.Atoi(rawPort)
 	if err != nil || port < 1 || port > 65535 {
 		port = 40000
+		if w.UsesUsque() {
+			port = 40001
+		}
 	}
 	return host, port
 }
@@ -530,7 +553,7 @@ func warpSocks(w WarpSpec) (string, int) {
 // SOCKS5 proxy that cannot carry UDP does not fail loudly — the flow simply never returns, and the
 // first thing a client sends is DNS.
 func warpRules(w WarpSpec, balancerTag string) []rule {
-	if w.UsesWireGuard() {
+	if w.CarriesUDP() {
 		tunnel := rule{Type: "field", Network: "tcp,udp"}
 		if w.Mode == "selected" {
 			domains := append([]string(nil), w.Selected...)
@@ -541,6 +564,11 @@ func warpRules(w WarpSpec, balancerTag string) []rule {
 			tunnel.BalancerTag = balancerTag
 		} else {
 			tunnel.OutboundTag = WarpTag
+		}
+		if !w.UsesWireGuard() {
+			// The MASQUE sidecar carries both families through its own stack, so there is no untaken
+			// family to refuse and no default route to choose.
+			return []rule{tunnel}
 		}
 		// The tunnel carries one family, so the other one is named explicitly rather than left to the
 		// trailing default. It used to go direct — the way it went before WARP existed — which meant it

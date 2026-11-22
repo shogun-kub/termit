@@ -3,12 +3,15 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 
 	"github.com/shogun-kub/termit/internal/uv/config"
 	"github.com/shogun-kub/termit/internal/uv/install"
+	"github.com/shogun-kub/termit/internal/uv/service"
 	"github.com/shogun-kub/termit/internal/uv/state"
 	"github.com/shogun-kub/termit/internal/uv/tunnelprobe"
 	"github.com/shogun-kub/termit/internal/uv/warp"
@@ -71,6 +74,33 @@ through the tunnel says Cloudflare sees. WARP is on by default; `+"`termit-uv wa
 		if code := a.wireGuardStatus(cfg, &report); code != exitOK {
 			return code
 		}
+	} else if cfg.Warp.UsesUsque() {
+		report.Socks = xray.DefaultUsqueSocks
+		switch {
+		case !cfg.Warp.UsesWarp():
+			report.State = "off"
+			report.Detail = "proxied traffic exits directly"
+		default:
+			// The sidecar has no status command of its own; the honest check is the one the node's
+			// traffic makes, a trace fetched through its SOCKS5 listener.
+			trace, err := warp.Client{Socks: xray.DefaultUsqueSocks}.Trace(context.Background())
+			switch {
+			case err != nil:
+				report.State = "unavailable"
+				report.Detail = err.Error()
+			case trace.ThroughWarp():
+				report.State = "on"
+				report.Detail = "via " + trace.IP
+				report.Trace = &trace
+			default:
+				report.State = "direct"
+				report.Detail = "the probe says warp=off at " + trace.IP
+				report.Trace = &trace
+			}
+			if report.State == "unavailable" && !cfg.Warp.FailOpenEnabled() {
+				report.State = "blocked"
+			}
+		}
 	} else {
 		client := a.warpClient()
 		hostErr := client.Host.Check()
@@ -103,10 +133,14 @@ through the tunnel says Cloudflare sees. WARP is on by default; `+"`termit-uv wa
 		}
 	}
 
-	// UDP follows the transport, not the mode: only the core's own stack carries it.
-	if report.Transport == config.WarpTransportWireGuard && report.State == "on" {
+	// UDP follows the transport, not the mode: the core's own stack and the MASQUE sidecar carry it, and
+	// warp-cli's SOCKS5 listener cannot.
+	switch {
+	case report.State != "on":
+		report.UDP = "direct"
+	case cfg.Warp.CarriesUDP():
 		report.UDP = "warp"
-	} else {
+	default:
 		report.UDP = "direct"
 	}
 
@@ -141,11 +175,19 @@ through the tunnel says Cloudflare sees. WARP is on by default; `+"`termit-uv wa
 		}
 		fmt.Fprintf(a.stdout, "fail:    %s\n", map[bool]string{true: "open (direct)", false: "closed (no egress)"}[cfg.Warp.FailOpenEnabled()])
 	}
-	if report.Transport == config.WarpTransportWireGuard {
-		// The core's own stack terminates UDP too, so a QUIC flow leaves from Cloudflare's address as
-		// well; that is what §11.13 measured through the transport.
-		fmt.Fprintln(a.stdout, "udp:     through warp (the core's own stack)")
-	} else if report.Transport == config.WarpTransportProxy && cfg.Warp.UsesWarp() {
+	if cfg.Warp.CarriesUDP() {
+		// The core's own stack and the MASQUE sidecar both terminate UDP, so a QUIC flow leaves from
+		// Cloudflare's address as well; that is what §11.13 measured through the transport. When WARP is
+		// not on, the same flows leave on the node's own address and the line has to say so.
+		switch {
+		case report.State != "on":
+			fmt.Fprintln(a.stdout, "udp:     direct — WARP is not on")
+		case report.Transport == config.WarpTransportUsque:
+			fmt.Fprintln(a.stdout, "udp:     through warp (the MASQUE sidecar)")
+		default:
+			fmt.Fprintln(a.stdout, "udp:     through warp (the core's own stack)")
+		}
+	} else if cfg.Warp.UsesWarp() {
 		// warp-cli's SOCKS5 listener has no UDP ASSOCIATE: a UDP flow handed to it never returns, so the
 		// generator sends UDP direct and the address WARP exists to hide is not hidden for it. Saying so
 		// is the honest end of "carries UDP through WARP or says it cannot" (§10.1).
@@ -331,6 +373,42 @@ func tunnelExit(ctx context.Context, cfg *config.Config) (warp.Status, error) {
 	return status, nil
 }
 
+// rotateUsque registers the sidecar again with Cloudflare. The device key is the credential the sidecar
+// holds, so the old file goes first and a failed registration leaves the node without WARP rather than
+// with two identities it cannot tell apart.
+func (a *application) rotateUsque(cfg *config.Config) int {
+	path := cfg.Paths.UsqueConfig
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		fmt.Fprintf(a.stderr, "termit-uv warp rotate: %v\n", err)
+		return exitFailure
+	}
+	if _, err := a.exec.Run(context.Background(), install.Cmd{
+		Name: cfg.Paths.UsqueBinary(), Args: []string{"register", "-c", path, "-n", "termit-uv"},
+	}); err != nil {
+		fmt.Fprintf(a.stderr, "termit-uv warp rotate: %v\n", err)
+		return exitFailure
+	}
+	if err := os.Chmod(path, 0o600); err != nil {
+		fmt.Fprintf(a.stderr, "termit-uv warp rotate: %v\n", err)
+		return exitFailure
+	}
+	if _, err := a.exec.Run(context.Background(), install.Cmd{
+		Name: "systemctl", Args: []string{"restart", service.UsqueUnitName},
+	}); err != nil {
+		fmt.Fprintf(a.stderr, "termit-uv warp rotate: restart the sidecar: %v\n", err)
+		return exitFailure
+	}
+	fmt.Fprintln(a.stdout, "warp: registered a new MASQUE device; the sidecar was restarted")
+	// The address is what the operator actually asked about, and it is the one fact the command can leave
+	// them with when everything else succeeded.
+	if trace, err := (warp.Client{Socks: xray.DefaultUsqueSocks}).Trace(context.Background()); err == nil {
+		fmt.Fprintf(a.stdout, "warp: exits at %s (warp=%s)\n", trace.IP, trace.Warp)
+	} else {
+		fmt.Fprintf(a.stderr, "termit-uv warp rotate: the trace did not answer: %v\n", err)
+	}
+	return exitOK
+}
+
 // runWarpRotate replaces the node's WARP registration on the wireguard transport. It is a deliberate
 // act: a new identity is a new device on Cloudflare's side, and the old one keeps existing there. The
 // proxy transport has nothing to rotate — warp-cli owns its registration.
@@ -346,6 +424,9 @@ new one.`)
 	if err != nil {
 		fmt.Fprintf(a.stderr, "termit-uv warp rotate: %v\n", err)
 		return exitFailure
+	}
+	if cfg.Warp.UsesUsque() {
+		return a.rotateUsque(cfg)
 	}
 	if !cfg.Warp.UsesWireGuard() {
 		fmt.Fprintf(a.stderr, "termit-uv warp rotate: this node uses the proxy transport, where warp-cli owns the registration\n")

@@ -25,9 +25,9 @@ var engineNow = time.Date(2026, 11, 9, 15, 0, 0, 0, time.UTC)
 const skippedSteps = 3
 
 // presentOnAFreshNode counts the steps that report "already done" on a node that has none of the work:
-// the egress probe, whose sandboxed core never becomes active, and the transport's retire step, which has
-// nothing to retire because the transport was never enabled.
-const presentOnAFreshNode = 2
+// the egress probe, whose sandboxed core never becomes active, and the two retire steps, which have
+// nothing to retire because neither transport was ever enabled.
+const presentOnAFreshNode = 3
 
 type sandbox struct {
 	exec     *fakeExecutor
@@ -68,7 +68,7 @@ func newSandbox() *sandbox {
 			return okResult("")
 		case "systemctl":
 			return s.systemctl(cmd)
-		case "nginx", "chown":
+		case "nginx", "chown", "usermod":
 			return okResult("")
 		case "nft":
 			return s.nft(cmd)
@@ -312,9 +312,9 @@ func TestEngineResumesAfterFailure(t *testing.T) {
 		t.Fatalf("resume Run: %v", err)
 	}
 	counts := resumeReport.Counts()
-	// Four now: the two steps before the failure, the egress probe, which the fake sandbox reports as
-	// skipped because its core is never active, and the transport retire step, which finds nothing.
-	if counts[state.StepPresent] != 4 || counts[state.StepOK] != len(resumed.Steps())-skippedSteps-4 {
+	// Five now: the two steps before the failure, the egress probe, which the fake sandbox reports as
+	// skipped because its core is never active, and the two transport retire steps, which find nothing.
+	if counts[state.StepPresent] != 5 || counts[state.StepOK] != len(resumed.Steps())-skippedSteps-5 {
 		t.Errorf("resume counts = %v, want the two steps before the failure present and the rest ok: %+v", counts, resumeReport.Steps)
 	}
 	if !resumed.State().Installed() {

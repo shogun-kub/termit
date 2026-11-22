@@ -42,6 +42,7 @@ type jsonStatus struct {
 	LastSyncAt    *time.Time     `json:"last_sync_at,omitempty"`
 	NextSyncAt    *time.Time     `json:"next_sync_at,omitempty"`
 	LastSyncState string         `json:"last_sync_result,omitempty"`
+	ServerVersion string         `json:"server_version,omitempty"`
 	SyncFailures  int            `json:"sync_failures,omitempty"`
 	SelfCheck     *jsonSelfCheck `json:"self_check,omitempty"`
 	Warp          jsonWarpStatus `json:"warp"`
@@ -152,6 +153,9 @@ the last install run. Secrets are shown as sha256 prefixes only.`)
 			ID: peer.ID, Domain: peer.Domain, State: peer.State, Degraded: peer.Degraded,
 		})
 	}
+	if node.ServerVersion != "" {
+		out.ServerVersion = node.ServerVersion
+	}
 	if !node.Schedule.LastSyncAt.IsZero() {
 		last := node.Schedule.LastSyncAt
 		out.LastSyncAt = &last
@@ -243,6 +247,9 @@ the last install run. Secrets are shown as sha256 prefixes only.`)
 	}
 	if out.OptionsPage != "" {
 		fmt.Fprintf(a.stdout, "options:      %s\n", out.OptionsPage)
+	}
+	if out.ServerVersion != "" {
+		fmt.Fprintf(a.stdout, "server:       %s\n", out.ServerVersion)
 	}
 	if out.LastSyncAt != nil {
 		fmt.Fprintf(a.stdout, "last sync:    %s %s\n", orDefault(out.LastSyncState, "unknown"),

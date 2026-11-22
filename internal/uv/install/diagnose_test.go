@@ -133,3 +133,20 @@ func TestDiagnoseCertificateWindow(t *testing.T) {
 		t.Errorf("expired certificate = %q, want fail", got)
 	}
 }
+
+// A node whose transport is the MASQUE sidecar must be checked against the sidecar, not against warp-cli:
+// the only honest evidence is a trace fetched through its loopback SOCKS5 listener, and its absence is a
+// failure because that transport exists to carry the traffic.
+func TestDiagnoseChecksTheMasqueSidecar(t *testing.T) {
+	t.Parallel()
+	cfg, sb := installForDiagnose(t)
+	cfg.Warp.Transport = config.WarpTransportUsque
+	cfg.Warp.Mode = config.WarpAll
+
+	checks := checkStatuses(Diagnose(context.Background(), DiagnoseOptions{
+		Config: cfg, Exec: sb.exec, Now: fixedNow,
+	}))
+	if got := checks["warp"]; got != StatusFail {
+		t.Errorf("warp = %q, want fail while the sidecar is not running", got)
+	}
+}
