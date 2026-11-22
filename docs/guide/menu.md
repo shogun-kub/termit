@@ -35,12 +35,12 @@ a provisioning script is a hang, not a convenience.
 │    peer path     e9438a65                                            │
 │    serves        TLS/443 only                                        │
 │    egress        all via wireguard                                   │
-│    server        v0.7.0                                              │
+│    server        v0.7.0 (this node is behind)                        │
 │    peers         3 (1 degraded)                                      │
 │    sync          2h ago                                              │
 │    ✔ installed                                                       │
 │                                                                      │
-│    1   State                what this node is, and whether it is…   │
+│    1   State                what this node is, and whether it is…    │
 │    2   Network              counters, WARP, the second transport     │
 │    …                                                                 │
 │    8   Help                 every command and flag                   │
@@ -82,7 +82,7 @@ runs.
 **State** — *what this node is, and whether it is healthy*
 
 - `status` — domain, identity fingerprints, certificate, peers, last and next sync, WARP
-- `doctor` — host and node diagnostics; changes nothing
+- `doctor` — host, node and tunnel diagnostics in three groups, with one verdict; changes nothing
 
 **Network** — *counters, WARP, the second transport*
 
@@ -118,8 +118,8 @@ runs.
 
 - `init` — install or converge; the first run asks for domain, email and WARP
 - `wizard` — the whole first installation as questions; remembers the answers between runs
-- `upgrade` — install the release the server names; offered only when it is a release and differs from
-  this build
+- `upgrade` — install the release the server names; the previous binary stays beside it and comes back if
+  the converge fails. Offered only when the server named a release that differs from this build.
 - `migrate --relocate` — move the node to another domain (Scenario C)
 - `uninstall` — asks twice, names what `--purge` takes
 

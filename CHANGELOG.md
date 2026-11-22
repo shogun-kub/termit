@@ -17,7 +17,7 @@ pre-releases, and whoever installs the release skipped them.
 - **`termit-mn update` does the same for the server.** `--check` (the default) follows the
   `releases/latest` redirect and says whether this build is behind; `--apply` downloads, verifies, swaps,
   restarts the unit and restores the previous binary if the restart fails. Neither the check nor its
-  result appears in `status` or `doctor`: a status call must not reach GitHub.
+  result appears in `status`: a status call must not reach GitHub.
 
 - **Both menus are a tree.** Eight groups on the node (State, Network, Clients, Mesh, Defence, Site, Node,
   Help) and seven on the server, at most ten choices per screen, the group named in the title and `0` to go
@@ -32,9 +32,8 @@ pre-releases, and whoever installs the release skipped them.
   the draft, reaches `init` as `--hysteria`, and is repeated in the summary with the port it opens. The
   default stays TLS-only.
 
-- **`termit-mn invite create` prints the line to forward.** The installer command with the server's URL and
-  API prefix already in it, and the note as the person's name — one paste instead of assembling three
-  commands by hand.
+- **`termit-mn invite create` prints what to forward.** The wizard command, the server's URL and the code,
+  and the note as the person's name: the other side answers two questions and assembles nothing by hand.
 
 - **`termit-mn invite policy` changes the enrollment rule.** `invite`, `invite+approval` or `open`, written
   by editing one value in the YAML so the operator's comments survive, loaded again before the file is
@@ -67,8 +66,9 @@ pre-releases, and whoever installs the release skipped them.
   the table was rendered without the port even when it was in it.
 
 - **`warp.family` is documented as a `wireguard` setting.** The MASQUE sidecar is dual-stack and takes no
-  family flag, so on `usque` the key does nothing; the operations guide, the config comment and both
-  guides say so.
+  family flag, so on `usque` a non-default family is refused at load time and the default means nothing;
+  the operations guide, the config comment and both guides say so.
+
 ## 0.6.0 — 2026-11-22
 
 ### Added

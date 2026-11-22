@@ -36,7 +36,9 @@ Conventions used below:
 | UV | `termit-uv-guard.service` | — | the ban engine, when `security.guard.enabled` (§13.4) |
 | UV | `termit-uv-blocklist.timer` | — | the network blocklist refresh, when a URL is configured (§13.5) |
 | UV | `termit-uv-firewall.service` | — | puts a confirmed table back at boot (§13.7) |
-| UV | the tunnel: a WireGuard outbound inside the core, or `warp-cli` on `warp.transport: proxy` | `127.0.0.1:40000` in proxy mode only | where proxied traffic leaves, when WARP is on |
+| UV | the tunnel: a WireGuard outbound inside the core, `warp-cli` on `warp.transport: proxy`, or the `usque` pair on `usque` | `127.0.0.1:40000` in proxy mode only | where proxied traffic leaves, when WARP is on |
+| UV | `termit-usque.service`, `termit-usque-relay.service` | `127.0.0.1:40002`, `127.0.0.1:40001` | the MASQUE sidecar and the relay in front of it, only on `warp.transport: usque` (§6.1) |
+| UV | `termit-hysteria.service` | `:443/udp` | the QUIC transport, only when the configuration enables it (§14) |
 | MN | `termit-mn-guard.service`, `termit-mn-blocklist.timer`, `termit-mn-firewall.service` | — | the same three, shipped with the release (§13.6) |
 
 The table itself is applied by `firewall on` and never by a timer; the boot unit only puts back what was
@@ -57,8 +59,10 @@ every code path. That is a contract, not a default.
 | `/var/lib/termit/uv/state.json` | node identity, seeds, credentials, schedule (`0600`) |
 | `/var/lib/termit/uv/certs/` | the node's `fullchain.pem` (`0644`) and `privkey.pem` (`0600`) |
 | `/var/lib/termit/uv/install-journal.json` | the last install run, step by step |
+| `/var/lib/termit/uv/warp.yaml` | the WARP registration, `0600`, on the `wireguard` transport only |
+| `/etc/termit/uv/hysteria.yaml`, `/etc/termit/uv/usque.json` | the QUIC transport's and the MASQUE sidecar's own configuration (`0640` / `0600`) |
 | `/var/www/termit/site/`, `/var/www/termit/acme/` | the decoy tree and the ACME webroot (nginx reads them) |
-| `/usr/lib/termit/bin/xray` | the pinned proxy core on a node |
+| `/usr/lib/termit/bin/xray`, `…/hysteria`, `…/usque` | the pinned binaries: the proxy core, and the two optional transports |
 | `/etc/nginx/sites-available/termit.conf` | the generated vhost |
 | `/etc/systemd/system/termit-*.service`, `…/termit-uv-renew.timer` | the generated units |
 
@@ -92,8 +96,8 @@ Per host, before you start:
   That is not a failed install: the node records the refusal, keeps the mode you asked for, and sends
   traffic directly (§6). The default `wireguard` transport runs inside the core and needs no device.
 - **Outbound access** to the ACME directory, to the node's management server, to `github.com` for the
-  pinned Xray release (or your mirror), and — when WARP is on — to Cloudflare's package repository and
-  WARP endpoint. Nothing else.
+  pinned Xray release and — on the optional transports — the Hysteria and MASQUE binaries (or your
+  mirror), and — when WARP is on — to Cloudflare's package repository and WARP endpoint. Nothing else.
 
 The MN's probe worker needs an `xray-core` binary of its own — `prober.xray_binary` in
 `/etc/termit/mn/config.yaml` — because that is what opens a real connection to a node. It is not
@@ -115,9 +119,24 @@ sh mn.sh --domain mn.example.com --email you@example.com \
   --admin-token-out /etc/termit/mn/admin.token
 ```
 
-Re-running the script is the upgrade, and an upgrade needs no flags: the domain comes from the installed
+Re-running it **is** an upgrade, and an upgrade needs no flags: the domain comes from the installed
 configuration, the release is resolved again, the binary and the unit are replaced, `termit-mn init` keeps
-every decision already made, and the service is restarted.
+every decision already made — domain, listen, master key, the nodes — the probe worker is brought up to
+the pinned release, and the service is restarted.
+
+An installed server can also update itself, without the script and without a reboot:
+
+```bash
+termit-mn update                  # --check is the default: follow releases/latest, say whether this build is behind
+termit-mn update --apply          # download, verify against SHA256SUMS, swap, restart, roll back if the restart fails
+```
+
+`--apply` keeps the previous binary as `/usr/bin/termit-mn.prev` and restores it when `systemctl restart
+termit-mn` fails, so a failed update leaves the server running the build it had. It follows
+the `releases/latest` redirect rather than `api.github.com` (which answers `403` on a shared address),
+and it never installs a pre-release. Neither the check nor its result appears in `termit-mn status` —
+and the server has no `doctor` command to hide one in — because a status call must not reach GitHub.
+`--release-base` points at a mirror whose directory layout matches the release's.
 
 | Flag | Effect |
 |---|---|
@@ -129,9 +148,8 @@ every decision already made, and the service is restarted.
 | `--base-url` / `--checksum-file` / `--sha256` | a mirror, a local `SHA256SUMS` or a pinned digest, as in `uv.sh` |
 | `--dry-run` | verify the downloads and print what would be done, change nothing |
 
-Re-running it **is** the upgrade: the binary and the unit are replaced, `init` keeps every decision already
-made — domain, listen, master key, the nodes — the probe worker is brought up to the pinned release, and
-the service is restarted.
+Re-running the script is still the way to change the probe worker or the unit: `termit-mn update`
+replaces the binary and nothing else.
 
 By hand, with the binary and the unit taken from a release and verified against its `SHA256SUMS` (§12),
 the steps are what the script does, in the same order:
@@ -377,7 +395,10 @@ The bootstrap script resolves a release, verifies its checksum, installs the bin
 something piped from a branch:
 
 ```bash
-termit-mn invite create --note "node1" --uses 1        # on the MN; prints the code once
+termit-mn invite create --note "node1" --uses 1
+# prints the code once, and the line to hand over:
+#   sh uv.sh --mn https://mn.example.com/6rfjdqfn5nno --invite ABCD-EFGH-IJKL
+#   for: node1
 
 # on the fresh node, as root
 apt-get update && apt-get install -y wget   # only when the image has neither
@@ -400,12 +421,28 @@ sh uv.sh \
 | `--wizard` | install the binary, then run `termit-uv wizard` instead of converging from the flags |
 | `--dry-run` | verify the download, then run `termit-uv init --dry-run` without installing anything |
 
-Re-running the script **is** the upgrade: the binary is replaced and `termit-uv init` converges the
+Re-running the script **is** an upgrade: the binary is replaced and `termit-uv init` converges the
 rest, keeping the identity, the Xray path and the certificate. Without `--version` it takes the newest
 release, so an upgrade is `sh uv.sh --no-enroll`; `--version v0.4.1` installs exactly that one, which is
 also how a node that must not move is kept where it is. The invite code is passed on the command line and
 is visible in `ps` for the duration of the run; revoke it afterwards if that matters
 (`termit-mn invite revoke`).
+
+An installed node also has its own way to move, and it is the one that follows the mesh rather than the
+release feed:
+
+```bash
+termit-uv upgrade --check    # what a run would install; downloads nothing
+termit-uv upgrade            # the version the server reported at the last sync
+termit-uv upgrade --to v0.7.0   # or exactly one, when the operator decides
+```
+
+The default target is `server_version` from the last sync — what `termit-uv status` prints as `server:`
+— never `latest` and never a `vX.Y.ZpN` build: a node follows its server (`DESCRIPTION.md` §13.2). The
+digest is checked against the release's `SHA256SUMS`, the binary is written beside the running one, the
+old file is kept as `termit-uv.prev`, and the **new** binary then runs `init --config <the same file>`;
+a converge that fails puts the previous binary back. `--release-base` points at a mirror, and the menu's
+Node group says when there is nothing to install.
 
 If you would rather be asked than remember flags, the wizard is the same installation with questions —
 `sh uv.sh --wizard` installs the binary (the newest release, or the one `--version` names) and hands over
@@ -418,7 +455,8 @@ termit-uv wizard
 The first question is the language (`ru` or `en`, Russian by default) because the menu and the page of
 client links are written in it; then the domain, the contact address, the ACME directory (empty for the
 public one, then the question whether to verify a private CA's certificate), the masking site, the egress
-mode, whether to harden the node (unchecked — see below), the invite code and the management server URL. It
+mode, whether to serve the QUIC transport on UDP/443 (off by default), whether to harden the node
+(unchecked — see below), the invite code and the management server URL. It
 then runs the same `init` with the same flags. Answers are kept in `wizard.yaml` beside the configuration,
 so an interrupted run continues where it stopped and `Enter` accepts what is already there (`--fresh`
 forgets them). On an installed node it asks nothing: it runs the pipeline in dry-run mode and, when every
@@ -445,7 +483,7 @@ termit-uv enroll --invite ABCD-EFGH-IJKL
 | `user` | creates the unprivileged `termit` user |
 | `dirs` | `/etc/termit/uv`, `/var/lib/termit/uv`, `/var/www/termit` |
 | `packages` | installs `nginx`, `ca-certificates`, `curl` |
-| `warp` | registers the node's WARP identity for the in-core tunnel; with `--warp-transport proxy` installs and connects `cloudflare-warp` instead (skipped when WARP is off) |
+| `warp` | registers the node's WARP identity for the in-core tunnel; with `--warp-transport proxy` installs and connects `cloudflare-warp` instead, with `usque` installs the MASQUE sidecar and its relay (skipped when WARP is off) |
 | `xray-binary` | downloads the pinned release, verifies its SHA-256, installs it |
 | `identity` | generates the node's UUID, XHTTP path and decoy seed **once** |
 | `decoy` | generates the site |
@@ -456,8 +494,13 @@ termit-uv enroll --invite ABCD-EFGH-IJKL
 | `start` | starts the core, nginx and the agent, and verifies they stay up |
 | `warp-egress` | fetches the Cloudflare trace through the node's own tunnel and says where it came out; a warning, never a failure |
 
+The QUIC transport and the MASQUE sidecar add their own steps between these (`hysteria-binary`,
+`hysteria-config`, `usque-binary`, `usque-register`) plus the step that retires them when the
+configuration stops asking for them; they exist only while it does.
+
 Useful flags: `--dry-run` (report, change nothing), `--only <steps>` / `--skip <steps>`,
 `--no-warp` (opt out of WARP), `--warp selected --warp-selected a.example,b.example`,
+`--warp-transport wireguard|proxy|usque`, `--hysteria` / `--no-hysteria` (the QUIC transport, §14),
 `--xray-download-base` (a mirror, a `file://` URL or a local path), `--acme-ca` (a non-production
 directory, for a lab), `--harden` (turn on the host firewall and the ban engine in the configuration).
 
@@ -496,7 +539,7 @@ Check both ends:
 
 ```bash
 termit-uv status            # identity, certificate, peers, warp line, last install steps
-termit-uv doctor            # host checks plus state, services, certificate, decoy, core config, warp
+termit-uv doctor            # three groups — host, node, tunnel — each with a tally, then one verdict
 termit-mn uv show node1.example.net   # state, last probe, last self-check, state history
 ```
 
@@ -510,8 +553,9 @@ per-node jitter (ten minutes at most), and runs:
 3. **reconciliation** — the core's client set is updated, hot (Xray API) first, with a validated
    restart as fallback and rollback on failure.
 
-A failed cycle does not retry every minute: the agent keeps the schedule it has, and the server's
-probe decides the node's state.
+A failed cycle does not hammer the server: one that could not reach it, or could not apply its answer,
+is retried on a 5 min → 1 h backoff, while a refusal — the server answered and said no — waits out the
+normal interval instead. The node's state is the server's probe to decide, not the agent's.
 
 **Between the cycles the agent polls the mesh.** It wakes every fifteen minutes — `policy.mesh_poll` in
 `/etc/termit/mn/config.yaml`, which the server hands to the node in its sync policy — and reads
@@ -602,7 +646,7 @@ path, still opt-in: `warp-cli` in proxy mode, a SOCKS5 listener carrying TCP onl
 and `warp status` saying so. `usque` is the third: the MASQUE client runs as a pinned sidecar
 (`termit-usque.service`, user `termit-usque`, loopback SOCKS5 on `127.0.0.1:40002`), and because that
 listener associates UDP, both protocols reach WARP without the core speaking MASQUE and without a host
-route. The core does not dial the sidecar directly: `termit-usque-relay.service` listens on
+route. The core does not dial the sidecar directly: `termit-usque-relay.service` (`termit-uv warp-relay`) listens on
 `127.0.0.1:40001` and forwards each association from the very port of the control connection it opened,
 because usque refuses a datagram that does not come from it and the core's SOCKS client does not reuse
 the port. It exists for the day Cloudflare's client cannot carry UDP, and for the day MASQUE is the only
@@ -633,11 +677,12 @@ through the node, which with the default family means IPv6-only services. IPv4 i
 Cloudflare's IPv6 egress is what large services tend to mark as unsafe, and because a provider's own IPv6
 is not something the node can fix.
 
-**`warp.family` is a `wireguard` setting.** On the `usque` transport the sidecar is dual-stack and takes no
-family flag, so the key is ignored there: a v6 destination goes through the tunnel over IPv6 and exits at
-Cloudflare's v6 address. That is not the node's own address and so not the leak this section closes, but it
-is not "refused" either — `warp status` shows the address Cloudflare saw, which names the family actually
-used.
+**`warp.family` is a `wireguard` setting.** The MASQUE sidecar is dual-stack and takes no family flag: a v6
+destination goes through the tunnel over IPv6 and exits at Cloudflare's v6 address. That is not the node's
+own address and so not the leak this section closes, but it is not "refused" either — `warp status` shows
+the address Cloudflare saw, which names the family actually used. Setting `warp.family: ipv6` on a `usque`
+node is refused at load time (`warp.family only applies to the wireguard transport`); the default `ipv4` is
+accepted and means nothing.
 
 A domain is not matched by these rules — the node's document resolves names in the outbound — so the
 refusal covers destinations that arrive as an address, which is what a client that resolved AAAA sends.
@@ -915,6 +960,9 @@ Every one of these is audited on the server.
 | check now | `termit-mn check now <node>` or `termit-mn check now --all` | one cycle, on demand |
 | tune the schedule | `termit-mn policy set check_interval 12h` | runtime override; `policy show` lists the keys |
 | tune the grace | `termit-mn policy set block_after_failed_cycles 4` | how many consecutive failed checks block a node (1–30, default 2 = one grace check); attempts inside a cycle count once |
+| change the enrollment rule | `termit-mn invite policy --mode invite\|invite+approval\|open` | edits `enrollment.mode` in the YAML, comments intact, validated before the write; the running server keeps the old rule until `systemctl restart termit-mn`. `open` needs `--force` |
+| **update the server** | `termit-mn update --check` then `termit-mn update --apply` | the newest published release, verified, swapped, `termit-mn` restarted; rolls the binary back if the restart fails (§3) |
+| **update a node** | `termit-uv upgrade` (on the node) | installs the build the server reported (`termit-uv status` prints it as `server:`), verifies it, keeps `termit-uv.prev`, converges with the new binary; `--check` reports only, `--to vX.Y.Z` names a release (§4) |
 | **node blocked itself** | `termit-uv unblock` (on the node) | Scenario B: the server re-verifies DNS and the tunnel before re-admitting |
 | **node moved host** | `termit-uv migrate --relocate --domain new.example.net` | Scenario C |
 | **node rebuilt, state lost** | `termit-uv init --relocate --agent-key-file <file>` then `termit-uv migrate --relocate` | reuses the record; mints a new identity |
@@ -956,7 +1004,9 @@ cannot answer and a node whose certificate could not be read all leave the state
   `docs/PROTOCOL.md` §3.2 lists every family.
 - `termit-mn status` — the same numbers, plus per-node state and the effective interval.
 - `termit-mn uv show <node>` — one node's recent checks and state history.
-- `termit-uv status --json`, `termit-uv doctor --json` — machine-readable node state, for a local monitoring agent.
+- `termit-uv status --json`, `termit-uv doctor --json` — machine-readable node state, for a local
+  monitoring agent. Every check in the doctor report carries the `group` it belongs to (`host`, `node` or
+  `tunnel`), the same three the screen prints.
 - Journald: both binaries log structured lines to stderr. `journalctl -u termit-mn -u termit-uv-agent
   --since -1h`.
 
@@ -968,8 +1018,8 @@ A useful alert set, in the order that matters:
 | no checks are happening | `termit_mn_prober_up == 0` for 5 minutes, or `termit_mn_check_queue_due > 0` and growing |
 | the scheduler is behind | `termit_mn_check_queue_oldest_due_seconds` above a few hours |
 | a node is blocked or unavailable | `termit_mn_nodes{state="blocked"}` above zero, or `termit-mn status` |
-| the server certificate is expiring | `termit_mn_certificate_expiry_timestamp_seconds - time() < 14 days`; restart the server inside the renewal window (§7, §11) |
-| clocks under 14 days on a node | `termit-uv doctor` / `termit-uv status` on the node, or `openssl x509 -enddate` |
+| the server certificate is expiring | `termit_mn_certificate_expiry_timestamp_seconds - time() < 14 days`; read the renewal section (§7) and the journal — a restart makes the server try again at once |
+| a certificate under 14 days on a node | `termit-uv doctor` / `termit-uv status` on the node, or `openssl x509 -enddate` |
 | a burst of refusals | `rate(termit_mn_enrollments_total{result="refused"}[15m])` |
 | disk over 90% | the host's usual check; a full disk stops SQLite writes and ACME |
 
@@ -979,9 +1029,11 @@ A useful alert set, in the order that matters:
   transport, fail-open, the route and the refusal are tested; installing and connecting the `warp-cli`
   sidecar is on the release checklist for a host where it can run.
 - **The Docker Compose harness does not exist.** The lab is the acceptance gate.
-- **`termit-uv` has no self-update.** The node is upgraded by running the bootstrap script or by
-  replacing the binary and re-running `termit-uv init`; nothing pulls a release on a timer, and nothing
-  should — an unattended proxy should not change itself.
+- **Neither binary updates itself on a timer.** `termit-uv upgrade` and `termit-mn update` exist, but
+  an operator runs them: nothing pulls a release on a schedule, and nothing should — an unattended proxy
+  should not change itself. `termit-uv upgrade` follows the server's version, so a node moves when its
+  server does; `termit-mn update` follows `releases/latest`, so the server moves when an operator says
+  so.
 - **Blocking is cooperative.** A node that ignores the server's answer keeps serving; see
   [`THREAT_MODEL.md`](THREAT_MODEL.md) §6.
 - **The host firewall survives a reboot only once it was confirmed.** `termit-uv-firewall.service`
@@ -1035,8 +1087,8 @@ Publishing is a tag push on `main`, after the branch process in `AGENTS.md` §9 
 executable and attaches everything to the GitHub release, `uv.sh` included — the install URLs in the
 documentation point at `releases/download/<version>/uv.sh`. The workflow marks the release
 `prerelease: true`; clearing that flag is the deliberate act that records the release's own production
-pass (`docs/IMPLEMENTATION_PLAN.md` M4.3 for `0.2.1`, M5-8 for `0.3.2`, §11.9 for `0.4.0`, §11.10 for
-`0.4.1`). Clearing the flag alone leaves `releases/latest` where it was: GitHub only moves that pointer
+pass (`docs/IMPLEMENTATION_PLAN.md` §3.3.1 for `0.2.1`, §3.4.11 for `0.3.2`, §3.5.11 for `0.4.0`,
+§3.5.14 for `0.4.1`). Clearing the flag alone leaves `releases/latest` where it was: GitHub only moves that pointer
 when the release is edited with `make_latest` (`gh release edit <version> --latest`, or
 `make_latest: true` through the API), and until it moves `releases/latest/download/...` — the URL the
 guide installs from — still answers with the previous version. A maintainer

@@ -44,11 +44,11 @@ sh mn.sh --domain mn.example.com --email you@example.com --admin-token-out /etc/
 `systemctl restart termit-mn`. `termit-mn invite policy` без `--mode` печатает действующее правило.
 
 Обновление самого сервера — `termit-mn update`: без флагов спросит у GitHub самый свежий опубликованный
-релиз и скажет, отстаёт ли эта сборка; `--apply` скачает его, сверит дайджест с `SHA256SUMS` релиза,
+релиз и скажет, отстаёт ли эта сборка. `--apply` скачает его, сверит дайджест с `SHA256SUMS` релиза,
 оставит прошлый бинарник как `termit-mn.prev`, перезапустит службу и вернёт старый бинарник, если
-перезапуск не удался. Команды сознательно нет в `status` и `doctor`: сервер отвечает на вопросы о меше,
-а проверка, ходившая в GitHub при каждом `status`, была бы его единственной сетевой зависимостью, кроме
-своих узлов. `--release-base` указывает на зеркало.
+перезапуск не удался. Команды сознательно нет в `status`: сервер отвечает на вопросы о меше, а проверка,
+ходившая в GitHub при каждом `status`, была бы его единственной сетевой зависимостью, кроме своих узлов.
+`--release-base` указывает на зеркало.
 
 `termit-mn init` создаёт конфигурацию, базу, мастер-ключ и первый админ-токен и печатает секреты **один
 раз** (`--admin-token-out` пишет токен в файл вместо печати):
@@ -203,13 +203,15 @@ termit-mn invite revoke ABCD-EFGH-IJKL
 Код приглашения — секрет с ограниченным числом использований; передавайте его по каналу, которому
 доверяете, и отзывайте, если он утёк. Каждое использование расходует одно место.
 
-`invite create` печатает готовую строку для пересылки, с адресом сервера и его префиксом уже внутри —
-человек на другом конце вставляет одну команду, и установщик спросит домен его узла:
+`invite create` печатает то, что нужно переслать: команду, запускающую визард, и два ответа, которые
+человека на другом конце спросят кроме его собственного домена:
 
 ```
-send this to them (the installer asks for their node's domain):
+send this to them (the wizard asks for their own domain; these are the other two answers):
 
-  sh uv.sh --mn https://mn.example.com/6rfjdqfn5nno --invite ABCD-EFGH-IJKL
+  sh uv.sh --wizard
+  server: https://mn.example.com/6rfjdqfn5nno
+  invite: ABCD-EFGH-IJKL
 
 for: node-a for Anna
 ```
@@ -313,7 +315,7 @@ journalctl -u termit-mn -f
 |---|---|
 | `termit-mn init` | создать конфигурацию, базу, мастер-ключ, админ-токен и первое приглашение; `--admin-token-out FILE` пишет токен в файл вместо печати; `--locale ru\|en` задаёт язык меню |
 | `termit-mn serve` | запустить сервер (`--http` только для разработки, никогда на публичном адресе) |
-| `termit-mn invite create\|list\|revoke` | управление кодами приглашений |
+| `termit-mn invite create\|list\|revoke\|policy` | управление кодами приглашений и правилом вступления для нового узла |
 | `termit-mn uv list\|show\|approve\|reject\|block\|unblock\|rm\|forget\|reissue\|agentkey` | управление узлами |
 | `termit-mn check now <узел>\|--all` | выполнить проверки немедленно |
 | `termit-mn policy show\|set` | посмотреть или изменить пороги планировщика |
@@ -321,6 +323,7 @@ journalctl -u termit-mn -f
 | `termit-mn admin rotate` | заменить админ-токен, которым команда аутентифицировалась; `--token-out FILE` пишет его в файл |
 | `termit-mn status` | сервер, узлы, расписание |
 | `termit-mn backup`, `termit-mn restore` | снимок и восстановление |
+| `termit-mn update` | поставить самый свежий опубликованный релиз: `--check` (по умолчанию) только сообщает, `--apply` заменяет бинарник и перезапускает службу |
 | `termit-mn firewall` | собственная таблица сервера: `status`, `on`, `off`, `confirm`, `refresh`, `restore` |
 | `termit-mn bans`, `termit-mn guard` | движок банов на сервере |
 | `termit-mn version` | версия сборки и протокола |

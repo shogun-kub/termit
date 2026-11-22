@@ -192,7 +192,7 @@ type Warp struct {
 	// what a fresh configuration writes. Destinations of the other family go direct: Cloudflare's IPv6
 	// egress is what large services tend to block, and a provider's own IPv6 is often worse. Only the
 	// wireguard transport honours it: the MASQUE sidecar is dual-stack and takes no family flag, so on
-	// "usque" the key is ignored (docs/OPERATIONS.md §6.1 says so).
+	// "usque" anything but the default is refused at validation (docs/OPERATIONS.md §6.1 says so).
 	Family string `yaml:"family,omitempty"`
 }
 

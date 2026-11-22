@@ -31,6 +31,9 @@ matches what you see.
 | `termit-mn serve` refuses: `cannot read the master key` | the key file is missing or unreadable | restore it from a backup; without it the registry is useless |
 | SQLite `database is locked` | the database is on a slow or network filesystem, or a second process opened it | keep it on local disk; admin commands go through the server, never direct |
 | subscription `404` | the token was rotated or mistyped | `termit-uv status` shows the current URL; `termit-mn sub rotate` issues a new one |
+| `termit-uv upgrade` → `the server has not reported its version yet` | the node has not synced since this build learned to remember it | `termit-uv sync`, then `termit-uv upgrade`; or name the release with `--to vX.Y.Z` |
+| `termit-uv upgrade` → `did not converge the node` | the new binary could not converge this host | the previous binary is back in place and nothing else changed; fix what the step printed, then run it again |
+| `termit-mn update --apply` → `the previous binary is back in place; restart the server to run it` | the new build did not survive the restart | `systemctl restart termit-mn`, read the journal, then `termit-mn status` |
 
 When nothing obvious is wrong, the order is `termit-uv doctor` on the node, `termit-mn uv show` on the
 server, then both journals. A check that says `unknown` is a failure of the observer, not of the node — say
@@ -170,20 +173,36 @@ timer removes the table without needing SSH. If you are still in, `termit-uv fir
 Nodes and the server are separate binaries with separate records: upgrade the server first, then the
 nodes. Within `api_version: 1` the wire protocol is additive, so a mixed fleet keeps working.
 
-On the MN:
+On the MN, the binary can replace itself. `--check` is the default and installs nothing:
 
 ```bash
-systemctl stop termit-mn
-install -m 0755 termit-mn.new /usr/bin/termit-mn
-systemctl start termit-mn
+termit-mn update --check      # follow releases/latest and say whether this build is behind
+termit-mn update --apply      # download, verify against SHA256SUMS, swap, restart
 journalctl -u termit-mn -n 20 --no-pager
 termit-mn status
 ```
 
-The database migrates on start, forward only. **Take a backup before an upgrade**, and keep the previous
-binary beside the new one: it will not read a newer schema.
+`--apply` keeps the running binary as `/usr/bin/termit-mn.prev` and puts it back if
+`systemctl restart termit-mn` fails, so a failed update leaves the previous binary in place; the database
+migrates on start, forward only, and the previous binary will not read a newer schema. **Take a backup
+before an upgrade** (§3.5.1) — that is the only way back if the new build is wrong rather than broken.
+Re-running `mn.sh` is still the way to move the probe worker or the unit, which `termit-mn update` does
+not touch.
 
-On a node the bootstrap script is the short path — it replaces the binary and converges:
+On a node the short path follows the server rather than the release feed:
+
+```bash
+termit-uv upgrade --check    # what a run would install: the server's version, nothing downloaded
+termit-uv upgrade            # install it, keep termit-uv.prev, converge with the new binary
+termit-uv doctor
+```
+
+`termit-uv upgrade` installs the version the management server reported at the last sync — never
+`latest` — verifies it, writes it beside the running binary and lets **it** run `init`, because the new
+release is the one that knows what it needs. A converge that fails restores the previous binary by
+itself. If it says the server has not reported its version, run `termit-uv sync` first (or name the
+release: `--to v0.7.0`). The bootstrap script is the other short path — it installs the newest release,
+or the one `--version` names, and runs the same `init`:
 
 ```bash
 sh uv.sh --no-enroll                     # the newest release

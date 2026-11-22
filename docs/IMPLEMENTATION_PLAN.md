@@ -1,31 +1,55 @@
 # Termit — implementation plan
 
-Companion to [`DESCRIPTION.md`](DESCRIPTION.md). This document sequences the work, defines what
-"done" means for each milestone, and records the risks we are buying down.
+## 1. How to read this document
 
-Estimates are ideal engineering days for one developer familiar with Go and Linux networking. They
-exist to order the work and expose the critical path, not to promise dates.
+Companion to [`DESCRIPTION.md`](DESCRIPTION.md). This document is ordered by implementation order:
+what shipped long ago first, then the current release, then what is not implemented. For each release it
+says what shipped and why, keeps the design notes that belong to it, and records what a lab or production
+pass observed. The decisions and the risks we are buying down are kept in the sections a reader needs while
+working (§7).
 
----
+It is a working record, not the changelog for the people who run Termit — that is
+[`CHANGELOG.md`](../CHANGELOG.md) — and not the design: [`DESCRIPTION.md`](DESCRIPTION.md) is that, and a
+decision recorded here is not re-decided by the code.
 
-## 0. Decisions already locked
+Estimates are ideal engineering days for one developer familiar with Go and Linux networking. They exist
+to order the work and expose the critical path, not to promise dates.
 
-| Decision | Value | Impact |
-|---|---|---|
-| Language | Go for both binaries, one module, CGO off | static binaries, pure-Go SQLite |
-| Credentials | per-pair UUIDs derived by MN from a master key | `internal/cred` is a contract |
-| Registration | invite codes + admin approval by default (`open` opt-in) | enrollment flow, invites table |
-| MN deployment | single binary + SQLite + systemd + built-in ACME | no Postgres/Docker requirement |
-| MN admin | unix-socket API + `termit-mn` CLI, no web UI in v1 | no second auth surface |
-| Subscription | base64 `vless://` list at `/sub/{token}`, sing-box JSON at `/sub/{token}/json` | two renderers |
-| Licence | AGPL-3.0, public repository | no GPL/AGPL dependencies |
-| Target | Debian 13, amd64 + arm64 | packaging, checks |
-| Acceptance | three Debian machines over SSH (1 MN, 2 UV) + LAN DNS | lab suite is the release gate |
+A number that moved is in §8: old `§10.1` is now `§3.5.1`, and every other one is there too.
 
-Still open (see §9): the exact XHTTP mode/tuning and the lab coordinates. Resolved since the first draft: module path and repository URL,
-and the decoy inspiration source.
+## 2. Conventions
 
-## 1. Critical path and ordering
+**Version numbering.** Releases are `0.<minor>.<patch>`. The branch name is the version
+(`release/v0.4.2`), the tag is `v<version>`, and `deploy/release --version v<version>` agrees with both.
+
+**Pre-releases.** A version is built from its `release/<version>` branch as `v<version>p<n>` before it is
+tagged: `v0.4.0p1` is the first build of `0.4.0` from that branch, `p2` the second. The `p<n>` counter
+numbers the builds of the branch, so each superseded the previous one without renumbering the version
+(§3.4.10). A release that touches the network is proved on the production nodes as a pre-release, and the
+final tag waits for that (§3.5.12); a purely local change may ship on CI and the lab alone.
+
+**What "recorded" means.** A pass is recorded when this document carries a dated block naming the
+version that was installed and what was observed on the live hosts, the way §3.4.11, §3.5.15 and §3.8.2 are
+written. Until that block exists the release stays marked pre-release, and flipping the flag is a
+deliberate act that says the pass is done (§3.3.1). The record keeps what did not go well in the same place
+as what did: a measured number, a limit, a defect found late, or a sentence saying what is not proved.
+
+**Milestone labels.** The records keep the plan's original milestone names — `M0.1`, `M4.3`, `M5-8` —
+because the prose around them refers to them and because renaming history would make the records lie. They
+no longer order the document; the map in §8 resolves each of them to the section it now lives in.
+
+## 3. Released work
+
+Releases in the order they shipped. Each chapter says what shipped and why, keeps the design notes that
+belong to that release, and ends with what a lab or production pass observed.
+
+### 3.1 0.1.0 — the node and the mesh
+
+`0.1.0` carried everything the first plan called `M0`–`M4`: the spikes that decided the topology, a
+standalone node, the management server, the lifecycle scenarios, the operations surface and the release
+machinery. The chunks below are in the order the plan took them.
+
+#### 3.1.1 The critical path
 
 ```
 M0  spikes ──► M1  UV standalone ──► M2  MN core ──► M3  full loop ──► M4  hardening/release
@@ -43,15 +67,26 @@ Two things run in parallel from day one and are cheap:
 - the **lab harness** (`test/lab`), needed by every later milestone;
 - the **CI skeleton** (lint, unit tests, cross-build), which costs an hour and prevents drift.
 
----
+#### 3.1.2 The first ten commits
 
-## M0 — Spikes and scaffolding (3–5 d)
+1. `chore: scaffold module, layout, CI, licence, gitignore`
+2. `feat(proto): profile v1 constants, VLESS URL build/parse with round-trip tests`
+3. `feat(cred): pairwise derivation with test vectors`
+4. `feat(uv/state): atomic JSON persistence with schema versioning`
+5. `spike(uv): topology validation harness` (throwaway, kept under `spike/`)
+6. `feat(uv/xray): typed config model and deterministic generator + golden tests`
+7. `feat(uv/decoy): deterministic generator + embedded server + one template`
+8. `feat(uv/acme): HTTP-01 issuance and renewal against Pebble`
+9. `feat(uv/install): ordered resumable install with preflight and uninstall manifest`
+10. `feat(uv): init/doctor/status end to end on the lab box`
+
+**M0 — Spikes and scaffolding (3–5 d).**
 
 Purpose: remove the technical unknowns that would otherwise force a redesign in M1/M3. Every spike
 ends with a written decision in `docs/SPIKES.md` and, where relevant, code that later milestones
 reuse.
 
-### M0.1 Toolchain and repository skeleton
+#### 3.1.3 Toolchain and repository skeleton
 
 - Install Go (and optionally Docker) on the development host; verify `go build ./...` on an empty
   module.
@@ -67,7 +102,7 @@ reuse.
 
 **Done when**: a fresh clone builds on Windows and Linux, CI is green, and `references/` is ignored.
 
-### M0.2 Spike: the 443 topology — **done**, see `docs/SPIKES.md`
+#### 3.1.4 The 443 topology (see `docs/SPIKES.md`)
 
 Measured on `termit-uv1` with Xray 26.11.9. Outcome:
 
@@ -83,7 +118,7 @@ xray no longer terminates TLS. Recorded in `DESCRIPTION.md` §5.1/§5.2/§13.1.
 Left for M1: re-check whether XHTTP `mode: auto` works through nginx's HTTP/1.1 upstream
 (`packet-up` is the known-good fallback).
 
-### M0.3 Spike: ACME in Go with HTTP-01 — **done**, see `docs/SPIKES.md` S6
+#### 3.1.5 ACME in Go with HTTP-01 (see `docs/SPIKES.md` S6)
 
 - Chose `golang.org/x/crypto/acme` over `lego` and `autocert` (first-party, small, and we own the
   challenge handler and the PEM files anyway).
@@ -91,7 +126,7 @@ Left for M1: re-check whether XHTTP `mode: auto` works through nginx's HTTP/1.1 
   a real certificate in 2.0 s, chain of 2, correct SAN, key `0600`, and reused it on a second call.
 - Pitfall recorded: use `CreateCertFromOrder`, not the deprecated `CreateOrderCert`.
 
-### M0.4 Spike: the probe worker — **done**, see `docs/SPIKES.md` S7
+#### 3.1.6 The probe worker (see `docs/SPIKES.md` S7)
 
 - One xray-core worker, one SOCKS inbound per node, `xray run -test` gate before start.
 - Healthy: 72–131 ms end-to-end. Two nodes in one worker: 135 ms total.
@@ -99,7 +134,7 @@ Left for M1: re-check whether XHTTP `mode: auto` works through nginx's HTTP/1.1 
   decoy/certificate checker, which is what M2.3 builds.
 - Worker failures are errors from `Probe`, never node results — the `unknown` invariant holds.
 
-### M0.5 Lab harness bootstrap — **done**
+#### 3.1.7 Lab harness bootstrap
 
 - SSH client wrapper with host-key pinning from an env var, command runner, file upload, and log
   capture. The transport is `plink`/`pscp`, not `golang.org/x/crypto/ssh`: the lab key is a PuTTY
@@ -119,15 +154,13 @@ failed run prints enough to debug without logging in by hand. Both hold: the sui
 Windows host with `TERMIT_LAB_PLINK`/`TERMIT_LAB_PSCP` pointing at PuTTY, and a failing scenario dumps
 both units' journals and `termit-mn uv list` before restoring the lab.
 
----
-
-## M1 — UV standalone (8–12 d)
+**M1 — UV standalone (8–12 d).**
 
 Purpose: a fully working node with no MN involved. This is the first shippable artifact: a user can
 install it, get a valid certificate, see a decoy site, and connect with a manually built
 `vless://` URI.
 
-### M1.1 CLI, config, state — **done**
+#### 3.1.8 CLI, config, state
 
 - `termit-uv init`, `doctor`, `status`, `uninstall` and `version` are implemented. The rest of the command
   set was declared and exited `3` ("not implemented in this build") until it landed; every documented
@@ -142,7 +175,7 @@ install it, get a valid certificate, see a decoy site, and connect with a manual
 - Re-running `termit-uv init` is a no-op: every step reports `present` and `state.json` stays
   byte-identical (verified on the lab, same sha256 before and after).
 
-### M1.2 Install engine — **done**
+#### 3.1.9 Install engine
 
 - Ordered steps, each with `Check` ("is my effect already present?") and `Run`: `preflight` → `user`
   → `dirs` → `packages` → `xray-binary` → `identity`. A failing step stops the run and is journaled;
@@ -173,7 +206,7 @@ Measured on `termit-uv1` (Debian 13, 1 vCPU / 1 GiB), 2026-11-09:
 The certificate, decoy, generated Xray/nginx configuration, units and self-test belong to M1.4–M1.5;
 until they land `termit-uv init` ends by naming them instead of pretending the node proxies traffic.
 
-### M1.3 Decoy site — **done**
+#### 3.1.10 Decoy site
 
 - `internal/uv/decoy` generates the site deterministically from `(domain, seed, template)`; the seed is
   generated once at install and kept in the state file, so the site survives reinstalls, reboots and
@@ -227,7 +260,8 @@ Measured on `termit-uv1` (nginx 1.26.3, the node's own site tree):
 
 The site tree moved to `/var/www/termit/{site,acme}`: nginx runs as `www-data` and could not traverse
 `/var/lib/termit` (0750), so the decoy returned `403`. State and certificates stay in `/var/lib/termit/uv`.
-### M1.4 Certificate lifecycle — **done**
+
+#### 3.1.11 Certificate lifecycle
 
 Built:
 
@@ -263,7 +297,7 @@ Deliberately different from the plan: the timer, not the agent, owns the renewal
 agent loop yet (M3), and a daily oneshot is easier to inspect, survives a reboot via `Persistent` and
 needs no backoff logic of its own — a failure is retried tomorrow and visible in `termit-uv status` today.
 
-### M1.5 Config generation, units, hot API — **done**
+#### 3.1.12 Config generation, units, hot API
 
 Built:
 
@@ -313,8 +347,7 @@ Deliberately different from the plan:
 - **No `termit-uv.service` yet**: the agent loop it would run is M3. Only the core and nginx are
   supervised so far.
 
-
-### M1.6 Standalone acceptance — **done**
+#### 3.1.13 Standalone acceptance
 
 Run on `termit-uv1` as a full cycle: clean host → install → verify → reboot → verify → uninstall →
 audit → install again.
@@ -351,14 +384,12 @@ What the acceptance found, and what changed because of it:
 Also added for the acceptance and for ordinary use: `termit-uv uri`, which prints the `vless://` URI for the
 node\'s own device. Without it a standalone node had no way to hand its owner a working client.
 
----
-
-## M2 — MN core (8–10 d)
+**M2 — MN core (8–10 d).**
 
 Purpose: a management server that accepts nodes, verifies them, and serves subscriptions. Still no
 daily loop: sync exists but the UV drives it manually (`termit-uv sync`).
 
-### M2.1 Store and bootstrap — **done**
+#### 3.1.14 Store and bootstrap
 
 Done:
 
@@ -382,7 +413,7 @@ Still to do in this milestone:
   TLS by default rather than by luck.
 - `termit-mn backup` / `termit-mn restore` on top of `store.Backup`, with a schema-version guard on restore.
 
-### M2.2 Enrollment — **done**
+#### 3.1.15 Enrollment
 
 Done:
 
@@ -427,7 +458,7 @@ Still to do in this milestone:
 - The second node (termit-uv2 has no install yet).
 - `SPIKES.md` S15 write-up of the two probe defects.
 
-### M2.3 Prober — **done**
+#### 3.1.16 Prober
 
 Done: the xray-core worker, the certificate checker with a 14-day minimum validity and a pinned leaf, the
 two-resolver DNS check (system plus an optional second one, `prober.ca_file` for a private CA), the
@@ -445,7 +476,7 @@ would break whenever the template changes. The scheduler that consumes the class
 - Per-node concurrency limits, global worker pool, circuit breaker: if the worker is unhealthy, all
   results become `unknown` and the scheduler is told not to act (invariant 2).
 
-### M2.4 Subscription and credentials — **done**
+#### 3.1.17 Subscription and credentials
 
 Done:
 
@@ -488,7 +519,7 @@ Still to do in this milestone:
   acceptance above — a subscription carries self credentials — but M2.5 and the mesh need it.
 - Revocation as an explicit operation (today `sub rotate` supersedes a token rather than revoking it).
 
-### M2.5 Sync v0 — **done**
+#### 3.1.18 Sync v0
 
 Done:
 
@@ -527,7 +558,7 @@ enough); and `openssl verify` without `-untrusted` misreports a valid chain.
 Acceptance item deliberately left to M3: "pulling a node's plug makes its probe fail" is the
 scheduler's job (`DESCRIPTION.md` §7.2), not this milestone's.
 
-### M2 follow-ups, done straight after
+#### 3.1.19 Enrollment and sync follow-ups
 
 | Piece | Result |
 |---|---|
@@ -539,13 +570,11 @@ scheduler's job (`DESCRIPTION.md` §7.2), not this milestone's.
 Lab: reissue then agentkey returned the same key; `sync --check` said `in sync` (0), then `drift: 1 to
 add` (4) after a peer credential was removed from the core config, then `0` again after `termit-uv sync`.
 
----
-
-## M3 — Full lifecycle (8–12 d)
+**M3 — Full lifecycle (8–12 d).**
 
 Purpose: the three scenarios from the concept, end to end, verified in the lab.
 
-### M3.1 Scheduler and state machine (MN) — **done**
+#### 3.1.20 Scheduler and state machine (MN)
 
 - Queue keyed by `next_check_at` with jitter; worker pool; per-node serialization.
 - Retry policy inside a cycle (3 × 10 min, configurable); cycle outcome aggregation (`ok`, `failed`,
@@ -585,7 +614,7 @@ every check with `x509: certificate signed by unknown authority` — filed under
 that was the classifier's fallback for everything it did not recognise. Unknown errors now have their
 own class and count as unknown, so our own misconfiguration can never block a node.
 
-### M3.2 Agent loop (UV)
+#### 3.1.21 Agent loop (UV)
 
 - Long-running scheduler: daily jittered cycle, never before `registered_at + 2 h`, honoring
   `next_sync_after`; exponential backoff when MN is unreachable (traffic off the box keeps working).
@@ -621,7 +650,7 @@ read it as `email → id`, so every hot verification failed and every change fel
 and the agent unit's `ProtectHome=yes` hides `/root`, so a CA file there was unreadable and the unit
 now drops `ProtectHome` when a configured readable path lives under a home directory.
 
-### M3.3 Scenario A acceptance — **done**
+#### 3.1.22 Scenario A
 
 Enroll two UVs → wait for one cycle (or `termit-mn check now`) → both nodes present in each other's Xray
 config and subscription → kill node 2 → cycle fails after retries → `unavailable`, still in node 1's
@@ -660,7 +689,7 @@ run answered `429`. A subscription token is unguessable and clients refresh on e
 subscription counter is load control, not brute-force defence: it is now a separate limiter at 60 per
 15 minutes, with a boundary test (60 pass, 61 is refused).
 
-### M3.4 Scenario B acceptance — **done**
+#### 3.1.23 Scenario B
 
 From a rebuilt machine (new `self_uuid`, same agent key), `termit-uv init --relocate` followed by
 `termit-uv unblock` (the box builds the new URL from its own identity) → MN verifies DNS/decoy/VLESS →
@@ -697,7 +726,7 @@ clears the unit's failed state before restarting the agent (a re-runnable comman
 own service), and the agent's burst is ten instead of five — a real crash loop still stops after ten
 attempts with `RestartSec=30s`.
 
-### M3.5 Scenario C acceptance — **done**
+#### 3.1.24 Scenario C
 
 The box moves to a different domain, keeps its agent key, and the server's record follows it. The
 command is split the same way as Scenario B: the install is `termit-uv init --relocate` with the new domain,
@@ -744,7 +773,7 @@ and the canary sends the node's own domain as the HTTP Host, which the core reso
 that cannot resolve its own name fails every sync — the preflight warns about it, and the test fixes it
 with a hosts entry.
 
-### M3.6 Failure-drill suite — **done**
+#### 3.1.25 Failure-drill suite
 
 Six scripted drills in `test/lab/drill_test.go`, each breaking one thing, asserting the invariant that
 breakage protects, and putting the lab back:
@@ -778,11 +807,9 @@ short one and is not replayed at length; clock skew cannot be exercised in an un
 `CAP_SYS_TIME`), so `TestDrillClockSkew` skips with that reason instead of passing on a check it did
 not perform.
 
----
+**M4 — Hardening and release (6–8 d).**
 
-## M4 — Hardening and release (6–8 d)
-
-### M4.1 WARP — done
+#### 3.1.26 WARP through `warp-cli`
 
 Maintainer decision on 2026-11-10: `warp-cli` in proxy mode as designed (not userspace WireGuard),
 and **WARP on by default**, opt-out. The reason is in the design: a client-side application that asks
@@ -814,7 +841,7 @@ Two defects the lab found and the fix:
 - The running agent holds the configuration it read at start, so its next sync would have regenerated
   the old route; the command now restarts `termit-uv-agent` after the change.
 
-### M4.2 Operations surface — done
+#### 3.1.27 Operations surface
 
 Delivered:
 
@@ -835,16 +862,20 @@ is (256-bit random keys, SHA-256 digests, found through an index), and §13.4 li
 instead of a `sub show` command that never existed. `docs/PROTOCOL.md` stays what the build does; the
 design document now says the same.
 
-### M4.3 Release — done
+#### 3.1.28 Release machinery
 
 | Task | Where | Verified |
 |---|---|---|
 | A release tool, `go run ./deploy/release --version v0.1.0`, that cross-compiles both binaries for linux/amd64 and linux/arm64 (`CGO_ENABLED=0 -trimpath`), stamps version/commit/date, copies `uv.sh` and `termit-mn.service` out of the repository, and writes `SHA256SUMS` | `deploy/release` | unit tests for the asset-name contract, the version pattern, the checksum format, digesting and both refusals; two builds with a fixed commit and date produce byte-identical `SHA256SUMS` |
 | Asset names exactly as the installer expects, with `uv.sh` published beside them; no tarballs | `deploy/release` | lab: `sha256sum -c SHA256SUMS` on all six files, then an install from the release directory — `termit-uv v0.1.0 (commit …, api 1, profile v1)`, identity and certificate intact, services active; the server binary reports the same version after a restart |
 | CI: `govulncheck` against our packages; a tag-triggered release job that builds, verifies the checksums and attaches the artifacts; a manual door on `release/<version>` that publishes the same artifacts as a `pre-v<version>-<run>` pre-release | `.github/workflows/ci.yaml`, `.github/workflows/release.yaml` | `govulncheck v1.9.0` locally: no vulnerabilities reachable from our code; the workflow runs the same commands the release tool documents |
-| `v0.1.0` and `v0.2.1` tags | `git tag` | `v0.1.0` was published straight away. `v0.2.1` went through the pre-release door first, and was promoted to a full release on 2026-11-15, after the production pass: two nodes on different providers, real Let's Encrypt certificates, WARP egress on both, a phone client, and an in-place Debian 12 → 13 migration of one node (0.2.1 changelog). Flipping the flag is still the act that says the pass is done |
 
-### Interactive front end — done
+### 3.2 0.2.0 — a server that is hard to find, menus that are usable
+
+`0.2.0` is the release that made the server harder to find and the interactive menus usable: an API under
+a path of its own, a masking site of its own, and a token that can be rotated without editing units.
+
+#### 3.2.1 Interactive front end
 
 Both binaries carry a menu (`internal/termui`, `cmd/uv/menu.go`, `cmd/mn/menu.go`): a numbered screen
 that asks what the flags would ask and then runs the same command line a script would run, so a menu
@@ -863,7 +894,7 @@ the CLI cannot drift into disagreeing about what exists — and any state of its
 SSH session loses nothing). Interactive prompts stay out of the install path — the menu builds flags, it
 does not replace them, which is why `uv.sh`, `termit-uv init` and `termit-mn init` remain scriptable.
 
-### The admin credential, from a file — done
+#### 3.2.2 The admin credential, from a file
 
 The admin token was environment-only, which is fine at a terminal and useless in a timer: systemd has no
 shell to export from, so the token ended up pasted into a unit file or a playbook. `termit-mn` now reads
@@ -898,7 +929,7 @@ fresh token has never been presented, and the old digest stops resolving in the 
 still has no online recovery — that is the price of storing only a digest — and the operations document
 keeps the delete-the-row procedure for it.
 
-### Documentation: a guide for participants — done
+#### 3.2.3 A guide for participants
 
 The reference documents assume an operator. A person who owns one node needs a different entry point, so
 `docs/guide/` holds five pages — how Termit works (with diagrams), using a node, running the server, the
@@ -913,15 +944,26 @@ upgrade from a release directory), but a production CA, a real DNS provider and 
 lab-shaped — so the publish workflow marks every release `prerelease: true` until someone runs that
 pass. The Docker Compose harness remains a developer convenience (QUESTIONS Q9.4) and is not built.
 
----
+### 3.3 0.2.1 — the first production pass
 
-## M5 — Security hardening (planned; decisions taken 2026-11-15)
+`0.2.1` is the first release promoted out of pre-release after a pass on the production mesh rather than
+the lab.
 
-Nothing here is implemented yet except M5-0 (§5.0) and M5-1–M5-6 (§5.9). The decisions below were made
-by the operator on 2026-11-15; the milestones in §5.9 are the implementation plan, and each one ends in
-something the lab can check.
+#### 3.3.1 What the pass showed
 
-### 5.1 Decisions
+**Released 2026-11-15.** `v0.1.0` was published straight away. `v0.2.1` went through the pre-release door
+first, and was promoted to a full release on 2026-11-15, after the production pass: two nodes on different
+providers, real Let's Encrypt certificates, WARP egress on both, a phone client, and an in-place Debian 12 →
+13 migration of one node (0.2.1 changelog). Flipping the flag is still the act that says the pass is done.
+
+### 3.4 0.3.2 — security hardening (0.3.0 → 0.3.2)
+
+The decisions below were made by the operator on 2026-11-15. The code that implements them shipped in the
+`0.3.x` builds — `0.3.0` on the lab, the `0.3.1` fix, and `0.3.2` as the release — and each milestone in
+§3.4.10 ends in something the lab can check. The pass that promoted `v0.3.2` out of pre-release is
+§3.4.11.
+
+#### 3.4.1 Decisions
 
 | Question | Decision |
 |---|---|
@@ -937,7 +979,7 @@ something the lab can check.
 | Scope | **Nodes and the server, one mechanism**: same code, different allowed ports. |
 | Defaults | **Everything off.** The wizard offers "harden this node" as a checkbox that is unchecked, and `init --harden` does the same without a wizard. |
 
-### 5.0 Spike results (measured on `termit-uv2.lan`, nftables 1.1.3, Xray 26.11.9)
+#### 3.4.2 The spike results
 
 M5-0 asked two questions. Both are answered, and the second answer changed the config we planned to
 ship. The throwaway rulesets and configs lived in the session scratch, not in the repository; the
@@ -958,7 +1000,7 @@ A single UDP packet to a closed port per data point, so the count is exact. The 
 detector: `add` creates the element and the `limit` merely becomes part of the element it stores
 (`nft list set` shows `192.168.88.135 limit rate over 5/minute burst 5 packets`), and the `add` never
 consults it. The `meter` statement does — its set *is* the rate state, and the statements after it run
-only when the rate is exceeded. §5.3's sketch stands as written, and the `log prefix` fallback it named
+only when the rate is exceeded. §3.4.4's sketch stands as written, and the `log prefix` fallback it named
 is not needed.
 
 Three consequences for the implementation:
@@ -996,14 +1038,14 @@ also logged `sniffed domain: spike … taking detour [direct] for [tcp:spike:190
 tunnel is dialled to the name in its own header and resolved by the node's DNS instead of going where
 the client asked (`lookup spike on 192.168.90.1:53: no such host` — a real rewrite, not a logging
 artefact). `routeOnly: true` keeps the destination and still classifies: HTTP and TLS pass, the
-handshake is blocked. §5.7 now says `routeOnly: true`.
+handshake is blocked. §3.4.8 now says `routeOnly: true`.
 
 Also measured: classification does not depend on `destOverride` — with `"destOverride": []` and
 `routeOnly: true` the handshake is still blocked and nothing else is sniffed. That is the smallest
-configuration that does the job, and the one §5.7 shows: no HTTP/TLS/QUIC sniffing, so the only cost is
+configuration that does the job, and the one §3.4.8 shows: no HTTP/TLS/QUIC sniffing, so the only cost is
 reading the first bytes of a connection.
 
-### 5.2 What owns what
+#### 3.4.3 What owns what
 
 ```
                  ┌───────────────────────── termit-uv / termit-mn ────────┐
@@ -1027,7 +1069,7 @@ reading the first bytes of a connection.
 - **The blocklist is a file refresh.** A timer fetches one URL, validates it, and replaces
   `blocklist.txt` atomically; the last good copy stays in force when the fetch fails.
 
-### 5.3 The table
+#### 3.4.4 The table
 
 Rendered from a typed model, like the Xray config, with a golden file per component and per option
 combination. Sketch (v4 shown, v6 is the same with `ip6 saddr`):
@@ -1069,14 +1111,14 @@ Two details are deliberately not left to the implementation:
 - **A scan is counted in the kernel, banned by the guard.** `meter … limit rate over N/minute` needs no
   userspace, and the guard sees the resulting element in `@scan4` and applies the ban with the ladder's
   TTL. That keeps one ban path for both signals and avoids a second, kernel-only ladder that the state
-  file would not know about. The spike settled the syntax (§5.0): the `meter` statement is the form that
+  file would not know about. The spike settled the syntax (§3.4.2): the `meter` statement is the form that
   gates, its set needs a name of its own (`scan4m`) because the meter creates it, and the guard flushes
   it on the counting window.
 - **`default_deny` is configurable and on.** A node publishes exactly three ports; anything else
   inbound is a scan or a leftover service the operator forgot, and both are worth refusing. Off is for
   an operator who runs something else on the box and knows it.
 
-### 5.4 Signals and the ban ladder
+#### 3.4.5 Signals and the ban ladder
 
 | Signal | Evidence | First ban | Escalation |
 |---|---|---|---|
@@ -1097,7 +1139,7 @@ Two details are deliberately not left to the implementation:
   and the operator's own `ssh_from` list. A ban on those would be self-inflicted, and the guard checks
   before it writes anything — `bans block` refuses them too.
 
-### 5.5 Commands
+#### 3.4.6 Commands
 
 ```
 termit-uv firewall status|on|off|confirm|rollback    --dry-run, --ssh-from CIDR, --default-deny=false
@@ -1121,7 +1163,7 @@ termit-mn  firewall … / bans … / guard …           the same code, the serv
   tree yet, and a check for a file nothing creates would be decoration — it lands with M5-6, where
   `init` starts taking one.
 
-### 5.6 Configuration
+#### 3.4.7 Configuration
 
 What exists today (M5-1); the keys of the later milestones are added by them, so nothing is accepted
 before something reads it:
@@ -1169,7 +1211,7 @@ Three constraints the loader enforces:
 CIDRs in `ssh_from` are parsed, normalised to their network and sorted. `termit-mn` gets the same block
 with its own ports (`22`, `80`, `443`, plus `listen`).
 
-### 5.7 BitTorrent
+#### 3.4.8 BitTorrent
 
 `security.bittorrent_block: true` adds to the generated Xray config, not to the firewall:
 
@@ -1178,7 +1220,7 @@ with its own ports (`22`, `80`, `443`, plus `listen`).
 "routing":  { "rules": [ { "type": "field", "protocol": [ "bittorrent" ], "outboundTag": "block" } ] }
 ```
 
-`routeOnly` is `true` and `destOverride` is empty on purpose, and §5.0 measured why: with
+`routeOnly` is `true` and `destOverride` is empty on purpose, and §3.4.2 measured why: with
 `routeOnly: false` the sniffed HTTP `Host` replaces the request's destination, so the tunnel would dial
 a name the node resolves instead of the address the client asked for; and BitTorrent is classified
 whether or not a protocol is listed in `destOverride`, so listing `http`/`tls`/`quic` buys nothing but
@@ -1189,7 +1231,7 @@ blackhole while a TLS ClientHello passed — so the feature is not a placebo and
 client is still not lab-shaped, so that half of the check stays manual. Sniffing costs a little CPU on
 the first bytes of each connection, which is why it is off by default and not implied by the firewall.
 
-### 5.8 Blocklist refresh
+#### 3.4.9 Blocklist refresh
 
 - One `GET` of a pinned URL, no `git` dependency; `If-Modified-Since` and a size cap.
 - Parsed as CIDRs (`iproute2`-style lines, `#` comments), normalised, deduplicated, sorted, and
@@ -1198,14 +1240,14 @@ the first bytes of each connection, which is why it is off by default and not im
   usable is a warning, never an empty list.
 - `termit-uv firewall refresh` runs it once; the timer runs it daily with a randomised delay.
 
-### 5.9 Milestones
+#### 3.4.10 The milestones, one by one
 
 **M5-0 — Spike (done).** On `termit-uv2.lan`: nftables 1.1.3 accepts the `meter … add @set { …
 timeout … }` form and refuses the two shapes that look equivalent (element-level `timeout` with a
 `limit`, and a `limit` matcher before `add`); the `add @set { … limit … }` form without a meter adds on
 the first packet and is not a detector; `nft -c -f` accepts the whole table, both families, one meter
 each. The pinned Xray 26.11.9 does classify a BitTorrent handshake, and `routeOnly` must be `true`. All
-of it is in §5.0, including what changed because of it.
+of it is in §3.4.2, including what changed because of it.
 
 **M5-1 — Table and commands (done).** `internal/firewall` renders the table from a typed model and
 applies it through `nft -f -`; `internal/uv/service` renders the rollback pair; `cmd/uv/firewall.go`
@@ -1252,7 +1294,7 @@ timer (the operator already watched that exact table work), an apply still insid
 comes back with the timer armed (the safety net still exists), and anything else — never confirmed, or
 taken down by `off` — stays gone. The plugin, the server's copy in `deploy/systemd` and the lab check
 (`TestLabHarden`: delete the table the way a reboot does, start the unit, the table returns without a
-timer; `off` then the unit, nothing returns) are in §5.9.
+timer; `off` then the unit, nothing returns) are in §3.4.10.
 
 **M5-3 — Blocklist refresh (done).** `internal/firewall/blocklist.go` parses, normalises, renders and
 stores the list, fetches it over `http(s)` or `file` with `If-Modified-Since` and a 4 MiB cap, and
@@ -1329,7 +1371,7 @@ Lab (`TestLabHarden`, 7.0 s): `init --harden` installs and starts the guard's un
 says what to run, `on` + `confirm` applies the table, a real `guard run --once` pass succeeds against it,
 and the cleanup leaves the node as it was found.
 
-**M5-7 — Docs and the §11 amendment (done).** Done: `DESCRIPTION.md` §11 invariant 1 (never touch
+**M5-7 — Docs and the `DESCRIPTION.md` §11 amendment (done).** Done: `DESCRIPTION.md` §11 invariant 1 (never touch
 routing; the table exists only after `firewall on`; the guard and the blocklist refresh only fill sets; the
 boot unit only puts back a confirmed apply), `OPERATIONS.md` §13 with the exact rules, the way back, the
 blocklist, the server's copy and what survives a reboot, `THREAT_MODEL.md` §5.6/§5.7 and the residual-risk
@@ -1362,7 +1404,9 @@ that cannot carry it (found on the production phones: every name resolved throug
 the version; the tag `v0.3.2` was cut from the last of them, and the pre-release flag was cleared once
 this pass was recorded.
 
-**Production pass, 2026-11-16 — recorded, the release may be published.** Three hosts: the management
+#### 3.4.11 The production pass, 2026-11-16
+
+**Recorded, the release may be published.** Three hosts: the management
 server `mn` (LXC on Proxmox) and two nodes (a VM and a reinstalled VM). Every gate was executed against
 the live hosts, not the lab:
 
@@ -1388,12 +1432,12 @@ the live hosts, not the lab:
 Two findings from the live pass that a lab cannot produce, both fixed before this record: the `device
 remove` argument order, and UDP being routed into a SOCKS proxy that cannot carry it — client DNS timed out
 until UDP was sent `direct` (0.3.2). The remaining compromise, UDP leaving from the node's address, is
-planned away in §11.
+planned away in §3.5.
 
 Total: 5–7 days of work. The first half-day — the spike that decided two syntax questions which could
-have re-shaped the rest — is spent and recorded in §5.0.
+have re-shaped the rest — is spent and recorded in §3.4.2.
 
-### 5.10 Explicitly out of scope
+#### 3.4.12 Out of scope
 
 - **Rate limiting of proxied traffic.** The operator owns their node; a limiter adds latency to the one
   thing it exists for and is a timing fingerprint. The BitTorrent rule stays, because it catches an
@@ -1403,146 +1447,23 @@ have re-shaped the rest — is spent and recorded in §5.0.
 - **A GUI, a threat feed, or a second blocklist.** One list, one URL, one file, operator-editable.
 - **Banning on the client's own protocol errors.** A wrong key answers `404`, which is a 4xx and
   therefore counts — that is intended and documented, with `bans unban` as the way out.
-## 2. Cross-cutting workstreams
 
-These are not separate milestones; they must be updated in the milestone that touches them.
+### 3.5 0.4.0 — WARP over WireGuard inside the core
 
-| Workstream | Rule |
-|---|---|
-| Docs | The change that alters behaviour updates the doc in the same commit. |
-| Tests | Every milestone lands its unit tests; the lab scenario for a milestone lands with it. |
-| Security | Redaction tests, `0600` checks, and an adversarial review pass at the end of M2 and M4. |
-| Observability | New state transitions and probes log once, structurally, with the identifiers needed to debug. |
+The one thing `0.3.2` gave up is that UDP leaves from the node's address: `warp-cli`'s proxy mode cannot
+carry it, so §3.5.1's option A replaced the proxy with a WireGuard outbound inside Xray. What follows is the
+plan as it was written before the code existed, then the records of what the code did; everything in it is
+deliberately testable, and every item names the observable that says it is done.
 
-## 3. Suggested order of the first ten commits
-
-1. `chore: scaffold module, layout, CI, licence, gitignore`
-2. `feat(proto): profile v1 constants, VLESS URL build/parse with round-trip tests`
-3. `feat(cred): pairwise derivation with test vectors`
-4. `feat(uv/state): atomic JSON persistence with schema versioning`
-5. `spike(uv): topology validation harness` (throwaway, kept under `spike/`)
-6. `feat(uv/xray): typed config model and deterministic generator + golden tests`
-7. `feat(uv/decoy): deterministic generator + embedded server + one template`
-8. `feat(uv/acme): HTTP-01 issuance and renewal against Pebble`
-9. `feat(uv/install): ordered resumable install with preflight and uninstall manifest`
-10. `feat(uv): init/doctor/status end to end on the lab box`
-
-## 4. Risks and mitigations
-
-| # | Risk | Likelihood | Impact | Mitigation |
-|---|---|---|---|---|
-| R1 | VLESS+XHTTP+TLS cannot share `:443` with the fallback decoy as assumed | Medium | High | M0.2 spike decides; two fallback topologies are pre-designed behind one interface |
-| R2 | `cloudflare-warp` unsupported on some hosts/arches | Medium | Medium | refuse with a reason; never silently degrade; document supported matrix |
-| R3 | MN's vantage point differs from users' and blocks healthy nodes | Medium | High | `unknown` invariant, retries, configurable thresholds, admin override; multi-vantage later |
-| R4 | Daily convergence means up to 24 h of stale peers | High (by design) | Low | documented; `termit-mn check now` + admin CLI for urgent cases; sync interval configurable |
-| R5 | Let's Encrypt path untested in the LAN lab | High | Medium | Pebble covers the ACME code path; the real-domain pass gates promoting a release out of pre-release, and the workflow publishes pre-release until it is done |
-| R6 | MN compromise or DB theft exposes all pair credentials | Low | Critical | master key can live outside the DB; backups encrypted by the operator; threat model documented |
-| R7 | Scope creep toward a panel/quota/billing product | High | Medium | non-goals list is explicit; v1 API stays minimal |
-| R8 | Dependency churn (SQLite, ACME, xray-core pinning) | Medium | Medium | pin versions + checksums, `govulncheck`, small module graph |
-| R9 | Development host has no Go/Docker and targets Linux | High | Low | M0.1 installs the toolchain; cross-compile; lab machines are the runtime |
-| R10 | Decoy templates look fake | Medium | Medium | user supplies the inspiration source; generator is pluggable; `termit-uv renew-site` iterates |
-
-## 5. Explicitly deferred (post-v1)
-
-v0.5.0 takes part of this list back off it (§10); everything here without a 0.5.0 item stays deferred.
-
-- Other xray-core protocol kinds; MTProto (§10.2). REALITY and Shadowsocks were dropped on 2026-11-22, with
-  the reasons recorded in §10.2; Trojan was considered and left out there too.
-- Multi-vantage probing (§10.7); federation between independent MNs; MN replication in one mesh
-  (§10.4); node reputation.
-- One machine running both the MN and a node (§10.6).
-- Web admin UI; traffic accounting and quotas (§10.5); Telegram bot.
-- IPv6-only nodes; non-Debian distributions (an explicit portability milestone, not a side effect).
-- Hot certificate reload without a restart (depends on Xray capabilities).
-
-## 6. Verification matrix (what proves each claim)
-
-| Claim | Proof |
-|---|---|
-| Direct traffic unaffected | Lab: SSH session open during install, sync, WARP toggle, and certificate renewal never drops |
-| Decoy is convincing | Browser + `curl` see a valid chain, HTML, plausible headers, working POST endpoint; no external requests in a network capture |
-| Proxy works | Real HTTP fetch through a subscription URI from a third machine |
-| Blocking is correct | Full transition table tests + scenario A drill in the lab |
-| No false blocking | Failure-drill suite: prober/MN failures produce `unknown`, state unchanged |
-| Secrets are protected | `0600` assertions, redaction tests, `git grep` for key patterns in CI |
-| Uninstall is clean | Manifest diff before/after on a fresh lab machine |
-| Idempotency | Install twice, sync twice, relocate twice; byte-identical state and config |
-
-## 7. Lab environment
-
-The maintainer provides three Debian 13 containers on Proxmox, reachable over SSH as root:
-`termit-mn` (2 vCPU / 2 GB), `termit-uv1` and `termit-uv2` (1 vCPU / 1 GB each, ~8.6 GB free disk).
-LAN DNS resolves `termit-*.lan`; outbound 443 works. Coordinates, host keys and the key path are kept
-in the gitignored `.spike-out/lab.md`, never in committed files.
-
-Answered:
-
-- Debian 13 on all three, x86_64, NTP synced, outbound internet available.
-- Private addresses only, so Scenario C proves the DNS-consistency logic but not a public-IP path.
-- `warp-cli` **cannot** run: these are unprivileged LXC containers without `/dev/net/tun`.
-- **WARP acceptance is deferred to the release checklist** (maintainer decision, 2026-11-09). The
-  implementation follows the reference's `warp-cli` proxy mode, which is known to work; the lab can
-  only verify that WARP is detected as unsupported and refused with a clear reason.
-
-Answered during M1: the lab ACME is **Pebble on the MN container** (`httpPort: 80`, directory
-`https://termit-mn.lan:14000/dir`), which is what M0.3 and every lab install ran against. Pebble's
-self-signed chain is why `acme.skip_tls_verify` exists.
-
-## 8. Estimated effort
-
-| Milestone | Ideal days | Cumulative |
-|---|---|---|
-| M0 spikes + scaffolding | 3–5 | 3–5 |
-| M1 UV standalone | 8–12 | 11–17 |
-| M2 MN core | 8–10 | 19–27 |
-| M3 full lifecycle | 8–12 | 27–39 |
-| M4 hardening + release | 6–8 | 33–47 |
-
-The range is wide because M1 and M3 depend on how much the M0.2 topology spike and the Xray hot-API
-path cooperate.
-
-## 9. Open items to confirm before M1 starts
-
-1. ~~Go module path / repository URL~~ **Resolved**: `git@github.com:shogun-kub/termit.git`, module
-   path `github.com/shogun-kub/termit`. The `origin` remote is configured; nothing is pushed.
-2. ~~Decoy-site inspiration source~~ **Resolved**: the `autoXRAY-multi` generator family plus three
-   maintainer-provided pages, captured locally under `captures/decoy-samples/` (gitignored, no URLs
-   recorded). See `DESCRIPTION.md` §5.3 and `IMPLEMENTATION_PLAN.md` M1.3.
-3. Lab coordinates and the DNS suffix, plus the answers to §7.
-4. ~~Whether `termit-uv` should enable WARP by default on fresh installs~~ **Resolved** on 2026-11-10: on by
-   default, opt-out with `--no-warp` or `warp.mode: off`. See M4.1.
-5. Whether the MN domain and the UV domains are expected to live in the same DNS zone (affects the
-   DNS-consistency check and documentation).
-
-## 10. Backlog
-
-v0.5.0 is three of these items, in this order: a WARP that carries UDP (10.1), the profile options and
-the envelope for a second kind (10.2), and Hysteria2 as that kind (10.3). Each unblocks the next, and the
-first two are worth shipping even if the third slips. The first two shipped in `0.5.0`; the third went in
-with them and was finished in `0.5.1`, and what is left of each is named below.
-
-**Numbering.** `0.6.0` is cut and published; the next release is `0.7.0`, and its scope is §10.9 (update
-offers) plus §10.10 (the owner's interface) and the three debts §11.15 recorded. The advisory entry
-GO-2026-5288 is still in `deploy/vulnerabilities.json` with `must_be_gone_by: 0.7.0`: a stale record, not a
-live advisory. Its source, GHSA-9fw6-xgg2-mq9q, lists 2.8.1 as the last affected release and 2.8.2 as the
-fix; this build pins 2.14.0 and never enables the sniffing the PoC needs. `vuln.go.dev` never got the fixed
-version — the record is `UNREVIEWED` — so `govulncheck` still reports the module and `deploy/release` will
-refuse to cut `0.7.0` while the entry is there. Re-check the record first; if it is still stale, moving the
-deadline is a deliberate act with its reason in the commit, not a quiet edit.
-
-Everything after them is postponed to a later release: understood and wanted, but nothing in 0.5.0
-depends on it. Each postponed item still names the rule that keeps it out, so nobody re-discovers the
-reason from scratch.
-
-### 10.1 WARP that carries UDP
+#### 3.5.1 The gap and the survey
 
 Until 0.4.0 `warp.mode` routed TCP through `warp-cli`'s SOCKS5 listener and sent UDP `direct`
 (`docs/OPERATIONS.md` §6): proxy mode has no UDP ASSOCIATE, so a UDP flow handed to it never returns and
 the first casualty is client DNS. The split kept the nodes usable and gave up the address WARP exists to
 hide, for UDP only. Four ways to close that gap were surveyed on 2026-11-16; option A was built in 0.4.0
-and proved on a production node (§11), including a DNS query answered through the tunnel.
+and proved on a production node (§3.5), including a DNS query answered through the tunnel.
 
-What keeps it a 0.5.0 item:
+What kept it a `0.5.0` item:
 
 - **The `proxy` transport still splits UDP to `direct`.** A node that has to run `warp-cli` — the fallback
   when the WireGuard registration cannot be made — keeps that hole while reporting `warp=on` like any
@@ -1550,8 +1471,8 @@ What keeps it a 0.5.0 item:
 - **The transport must stay swappable.** Cloudflare is moving WARP to MASQUE, and the tunnel is a
   registration plus an outbound whose tag the routing rule names. That indirection is the work; option D
   must drop into it without touching routing, the fail-open balancer or the state.
-- **Hysteria2 carries UDP through it** (§10.3). The hop is proved for TCP on the lab and, with UDP
-  payloads, on production (§11.13): the exit a QUIC client sees is Cloudflare's, and the node's own
+- **Hysteria2 carries UDP through it** (§3.6.2). The hop is proved for TCP on the lab and, with UDP
+  payloads, on production (§3.6.4): the exit a QUIC client sees is Cloudflare's, and the node's own
   traffic keeps its own address.
 
 | Option | UDP | Host routing | Cost |
@@ -1561,7 +1482,7 @@ What keeps it a 0.5.0 item:
 | C. `warp-cli` in TUN mode | yes | full-tunnel capture | contradicts `AGENTS.md` §2.2, rule 1, and `/dev/net/tun` is absent on the LXC nodes |
 | D. `usque` (MASQUE, userspace SOCKS5 with TCP and UDP) | yes | none | a third-party service and its netstack, plus a licence to check; MASQUE is where Cloudflare is going |
 
-**Chosen: A, built in 0.4.0 (§11).** Xray has shipped a userspace WireGuard outbound since 1.6.5 and documents the WARP
+**Chosen: A, built in 0.4.0 (§3.5).** Xray has shipped a userspace WireGuard outbound since 1.6.5 and documents the WARP
 setup end to end ([xtls guide](https://xtls.github.io/en/document/level-2/warp.html)); `noKernelTun` forces
 the in-process gVisor stack, which is exactly the LXC case these nodes are
 ([outbound docs](https://xtls.github.io/config/outbounds/wireguard.html)). `wgcf generate --xray` prints the
@@ -1591,23 +1512,332 @@ Acceptance for the remainder: a node on the `proxy` transport either carries UDP
 enabled, a UDP payload from a client exits at Cloudflare's address, while SSH, ACME and the decoy still
 leave from the node's own. No `ip rule`/`ip route` change exists on the host.
 
-**Option D is in `0.6.0`** (`warp.transport: usque`): the MASQUE client runs as a pinned, digest-checked
-sidecar with its own unit, user and loopback SOCKS5 listener, and its listener carries UDP, so the document
-sends both protocols to the WARP hop and the split disappears. The proof it must still collect is the
-production pass — the exit address and a UDP flow (DNS) through the tunnel — because every part of this
-crosses a network nobody here controls. The pass found that the sidecar alone cannot carry UDP for this
-core — `usque` keys a SOCKS5 UDP association on the control connection's own address — so the released form
-puts a small loopback relay (`termit-usque-relay.service`) in front of it; §11.15 has the measurement and
-the code in question.
+#### 3.5.2 What changes for an operator
 
-The hysteria half of that is proved on production (§11.13): a client through the QUIC transport on then5
-exited at `104.28.222.18` with `warp=on`, and the address families the node does not serve were refused
-rather than answered with the node's own address. The `proxy` transport cannot carry UDP at all — `warp-cli`
-has no UDP association — and since `0.5.2` `warp status` says so instead of reporting a bare `warp=on`, in
-text and in `--json` as `udp: not carried` / `"udp": "direct"`. That leaves option D (MASQUE) as the only way
-to close the gap for `proxy`, which is the swap the tag indirection exists for.
+Nothing in the interface they know. `warp.mode` keeps its three values, `warp.fail_open` keeps its
+meaning, `termit-uv warp status` keeps its shape. Two things become true that are not true today: UDP
+through the tunnel exits at Cloudflare, and the host no longer runs `cloudflare-warp` at all — no package,
+no second daemon, no SOCKS port.
 
-### 10.2 More protocols and protocol options
+A new optional key selects the transport while the old path is still supported:
+
+```yaml
+warp:
+  mode: all
+  fail_open: true
+  transport: wireguard     # wireguard (default from 0.4.0) | proxy (what 0.3.x does)
+```
+
+A configuration written before this key exists behaves as `proxy` and is not migrated silently; flipping
+it is `termit-uv init --warp-transport wireguard`, which registers, writes the identity, regenerates the
+core config and applies it. The reverse flag returns the node to the proxy path.
+
+#### 3.5.3 The identity: one secret, written once
+
+WARP over WireGuard needs a registration: a Curve25519 private key, the address Cloudflare assigns
+(`172.16.0.2/32` and an IPv6), the peer public key, the endpoint, and the three `reserved` bytes without
+which the handshake is dropped. That is a credential and it belongs where the node's other credentials
+live:
+
+- `/var/lib/termit/uv/warp.yaml`, `0600`, written atomically, never regenerated once it exists (the node
+  would change its WARP identity on every `init` otherwise).
+- Never in a log line, an error string, `termit-uv status`, `doctor` or the page. `status` may print the
+  endpoint and the device id; the private key and the reserved bytes never leave the file.
+- Removed by `termit-uv uninstall` together with the rest of the state, and only by an explicit flag
+  otherwise — a lost identity is a new device on Cloudflare's side, not a disaster.
+
+Two ways to obtain it, and the plan takes the second:
+
+1. Shell out to `wgcf` (MIT) and parse what it prints. Fast to write, but it adds a third-party binary to
+   the install path, and its output format is not ours to promise.
+2. Speak Cloudflare's registration API from Go: generate a key pair, `POST /reg` with the public key and
+   the WARP client's shape, read back `config.peers[0]` and the reserved bytes. It is a handful of HTTP
+   calls behind an interface, testable against `httptest`, and leaves the node with no new binary. The
+   existing `internal/mn/secret` sealing helpers are the wrong shape here (the key must be usable, not
+   sealed), so it is a plain `0600` file, like the peer secrets already in `state.json`.
+
+#### 3.5.4 The generated outbound
+
+```json
+{ "tag": "warp", "protocol": "wireguard",
+  "settings": {
+    "secretKey": "…", "address": ["172.16.0.2/32", "2606:4700:110:…/128"],
+    "peers": [{ "publicKey": "bmXOC+…", "endpoint": "162.159.192.1:2408",
+                "allowedIPs": ["0.0.0.0/0", "::/0"], "reserved": [240, 25, 146] }],
+    "mtu": 1280, "noKernelTun": true } }
+```
+
+`noKernelTun` is not a tuning knob here: it is what keeps the node out of host routing (invariant 1 in `AGENTS.md` §2.2)
+and what makes the outbound work in the LXC containers the lab runs on. The measured cost — two thirds of
+the kernel path's throughput on a one-vCPU node (§3.5.1) — is accepted and recorded.
+
+With the tunnel in the core, the routing rule goes back to a single catch-all:
+
+```json
+{ "type": "field", "network": "tcp,udp", "balancerTag": "warp-egress" }
+```
+
+The `0.3.2` split (UDP `direct`) survives only under `transport: proxy`, where it is still the correct
+answer, and the golden tests cover both documents.
+
+#### 3.5.5 Work breakdown
+
+| # | Task | Done when |
+|---|---|---|
+| 1 | `internal/uv/warp` registration client behind an interface: key pair, `POST /reg`, parse peer/reserved, error classification | unit tests against a fake API; no network in `go test` |
+| 2 | `warp.yaml` in the state directory: atomic write, `0600`, load/validate, idempotent, survives `init` twice | state test: two runs, one identity, unchanged bytes |
+| 3 | Config key `warp.transport` with `proxy` as the legacy default and `wireguard` from fresh installs | config tests: absent key = proxy; validation refuses an unknown value |
+| 4 | Generator: wireguard outbound + single catch-all when `transport: wireguard`; the `0.3.2` split when `proxy` | golden documents for both, plus `xray -test` in the lab |
+| 5 | CLI: `termit-uv init --warp-transport`, `warp status` shows transport and endpoint, `warp rotate` re-registers | `warp status` never prints a key; a redaction test greps the output |
+| 6 | Install/uninstall: skip `cloudflare-warp` when the transport is wireguard, remove the outbound and keep the unit when switching back | lab: proxy → wireguard → proxy leaves no stale package, unit or rule |
+| 7 | Docs: `OPERATIONS.md` §6, `DESCRIPTION.md` §Egress, the guide, `CHANGELOG` for `0.4.0`; §3.5.1 records it as done | a reader can tell which transport their node runs without reading the config |
+| 8 | Transport variants and the migration between them: absent key loads as `proxy`, `init --warp-transport` writes and applies `wireguard`, and switching back leaves nothing behind | a table-driven test loads each variant, flips it through the CLI path and asserts the resulting config, the generated document and the on-disk state; an old config gains no key it did not have, and a switch does not orphan the previous transport's artefacts (package, outbound, identity file, SOCKS port) |
+
+#### 3.5.6 Acceptance
+
+Automated: generator goldens, an `xray -test` on the generated document in the lab, the identity surviving
+`init` twice, redaction of the key in every command's output, and a switch back to `proxy` that restores
+the old document byte for byte.
+
+Manual, because it is the whole point: a client resolves a name through the tunnel and the answer comes
+back; `curl https://www.cloudflare.com/cdn-cgi/trace` through the node reports `warp=on`; and the node's
+own SSH, ACME and decoy traffic still leaves from its own address — checked from the server side by
+watching the exit address of a request the node itself makes.
+
+#### 3.5.7 Risks
+
+- **Cloudflare may stop accepting WireGuard registrations.** WARP+ reportedly already does not work over
+  WireGuard ([wgcf#459](https://github.com/ViRb3/wgcf/issues/459)). The routing rule names a tag, so a
+  MASQUE transport (§3.8.1, option D) can replace the outbound without touching anything else; keep the
+  switch a config value, not a compile-time choice.
+- **A WARP identity is per node and cannot be shared.** Two nodes behind one registration look like one
+  device; the registration must be per node and stored, not derived.
+- **Fail-open must keep working over a tunnel that is down.** The observatory probes through the tag, which
+  is transport-agnostic; the test suite must cover the balancer pointing at a wireguard outbound.
+- **The package removal is a one-way door on a running node.** Switching back to `proxy` reinstalls
+  `cloudflare-warp`; the lab proves the round trip before a node in production takes it.
+
+#### 3.5.8 Implemented, 2026-11-16
+
+Tasks 1–8 are in `dev`: the registration client, the identity file, `warp.transport`, the generator for
+both documents, `init --warp-transport` / `warp rotate` / a `warp status` that probes the exit,
+`internal/uv/tunnelprobe` for that probe, and the transport-switch test. The preflight no longer warns
+about a missing `/dev/net/tun` on the wireguard transport, because the userspace tunnel does not need one.
+
+Verified on the lab node (`termit-uv1`, an unprivileged container, no `/dev/net/tun`) against the real
+Cloudflare API:
+
+- registration succeeded — device `40d665d2…`, peer `engage.cloudflareclient.com:2408`, three reserved
+  bytes, the tunnel addresses, the identity on disk as `0600`;
+- `xray -test` accepted the generated document, and the route collapsed to one `tcp,udp` rule through the
+  balancer with a `wireguard` outbound whose `noKernelTun` is true;
+- `termit-uv warp status` reported `egress: on` with a `2a09:bac5:…` address — a WARP address, fetched
+  through the node's own tunnel;
+- **UDP through the tunnel answered**: a DNS query to `1.1.1.1:53` sent over SOCKS5 UDP through the node
+  to that tunnel came back with two answers. This is the thing 0.3.2 could not do.
+
+The install itself ends with the step that would have caught the 0.3.2 problem on the node instead of on a
+phone: `warp-egress` runs after the core is started, and when WARP is on and the node is registered it
+fetches Cloudflare's trace through the tunnel and reads the address. A wrong answer — the tunnel is
+configured but the exit is the node's own — is a warning naming that address, not a failed install, and
+`warp-egress ok` on the lab node is the same evidence a client would produce.
+
+Still open before a release: the acceptance-lab run, and the production pass that a `0.4.0` release needs.
+
+#### 3.5.9 The acceptance lab, 2026-11-17
+
+`v0.4.0p1` reached the lab the way a tester gets it — the MN by hand against `SHA256SUMS`, the three nodes
+with `uv.sh --version v0.4.0p1 --no-enroll`. All four came up on the release binary and the upgrade
+converged the units, the certificate and the Xray document without touching identity or path.
+`termit-uv1`, which carries `warp.transport: wireguard`, ended its `init` with `warp-egress ok`.
+
+That run also found the defect this milestone could not ship with: **a sync rewrote a wireguard node as
+the proxy sidecar**. The agent's reconciler built the WARP half of the document itself, without the
+transport and without the registration, so the first sync after the install pointed the balancer at a
+SOCKS port nothing listens on; fail-open then took the traffic and the node exited directly — the failure
+`warp-egress` exists to catch, arriving a day late instead of at install time. `warp mode all` had the
+same shape: it refused on a wireguard node for the missing `/dev/net/tun`, which that transport does not
+need.
+
+Fixed in `d66f947`: `install.WarpSpecFor` is the only place that spec is built and the sync goes through
+it, and `warp mode` skips the sidecar — and its tun check — on the wireguard transport, registering the
+node when it has never been registered. `TestWarpSpecFor` covers the four combinations and
+`TestApplierKeepsTheWireGuardTunnel` pins the reconciler.
+
+`v0.4.0p2` (`7ea5e23`) re-ran the suite: **17 pass, 2 skip** (`TestDrillDiskFull` and
+`TestDrillClockSkew`, both limits of an unprivileged container), 346 s. On the lab node, `sync` keeps the
+wireguard outbound in the document, `warp mode off` and `all` round-trip it, and `init` ends with
+`warp-egress ok`.
+
+Still open before a release: the production pass on the two nodes.
+
+#### 3.5.10 Size
+
+Two to three days of work: the registration client and the state file are the bulk of it, the generator
+change is small, and the lab pass is a half-day. It ships as `0.4.0` from a `release/v0.4.0` branch, with
+its own production pass recorded the way `M5-8` was.
+
+#### 3.5.11 The production pass, 2026-11-17
+
+Both nodes took `v0.4.0` with `uv.sh --version v0.4.0`: the upgrade converged the units, the certificate
+and the document, and each `init` ended with `warp-egress`, the step this milestone added.
+
+- **One node runs the in-core tunnel.** `init --warp-transport wireguard` registered a fresh device,
+  wrote `transport: wireguard`, and `termit-uv warp status` answered `egress: on` with a `2a09:bac1:…`
+  address fetched through the tunnel — UDP now rides WARP on a production node, which is the point of
+  the milestone.
+- **The other cannot.** The same `init` registered and applied the route, and `warp-egress` then
+  reported the exit as the node's own address: that network drops the WireGuard handshake to
+  `engage.cloudflareclient.com:2408`, while `warp-cli`'s HTTPS tunnel works there. The step turned a
+  silent privacy regression into a named warning, and the node went back with
+  `init --warp-transport proxy` — `warp status` reported `on` again with a `2a09:bac5:…` address, so the
+  round trip is exercised on a live node.
+
+That is the answer to one of the risks above: the transport is a per-network choice, and `0.4.0` gives
+the operator the check and the switch instead of a default that lies.
+
+#### 3.5.12 The endpoint, later the same day
+
+That pass found a second defect, and it was the one that mattered: the node written off as "cannot reach
+WARP" was fine. Cloudflare names its endpoint for both address families and the core resolves that name
+itself; on a host without a global IPv6 it took the AAAA record, the handshake died with
+`sendto: network is unreachable`, the observatory marked the outbound dead and the balancer fell back to
+`direct` — a node that looked healthy while exiting from its own address. The same identity and the same
+document, run by hand against an IPv4 endpoint, handshook in half a second.
+
+`8c15d16` resolves the endpoint once, at registration, and stores the address. `v0.4.0p4` carries it: both
+nodes rotated onto `162.159.192.1:2408` and reported `egress: on` with a Cloudflare address — including
+the one the first pass had written off.
+
+The lesson is a rule in `AGENTS.md` §9 now: a release that touches the network is proved on the
+production nodes as a pre-release, and the final tag waits for that.
+
+#### 3.5.13 The family, the same day
+
+`0.4.0` also lets the owner choose which family leaves through WARP: `ipv4` by default, because
+Cloudflare's IPv6 egress is what large services mark as unsafe, and a provider's own IPv6 is not the
+node's to fix. `warp.family` keeps the tunnel address of that family, gives the peer its default route
+and sends the other family direct — the way it went before WARP, and named in the document rather than
+left to the trailing rule.
+
+`v0.4.0p6` on both production nodes: `family: ipv4`, `172.16.0.2/32` and `0.0.0.0/0` in the core's
+document, `::/0` named direct, and `warp status` answering `egress: on` with `104.28.222.18` and
+`104.28.193.183` — Cloudflare's IPv4, where the same nodes reported `2a09:…` a few hours earlier.
+
+**Changed for 0.5.0, 2026-11-21: the untaken family is refused, not sent direct.** Routing it direct put
+the node's own address on the wire for every IPv6 destination — the identifier the tunnel exists to hide,
+measured as `ipv6.icanhazip.com` answering with a node's `2a12:…` address. The rule now sends those
+destinations to `block`. A client gets a connection that fails and can say so, instead of an address it
+never asked for; the price is that a service reachable only over the untaken family no longer works
+through the node, which with the IPv4 default means IPv6-only services. `OPERATIONS.md` §6 states the
+behaviour and its limit — the rules match addresses, not names.
+
+#### 3.5.14 0.4.1, 2026-11-17
+
+`0.4.1` is a small release — the wizard's install branch, the agent's write access to the page it
+re-renders, two installers that no longer demand a version, and the pages checked against a clean box —
+but it changes the network half of the agent, so it went out the same way `0.4.0` did: as a pre-release on
+the production mesh, with the final tag waiting for what the mesh answered.
+
+**The pre-release was built, and it caught a defect in the pipeline first.** `workflow_dispatch` on
+`release/v0.4.1` computed the pre-release number from a tag pattern with one `v` too many
+(`vv0.4.1p*`), found no build, and published over `v0.4.1p1`: the tag stayed on its commit and the assets
+were rebuilt from the branch tip. Every earlier pre-release had been published by pushing a tag, which runs
+the other job, so the counter had never been exercised. `37b84fb` fixes the pattern and refuses a version
+whose tag already exists before anything is built or uploaded; `v0.4.1p1` was rebuilt from its own tag and
+the assets replaced, and `v0.4.1p5` is the build this record is about.
+
+**Both nodes took `v0.4.1p5` with `sh uv.sh --version v0.4.1p5 --no-enroll`.** then5 came from `p4`, then4
+from `0.4.0p6`. On both, `init` reported eleven steps `present` and rewrote only the agent unit — the
+generators did not change between those builds — so `xray.json` and `config.yaml` kept their digests and
+`termit-xray` was never restarted (then5 still on its 08:01:37 EET start, then4 on 06:01:54 UTC). The
+rewritten unit is the one change that matters: `ReadWritePaths` now names the site tree, and the page the
+agent re-renders after a sync can finally be written.
+
+That claim was checked rather than assumed: on each node the same render (`termit-uv options --quiet`) was
+run inside the unit's own sandbox properties — `ProtectSystem=strict`, the unit's `ReadWritePaths`,
+`ProtectHome=yes` — and it exited 0 where, on the lab, the same command with the previous path list failed
+with the production's exact `read-only file system`. `termit-uv doctor` reports 19 ok on both nodes and
+TLS answers `200` on both names.
+
+**The server went from `0.3.2` to `v0.4.1p5`.** The database schema did not move (`SchemaVersion` was 5 in
+both trees), so the upgrade is reversible with the previous binary, and the unit shipped with the release
+is byte-identical to the installed one — `daemon-reload` was not needed. The order was `stop`, replace the
+binary, `start`; the service came back on `:443` with the same certificate, `termit-mn status` lists both
+nodes `active` with `failed cycles: 0`, a probe of one node returned `check_ok` with `changed: false`, and
+the API answers as it should from outside (`401 unauthorized` on `agent/sync`, a `400 url_invalid` problem
+document on `enroll`). The recorded backup holds the old binary, the unit, the configuration, the master
+key, the admin token and a consistent database snapshot.
+
+**Node and server talk again on the new builds.** `termit-uv sync` on both nodes answered `already in
+sync: 3 client(s), 1 peer(s)` without touching either core document, and the server now records both as
+`termit-uv v0.4.1p5 (37b84fb)`.
+
+**Still open, and said so rather than assumed:** the full daily agent cycle — sync, the transport-aware
+self-check, the page render — has not yet run on `p5` by the schedule; the next one is due a day later. What
+was exercised is the same code reached by hand, plus the server's own probe. If the cycle disagrees, it is
+the page render and the `warp` line in the self-check report that will say so, and the rollback is the
+previous binary plus `termit-uv init`.
+
+**One host detail worth recording:** the production server has no `curl`, and every installer and one-liner
+in the guide assumes it. The update was done with `wget` and `sha256sum -c`; installing the package or
+teaching the scripts a `wget` fallback is a decision, not yet made.
+
+#### 3.5.15 0.4.2, 2026-11-20
+
+`0.4.2` is the release that makes a first installation work on the machine a participant actually has:
+the installers resolve a release with `wget`, `mn.sh` upgrades without being handed the domain it already
+knows, the wizard asks for the certificate authority and finishes a registration the first run did not, the
+menu covers every command, and the guard no longer treats the node's own WARP endpoint as a scanner. Only
+the last two touch a running node, but the installers are the first thing a participant meets, so the
+release went to the production mesh as a pre-release before any tag existed.
+
+**The pre-release this record is about is `v0.4.2p3`.** `p1` was the release branch's first build; `p2`
+carried the flagless `mn.sh`; `p3` added the never-ban entry for the tunnel endpoint. The lab gated `p3`
+(`19 pass, 2 skip` — `clock skew` by design, and `disk full` refused by its own precondition when the
+filesystem stopped at 28 KB free rather than claim a drill it could not set up).
+
+**The server took `v0.4.2p3` with `sh mn.sh --version v0.4.2p3` and no other argument**, which is the
+behaviour this release adds: the script printed `domain: … (from /etc/termit/mn/config.yaml)`, replaced the
+binary and the unit, re-ran `init` and restarted the service. The database schema did not move (5 in both
+trees, so the previous binary still reads it), the shipped unit is byte-identical to the installed one, and
+`init` rewrote the configuration only to normalise it — it added the `locale`, the guard's default
+thresholds and `default_deny: true`, and dropped quotes the YAML did not need; every operator decision
+(domain, prefix, `ssh_from`, blocklist URL, subscription) came back unchanged. `status` lists both nodes
+`active` with no failed cycles, `healthz` answers `"build":"v0.4.2p3"` with `schema_version: 5`, and
+`agent/sync` still answers `401` without a key.
+
+**Both nodes took `v0.4.2p3` with `sh uv.sh --version v0.4.2p3 --no-enroll`.** Each `init` reported eleven
+steps `present` and three `ok`; `xray.json` and `config.yaml` kept their digests, the units were already up
+to date, and `termit-xray` was never restarted (one node still on its 2026-11-17 08:01:37 EET start, the
+other on 06:01:54 UTC). `warp status` reports `egress: on` through Cloudflare on both, `doctor` says 19 ok,
+and the certificate and the decoy answer `200` to a request from outside the node. The firewall table
+survived the upgrade untouched — still confirmed from three days earlier, SSH still restricted to the
+operator's own address, 145 blocklist networks in force — which is the invariant that matters: an upgrade
+never touches host firewall state.
+
+**The never-ban change was proved where it matters.** On both nodes `termit-uv bans block 162.159.192.1`
+now exits 2 with the refusal, and neither ban list holds a Cloudflare address, while the guessable-SSH and
+blocklist machinery is unchanged. The node's own tunnel endpoint is read from `warp.yaml` whatever
+`warp.mode` says, so a node that turns WARP off and on again cannot start by banning its peer.
+
+**Still open, and said rather than assumed:** the daily agent cycle has not yet run on `p3`; the next
+self-check reports to the server within the hour, and until it does the server's `AGENT` column still names
+the previous build. The refusal message from `bans block` lists loopback, the private ranges, the
+management server and `ssh_from` — it does not yet mention the WARP endpoint it now also refuses, which is
+a one-line correction owed to the next release. Also worth recording: this workstation could not open a
+public TLS connection during the pass (Windows `schannel: AcquireCredentialsHandle failed`), so the
+external `200`s above were taken from the server host with `wget`; the nodes' own end-to-end checks are the
+server's probes and their own `warp status`.
+
+### 3.6 0.5.0 and 0.5.1 — the second transport
+
+`0.5.0` is three items, in this order: a WARP that carries UDP (§3.5.1), the profile options and
+the envelope for a second kind (§3.6.1), and Hysteria2 as that kind (§3.6.2). Each unblocks the next, and the
+first two are worth shipping even if the third slips. The first two shipped in `0.5.0`; the third went in
+with them and was finished in `0.5.1`, and what is left of each is named below.
+
+#### 3.6.1 More protocols and protocol options
 
 V1 is one profile: VLESS over XHTTP `packet-up` inside TLS that nginx terminates, with the parameters
 frozen in `internal/proto/profile.go`, one `xray-core` probe worker on MN, and one URI builder plus one
@@ -1623,7 +1853,7 @@ The request has two sizes, and the smaller one may be enough:
   nginx's HTTP/1.1 hop, and a `chrome` hello was frozen on a measured path. These change the URI builder,
   the generator and the prober together.
 - **A second protocol** — Hysteria2/TUIC are UDP, need another client on MN and another listener on UV;
-  Hysteria2 shipped in `0.5.0` (§10.3) and is the one that answered a real block. MTProto is a different
+  Hysteria2 shipped in `0.5.0` (§3.6.2) and is the one that answered a real block. MTProto is a different
   product. The profile becomes `{kind, version, params}` with a codec per kind, and that envelope is what a
   new kind plugs into — but only when a kind is actually coming, because a map with no consumer is a schema
   nobody can check.
@@ -1646,7 +1876,7 @@ The request has two sizes, and the smaller one may be enough:
 Constraints, in the order they decide the design:
 
 1. **The credential model is VLESS-shaped.** Pair access is a UUID derived per pair (Shadowsocks and Trojan
-   use passwords; Hysteria2 uses a password derived from that UUID, §10.3, so the mesh still expresses "A may
+   use passwords; Hysteria2 uses a password derived from that UUID, §3.6.2, so the mesh still expresses "A may
    use B" with what both sides already hold and the epoch does not move). A kind whose secret cannot be
    derived from the UUID would change `DESCRIPTION.md` §6.2, which is a new `credential_epoch` and a
    migration. Only a kind we actually adopt should pay that.
@@ -1658,7 +1888,7 @@ Constraints, in the order they decide the design:
    another client there. Decided: MN links hysteria's own client module
    (`github.com/apernet/hysteria/core/v2/client`), so the probe carries the same handshake by construction
    and the server runs no second process. The cost is module graph weight — quic-go and its dependencies
-   enter MN's graph — and that is recorded and gated by `govulncheck` like any other dependency (§8). A
+   enter MN's graph — and that is recorded and gated by `govulncheck` like any other dependency (`AGENTS.md` §8). A
    hand-written QUIC prober would mean maintaining a fork of the handshake, which is not a prober but a
    second project. The narrow `Probe(ctx, url)` seam survives, but each transport is a new implementation
    behind it.
@@ -1681,7 +1911,7 @@ Constraints, in the order they decide the design:
   taking 443, and stock sing-box able to read it. That is a profile option, not a new kind.
 
 Order in 0.5.0: the options first (small, no credential change), and the `{kind, version, params}` envelope
-built for the kind that ships in that release — Hysteria2 (§10.3), which is a binary of its own and
+built for the kind that ships in that release — Hysteria2 (§3.6.2), which is a binary of its own and
 therefore the expensive one. Never expose raw Xray JSON: a per-kind schema with validation is the only thing
 that keeps the generator, parser and prober from drifting apart.
 
@@ -1691,11 +1921,11 @@ getting a clear refusal, and the decoy/ACME/direct-traffic invariants unchanged.
 must show an old MN and a new UV (and the reverse) refusing the mismatch instead of writing a config
 that cannot work.
 
-### 10.3 Hysteria2 as a second transport — done in 0.5.0 and 0.5.1
+#### 3.6.2 Hysteria2 as the second transport
 
 **Completed.** Phase 1 (the pinned binary, the unit, the generated config, the loopback hop) shipped in
 `0.5.0`; phase 2 (the envelope the mesh reads, the links in `uri`/`device`/the page) in `0.5.1`; the
-production passes are §11.12 and §11.13. What this section argued is what the code does.
+production passes are §3.6.3 and §3.6.4. What this section argued is what the code does.
 
 The node's profile is TLS that nginx terminates. Where a network interferes with that shape, the answer
 that works today is a QUIC transport: it runs on UDP, so the interference aimed at TCP/443 does not see
@@ -1762,12 +1992,12 @@ Phases:
    with the node rather than with its devices. What is left is the parameters side of the envelope: a kind
    whose parameters vary has no place to say so yet, and the prober has no way to read a kind it does not
    implement.
-3. Prober (done): MN links hysteria's client and probes the transport (§10.2, constraint 3). The target
+3. Prober (done): MN links hysteria's client and probes the transport (§3.6.1, constraint 3). The target
    carries the kind the check goes through, and only a node that serves nothing but QUIC takes the new
    path — every other node keeps the worker binary, which checks what a VLESS client would see. The
    certificate pin is read the same way on both paths, and the server's probe credential joins the node's
    transport user set so the QUIC half can authenticate at all.
-4. Production pass (done, §11.12 and §11.13): the transport is network, so it shipped as a pre-release to
+4. Production pass (done, §3.6.3 and §3.6.4): the transport is network, so it shipped as a pre-release to
    the production nodes first, and what the exit really was — not what the code intended — is recorded
    there.
 
@@ -1778,764 +2008,7 @@ an unmodified sing-box refuses the kind instead of writing a config that cannot 
 hysteria process comes back by itself (the `Restart=always` the core's unit now has). Production pass: the
 exit address and the fingerprint of a real handshake from a second machine.
 
-### 10.4 Several MNs in one mesh — postponed
-
-Today one MN is the only authority: it owns the SQLite registry, derives every pair credential from its
-`master_key`, probes every node and renders every subscription. A second MN in the same mesh is therefore
-a second authority, not a mirror, and the work is an ownership rule plus replication — not a load
-balancer in front of one database. It stays out because v1 is explicitly a single coordinating server
-(`DESCRIPTION.md` §3 rules out federation between MNs), because the credential derivation in
-`DESCRIPTION.md` §6.2 is a contract a second writer must not silently change, and because one MN is
-already the most valuable target in the mesh: every extra copy carries the same power. This item is
-replication inside one cooperative mesh — several MNs over the same node set. Federation of independent
-groups that only share some nodes is a different thing (§5) and is not covered here.
-
-What replicates: node records (`uv_id`, domain, profile, state, failure streak, certificate pin,
-agent-key hash), `credential_epoch`, policy that changes pairs, verdicts with their timestamps, and the
-schedule. What does not: the `master_key`. It is moved once, out of band, when the mesh is formed, or
-replaced by a threshold scheme below — sending it through a relay, even encrypted, makes every relay a
-candidate for the whole mesh.
-
-| key model | consequence |
-|---|---|
-| shared `master_key` | any MN derives any pair; simplest; one compromised MN is the whole mesh, which a single MN already is |
-| threshold (2-of-N) | no single MN derives; changes `DESCRIPTION.md` §6.2, so a new `credential_epoch` and a migration; new pairs need two MNs reachable |
-
-That choice comes before any code, because it decides whether replication is additive or a credential
-migration.
-
-Authority:
-
-- Every node has exactly one **home MN**, fixed at enrollment. Only the home MN accepts
-  enroll/unblock/relocate/policy for that node, and only it writes the row; replicas apply events and
-  never write a node they do not home. A node id is global: two homes may not own the same one, a replica
-  never creates one, and a conflict is refused rather than merged. Moving a node is an explicit handoff —
-  the new home issues a new agent key, the id and the pair credentials survive, the epoch is checked —
-  never an implicit failover.
-- `credential_epoch` is replicated, and a bump takes effect only when every configured MN has
-  acknowledged it. A bump during a partition is a mesh-wide split no node can detect from the inside;
-  gating it on quorum is the whole safety argument.
-
-Transport, two paths, one envelope:
-
-- **Direct**: MN↔MN over HTTPS with pinned static keys — no new CA and no new service.
-- **Indirect**: through mesh nodes. A UV already has an always-on process and is already trusted to reach
-  a management endpoint, so it carries opaque envelopes from its home MN to another MN, with a bounded
-  queue, a TTL, an ack and a per-MN quota. The envelope is end-to-end encrypted and signed — `mn_id`,
-  `seq`, `schema_version` and payload, X25519 + AEAD, Ed25519 — so a relay reads ciphertext, cannot forge
-  or replay (sequence window) and cannot alter it without a signature failure. A relay that drops costs
-  liveness only. The node does not become a general relay: only envelopes addressed to configured MNs,
-  only below a size cap, removed on ack. Encryption and signatures come from the standard library plus
-  the `x/crypto` already in the module, so this adds no dependency.
-- Replication needs its own interval, not the daily sync: a state change that takes 24 h to reach the
-  other half of the mesh is not replication. On the indirect path that means a short poll or long-poll
-  between UV and its home MN — a new always-on network behaviour on the node, and part of the cost.
-
-Replication itself is an append-only event log per MN, applied idempotently by `(mn_id, seq)`; a new or
-gapped peer takes a schema-versioned snapshot and resumes. SQLite stays single-writer: do not share the
-file and do not add a replication service. Byte-level tools (Litestream, rqlite) solve single-writer
-failover and bring a dependency plus merge semantics the state machine does not have.
-
-Decide before implementing: whether replicas may enroll (no — invites and approval stay at the home);
-whether a UV may sync to a replica while its home is down (read-only desired state, checks written to
-the home only — a stale subscription beats a wrong one); how the admin CLI names "the mesh" when the
-local MN is a replica; and what a node does with two reachable homes (there is no split brain because
-there is one home, but the failover story must be written down).
-
-Acceptance: two MNs and two UVs. A node enrolled on A appears on B and in a subscription B renders; a
-block on A reaches B and the peer's next sync. Cut the direct link and the same event arrives through a
-UV relay with the same three results. A replayed envelope changes nothing; a tampered one is rejected and
-logged. A partition admits no replica enrollment and no epoch bump; a schema mismatch refuses replication
-but keeps serving the last good snapshot. The lab needs a second MN machine — the spare fourth container
-is a UV — so the suite grows before this ships.
-
-### 10.5 Traffic limits per node — postponed
-
-Nothing counts bytes today: MN knows a node answers checks and nothing else. VPS plans cap traffic, so a
-node can be suspended by its provider without warning — which removes a working exit and, because the
-next failed check is up to a day away, leaves peers pointing at a dead endpoint. A cap the node enforces
-itself keeps it reachable for SSH, ACME, sync and the decoy, and takes it out of rotation before the
-provider does. It is out because `DESCRIPTION.md` §3 lists traffic accounting and quotas as non-goals and
-§5.10 keeps rate limiting out; a quota is also a new state in the lifecycle, not a config flag.
-
-The operator has to say what the provider bills; the node cannot know it:
-
-| source | counts | matches the bill | cost |
-|---|---|---|---|
-| interface, `/sys/class/net/<if>/statistics/{rx,tx}_bytes` | every byte, proxy or not | yes — what the hypervisor or veth counts | none; the interface is config (default: the default route's) |
-| Xray `stats` + `policy.system` | proxied bytes, per user if wanted | no — misses TLS/nginx overhead and retransmits | resets on restart; needs a persisted offset |
-| provider API | exactly the bill | exactly | one integration per provider, secrets, network calls — out of scope |
-
-Default to enforcing on interface **egress** (`tx_bytes`): proxy responses dominate it and most VPS bill
-outbound. `rx+tx`, inbound-only and 95th-percentile plans exist, so the direction is a config value, not
-an assumption. A byte through WARP still crosses the interface (the WireGuard tunnel is node-side), so it
-is counted once whichever egress it takes. Xray's split is still reported, so the owner can see how much
-was the mesh rather than their own downloads.
-
-The awkward parts, which are the actual work:
-
-- **Period.** Billing months start on the provider's day, not the first: a day-of-month plus the resident
-  time zone, with a manual reset. A rolling 30-day window needs daily buckets; a calendar month needs one
-  counter and a start date.
-- **Headroom.** A cap at 100% leaves nothing for the agent, ACME or the owner's SSH, and those are
-  exactly what must never be cut. Stop proxying at a configured reserve below the limit; direct traffic
-  and the decoy stay up.
-- **Enforcement and state.** Peers must stop being handed the node, but the node must not look "failed".
-  The honest shape is a new self-reported state (`limited`) — out of peers' configs like `blocked`, and
-  automatically `active` when the period resets, unlike `blocked`, which needs an unblock. That is a
-  state-machine change, and the reason this is not a small patch.
-- **Lag.** Daily sync is too slow to report; enforcement is local, the report rides the next sync, and a
-  one-minute local poll is plenty for a multi-GiB cap.
-- **Restarts and reboots.** Xray counters reset with the process; persist an offset and notice the reset
-  (a counter below the last seen). Interface counters reset on reboot; persist a baseline and add the
-  delta, treating a drop as a new baseline rather than negative traffic.
-
-Acceptance: on the lab, a 50 MiB cap stops proxying at the reserve while SSH, the decoy, ACME and the
-agent keep working; restarting the core does not lose the reported total; the next period returns the
-node to `active` with no operator action; the peer set drops it while limited and gets it back;
-`termit-mn status` shows the number and the period. This is a quota, not per-second rate limiting
-(§5.10).
-
-### 10.6 The MN and a node on one machine — postponed
-
-Today the two roles are two machines by design: the node's nginx owns `:80` and `:443`, while the MN has
-its own TLS listener on `:443` and its ACME challenge listener on `:80` (`docs/OPERATIONS.md` §1). For a
-two- or three-person mesh that second box is the most expensive part of the deployment, and the natural
-request is one VPS that runs both binaries.
-
-It stays out of v1 because it is a topology change, not a packaging one: the invariants are written
-against "one process owns the ports and the certificate" (`DESCRIPTION.md` §11), and nothing here
-weakens them — but the ownership rule has to be decided first.
-
-Constraints, in the order they decide the design:
-
-1. **One owner per port.** nginx is the only `:80`/`:443` listener, and it routes by SNI/Host — the
-   node's name to the local core, the MN's name to the MN on a loopback port — or the MN moves to its
-   own port and every server URL and firewall rule changes. The first keeps the client shape and is the
-   recommended direction.
-2. **Two certificates, one ACME listener.** Both names need a leaf on the same address, and two ACME
-   clients would fight over the challenge. The handler must be shared (one nginx `/.well-known/`
-   location, forwarded to whichever role is renewing), while each role keeps renewing and pinning its
-   own leaf: the MN pins every node's leaf, the node pins nothing.
-3. **The decoy has two owners.** The node's decoy is an nginx tree under `/var/www/termit`; the MN
-   serves its own from memory (`internal/mn/server/decoy.go`). Combined, SNI decides which site a
-   visitor gets, and that is a fingerprint decision as much as routing: the two sites must not share a
-   template seed or look like one deployment serving two names.
-4. **The MN still never proxies.** Two systemd units, two service users, two state directories
-   (`/var/lib/termit/mn`, `/var/lib/termit/uv`); the node keeps its own core and WARP, and the MN
-   process stays traffic-free. No shared daemon.
-5. **Firewall and ban ownership.** The node's optional table is `inet termit_uv`, the MN's is
-   `inet termit_mn`; combined they must not both claim `input`, the node's `firewall on` must not cut
-   the MN's ACME or admin socket, and the ban engine must never ban the MN's own loopback traffic.
-6. **The failures become one.** A box that is down or whose subnet is blocked now takes the registry
-   with it: one address costs the whole mesh, not one path. That is a policy choice (right for two
-   people, wrong for six) and belongs in the install documentation next to the command.
-7. **Lifecycle, not just install.** Two installers and two upgrade paths, and `termit-uv uninstall
-   --purge` must leave the MN's vhost, certificate and units alone and restore only its own. The MN has
-   no uninstall command today (it is done by hand, `docs/RUNBOOK.md` §11), so a combined box needs one
-   that leaves the node serving. The backup story becomes two archives and one master key, and the
-   resource budget is the sum of `DESCRIPTION.md` §13.1, which a 1 GB node box does not meet.
-
-Acceptance: one box from a clean image — both names served over TLS, `termit-mn status` and
-`termit-uv doctor` green, exactly one process per port, a client through the node reaching the internet
-while the MN's own traffic never enters the tunnel, a subscription and an admin command working across
-the shared challenge listener, `uninstall --purge` of either role leaving the other serving, and the
-coupling stated in the guide. The co-located node's probe comes from a second vantage (§10.7): a check
-that leaves from the same box is a self-check, not evidence that the node is reachable from outside.
-
-### 10.7 A second vantage for the MN's own node — postponed
-
-Today the home MN is the only observer: its probe decides a node's state, and its own vantage is assumed
-to be the internet's. Two cases that this plan now makes common break that assumption. A node co-located
-with its MN (§10.6) can only be reached through hairpin NAT or loopback, so the check stops measuring
-external reachability. An MN whose path to one node is blocked, while every other node is fine, has no
-way to say "this is my vantage, not the node" — and by `DESCRIPTION.md` §7.2 a timeout is a verdict, so
-the node is blocked.
-
-The fix is to let another MN, on a different network, perform the probe and hand the verdict back: a
-second vantage. It is deferred with the rest of multi-vantage probing (§5), but its wire shape belongs in
-the plan now, because §10.6 cannot honestly claim external validation without it.
-
-It is a delegation, not a federation. A node keeps one home MN (§10.4) and only the home MN decides and
-writes state; a peer observes and answers, it never writes a row.
-
-**Verdict rule**, generalising the retry aggregation `runCycle` already does ("failed only if every
-attempt concluded"):
-
-- an `ok` from any vantage is `ok`;
-- `failed` only when every vantage that formed a verdict says failed;
-- no vantage could form one — peer down, its DNS broken, its prober unavailable — is `unknown`, and
-  `unknown` changes nothing (invariant 2).
-
-Shape:
-
-- **Config**: `prober.peers: [{name, url, key, delegate: [domains]}]`. The list is explicit: an automatic
-  "delegate my own domain" rule would hard-code the topology, and §10.6 is not the only reason to
-  delegate.
-- **Protocol**: one call, `POST {prefix}/peer/probe` with `{uv_id, target{domain, port, sni, path, mode,
-  uuid, pin}}`, answered with the `Result` the local prober would have produced (`ok`, class, latency,
-  timestamp). The peer key is a bearer credential like an agent key: random, stored as a digest,
-  rotatable, TLS pinned to the peer. A result older than one cycle is not a verdict.
-- **Code**: `internal/mn/probe/peer.go` implementing the existing `Prober` seam, so the transition
-  table, the grace streak and the `unknown` rule are untouched; `cmd/mn/serve.go` picks the local worker
-  or the peer per node.
-- **Freshness and staleness**: the peer's answer is an observation with a timestamp, not a state. The
-  format is a list even while one vantage is used, so N vantages need no rework.
-
-Decisions that come before any code:
-
-1. **How many negatives block.** With one delegated vantage, a compromised or simply misconfigured peer
-   can block any node it can reach. Options: accept it (the mesh is cooperative, as with a hostile UV),
-   require unanimity once there are two or more vantages, or let a single peer's failure move a node only
-   to `unavailable` while `blocked` needs the node's own self-check to fail as well. This is the same
-   trust question as §10.4's shared master key and must be answered with it.
-2. **What the peer learns.** A probe target is the probe UUID, the secret path and the certificate pin —
-   the ability to connect to a node it does not own. Under a shared master key (§10.4) a peer derives
-   pair credentials anyway, so this is not new power; without replication it is, and must be stated.
-   Whether the probe UUID becomes rotatable (today `uv reissue` rotates only the agent key) is open.
-3. **Who picks the peer.** Explicit selection is honest; automatic selection from the list is convenient
-   and hides the topology. A dead peer leaves the node unverified but `active` — correct by invariant 2,
-   and invisible to the operator unless `termit-mn status` says "no external vantage" per node.
-4. **Visibility of the vantage.** Every served verdict should name the vantage that produced it, in
-   `uv show` and in the metrics, or a disagreement between two MNs cannot be investigated after the fact.
-
-Acceptance, on a lab with two MNs on different networks: a node co-located with its home MN is checked
-only by the peer and reaches `active` on the peer's `ok`; stopping the peer leaves the node `active` and
-`status` reports no vantage; a peer `failed` while the node's self-check is `ok` follows the rule chosen
-in decision 1, recorded in the guide; a stale result never moves the node; the state-machine tests are
-unchanged, because no transition was added.
-
-### 10.8 A QR code beside every client link — shipped in 0.5.2
-
-**Shipped in `0.5.2`**, with the decisions this section argues for settled this way: the code is drawn by
-the node's own Go code (`rsc.io/qr`, BSD-3 and dependency-free, rather than ~300 lines of encoder nobody
-could verify without a phone), one `<svg>` per link inside a `<details>` so the page keeps its size, level L,
-the quiet zone in the viewBox, and a code on every row — the node's own, each local device's, each peer's.
-The full link is encoded rather than a shortened form, because the code has to be exactly what the copy
-button copies; at level L a 570-byte mesh URI is an 81×81 grid, which a 320-pixel-wide element shows at about
-four pixels a module. What follows is the reasoning that led there.
-
-Every row of the owner's page (`termit-uv options`) carries a copy button, and copying is the wrong gesture
-for the device the links exist for: a phone has no shared clipboard with the node, so the owner either types
-a 600-character URI or sends it through a messenger. A QR next to the link turns that into one camera action,
-and it is the same secret, only drawn — the page is behind the node's unguessable token, so nothing new is
-exposed, though a screenshot of the screen becomes scannable by whoever sees it, which the docs will say.
-
-The obvious implementation was forbidden by a rule this repository already has: no `img src="https://api.
-qrserver.com/…"` and no CDN copy of a QR library, because the page would (a) send the node's credentials to
-a third party and (b) reference an external host — the decoy's whole point is that a page which phones home
-is a fingerprint (`AGENTS.md` §5, "Decoy site"). So the encoder is ours, in one of two shapes:
-
-| shape | cost | notes |
-|---|---|---|
-| Go encoder, inline SVG per link | byte mode + Reed–Solomon, versions 1–40, ~300 lines with vectors | the page keeps the only JS it has (copy); testable in Go; no vendored JavaScript to audit |
-| a QR library embedded in the page | ~15 KB of MIT JavaScript, with attribution | smaller Go change, a second language to keep in step with the page's CSP and with the options test that fails a page referencing an external host (`internal/uv/options/options_test.go`) |
-
-The Go encoder is the recommendation: it is the shape the rest of the page already uses (the page is
-`html/template` over a Go value, so a `QR string` field per link renders as an `<svg>` with no script at
-all), and a QR is arithmetic, which tests well — the standard vectors for "HELLO WORLD" and a short URL, plus
-a round-trip through an independent decoder if one can be kept out of the shipped binary.
-
-What decides the real design, before any code:
-
-- **Density.** The node's own `vless://` link is a few hundred characters before fragmentation: XHTTP
-  extras, `mode=packet-up`, the path, `fragment=…`, `sb.tls.*`. That is a large, dense code — readable from a
-  still screen, unreliable from a moving one, and hopeless in a small inset. `hy2://` is a tenth of it. Two
-  ways out, and the choice must be made explicitly rather than discovered on a phone: draw the full link and
-  accept that the scan needs a steady hand, or draw a *minimal* link (scheme, credential, host, `type`,
-  `security`, `sni`, path — the parameters that connect) and leave `fragment` and `sb.tls.*` to the copy
-  button. The second is more useful and needs a size on the QR that a screen can show.
-- **Which rows.** All of them: the node's own two, every local device's two, and each peer's. A peer's link
-  is the one a new device most often needs, and it arrives with the subscription rather than from `device`.
-- **Where it appears.** Inline under the row (a second line in the same `<li>`), not a modal: the page has no
-  modal machinery and a phone cannot easily close one. One code visible at a time keeps the page readable.
-- **Error correction and size.** Level M with a module size that fits the column; the quiet zone is part of
-  the SVG's viewBox, because a code that touches the row's border does not scan.
-- **The terminal.** `termit-uv uri --qr` printing half-block characters is a nice-to-have, not part of this
-  item: the phone case needs the page, and a terminal QR is a second renderer to keep right.
-
-A `0.5.x` patch carried it after all: `0.6.0` was reserved for a hysteria bump that never had anything to
-bump (GO-2026-5288 turned out to be a stale record, §10 intro), and a page nobody can scan is not worth
-waiting for that.
-
-Acceptance: on a phone, the camera opens a row's code and the client imports the link; the page references
-no external host and still passes the existing test that fails a page referencing one (`internal/uv/options/options_test.go`); a Go test round-trips the encoder
-against the published vectors and fails if a link with a control character or an over-long URI is passed
-without a clear error; `go test` grows no dependency.
-
-Documents when this ships: `docs/guide/ru/using-uv.md` and its English counterpart (the page description),
-`docs/OPERATIONS.md` §8 for the owner's page, `--help` for the optional flag, and a changelog entry that
-names the screenshot consequence.
-### 10.9 Update offers: the node follows the server, the server follows GitHub
-
-Two problems that look alike and are not, deliberately kept as two code paths.
-
-**The node.** The server is the mesh's authority and already knows which build every node runs — `agent_version`
-in the sync request, printed by `termit-mn uv list`. The reverse half shipped in `0.6.0`: `server_version` in
-the sync answer, remembered in the node's state beside the last sync and printed by `termit-uv status`. `server_version` joins the sync answer (`omitempty`, and the node's decoder is lenient, so an
-old node ignores it and an old server simply sends nothing), the node stores it beside the last sync, and the
-menu, on launch, compares it with the running build. The policy is the owner's, and both halves have a reason
-beyond caution: **offer the server's version and never "latest"** — the server is what the mesh has been proved
-against, and a node that outruns its server is a node whose links that server may not know how to render; and
-**never a prerelease** — a `p` suffix names a build that exists to be proved on one box, and offering it in a
-menu would turn the prompt into noise. Equal or older is not an update, so the prompt stays silent.
-
-The *execution* is where the care is, because it replaces the binary the process is running from. The shape:
-fetch the release's `SHA256SUMS` and the asset for the architecture, check the digest before anything else,
-swap with a rename in the same directory while keeping the previous binary, run `termit-uv init --no-enroll`
-with the new one, and put the old one back if that fails. That is `termit-uv upgrade --to <version>`, and the
-menu entry wraps it; it is not `curl | bash` (§12) — the digest is from the release itself and is checked
-before the swap, and a convergence that fails rolls back. An unattended node never updates itself: an updater
-on a timer is a remote-code path, and the prompt exists so a human is in the loop.
-
-**The server.** An MN cannot learn "the newest release" from itself; it has to ask GitHub, which would make it
-the one place in the project that talks to a host it does not otherwise need. So the offer is explicit:
-`termit-mn update --check` prints the newest release above the running build, `--apply` runs the same verified
-download and restart, and the menu offers it. Its policy is the mirror of the node's — **it may offer what
-GitHub says is newest, prereleases excluded**, because there is no higher authority to follow. The GitHub call
-must tolerate no network and rate limiting (a reminder, not a check), and its result must never enter `status`
-or `doctor`: a server that cannot reach GitHub is not an unhealthy server.
-
-Open when this is implemented: whether the menu line is the only door (for the node, yes — the menu is the
-interactive door and the prompt is the point), and whether `upgrade` should accept a version the server never
-offered (yes, with the operator naming it; the prompt is the convenience, not the permission).
-
-### 10.10 The owner's interface — 0.7.0's UI/UX work
-
-The commands work; this is about the minutes an owner spends on them, and about what a reader can answer
-without a second command. Each item names the thing the reader sees, and each is independent, so the list
-can be cut anywhere.
-
-- **An invite that carries its own instructions.** `termit-mn invite create` prints the ready-to-send
-  block: the `sh uv.sh --mn <url> --invite <code>` line with the MN URL and its API prefix already filled
-  in, and the note as the person's name. Today the operator assembles that line by hand out of three
-  commands — the first-day papercut of the whole mesh. (The terminal QR this item first imagined is
-  dropped: a node is installed by typing a command, not by scanning one.)
-- **The page the owner sends.** `termit-uv options` gains what the reader needs next to each link: a copy
-  button (inline script; the no-external-host rule is about the decoy, not this page), a "voice and video"
-  marker on the `(QUIC)` row — that is the link that carries UDP — and the node's own egress line
-  (`warp: usque, via …`) so the page answers "what does this node do" without `warp status`.
-- **One screen for "what does my node do?"** The menu's status screen becomes a card: domain, build, the
-  server's build with a marker when they differ, transports served, egress, peers grouped by transport,
-  last sync, drift. It is the screen an owner screenshots when asking for help, so it should not need a
-  second one.
-- **`doctor` grouped, with a verdict.** Host, node and tunnel as three groups with one summary line each,
-  and a closing line that says ok / warn / unknown. Today it is one flat list of twenty lines that the
-  reader has to scan to the end to answer "is anything wrong".
-- **`uv show` as the operator's answer.** `termit-mn uv show <node>` gains the last probe's detail, the
-  transports the node serves, when it is next checked, and its subscription URL — so "check this person's
-  node" and "send them the link" are one command instead of three.
-- **Completion for both binaries.** `termit-uv completion bash|zsh` and `termit-mn completion …`, generated
-  from the same flag definitions the parser uses, so it cannot drift from the commands.
-
-Open when implemented: whether the page's copy button is worth inline script at all (clipboard APIs are
-gated, and a plain selectable link is already copyable), and whether completion ships in the binaries or in
-the packaging — the binaries are the only thing we control on both.
-
-### 10.11 0.7.0: the scope and the order it lands in
-
-`0.7.0` is §10.9 (both halves), §10.10 (the six items above), three items below that came out of the
-planning discussion, and the three debts §11.15 recorded (already on `dev`). Everything except §10.9 is
-local: the menu, the wizard and the printed reports. §10.9 is the release's one network-facing piece, and
-the only part a production pass has to see — the upgrade path itself.
-
-**State on 2026-11-22.** The menu tree, the node picker, the wizard's QUIC question, the invite block, the
-invite policy, the grouped doctor, the node card, the page's egress line and QUIC note, `termit-uv upgrade`
-and `termit-mn update` are on `dev`, and the two update paths have been run on the lab with locally built
-binaries (`v0.7.0`, commit-stamped, `pscp`'d into `/usr/bin`): the menu and its card on the node, a real
-`termit-uv upgrade --to v0.6.0` (download, digest, swap, converge) and a real `termit-mn update --apply`
-(the server came back on `0.6.0` and was put back). Completion is deferred out of this release: both
-binaries declare their flags inside each command, so there is no registry to generate a script from —
-building one is a 0.8.0 item, not a polish task. What is left here is the production pass.
-
-**The lab found two defects the tests could not.** The first upgrade replaced the binary, failed the
-converge step and rolled back — `init` ran without `--config`, so an installed node looked like a fresh
-machine asking for its domain; `runConverge` now carries the path, and the rollback that followed is the
-reason the node kept serving. The server's update asked `api.github.com`, which answered `403` from the
-lab — the same block that makes `uv.sh` read the `releases/latest` redirect instead; `release.Newest`
-now follows that redirect, which needs no token, no quota and no host that a node cannot reach.
-
-**Two menu items that join §10.10.**
-
-- **A tree instead of a list.** Both menus grow one level: at most ten choices per screen, grouped by
-  object. Node: Состояние (`status`, `doctor`), Сеть (`net`, `warp`, `transport`), Клиенты (`options`,
-  `uri`, `devices`), Меш (`sync`, `drift`, `enroll`, `unblock`), Защита (`firewall`, `bans`, `guard`),
-  Сайт (`certificate`, `decoy`), Узел (`install`, `wizard`, `migrate`, `uninstall`), Помощь. Server:
-  Состояние (`status`, `check`, `guard`), Узлы, Приглашения, Клиенты (`sub`, `policy`), Защита
-  (`firewall`, `bans`), Обслуживание (`backup`, `restore`, `admin`), Помощь. `menuEntry.children`, a level
-  stack with the breadcrumb in the title, `0 ←` on every level below the first, `q` from anywhere. The
-  four tables that were fake sub-menus (devices, warp, firewall, bans) become real ones and move into
-  `internal/menuplan`, where firewall and bans already live. A test walks the tree: ≤10 per level, and the
-  leaves are exactly the commands the menu offered before, so nothing is lost in the move.
-- **The QUIC question in the wizard.** Between WARP and `harden`, one yes/no: serve Hysteria2 on UDP/443
-  beside the TLS profile. The answer is stored in the draft, becomes `--hysteria` in `wizardInitArgs`, and
-  appears in the summary. Default stays "no", so a TLS-only node is what pressing Enter gives.
-- **A picker instead of an id.** The server's menu draws the mesh and takes a domain, an id, or a unique
-  part of a domain (`then5` finds `then5.bookinet.ru`); `0` cancels, and `ui.MenuFree` is what lets a
-  picker accept a value its list does not contain. When the server cannot be reached the question says so
-  and takes a typed domain. An empty answer to a question that names something already in existence — a
-  node, an invite code — cancels, and the label says so; a question that sets a new value still asks
-  again.
-
-**A server item of its own: the invite policy.** `enrollment.mode` (`invite`, `invite+approval`, `open`)
-is read at startup, so today changing it means editing YAML by hand and restarting. It gets a command and a
-menu line: `termit-mn invite policy` shows the mode and `--mode …` writes it, editing the YAML node tree so
-the operator's comments survive, validating the result with the same loader before the file is replaced,
-and saying plainly that the running server keeps the old mode until it restarts (`systemctl restart
-termit-mn`). `open` needs `--force`: at that mode a leaked invite is an account.
-
-**§10.9 in the same release.** Node: `termit-uv upgrade [--to v<version>] [--check]` downloads the release
-binary and `SHA256SUMS` from GitHub, verifies the digest, writes beside the running binary and renames over
-it, keeps the previous file, then runs the new binary with `init --no-enroll` to converge, and restores the
-previous file if that fails. Without `--to` it installs the version the MN reports as its own (`server_version`,
-which sync already carries) — never `latest`, never a `p*` build. The menu's Узел group offers it only when
-the server's build is a plain release and differs from the node's. Server: `termit-mn update --check/--apply`
-does the same against the newest release on GitHub; neither result appears in `status` or `doctor`.
-
-**Order.** (1) The menu tree, both binaries. (2) The wizard's QUIC question. (3) The §10.10 items in the
-order they were written. (4) The invite policy. (5) The upgrade and the update. (6) `docs/guide/menu.md`
-and its Russian mirror, `CHANGELOG` and the plan's §11.15-style record of the pass.
-
-**Proving it without a pre-release.** The lab runs the tree built locally: `deploy/release --version
-v0.7.0` produces the same layout CI does (binaries, `uv.sh`, `SHA256SUMS`), its output goes onto the lab
-machines with `pscp`, and `go test -tags=lab -count=1 ./test/lab -run '…'` runs everything except the warp
-scenarios. The lab is reinstalled from scratch first, so the run proves a first install and the menu that
-follows it; then §10.9 is proved against the lab as well — `upgrade --to v0.6.0` (a real download,
-digest check and swap), a corrupted `SHA256SUMS` to exercise the rollback, and a downgrade back. Nothing is
-published as `v0.7.0p<n>`: the first pre-release is cut when the tree is ready for the production pass, and
-not before.
-
-**What the release must show.** A fresh install through the menu (piped answers, not a hand-driven
-terminal), every group reachable in two keystrokes, `doctor` with a verdict line, an invite block that
-installs a node without the operator assembling a command, the wizard producing a node that serves both
-transports, the policy command writing a mode the next start obeys, an upgrade that keeps the node
-serving, and a deliberate upgrade failure that leaves the previous binary in place.
-
-## 11. Planned: WARP over WireGuard inside the core (0.5.0)
-
-The one thing `0.3.2` gave up is that UDP leaves from the node's address: `warp-cli`'s proxy mode cannot
-carry it, so §10.1's option A replaces the proxy with a WireGuard outbound inside Xray. This is the plan;
-the code comes later. Everything below is deliberately testable, and every item names the observable that
-says it is done.
-
-### 11.1 What changes for an operator
-
-Nothing in the interface they know. `warp.mode` keeps its three values, `warp.fail_open` keeps its
-meaning, `termit-uv warp status` keeps its shape. Two things become true that are not true today: UDP
-through the tunnel exits at Cloudflare, and the host no longer runs `cloudflare-warp` at all — no package,
-no second daemon, no SOCKS port.
-
-A new optional key selects the transport while the old path is still supported:
-
-```yaml
-warp:
-  mode: all
-  fail_open: true
-  transport: wireguard     # wireguard (default from 0.4.0) | proxy (what 0.3.x does)
-```
-
-A configuration written before this key exists behaves as `proxy` and is not migrated silently; flipping
-it is `termit-uv init --warp-transport wireguard`, which registers, writes the identity, regenerates the
-core config and applies it. The reverse flag returns the node to the proxy path.
-
-### 11.2 The identity: one secret, written once
-
-WARP over WireGuard needs a registration: a Curve25519 private key, the address Cloudflare assigns
-(`172.16.0.2/32` and an IPv6), the peer public key, the endpoint, and the three `reserved` bytes without
-which the handshake is dropped. That is a credential and it belongs where the node's other credentials
-live:
-
-- `/var/lib/termit/uv/warp.yaml`, `0600`, written atomically, never regenerated once it exists (the node
-  would change its WARP identity on every `init` otherwise).
-- Never in a log line, an error string, `termit-uv status`, `doctor` or the page. `status` may print the
-  endpoint and the device id; the private key and the reserved bytes never leave the file.
-- Removed by `termit-uv uninstall` together with the rest of the state, and only by an explicit flag
-  otherwise — a lost identity is a new device on Cloudflare's side, not a disaster.
-
-Two ways to obtain it, and the plan takes the second:
-
-1. Shell out to `wgcf` (MIT) and parse what it prints. Fast to write, but it adds a third-party binary to
-   the install path, and its output format is not ours to promise.
-2. Speak Cloudflare's registration API from Go: generate a key pair, `POST /reg` with the public key and
-   the WARP client's shape, read back `config.peers[0]` and the reserved bytes. It is a handful of HTTP
-   calls behind an interface, testable against `httptest`, and leaves the node with no new binary. The
-   existing `internal/mn/secret` sealing helpers are the wrong shape here (the key must be usable, not
-   sealed), so it is a plain `0600` file, like the peer secrets already in `state.json`.
-
-### 11.3 The generated outbound
-
-```json
-{ "tag": "warp", "protocol": "wireguard",
-  "settings": {
-    "secretKey": "…", "address": ["172.16.0.2/32", "2606:4700:110:…/128"],
-    "peers": [{ "publicKey": "bmXOC+…", "endpoint": "162.159.192.1:2408",
-                "allowedIPs": ["0.0.0.0/0", "::/0"], "reserved": [240, 25, 146] }],
-    "mtu": 1280, "noKernelTun": true } }
-```
-
-`noKernelTun` is not a tuning knob here: it is what keeps the node out of host routing (invariant 1 in `AGENTS.md` §2.2)
-and what makes the outbound work in the LXC containers the lab runs on. The measured cost — two thirds of
-the kernel path's throughput on a one-vCPU node (§10.1) — is accepted and recorded.
-
-With the tunnel in the core, the routing rule goes back to a single catch-all:
-
-```json
-{ "type": "field", "network": "tcp,udp", "balancerTag": "warp-egress" }
-```
-
-The `0.3.2` split (UDP `direct`) survives only under `transport: proxy`, where it is still the correct
-answer, and the golden tests cover both documents.
-
-### 11.4 Work breakdown
-
-| # | Task | Done when |
-|---|---|---|
-| 1 | `internal/uv/warp` registration client behind an interface: key pair, `POST /reg`, parse peer/reserved, error classification | unit tests against a fake API; no network in `go test` |
-| 2 | `warp.yaml` in the state directory: atomic write, `0600`, load/validate, idempotent, survives `init` twice | state test: two runs, one identity, unchanged bytes |
-| 3 | Config key `warp.transport` with `proxy` as the legacy default and `wireguard` from fresh installs | config tests: absent key = proxy; validation refuses an unknown value |
-| 4 | Generator: wireguard outbound + single catch-all when `transport: wireguard`; the `0.3.2` split when `proxy` | golden documents for both, plus `xray -test` in the lab |
-| 5 | CLI: `termit-uv init --warp-transport`, `warp status` shows transport and endpoint, `warp rotate` re-registers | `warp status` never prints a key; a redaction test greps the output |
-| 6 | Install/uninstall: skip `cloudflare-warp` when the transport is wireguard, remove the outbound and keep the unit when switching back | lab: proxy → wireguard → proxy leaves no stale package, unit or rule |
-| 7 | Docs: `OPERATIONS.md` §6, `DESCRIPTION.md` §Egress, the guide, `CHANGELOG` for `0.4.0`; §10.1 moves to "done" | a reader can tell which transport their node runs without reading the config |
-| 8 | Transport variants and the migration between them: absent key loads as `proxy`, `init --warp-transport` writes and applies `wireguard`, and switching back leaves nothing behind | a table-driven test loads each variant, flips it through the CLI path and asserts the resulting config, the generated document and the on-disk state; an old config gains no key it did not have, and a switch does not orphan the previous transport's artefacts (package, outbound, identity file, SOCKS port) |
-
-### 11.5 Acceptance
-
-Automated: generator goldens, an `xray -test` on the generated document in the lab, the identity surviving
-`init` twice, redaction of the key in every command's output, and a switch back to `proxy` that restores
-the old document byte for byte.
-
-Manual, because it is the whole point: a client resolves a name through the tunnel and the answer comes
-back; `curl https://www.cloudflare.com/cdn-cgi/trace` through the node reports `warp=on`; and the node's
-own SSH, ACME and decoy traffic still leaves from its own address — checked from the server side by
-watching the exit address of a request the node itself makes.
-
-### 11.6 Risks
-
-- **Cloudflare may stop accepting WireGuard registrations.** WARP+ reportedly already does not work over
-  WireGuard ([wgcf#459](https://github.com/ViRb3/wgcf/issues/459)). The routing rule names a tag, so a
-  MASQUE transport (§10.1 option D) can replace the outbound without touching anything else; keep the
-  switch a config value, not a compile-time choice.
-- **A WARP identity is per node and cannot be shared.** Two nodes behind one registration look like one
-  device; the registration must be per node and stored, not derived.
-- **Fail-open must keep working over a tunnel that is down.** The observatory probes through the tag, which
-  is transport-agnostic; the test suite must cover the balancer pointing at a wireguard outbound.
-- **The package removal is a one-way door on a running node.** Switching back to `proxy` reinstalls
-  `cloudflare-warp`; the lab proves the round trip before a node in production takes it.
-
-### 11.7 Implemented, 2026-11-16
-
-Tasks 1–8 are in `dev`: the registration client, the identity file, `warp.transport`, the generator for
-both documents, `init --warp-transport` / `warp rotate` / a `warp status` that probes the exit,
-`internal/uv/tunnelprobe` for that probe, and the transport-switch test. The preflight no longer warns
-about a missing `/dev/net/tun` on the wireguard transport, because the userspace tunnel does not need one.
-
-Verified on the lab node (`termit-uv1`, an unprivileged container, no `/dev/net/tun`) against the real
-Cloudflare API:
-
-- registration succeeded — device `40d665d2…`, peer `engage.cloudflareclient.com:2408`, three reserved
-  bytes, the tunnel addresses, the identity on disk as `0600`;
-- `xray -test` accepted the generated document, and the route collapsed to one `tcp,udp` rule through the
-  balancer with a `wireguard` outbound whose `noKernelTun` is true;
-- `termit-uv warp status` reported `egress: on` with a `2a09:bac5:…` address — a WARP address, fetched
-  through the node's own tunnel;
-- **UDP through the tunnel answered**: a DNS query to `1.1.1.1:53` sent over SOCKS5 UDP through the node
-  to that tunnel came back with two answers. This is the thing 0.3.2 could not do.
-
-The install itself ends with the step that would have caught the 0.3.2 problem on the node instead of on a
-phone: `warp-egress` runs after the core is started, and when WARP is on and the node is registered it
-fetches Cloudflare's trace through the tunnel and reads the address. A wrong answer — the tunnel is
-configured but the exit is the node's own — is a warning naming that address, not a failed install, and
-`warp-egress ok` on the lab node is the same evidence a client would produce.
-
-Still open before a release: the acceptance-lab run, and the production pass that a `0.4.0` release needs.
-
-#### The acceptance lab, 2026-11-17
-
-`v0.4.0p1` reached the lab the way a tester gets it — the MN by hand against `SHA256SUMS`, the three nodes
-with `uv.sh --version v0.4.0p1 --no-enroll`. All four came up on the release binary and the upgrade
-converged the units, the certificate and the Xray document without touching identity or path.
-`termit-uv1`, which carries `warp.transport: wireguard`, ended its `init` with `warp-egress ok`.
-
-That run also found the defect this milestone could not ship with: **a sync rewrote a wireguard node as
-the proxy sidecar**. The agent's reconciler built the WARP half of the document itself, without the
-transport and without the registration, so the first sync after the install pointed the balancer at a
-SOCKS port nothing listens on; fail-open then took the traffic and the node exited directly — the failure
-`warp-egress` exists to catch, arriving a day late instead of at install time. `warp mode all` had the
-same shape: it refused on a wireguard node for the missing `/dev/net/tun`, which that transport does not
-need.
-
-Fixed in `d66f947`: `install.WarpSpecFor` is the only place that spec is built and the sync goes through
-it, and `warp mode` skips the sidecar — and its tun check — on the wireguard transport, registering the
-node when it has never been registered. `TestWarpSpecFor` covers the four combinations and
-`TestApplierKeepsTheWireGuardTunnel` pins the reconciler.
-
-`v0.4.0p2` (`7ea5e23`) re-ran the suite: **17 pass, 2 skip** (`TestDrillDiskFull` and
-`TestDrillClockSkew`, both limits of an unprivileged container), 346 s. On the lab node, `sync` keeps the
-wireguard outbound in the document, `warp mode off` and `all` round-trip it, and `init` ends with
-`warp-egress ok`.
-
-Still open before a release: the production pass on the two nodes.
-
-### 11.8 Size
-
-Two to three days of work: the registration client and the state file are the bulk of it, the generator
-change is small, and the lab pass is a half-day. It ships as `0.4.0` from a `release/v0.4.0` branch, with
-its own production pass recorded the way `M5-8` was.
-### 11.9 Production pass, 2026-11-17
-
-Both nodes took `v0.4.0` with `uv.sh --version v0.4.0`: the upgrade converged the units, the certificate
-and the document, and each `init` ended with `warp-egress`, the step this milestone added.
-
-- **One node runs the in-core tunnel.** `init --warp-transport wireguard` registered a fresh device,
-  wrote `transport: wireguard`, and `termit-uv warp status` answered `egress: on` with a `2a09:bac1:…`
-  address fetched through the tunnel — UDP now rides WARP on a production node, which is the point of
-  the milestone.
-- **The other cannot.** The same `init` registered and applied the route, and `warp-egress` then
-  reported the exit as the node's own address: that network drops the WireGuard handshake to
-  `engage.cloudflareclient.com:2408`, while `warp-cli`'s HTTPS tunnel works there. The step turned a
-  silent privacy regression into a named warning, and the node went back with
-  `init --warp-transport proxy` — `warp status` reported `on` again with a `2a09:bac5:…` address, so the
-  round trip is exercised on a live node.
-
-That is the answer to one of the risks above: the transport is a per-network choice, and `0.4.0` gives
-the operator the check and the switch instead of a default that lies.
-
-#### The endpoint, later the same day
-
-That pass found a second defect, and it was the one that mattered: the node written off as "cannot reach
-WARP" was fine. Cloudflare names its endpoint for both address families and the core resolves that name
-itself; on a host without a global IPv6 it took the AAAA record, the handshake died with
-`sendto: network is unreachable`, the observatory marked the outbound dead and the balancer fell back to
-`direct` — a node that looked healthy while exiting from its own address. The same identity and the same
-document, run by hand against an IPv4 endpoint, handshook in half a second.
-
-`8c15d16` resolves the endpoint once, at registration, and stores the address. `v0.4.0p4` carries it: both
-nodes rotated onto `162.159.192.1:2408` and reported `egress: on` with a Cloudflare address — including
-the one the first pass had written off.
-
-The lesson is a rule in `AGENTS.md` §9 now: a release that touches the network is proved on the
-production nodes as a pre-release, and the final tag waits for that.
-
-#### The family, the same day
-
-`0.4.0` also lets the owner choose which family leaves through WARP: `ipv4` by default, because
-Cloudflare's IPv6 egress is what large services mark as unsafe, and a provider's own IPv6 is not the
-node's to fix. `warp.family` keeps the tunnel address of that family, gives the peer its default route
-and sends the other family direct — the way it went before WARP, and named in the document rather than
-left to the trailing rule.
-
-`v0.4.0p6` on both production nodes: `family: ipv4`, `172.16.0.2/32` and `0.0.0.0/0` in the core's
-document, `::/0` named direct, and `warp status` answering `egress: on` with `104.28.222.18` and
-`104.28.193.183` — Cloudflare's IPv4, where the same nodes reported `2a09:…` a few hours earlier.
-
-**Changed for 0.5.0, 2026-11-21: the untaken family is refused, not sent direct.** Routing it direct put
-the node's own address on the wire for every IPv6 destination — the identifier the tunnel exists to hide,
-measured as `ipv6.icanhazip.com` answering with a node's `2a12:…` address. The rule now sends those
-destinations to `block`. A client gets a connection that fails and can say so, instead of an address it
-never asked for; the price is that a service reachable only over the untaken family no longer works
-through the node, which with the IPv4 default means IPv6-only services. `OPERATIONS.md` §6 states the
-behaviour and its limit — the rules match addresses, not names.
-
-### 11.10 Production pass, 0.4.1, 2026-11-17
-
-`0.4.1` is a small release — the wizard's install branch, the agent's write access to the page it
-re-renders, two installers that no longer demand a version, and the pages checked against a clean box —
-but it changes the network half of the agent, so it went out the same way `0.4.0` did: as a pre-release on
-the production mesh, with the final tag waiting for what the mesh answered.
-
-**The pre-release was built, and it caught a defect in the pipeline first.** `workflow_dispatch` on
-`release/v0.4.1` computed the pre-release number from a tag pattern with one `v` too many
-(`vv0.4.1p*`), found no build, and published over `v0.4.1p1`: the tag stayed on its commit and the assets
-were rebuilt from the branch tip. Every earlier pre-release had been published by pushing a tag, which runs
-the other job, so the counter had never been exercised. `37b84fb` fixes the pattern and refuses a version
-whose tag already exists before anything is built or uploaded; `v0.4.1p1` was rebuilt from its own tag and
-the assets replaced, and `v0.4.1p5` is the build this record is about.
-
-**Both nodes took `v0.4.1p5` with `sh uv.sh --version v0.4.1p5 --no-enroll`.** then5 came from `p4`, then4
-from `0.4.0p6`. On both, `init` reported eleven steps `present` and rewrote only the agent unit — the
-generators did not change between those builds — so `xray.json` and `config.yaml` kept their digests and
-`termit-xray` was never restarted (then5 still on its 08:01:37 EET start, then4 on 06:01:54 UTC). The
-rewritten unit is the one change that matters: `ReadWritePaths` now names the site tree, and the page the
-agent re-renders after a sync can finally be written.
-
-That claim was checked rather than assumed: on each node the same render (`termit-uv options --quiet`) was
-run inside the unit's own sandbox properties — `ProtectSystem=strict`, the unit's `ReadWritePaths`,
-`ProtectHome=yes` — and it exited 0 where, on the lab, the same command with the previous path list failed
-with the production's exact `read-only file system`. `termit-uv doctor` reports 19 ok on both nodes and
-TLS answers `200` on both names.
-
-**The server went from `0.3.2` to `v0.4.1p5`.** The database schema did not move (`SchemaVersion` was 5 in
-both trees), so the upgrade is reversible with the previous binary, and the unit shipped with the release
-is byte-identical to the installed one — `daemon-reload` was not needed. The order was `stop`, replace the
-binary, `start`; the service came back on `:443` with the same certificate, `termit-mn status` lists both
-nodes `active` with `failed cycles: 0`, a probe of one node returned `check_ok` with `changed: false`, and
-the API answers as it should from outside (`401 unauthorized` on `agent/sync`, a `400 url_invalid` problem
-document on `enroll`). The recorded backup holds the old binary, the unit, the configuration, the master
-key, the admin token and a consistent database snapshot.
-
-**Node and server talk again on the new builds.** `termit-uv sync` on both nodes answered `already in
-sync: 3 client(s), 1 peer(s)` without touching either core document, and the server now records both as
-`termit-uv v0.4.1p5 (37b84fb)`.
-
-**Still open, and said so rather than assumed:** the full daily agent cycle — sync, the transport-aware
-self-check, the page render — has not yet run on `p5` by the schedule; the next one is due a day later. What
-was exercised is the same code reached by hand, plus the server's own probe. If the cycle disagrees, it is
-the page render and the `warp` line in the self-check report that will say so, and the rollback is the
-previous binary plus `termit-uv init`.
-
-**One host detail worth recording:** the production server has no `curl`, and every installer and one-liner
-in the guide assumes it. The update was done with `wget` and `sha256sum -c`; installing the package or
-teaching the scripts a `wget` fallback is a decision, not yet made.
-
-### 11.11 Production pass, 0.4.2, 2026-11-20
-
-`0.4.2` is the release that makes a first installation work on the machine a participant actually has:
-the installers resolve a release with `wget`, `mn.sh` upgrades without being handed the domain it already
-knows, the wizard asks for the certificate authority and finishes a registration the first run did not, the
-menu covers every command, and the guard no longer treats the node's own WARP endpoint as a scanner. Only
-the last two touch a running node, but the installers are the first thing a participant meets, so the
-release went to the production mesh as a pre-release before any tag existed.
-
-**The pre-release this record is about is `v0.4.2p3`.** `p1` was the release branch's first build; `p2`
-carried the flagless `mn.sh`; `p3` added the never-ban entry for the tunnel endpoint. The lab gated `p3`
-(`19 pass, 2 skip` — `clock skew` by design, and `disk full` refused by its own precondition when the
-filesystem stopped at 28 KB free rather than claim a drill it could not set up).
-
-**The server took `v0.4.2p3` with `sh mn.sh --version v0.4.2p3` and no other argument**, which is the
-behaviour this release adds: the script printed `domain: … (from /etc/termit/mn/config.yaml)`, replaced the
-binary and the unit, re-ran `init` and restarted the service. The database schema did not move (5 in both
-trees, so the previous binary still reads it), the shipped unit is byte-identical to the installed one, and
-`init` rewrote the configuration only to normalise it — it added the `locale`, the guard's default
-thresholds and `default_deny: true`, and dropped quotes the YAML did not need; every operator decision
-(domain, prefix, `ssh_from`, blocklist URL, subscription) came back unchanged. `status` lists both nodes
-`active` with no failed cycles, `healthz` answers `"build":"v0.4.2p3"` with `schema_version: 5`, and
-`agent/sync` still answers `401` without a key.
-
-**Both nodes took `v0.4.2p3` with `sh uv.sh --version v0.4.2p3 --no-enroll`.** Each `init` reported eleven
-steps `present` and three `ok`; `xray.json` and `config.yaml` kept their digests, the units were already up
-to date, and `termit-xray` was never restarted (one node still on its 2026-11-17 08:01:37 EET start, the
-other on 06:01:54 UTC). `warp status` reports `egress: on` through Cloudflare on both, `doctor` says 19 ok,
-and the certificate and the decoy answer `200` to a request from outside the node. The firewall table
-survived the upgrade untouched — still confirmed from three days earlier, SSH still restricted to the
-operator's own address, 145 blocklist networks in force — which is the invariant that matters: an upgrade
-never touches host firewall state.
-
-**The never-ban change was proved where it matters.** On both nodes `termit-uv bans block 162.159.192.1`
-now exits 2 with the refusal, and neither ban list holds a Cloudflare address, while the guessable-SSH and
-blocklist machinery is unchanged. The node's own tunnel endpoint is read from `warp.yaml` whatever
-`warp.mode` says, so a node that turns WARP off and on again cannot start by banning its peer.
-
-**Still open, and said rather than assumed:** the daily agent cycle has not yet run on `p3`; the next
-self-check reports to the server within the hour, and until it does the server's `AGENT` column still names
-the previous build. The refusal message from `bans block` lists loopback, the private ranges, the
-management server and `ssh_from` — it does not yet mention the WARP endpoint it now also refuses, which is
-a one-line correction owed to the next release. Also worth recording: this workstation could not open a
-public TLS connection during the pass (Windows `schannel: AcquireCredentialsHandle failed`), so the
-external `200`s above were taken from the server host with `wget`; the nodes' own end-to-end checks are the
-server's probes and their own `warp status`.
-
-### 11.12 Production pass, 0.5.0, 2026-11-21
+#### 3.6.3 The production pass, 0.5.0, 2026-11-21
 
 `0.5.0` is the release that gives the mesh a second transport, makes the WARP tunnel carry UDP, and stops
 the node's own address from leaving on the family the tunnel does not carry. It touches the core's document
@@ -2591,7 +2064,7 @@ Backups: MN `/root/termit-mn-pre-050p1-20261121-181849` (binary, unit, `etc-term
 `var-lib-termit.tgz`, sha256), then4 `/root/then4-config-before-0.5.0.yaml` and
 `/root/termit-pre-050p1-*`, then5 `/root/termit-pre-050p1-20261121-181930`.
 
-### 11.13 Production pass, 0.5.1, 2026-11-21
+#### 3.6.4 The production pass, 0.5.1, 2026-11-21
 
 `0.5.1` fixes the owner's page — with the transport enabled it filed the node's own `hy2://` link under
 "Your own devices", whose note promises a link that never reaches the mesh — and adds the two things that
@@ -2619,7 +2092,74 @@ removed afterwards. On then4 the subscription then carried both styles and both 
 Backups: MN `/root/termit-mn-pre-050p1-20261121-181849` (previous pass) and the 0.5.1 run's own; then5
 `/root/termit-pre-050p1-20261121-181930` plus the 0.5.1 backups; then4 `/root/termit-pre-050p1-*`.
 
-### 11.14 Production pass, 0.5.2, 2026-11-22
+### 3.7 0.5.2 — the QR row and an honest UDP line
+
+A patch release between the transport and the sidecar: what the owner can see on the page, and an honest
+line about UDP.
+
+#### 3.7.1 A QR code beside every client link
+
+**Shipped in `0.5.2`**, with the decisions this section argues for settled this way: the code is drawn by
+the node's own Go code (`rsc.io/qr`, BSD-3 and dependency-free, rather than ~300 lines of encoder nobody
+could verify without a phone), one `<svg>` per link inside a `<details>` so the page keeps its size, level L,
+the quiet zone in the viewBox, and a code on every row — the node's own, each local device's, each peer's.
+The full link is encoded rather than a shortened form, because the code has to be exactly what the copy
+button copies; at level L a 570-byte mesh URI is an 81×81 grid, which a 320-pixel-wide element shows at about
+four pixels a module. What follows is the reasoning that led there.
+
+Every row of the owner's page (`termit-uv options`) carries a copy button, and copying is the wrong gesture
+for the device the links exist for: a phone has no shared clipboard with the node, so the owner either types
+a 600-character URI or sends it through a messenger. A QR next to the link turns that into one camera action,
+and it is the same secret, only drawn — the page is behind the node's unguessable token, so nothing new is
+exposed, though a screenshot of the screen becomes scannable by whoever sees it, which the docs will say.
+
+The obvious implementation was forbidden by a rule this repository already has: no `img src="https://api.
+qrserver.com/…"` and no CDN copy of a QR library, because the page would (a) send the node's credentials to
+a third party and (b) reference an external host — the decoy's whole point is that a page which phones home
+is a fingerprint (`AGENTS.md` §5, "Decoy site"). So the encoder is ours, in one of two shapes:
+
+| shape | cost | notes |
+|---|---|---|
+| Go encoder, inline SVG per link | byte mode + Reed–Solomon, versions 1–40, ~300 lines with vectors | the page keeps the only JS it has (copy); testable in Go; no vendored JavaScript to audit |
+| a QR library embedded in the page | ~15 KB of MIT JavaScript, with attribution | smaller Go change, a second language to keep in step with the page's CSP and with the options test that fails a page referencing an external host (`internal/uv/options/options_test.go`) |
+
+The Go encoder is the recommendation: it is the shape the rest of the page already uses (the page is
+`html/template` over a Go value, so a `QR string` field per link renders as an `<svg>` with no script at
+all), and a QR is arithmetic, which tests well — the standard vectors for "HELLO WORLD" and a short URL, plus
+a round-trip through an independent decoder if one can be kept out of the shipped binary.
+
+What decides the real design, before any code:
+
+- **Density.** The node's own `vless://` link is a few hundred characters before fragmentation: XHTTP
+  extras, `mode=packet-up`, the path, `fragment=…`, `sb.tls.*`. That is a large, dense code — readable from a
+  still screen, unreliable from a moving one, and hopeless in a small inset. `hy2://` is a tenth of it. Two
+  ways out, and the choice must be made explicitly rather than discovered on a phone: draw the full link and
+  accept that the scan needs a steady hand, or draw a *minimal* link (scheme, credential, host, `type`,
+  `security`, `sni`, path — the parameters that connect) and leave `fragment` and `sb.tls.*` to the copy
+  button. The second is more useful and needs a size on the QR that a screen can show.
+- **Which rows.** All of them: the node's own two, every local device's two, and each peer's. A peer's link
+  is the one a new device most often needs, and it arrives with the subscription rather than from `device`.
+- **Where it appears.** Inline under the row (a second line in the same `<li>`), not a modal: the page has no
+  modal machinery and a phone cannot easily close one. One code visible at a time keeps the page readable.
+- **Error correction and size.** Level M with a module size that fits the column; the quiet zone is part of
+  the SVG's viewBox, because a code that touches the row's border does not scan.
+- **The terminal.** `termit-uv uri --qr` printing half-block characters is a nice-to-have, not part of this
+  item: the phone case needs the page, and a terminal QR is a second renderer to keep right.
+
+A `0.5.x` patch carried it after all: `0.6.0` was reserved for a hysteria bump that never had anything to
+bump (GO-2026-5288 turned out to be a stale record, §4.6), and a page nobody can scan is not worth
+waiting for that.
+
+Acceptance: on a phone, the camera opens a row's code and the client imports the link; the page references
+no external host and still passes the existing test that fails a page referencing one (`internal/uv/options/options_test.go`); a Go test round-trips the encoder
+against the published vectors and fails if a link with a control character or an over-long URI is passed
+without a clear error; `go test` grows no dependency.
+
+Documents that went with it: `docs/guide/ru/using-uv.md` and its English counterpart (the page description),
+`docs/OPERATIONS.md` §8 for the owner's page, `--help` for the optional flag, and a changelog entry that
+names the screenshot consequence.
+
+#### 3.7.2 The production pass, 0.5.2, 2026-11-22
 
 `0.5.2` carries two fixes for the transport record and two things the owner can see: a QR code beside every
 link on the page, and a `warp status` line that admits the `proxy` transport cannot carry UDP.
@@ -2641,11 +2181,35 @@ runs on the node, which is the reason it exists at all.
 
 **The honest UDP line.** then5, whose transport is the core's own WireGuard, reports
 `udp:     through warp (the core's own stack)`. A node on `proxy` says `not carried — this transport has no
-UDP association, so UDP exits directly`, and `--json` carries `"udp": "direct"`; that is §10.1's second half
+UDP association, so UDP exits directly`, and `--json` carries `"udp": "direct"`; that is §3.5.1's second half
 met for the one transport that cannot do better.
 
 Backups: `sh uv.sh` and `sh mn.sh` wrote their own before the install (see `.spike-out/prod.md`).
-### 11.15 Production pass, 0.6.0, 2026-11-22
+
+### 3.8 0.6.0 — the MASQUE sidecar
+
+`0.6.0` adds the third way to reach WARP — the transport the earlier chapters kept leaving room for — and
+with it the loopback relay it turned out to need.
+
+#### 3.8.1 The MASQUE transport and the relay
+
+**Option D is in `0.6.0`** (`warp.transport: usque`): the MASQUE client runs as a pinned, digest-checked
+sidecar with its own unit, user and loopback SOCKS5 listener, and its listener carries UDP, so the document
+sends both protocols to the WARP hop and the split disappears. The proof it must still collect is the
+production pass — the exit address and a UDP flow (DNS) through the tunnel — because every part of this
+crosses a network nobody here controls. The pass found that the sidecar alone cannot carry UDP for this
+core — `usque` keys a SOCKS5 UDP association on the control connection's own address — so the released form
+puts a small loopback relay (`termit-usque-relay.service`) in front of it; §3.8.2 has the measurement and
+the code in question.
+
+The hysteria half of that is proved on production (§3.6.4): a client through the QUIC transport on then5
+exited at `104.28.222.18` with `warp=on`, and the address families the node does not serve were refused
+rather than answered with the node's own address. The `proxy` transport cannot carry UDP at all — `warp-cli`
+has no UDP association — and since `0.5.2` `warp status` says so instead of reporting a bare `warp=on`, in
+text and in `--json` as `udp: not carried` / `"udp": "direct"`. That leaves option D (MASQUE) as the only way
+to close the gap for `proxy`, which is the swap the tag indirection exists for.
+
+#### 3.8.2 The production pass, 0.6.0, 2026-11-22
 
 `0.6.0` adds the MASQUE transport (`warp.transport: usque`), carries the server's build in the sync answer,
 decodes a peer's label on the page, and records the advisory and the three protocol decisions. The pass was
@@ -2708,3 +2272,667 @@ instead of warning about the node's own address, and `init --hysteria` prints it
 `2a09:bac1:2520::48e:5e` (`warp=on`), a STUN query through the same port returns `104.28.222.16`, the decoy
 answers `200`, `doctor` 20 ok and `in sync: 5 client(s), 3 peer(s)`. The `0.6.0` binary still prints the old
 probe warning during `init` — the fix ships in `0.7.0`.
+
+## 4. Current release: 0.7.0
+
+### 4.1 The scope and the order it lands in
+
+`0.7.0` is §4.4 (both halves), §4.3 (the six items), three items below that came out of the
+planning discussion, and the three debts §3.8.2 recorded (already on `dev`). Everything except §4.4 is
+local: the menu, the wizard and the printed reports. §4.4 is the release's one network-facing piece, and
+the only part a production pass has to see — the upgrade path itself.
+
+**Numbering.** `0.6.0` is cut and published; the next release is `0.7.0`.
+
+**Order.** (1) The menu tree, both binaries. (2) The wizard's QUIC question. (3) The §4.3 items in the
+order they were written. (4) The invite policy. (5) The upgrade and the update. (6) `docs/guide/menu.md`
+and its Russian mirror, `CHANGELOG` and the plan's §3.8.2-style record of the pass.
+
+### 4.2 The state on 2026-11-22
+
+The menu tree, the node picker, the wizard's QUIC question, the invite block, the invite policy, the
+grouped doctor, the node card, the page's egress line and QUIC note, `termit-uv upgrade`
+and `termit-mn update` are on `dev`, and the two update paths have been run on the lab with locally built
+binaries (`v0.7.0`, commit-stamped, `pscp`'d into `/usr/bin`): the menu and its card on the node, a real
+`termit-uv upgrade --to v0.6.0` (download, digest, swap, converge) and a real `termit-mn update --apply`
+(the server came back on `0.6.0` and was put back). Completion is deferred out of this release: both
+binaries declare their flags inside each command, so there is no registry to generate a script from —
+building one is a 0.8.0 item, not a polish task. What is left here is the production pass.
+
+**The lab found two defects the tests could not.** The first upgrade replaced the binary, failed the
+converge step and rolled back — `init` ran without `--config`, so an installed node looked like a fresh
+machine asking for its domain; `runConverge` now carries the path, and the rollback that followed is the
+reason the node kept serving. The server's update asked `api.github.com`, which answered `403` from the
+lab — the same block that makes `uv.sh` read the `releases/latest` redirect instead; `release.Newest`
+now follows that redirect, which needs no token, no quota and no host that a node cannot reach.
+
+### 4.3 The owner's interface
+
+The commands work; this is about the minutes an owner spends on them, and about what a reader can answer
+without a second command. Each item names the thing the reader sees, and each is independent, so the list
+can be cut anywhere.
+
+- **An invite that carries its own instructions.** `termit-mn invite create` prints the ready-to-send
+  block: the `sh uv.sh --mn <url> --invite <code>` line with the MN URL and its API prefix already filled
+  in, and the note as the person's name. Today the operator assembles that line by hand out of three
+  commands — the first-day papercut of the whole mesh. (The terminal QR this item first imagined is
+  dropped: a node is installed by typing a command, not by scanning one.)
+- **The page the owner sends.** `termit-uv options` gains what the reader needs next to each link: a copy
+  button (inline script; the no-external-host rule is about the decoy, not this page), a "voice and video"
+  marker on the `(QUIC)` row — that is the link that carries UDP — and the node's own egress line
+  (`warp: usque, via …`) so the page answers "what does this node do" without `warp status`.
+- **One screen for "what does my node do?"** The menu's status screen becomes a card: domain, build, the
+  server's build with a marker when they differ, transports served, egress, peers grouped by transport,
+  last sync, drift. It is the screen an owner screenshots when asking for help, so it should not need a
+  second one.
+- **`doctor` grouped, with a verdict.** Host, node and tunnel as three groups with one summary line each,
+  and a closing line that says ok / warn / unknown. Today it is one flat list of twenty lines that the
+  reader has to scan to the end to answer "is anything wrong".
+- **`uv show` as the operator's answer.** `termit-mn uv show <node>` gains the last probe's detail, the
+  transports the node serves, when it is next checked, and its subscription URL — so "check this person's
+  node" and "send them the link" are one command instead of three.
+- **Completion for both binaries.** `termit-uv completion bash|zsh` and `termit-mn completion …`, generated
+  from the same flag definitions the parser uses, so it cannot drift from the commands.
+
+Open when implemented: whether the page's copy button is worth inline script at all (clipboard APIs are
+gated, and a plain selectable link is already copyable), and whether completion ships in the binaries or in
+the packaging — the binaries are the only thing we control on both.
+
+### 4.4 Update offers: the node follows the server, the server follows GitHub
+
+Two problems that look alike and are not, deliberately kept as two code paths.
+
+**The node.** The server is the mesh's authority and already knows which build every node runs — `agent_version`
+in the sync request, printed by `termit-mn uv list`. The reverse half shipped in `0.6.0`: `server_version` in
+the sync answer, remembered in the node's state beside the last sync and printed by `termit-uv status`. `server_version` joins the sync answer (`omitempty`, and the node's decoder is lenient, so an
+old node ignores it and an old server simply sends nothing), the node stores it beside the last sync, and the
+menu, on launch, compares it with the running build. The policy is the owner's, and both halves have a reason
+beyond caution: **offer the server's version and never "latest"** — the server is what the mesh has been proved
+against, and a node that outruns its server is a node whose links that server may not know how to render; and
+**never a prerelease** — a `p` suffix names a build that exists to be proved on one box, and offering it in a
+menu would turn the prompt into noise. Equal or older is not an update, so the prompt stays silent.
+
+The *execution* is where the care is, because it replaces the binary the process is running from. The shape:
+fetch the release's `SHA256SUMS` and the asset for the architecture, check the digest before anything else,
+swap with a rename in the same directory while keeping the previous binary, run the new binary's `init` with
+the same configuration, and put the old one back if that fails. That is `termit-uv upgrade --to <version>`, and the
+menu entry wraps it; it is not `curl | bash` (`AGENTS.md` §12) — the digest is from the release itself and is checked
+before the swap, and a convergence that fails rolls back. An unattended node never updates itself: an updater
+on a timer is a remote-code path, and the prompt exists so a human is in the loop.
+
+**The server.** An MN cannot learn "the newest release" from itself; it has to ask GitHub, which would make it
+the one place in the project that talks to a host it does not otherwise need. So the offer is explicit:
+`termit-mn update --check` prints the newest release above the running build, `--apply` runs the same verified
+download and restart, and the menu offers it. Its policy is the mirror of the node's — **it may offer what
+GitHub says is newest, prereleases excluded**, because there is no higher authority to follow. The GitHub call
+must tolerate no network and rate limiting (a reminder, not a check), and its result must never enter `status`
+or `doctor`: a server that cannot reach GitHub is not an unhealthy server.
+
+**Decided while building it.** The menu line is the node's only door — the menu is the interactive door and
+the prompt is the point — and `--to` accepts a version the server never offered, with the operator naming
+it: the prompt is the convenience, not the permission. `init` is run with the same `--config` the upgrade was
+given, which converges the node; a second `enroll` cannot run because enrollment is idempotent. The server
+asks GitHub through the `releases/latest` redirect rather than `api.github.com`, which answers `403` to an
+unauthenticated caller on a shared address; `uv.sh` follows the same redirect, so the two cannot disagree.
+
+**In the same release.** Node: `termit-uv upgrade [--to v<version>] [--check]` downloads the release
+binary and `SHA256SUMS` from GitHub, verifies the digest, writes beside the running binary and renames over
+it, keeps the previous file, then runs the new binary with `init --config <path>` to converge, and restores the
+previous file if that fails. Without `--to` it installs the version the MN reports as its own (`server_version`,
+which sync already carries) — never `latest`, never a `p*` build. The menu's Узел group offers it only when
+the server's build is a plain release and differs from the node's. Server: `termit-mn update --check/--apply`
+does the same against the newest release on GitHub; neither result appears in `status`.
+
+### 4.5 The menu tree, the picker and the invite policy
+
+**Two menu items that join §4.3.**
+
+- **A tree instead of a list.** Both menus grow one level: at most ten choices per screen, grouped by
+  object. Node: Состояние (`status`, `doctor`), Сеть (`net`, `warp`, `transport`), Клиенты (`options`,
+  `uri`, `devices`), Меш (`sync`, `drift`, `enroll`, `unblock`), Защита (`firewall`, `bans`, `guard`),
+  Сайт (`certificate`, `decoy`), Узел (`install`, `wizard`, `migrate`, `uninstall`), Помощь. Server:
+  Состояние (`status`, `check`, `guard`), Узлы, Приглашения, Клиенты (`sub`, `policy`), Защита
+  (`firewall`, `bans`), Обслуживание (`backup`, `restore`, `admin`), Помощь. `menuEntry.children`, a level
+  stack with the breadcrumb in the title, `0 ←` on every level below the first, `q` from anywhere. The
+  four tables that were fake sub-menus (devices, warp, firewall, bans) become real ones and move into
+  `internal/menuplan`, where firewall and bans already live. A test walks the tree: ≤10 per level, and the
+  leaves are exactly the commands the menu offered before, so nothing is lost in the move.
+- **The QUIC question in the wizard.** Between WARP and `harden`, one yes/no: serve Hysteria2 on UDP/443
+  beside the TLS profile. The answer is stored in the draft, becomes `--hysteria` in `wizardInitArgs`, and
+  appears in the summary. Default stays "no", so a TLS-only node is what pressing Enter gives.
+- **A picker instead of an id.** The server's menu draws the mesh and takes a domain, an id, or a unique
+  part of a domain (`then5` finds `then5.bookinet.ru`); `0` cancels, and `ui.MenuFree` is what lets a
+  picker accept a value its list does not contain. When the server cannot be reached the question says so
+  and takes a typed domain. An empty answer to a question that names something already in existence — a
+  node, an invite code — cancels, and the label says so; a question that sets a new value still asks
+  again.
+
+**A server item of its own: the invite policy.** `enrollment.mode` (`invite`, `invite+approval`, `open`)
+is read at startup, so today changing it means editing YAML by hand and restarting. It gets a command and a
+menu line: `termit-mn invite policy` shows the mode and `--mode …` writes it, editing the YAML node tree so
+the operator's comments survive, validating the result with the same loader before the file is replaced,
+and saying plainly that the running server keeps the old mode until it restarts (`systemctl restart
+termit-mn`). `open` needs `--force`: at that mode a leaked invite is an account.
+
+### 4.6 What is left: the production pass and the advisory gate
+
+**Proving it without a pre-release.** The lab runs the tree built locally: `deploy/release --version
+v0.7.0` produces the same layout CI does (binaries, `uv.sh`, `SHA256SUMS`), its output goes onto the lab
+machines with `pscp`, and `go test -tags=lab -count=1 ./test/lab -run '…'` runs everything except the warp
+scenarios. The lab is reinstalled from scratch first, so the run proves a first install and the menu that
+follows it; then §4.4 is proved against the lab as well — `upgrade --to v0.6.0` (a real download,
+digest check and swap), a corrupted `SHA256SUMS` to exercise the rollback, and a downgrade back. Nothing is
+published as `v0.7.0p<n>`: the first pre-release is cut when the tree is ready for the production pass, and
+not before.
+
+**What the release must show.** A fresh install through the menu (piped answers, not a hand-driven
+terminal), every group reachable in two keystrokes, `doctor` with a verdict line, an invite block that
+installs a node without the operator assembling a command, the wizard producing a node that serves both
+transports, the policy command writing a mode the next start obeys, an upgrade that keeps the node
+serving, and a deliberate upgrade failure that leaves the previous binary in place.
+
+**The advisory gate.** The advisory entry GO-2026-5288 is still in `deploy/vulnerabilities.json` with
+`must_be_gone_by: 0.7.0`: a stale record, not a
+live advisory. Its source, GHSA-9fw6-xgg2-mq9q, lists 2.8.1 as the last affected release and 2.8.2 as the
+fix; this build pins 2.14.0 and never enables the sniffing the PoC needs. `vuln.go.dev` never got the fixed
+version — the record is `UNREVIEWED` — so `govulncheck` still reports the module and `deploy/release` will
+refuse to cut `0.7.0` while the entry is there. Re-check the record first; if it is still stale, moving the
+deadline is a deliberate act with its reason in the commit, not a quiet edit.
+
+## 5. Not implemented yet
+
+Everything after `0.6.0` is postponed: understood and wanted, and nothing shipped depends on it. Each item
+names the rule that keeps it out and what it depends on, so nobody re-discovers the reason from scratch.
+
+### 5.1 0.7.x candidates
+
+Small and unplanned. Either may land in a `0.7.x` patch or wait for `0.8.0`; neither is in `0.7.0`'s
+scope (§4.1).
+
+#### 5.1.1 Parameters in the profile envelope
+
+A node reports `{kind, version}` for what it serves, and §3.6.2 records what is left of that envelope: "a
+kind whose parameters vary has no place to say so yet, and the prober has no way to read a kind it does not
+implement." §3.6.1 describes the other half of the same work: options inside the profile — XHTTP mode,
+ALPN, mux/padding, path shape — are "a small enumerated set, validated at enrollment and versioned", and
+they change the URI builder, the generator and the prober together.
+
+The constraint that keeps it out: "a map with no consumer is a schema nobody can check" (§3.6.1). It
+depends on the first kind that varies its parameters; until then the two fields are the whole envelope.
+
+#### 5.1.2 The family on the MASQUE transport
+
+`warp.family: ipv4` is not applied on `usque`: the MASQUE tunnel is dual-stack and the trace egressed over
+IPv6 (`2a09:…`). That is not the node's own address and so not the 0.5.0 leak, but it is not what the key
+says either — "the sidecar would have to be told, which it cannot be through its command line today"
+(§3.8.2).
+
+The constraint is the third-party daemon's interface; it depends on `usque` growing a family flag, or on a
+rule the core can apply without being told.
+
+### 5.2 0.8.0
+
+The next feature release. The order below is the order they will be attempted; each names the constraint
+that keeps it out and what it depends on.
+
+#### 5.2.1 Several MNs in one mesh
+
+Today one MN is the only authority: it owns the SQLite registry, derives every pair credential from its
+`master_key`, probes every node and renders every subscription. A second MN in the same mesh is therefore
+a second authority, not a mirror, and the work is an ownership rule plus replication — not a load
+balancer in front of one database. It stays out because v1 is explicitly a single coordinating server
+(`DESCRIPTION.md` §3 rules out federation between MNs), because the credential derivation in
+`DESCRIPTION.md` §6.2 is a contract a second writer must not silently change, and because one MN is
+already the most valuable target in the mesh: every extra copy carries the same power. This item is
+replication inside one cooperative mesh — several MNs over the same node set. Federation of independent
+groups that only share some nodes is a different thing (§6) and is not covered here.
+
+What replicates: node records (`uv_id`, domain, profile, state, failure streak, certificate pin,
+agent-key hash), `credential_epoch`, policy that changes pairs, verdicts with their timestamps, and the
+schedule. What does not: the `master_key`. It is moved once, out of band, when the mesh is formed, or
+replaced by a threshold scheme below — sending it through a relay, even encrypted, makes every relay a
+candidate for the whole mesh.
+
+| key model | consequence |
+|---|---|
+| shared `master_key` | any MN derives any pair; simplest; one compromised MN is the whole mesh, which a single MN already is |
+| threshold (2-of-N) | no single MN derives; changes `DESCRIPTION.md` §6.2, so a new `credential_epoch` and a migration; new pairs need two MNs reachable |
+
+That choice comes before any code, because it decides whether replication is additive or a credential
+migration.
+
+Authority:
+
+- Every node has exactly one **home MN**, fixed at enrollment. Only the home MN accepts
+  enroll/unblock/relocate/policy for that node, and only it writes the row; replicas apply events and
+  never write a node they do not home. A node id is global: two homes may not own the same one, a replica
+  never creates one, and a conflict is refused rather than merged. Moving a node is an explicit handoff —
+  the new home issues a new agent key, the id and the pair credentials survive, the epoch is checked —
+  never an implicit failover.
+- `credential_epoch` is replicated, and a bump takes effect only when every configured MN has
+  acknowledged it. A bump during a partition is a mesh-wide split no node can detect from the inside;
+  gating it on quorum is the whole safety argument.
+
+Transport, two paths, one envelope:
+
+- **Direct**: MN↔MN over HTTPS with pinned static keys — no new CA and no new service.
+- **Indirect**: through mesh nodes. A UV already has an always-on process and is already trusted to reach
+  a management endpoint, so it carries opaque envelopes from its home MN to another MN, with a bounded
+  queue, a TTL, an ack and a per-MN quota. The envelope is end-to-end encrypted and signed — `mn_id`,
+  `seq`, `schema_version` and payload, X25519 + AEAD, Ed25519 — so a relay reads ciphertext, cannot forge
+  or replay (sequence window) and cannot alter it without a signature failure. A relay that drops costs
+  liveness only. The node does not become a general relay: only envelopes addressed to configured MNs,
+  only below a size cap, removed on ack. Encryption and signatures come from the standard library plus
+  the `x/crypto` already in the module, so this adds no dependency.
+- Replication needs its own interval, not the daily sync: a state change that takes 24 h to reach the
+  other half of the mesh is not replication. On the indirect path that means a short poll or long-poll
+  between UV and its home MN — a new always-on network behaviour on the node, and part of the cost.
+
+Replication itself is an append-only event log per MN, applied idempotently by `(mn_id, seq)`; a new or
+gapped peer takes a schema-versioned snapshot and resumes. SQLite stays single-writer: do not share the
+file and do not add a replication service. Byte-level tools (Litestream, rqlite) solve single-writer
+failover and bring a dependency plus merge semantics the state machine does not have.
+
+Decide before implementing: whether replicas may enroll (no — invites and approval stay at the home);
+whether a UV may sync to a replica while its home is down (read-only desired state, checks written to
+the home only — a stale subscription beats a wrong one); how the admin CLI names "the mesh" when the
+local MN is a replica; and what a node does with two reachable homes (there is no split brain because
+there is one home, but the failover story must be written down).
+
+Acceptance: two MNs and two UVs. A node enrolled on A appears on B and in a subscription B renders; a
+block on A reaches B and the peer's next sync. Cut the direct link and the same event arrives through a
+UV relay with the same three results. A replayed envelope changes nothing; a tampered one is rejected and
+logged. A partition admits no replica enrollment and no epoch bump; a schema mismatch refuses replication
+but keeps serving the last good snapshot. The lab needs a second MN machine — the spare fourth container
+is a UV — so the suite grows before this ships.
+
+#### 5.2.2 Traffic limits per node
+
+Nothing counts bytes today: MN knows a node answers checks and nothing else. VPS plans cap traffic, so a
+node can be suspended by its provider without warning — which removes a working exit and, because the
+next failed check is up to a day away, leaves peers pointing at a dead endpoint. A cap the node enforces
+itself keeps it reachable for SSH, ACME, sync and the decoy, and takes it out of rotation before the
+provider does. It is out because `DESCRIPTION.md` §3 lists traffic accounting and quotas as non-goals and
+§3.4.12 keeps rate limiting out; a quota is also a new state in the lifecycle, not a config flag.
+
+The operator has to say what the provider bills; the node cannot know it:
+
+| source | counts | matches the bill | cost |
+|---|---|---|---|
+| interface, `/sys/class/net/<if>/statistics/{rx,tx}_bytes` | every byte, proxy or not | yes — what the hypervisor or veth counts | none; the interface is config (default: the default route's) |
+| Xray `stats` + `policy.system` | proxied bytes, per user if wanted | no — misses TLS/nginx overhead and retransmits | resets on restart; needs a persisted offset |
+| provider API | exactly the bill | exactly | one integration per provider, secrets, network calls — out of scope |
+
+Default to enforcing on interface **egress** (`tx_bytes`): proxy responses dominate it and most VPS bill
+outbound. `rx+tx`, inbound-only and 95th-percentile plans exist, so the direction is a config value, not
+an assumption. A byte through WARP still crosses the interface (the WireGuard tunnel is node-side), so it
+is counted once whichever egress it takes. Xray's split is still reported, so the owner can see how much
+was the mesh rather than their own downloads.
+
+The awkward parts, which are the actual work:
+
+- **Period.** Billing months start on the provider's day, not the first: a day-of-month plus the resident
+  time zone, with a manual reset. A rolling 30-day window needs daily buckets; a calendar month needs one
+  counter and a start date.
+- **Headroom.** A cap at 100% leaves nothing for the agent, ACME or the owner's SSH, and those are
+  exactly what must never be cut. Stop proxying at a configured reserve below the limit; direct traffic
+  and the decoy stay up.
+- **Enforcement and state.** Peers must stop being handed the node, but the node must not look "failed".
+  The honest shape is a new self-reported state (`limited`) — out of peers' configs like `blocked`, and
+  automatically `active` when the period resets, unlike `blocked`, which needs an unblock. That is a
+  state-machine change, and the reason this is not a small patch.
+- **Lag.** Daily sync is too slow to report; enforcement is local, the report rides the next sync, and a
+  one-minute local poll is plenty for a multi-GiB cap.
+- **Restarts and reboots.** Xray counters reset with the process; persist an offset and notice the reset
+  (a counter below the last seen). Interface counters reset on reboot; persist a baseline and add the
+  delta, treating a drop as a new baseline rather than negative traffic.
+
+Acceptance: on the lab, a 50 MiB cap stops proxying at the reserve while SSH, the decoy, ACME and the
+agent keep working; restarting the core does not lose the reported total; the next period returns the
+node to `active` with no operator action; the peer set drops it while limited and gets it back;
+`termit-mn status` shows the number and the period. This is a quota, not per-second rate limiting
+(§3.4.12).
+
+#### 5.2.3 The MN and a node on one machine
+
+Today the two roles are two machines by design: the node's nginx owns `:80` and `:443`, while the MN has
+its own TLS listener on `:443` and its ACME challenge listener on `:80` (`docs/OPERATIONS.md` §1). For a
+two- or three-person mesh that second box is the most expensive part of the deployment, and the natural
+request is one VPS that runs both binaries.
+
+It stays out of v1 because it is a topology change, not a packaging one: the invariants are written
+against "one process owns the ports and the certificate" (`DESCRIPTION.md` §11), and nothing here
+weakens them — but the ownership rule has to be decided first.
+
+Constraints, in the order they decide the design:
+
+1. **One owner per port.** nginx is the only `:80`/`:443` listener, and it routes by SNI/Host — the
+   node's name to the local core, the MN's name to the MN on a loopback port — or the MN moves to its
+   own port and every server URL and firewall rule changes. The first keeps the client shape and is the
+   recommended direction.
+2. **Two certificates, one ACME listener.** Both names need a leaf on the same address, and two ACME
+   clients would fight over the challenge. The handler must be shared (one nginx `/.well-known/`
+   location, forwarded to whichever role is renewing), while each role keeps renewing and pinning its
+   own leaf: the MN pins every node's leaf, the node pins nothing.
+3. **The decoy has two owners.** The node's decoy is an nginx tree under `/var/www/termit`; the MN
+   serves its own from memory (`internal/mn/server/decoy.go`). Combined, SNI decides which site a
+   visitor gets, and that is a fingerprint decision as much as routing: the two sites must not share a
+   template seed or look like one deployment serving two names.
+4. **The MN still never proxies.** Two systemd units, two service users, two state directories
+   (`/var/lib/termit/mn`, `/var/lib/termit/uv`); the node keeps its own core and WARP, and the MN
+   process stays traffic-free. No shared daemon.
+5. **Firewall and ban ownership.** The node's optional table is `inet termit_uv`, the MN's is
+   `inet termit_mn`; combined they must not both claim `input`, the node's `firewall on` must not cut
+   the MN's ACME or admin socket, and the ban engine must never ban the MN's own loopback traffic.
+6. **The failures become one.** A box that is down or whose subnet is blocked now takes the registry
+   with it: one address costs the whole mesh, not one path. That is a policy choice (right for two
+   people, wrong for six) and belongs in the install documentation next to the command.
+7. **Lifecycle, not just install.** Two installers and two upgrade paths, and `termit-uv uninstall
+   --purge` must leave the MN's vhost, certificate and units alone and restore only its own. The MN has
+   no uninstall command today (it is done by hand, `docs/RUNBOOK.md` §11), so a combined box needs one
+   that leaves the node serving. The backup story becomes two archives and one master key, and the
+   resource budget is the sum of `DESCRIPTION.md` §13.1, which a 1 GB node box does not meet.
+
+Acceptance: one box from a clean image — both names served over TLS, `termit-mn status` and
+`termit-uv doctor` green, exactly one process per port, a client through the node reaching the internet
+while the MN's own traffic never enters the tunnel, a subscription and an admin command working across
+the shared challenge listener, `uninstall --purge` of either role leaving the other serving, and the
+coupling stated in the guide. The co-located node's probe comes from a second vantage (§5.2.4): a check
+that leaves from the same box is a self-check, not evidence that the node is reachable from outside.
+
+#### 5.2.4 A second vantage for the MN's own node
+
+Today the home MN is the only observer: its probe decides a node's state, and its own vantage is assumed
+to be the internet's. Two cases that this plan now makes common break that assumption. A node co-located
+with its MN (§5.2.3) can only be reached through hairpin NAT or loopback, so the check stops measuring
+external reachability. An MN whose path to one node is blocked, while every other node is fine, has no
+way to say "this is my vantage, not the node" — and by `DESCRIPTION.md` §7.2 a timeout is a verdict, so
+the node is blocked.
+
+The fix is to let another MN, on a different network, perform the probe and hand the verdict back: a
+second vantage. It is deferred with the rest of multi-vantage probing (§6), but its wire shape belongs in
+the plan now, because §5.2.3 cannot honestly claim external validation without it.
+
+It is a delegation, not a federation. A node keeps one home MN (§5.2.1) and only the home MN decides and
+writes state; a peer observes and answers, it never writes a row.
+
+**Verdict rule**, generalising the retry aggregation `runCycle` already does ("failed only if every
+attempt concluded"):
+
+- an `ok` from any vantage is `ok`;
+- `failed` only when every vantage that formed a verdict says failed;
+- no vantage could form one — peer down, its DNS broken, its prober unavailable — is `unknown`, and
+  `unknown` changes nothing (invariant 2).
+
+Shape:
+
+- **Config**: `prober.peers: [{name, url, key, delegate: [domains]}]`. The list is explicit: an automatic
+  "delegate my own domain" rule would hard-code the topology, and §5.2.3 is not the only reason to
+  delegate.
+- **Protocol**: one call, `POST {prefix}/peer/probe` with `{uv_id, target{domain, port, sni, path, mode,
+  uuid, pin}}`, answered with the `Result` the local prober would have produced (`ok`, class, latency,
+  timestamp). The peer key is a bearer credential like an agent key: random, stored as a digest,
+  rotatable, TLS pinned to the peer. A result older than one cycle is not a verdict.
+- **Code**: `internal/mn/probe/peer.go` implementing the existing `Prober` seam, so the transition
+  table, the grace streak and the `unknown` rule are untouched; `cmd/mn/serve.go` picks the local worker
+  or the peer per node.
+- **Freshness and staleness**: the peer's answer is an observation with a timestamp, not a state. The
+  format is a list even while one vantage is used, so N vantages need no rework.
+
+Decisions that come before any code:
+
+1. **How many negatives block.** With one delegated vantage, a compromised or simply misconfigured peer
+   can block any node it can reach. Options: accept it (the mesh is cooperative, as with a hostile UV),
+   require unanimity once there are two or more vantages, or let a single peer's failure move a node only
+   to `unavailable` while `blocked` needs the node's own self-check to fail as well. This is the same
+   trust question as §5.2.1's shared master key and must be answered with it.
+2. **What the peer learns.** A probe target is the probe UUID, the secret path and the certificate pin —
+   the ability to connect to a node it does not own. Under a shared master key (§5.2.1) a peer derives
+   pair credentials anyway, so this is not new power; without replication it is, and must be stated.
+   Whether the probe UUID becomes rotatable (today `uv reissue` rotates only the agent key) is open.
+3. **Who picks the peer.** Explicit selection is honest; automatic selection from the list is convenient
+   and hides the topology. A dead peer leaves the node unverified but `active` — correct by invariant 2,
+   and invisible to the operator unless `termit-mn status` says "no external vantage" per node.
+4. **Visibility of the vantage.** Every served verdict should name the vantage that produced it, in
+   `uv show` and in the metrics, or a disagreement between two MNs cannot be investigated after the fact.
+
+Acceptance, on a lab with two MNs on different networks: a node co-located with its home MN is checked
+only by the peer and reaches `active` on the peer's `ok`; stopping the peer leaves the node `active` and
+`status` reports no vantage; a peer `failed` while the node's self-check is `ok` follows the rule chosen
+in decision 1, recorded in the guide; a stale result never moves the node; the state-machine tests are
+unchanged, because no transition was added.
+
+#### 5.2.5 Completion for both binaries
+
+`termit-uv completion bash|zsh` and `termit-mn completion …`, generated from the same flag definitions the
+parser uses, so it cannot drift from the commands (§4.3). It was deferred out of `0.7.0` for the reason §4.2
+records: both binaries declare their flags inside each command, so there is no registry to generate a script
+from — "building one is a 0.8.0 item, not a polish task".
+
+The constraint: the flag registry comes first. The open question stays open with it — whether completion
+ships in the binaries or in the packaging, "the binaries are the only thing we control on both" (§4.3).
+
+#### 5.2.6 A second rendering of the profile: VLESS over WebSocket
+
+The cheaper answer to client compatibility, recorded in §3.6.1 while Trojan was being dropped: a second
+rendering of the same profile behind nginx — VLESS over WebSocket on a loopback port with an nginx
+`location` in front, TLS still nginx's, nothing taking 443, and stock sing-box able to read it. "That is a
+profile option, not a new kind."
+
+The constraint is that nobody has needed it yet: the argument for it is a client that cannot read the XHTTP
+profile, and none has bitten. It depends on §5.1.1, because a second rendering is a profile option and needs
+somewhere to say so.
+
+## 6. Explicitly deferred (post-v1)
+
+v0.5.0 took part of this list back off it (§3.6); everything here without a corresponding item stays deferred.
+
+- Other xray-core protocol kinds; MTProto (§3.6.1). REALITY and Shadowsocks were dropped on 2026-11-22, with
+  the reasons recorded in §3.6.1; Trojan was considered and left out there too.
+- Multi-vantage probing (§5.2.4); federation between independent MNs; MN replication in one mesh
+  (§5.2.1); node reputation.
+- One machine running both the MN and a node (§5.2.3).
+- Web admin UI; traffic accounting and quotas (§5.2.2); Telegram bot.
+- IPv6-only nodes; non-Debian distributions (an explicit portability milestone, not a side effect).
+- Hot certificate reload without a restart (depends on Xray capabilities).
+
+## 7. Reference
+
+The sections a reader needs while working, kept from the original plan and renumbered.
+
+### 7.1 Decisions already locked
+
+| Decision | Value | Impact |
+|---|---|---|
+| Language | Go for both binaries, one module, CGO off | static binaries, pure-Go SQLite |
+| Credentials | per-pair UUIDs derived by MN from a master key | `internal/cred` is a contract |
+| Registration | invite codes + admin approval by default (`open` opt-in) | enrollment flow, invites table |
+| MN deployment | single binary + SQLite + systemd + built-in ACME | no Postgres/Docker requirement |
+| MN admin | unix-socket API + `termit-mn` CLI, no web UI in v1 | no second auth surface |
+| Subscription | base64 `vless://` list at `/sub/{token}`, sing-box JSON at `/sub/{token}/json` | two renderers |
+| Licence | AGPL-3.0, public repository | no GPL/AGPL dependencies |
+| Target | Debian 13, amd64 + arm64 | packaging, checks |
+| Acceptance | three Debian machines over SSH (1 MN, 2 UV) + LAN DNS | lab suite is the release gate |
+
+Still open (see §7.6): the exact XHTTP mode/tuning and the lab coordinates. Resolved since the first draft: module path and repository URL,
+and the decoy inspiration source.
+
+### 7.2 Cross-cutting workstreams
+
+These are not separate milestones; they must be updated in the milestone that touches them.
+
+| Workstream | Rule |
+|---|---|
+| Docs | The change that alters behaviour updates the doc in the same commit. |
+| Tests | Every milestone lands its unit tests; the lab scenario for a milestone lands with it. |
+| Security | Redaction tests, `0600` checks, and an adversarial review pass at the end of M2 and M4. |
+| Observability | New state transitions and probes log once, structurally, with the identifiers needed to debug. |
+
+### 7.3 Verification matrix
+
+| Claim | Proof |
+|---|---|
+| Direct traffic unaffected | Lab: SSH session open during install, sync, WARP toggle, and certificate renewal never drops |
+| Decoy is convincing | Browser + `curl` see a valid chain, HTML, plausible headers, working POST endpoint; no external requests in a network capture |
+| Proxy works | Real HTTP fetch through a subscription URI from a third machine |
+| Blocking is correct | Full transition table tests + scenario A drill in the lab |
+| No false blocking | Failure-drill suite: prober/MN failures produce `unknown`, state unchanged |
+| Secrets are protected | `0600` assertions, redaction tests, `git grep` for key patterns in CI |
+| Uninstall is clean | Manifest diff before/after on a fresh lab machine |
+| Idempotency | Install twice, sync twice, relocate twice; byte-identical state and config |
+
+### 7.4 Lab environment
+
+The maintainer provides three Debian 13 containers on Proxmox, reachable over SSH as root:
+`termit-mn` (2 vCPU / 2 GB), `termit-uv1` and `termit-uv2` (1 vCPU / 1 GB each, ~8.6 GB free disk).
+LAN DNS resolves `termit-*.lan`; outbound 443 works. Coordinates, host keys and the key path are kept
+in the gitignored `.spike-out/lab.md`, never in committed files.
+
+Answered:
+
+- Debian 13 on all three, x86_64, NTP synced, outbound internet available.
+- Private addresses only, so Scenario C proves the DNS-consistency logic but not a public-IP path.
+- `warp-cli` **cannot** run: these are unprivileged LXC containers without `/dev/net/tun`.
+- **WARP acceptance is deferred to the release checklist** (maintainer decision, 2026-11-09). The
+  implementation follows the reference's `warp-cli` proxy mode, which is known to work; the lab can
+  only verify that WARP is detected as unsupported and refused with a clear reason.
+
+Answered during M1: the lab ACME is **Pebble on the MN container** (`httpPort: 80`, directory
+`https://termit-mn.lan:14000/dir`), which is what M0.3 and every lab install ran against. Pebble's
+self-signed chain is why `acme.skip_tls_verify` exists.
+
+### 7.5 Estimated effort
+
+| Milestone | Ideal days | Cumulative |
+|---|---|---|
+| M0 spikes + scaffolding | 3–5 | 3–5 |
+| M1 UV standalone | 8–12 | 11–17 |
+| M2 MN core | 8–10 | 19–27 |
+| M3 full lifecycle | 8–12 | 27–39 |
+| M4 hardening + release | 6–8 | 33–47 |
+
+The range is wide because M1 and M3 depend on how much the M0.2 topology spike and the Xray hot-API
+path cooperate.
+
+### 7.6 Open items to confirm
+
+1. ~~Go module path / repository URL~~ **Resolved**: `git@github.com:shogun-kub/termit.git`, module
+   path `github.com/shogun-kub/termit`. The `origin` remote is configured; nothing is pushed.
+2. ~~Decoy-site inspiration source~~ **Resolved**: the `autoXRAY-multi` generator family plus three
+   maintainer-provided pages, captured locally under `captures/decoy-samples/` (gitignored, no URLs
+   recorded). See `DESCRIPTION.md` §5.3 and `IMPLEMENTATION_PLAN.md` M1.3.
+3. Lab coordinates and the DNS suffix, plus the answers to §7.4.
+4. ~~Whether `termit-uv` should enable WARP by default on fresh installs~~ **Resolved** on 2026-11-10: on by
+   default, opt-out with `--no-warp` or `warp.mode: off`. See M4.1.
+5. Whether the MN domain and the UV domains are expected to live in the same DNS zone (affects the
+   DNS-consistency check and documentation).
+
+### 7.7 Risks and mitigations
+
+| # | Risk | Likelihood | Impact | Mitigation |
+|---|---|---|---|---|
+| R1 | VLESS+XHTTP+TLS cannot share `:443` with the fallback decoy as assumed | Medium | High | M0.2 spike decides; two fallback topologies are pre-designed behind one interface |
+| R2 | `cloudflare-warp` unsupported on some hosts/arches | Medium | Medium | refuse with a reason; never silently degrade; document supported matrix |
+| R3 | MN's vantage point differs from users' and blocks healthy nodes | Medium | High | `unknown` invariant, retries, configurable thresholds, admin override; multi-vantage later |
+| R4 | Daily convergence means up to 24 h of stale peers | High (by design) | Low | documented; `termit-mn check now` + admin CLI for urgent cases; sync interval configurable |
+| R5 | Let's Encrypt path untested in the LAN lab | High | Medium | Pebble covers the ACME code path; the real-domain pass gates promoting a release out of pre-release, and the workflow publishes pre-release until it is done |
+| R6 | MN compromise or DB theft exposes all pair credentials | Low | Critical | master key can live outside the DB; backups encrypted by the operator; threat model documented |
+| R7 | Scope creep toward a panel/quota/billing product | High | Medium | non-goals list is explicit; v1 API stays minimal |
+| R8 | Dependency churn (SQLite, ACME, xray-core pinning) | Medium | Medium | pin versions + checksums, `govulncheck`, small module graph |
+| R9 | Development host has no Go/Docker and targets Linux | High | Low | M0.1 installs the toolchain; cross-compile; lab machines are the runtime |
+| R10 | Decoy templates look fake | Medium | Medium | user supplies the inspiration source; generator is pluggable; `termit-uv renew-site` iterates |
+
+## 8. Cross-reference map
+
+Every numbered section of the previous revision and the section that now carries it. A cell with two or
+more numbers means the material was split; this table is what other documents are fixed from.
+
+| Old | New |
+|---|---|
+| §0 Decisions already locked | §7.1 |
+| §1 Critical path and ordering | §3.1.1 |
+| §2 Cross-cutting workstreams | §7.2 |
+| §3 Suggested order of the first ten commits | §3.1.2 |
+| §4 Risks and mitigations | §7.7 |
+| §5 Explicitly deferred (post-v1) | §6 |
+| §6 Verification matrix | §7.3 |
+| §7 Lab environment | §7.4 |
+| §8 Estimated effort | §7.5 |
+| §9 Open items to confirm | §7.6 |
+| §10 Backlog (its three opening paragraphs) | §3.6 (intro), §4.1, §5 (intro), §4.6 (the advisory) |
+| §10.1 WARP that carries UDP | §3.5.1, §3.8.1 |
+| §10.2 More protocols and protocol options | §3.6.1, §5.2.6 |
+| §10.3 Hysteria2 as a second transport | §3.6.2 |
+| §10.4 Several MNs in one mesh | §5.2.1 |
+| §10.5 Traffic limits per node | §5.2.2 |
+| §10.6 The MN and a node on one machine | §5.2.3 |
+| §10.7 A second vantage for the MN's own node | §5.2.4 |
+| §10.8 A QR code beside every client link | §3.7.1 |
+| §10.9 Update offers | §4.4 |
+| §10.10 The owner's interface | §4.3, §5.2.5 (completion) |
+| §10.11 0.7.0: the scope and the order it lands in | §4.1, §4.2, §4.4 (the command shape), §4.5, §4.6 |
+| §11 Planned: WARP over WireGuard inside the core (intro) | §3.5 |
+| §11.1 What changes for an operator | §3.5.2 |
+| §11.2 The identity: one secret, written once | §3.5.3 |
+| §11.3 The generated outbound | §3.5.4 |
+| §11.4 Work breakdown | §3.5.5 |
+| §11.5 Acceptance | §3.5.6 |
+| §11.6 Risks | §3.5.7 |
+| §11.7 Implemented, 2026-11-16 | §3.5.8, §3.5.9 |
+| §11.8 Size | §3.5.10 |
+| §11.9 Production pass, 2026-11-17 | §3.5.11, §3.5.12, §3.5.13 |
+| §11.10 Production pass, 0.4.1 | §3.5.14 |
+| §11.11 Production pass, 0.4.2 | §3.5.15 |
+| §11.12 Production pass, 0.5.0 | §3.6.3 |
+| §11.13 Production pass, 0.5.1 | §3.6.4 |
+| §11.14 Production pass, 0.5.2 | §3.7.2 |
+| §11.15 Production pass, 0.6.0 | §3.8.2 |
+| M5 §5.0 Spike results | §3.4.2 |
+| M5 §5.1 Decisions | §3.4.1 |
+| M5 §5.2 What owns what | §3.4.3 |
+| M5 §5.3 The table | §3.4.4 |
+| M5 §5.4 Signals and the ban ladder | §3.4.5 |
+| M5 §5.5 Commands | §3.4.6 |
+| M5 §5.6 Configuration | §3.4.7 |
+| M5 §5.7 BitTorrent | §3.4.8 |
+| M5 §5.8 Blocklist refresh | §3.4.9 |
+| M5 §5.9 Milestones | §3.4.10, §3.4.11 |
+| M5 §5.10 Explicitly out of scope | §3.4.12 |
+
+The old numbering had two collisions, and they are what made the references hard to follow: `§5` was both
+the deferred list and the security-hardening milestones, and `§11` was the WARP record. The milestone table
+below resolves the names the prose still uses.
+
+| Old | New |
+|---|---|
+| M0.1 | §3.1.3 |
+| M0.2 | §3.1.4 |
+| M0.3 | §3.1.5 |
+| M0.4 | §3.1.6 |
+| M0.5 | §3.1.7 |
+| M1.1 | §3.1.8 |
+| M1.2 | §3.1.9 |
+| M1.3 | §3.1.10 |
+| M1.4 | §3.1.11 |
+| M1.5 | §3.1.12 |
+| M1.6 | §3.1.13 |
+| M2.1 | §3.1.14 |
+| M2.2 | §3.1.15 |
+| M2.3 | §3.1.16 |
+| M2.4 | §3.1.17 |
+| M2.5 | §3.1.18 |
+| M2 follow-ups | §3.1.19 |
+| M3.1 | §3.1.20 |
+| M3.2 | §3.1.21 |
+| M3.3 | §3.1.22 |
+| M3.4 | §3.1.23 |
+| M3.5 | §3.1.24 |
+| M3.6 | §3.1.25 |
+| M4.1 | §3.1.26 |
+| M4.2 | §3.1.27 |
+| M4.3 | §3.1.28; the `v0.2.1` promotion is §3.3.1 |
+| M5-0 | §3.4.2 and §3.4.10 |
+| M5-1 … M5-8 | §3.4.10; the production pass is §3.4.11 |
+
+New in this revision, with no old number: §1, §2, §3 and the introductions to its chapters, §4 and its
+sections, §5 and its introductions, §5.1.1, §5.1.2, §5.2.5, §5.2.6, §7 and §8.

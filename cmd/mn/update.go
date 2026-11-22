@@ -16,9 +16,9 @@ import (
 )
 
 // runUpdate replaces the server's binary with the newest published release. It is deliberately absent from
-// `status` and `doctor`: the server answers questions about the mesh, and "an update exists" is not one of
-// them — a check that reached GitHub on every status call would also be the only network dependency of a
-// component that otherwise needs none but its own nodes.
+// `status`: the server answers questions about the mesh, and "an update exists" is not one of them — a
+// check that reached GitHub on every status call would also be the only network dependency of a component
+// that otherwise needs none but its own nodes.
 func runUpdate(args []string, stdout, stderr io.Writer) int {
 	return updater{restart: systemdRestart}.run(args, stdout, stderr)
 }

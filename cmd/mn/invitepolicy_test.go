@@ -181,13 +181,21 @@ func TestInvitePolicyMenu(t *testing.T) {
 	}
 }
 
-// The block the operator forwards has to carry everything one paste needs: the server, its prefix and the
-// code, in the one command the installer understands.
+// The block the operator forwards has to carry everything one paste needs: the wizard command, and the two
+// answers it will ask for besides the person's own domain. Passing --mn and --invite to uv.sh instead would
+// be worse than useless: without --wizard init has no domain and stops, and with it the installer hands the
+// terminal to the wizard, which asks for both and never sees the flags.
 func TestInviteBlockIsOnePaste(t *testing.T) {
 	t.Parallel()
 	block := inviteBlock("mn.example.com", "/6rfjdqfn5nno", "ABCD-EFGH-IJKL", "anna")
-	if !strings.Contains(block, "sh uv.sh --mn https://mn.example.com/6rfjdqfn5nno --invite ABCD-EFGH-IJKL") {
-		t.Errorf("block = %q, want the whole command on one line", block)
+	for _, want := range []string{
+		"sh uv.sh --wizard",
+		"server: https://mn.example.com/6rfjdqfn5nno",
+		"invite: ABCD-EFGH-IJKL",
+	} {
+		if !strings.Contains(block, want) {
+			t.Errorf("block = %q, want %q", block, want)
+		}
 	}
 	if !strings.Contains(block, "for: anna") {
 		t.Errorf("block = %q, want the note as the person's name", block)

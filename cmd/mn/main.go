@@ -103,8 +103,8 @@ Server:
   restore      restore from a snapshot
 
 Admin:
-  invite       create, list and revoke invite codes
-  uv           list, show, approve, block, unblock and remove nodes
+  invite       create and revoke invite codes, and the enrollment rule they meet
+  uv           list, show, approve, reject, block, unblock, remove, reissue and forget nodes
   check        run health checks now (one node, or the whole mesh with --all)
   policy       read and change scheduler thresholds
   admin        rotate the admin token (the credential every admin command uses)

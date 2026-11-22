@@ -144,8 +144,8 @@ versions, and never contains a secret.
 | `domain_taken` | 409 | another node already holds this domain |
 | `dns_mismatch` | 409 / 503 | DNS does not point at the caller, or no resolver could answer |
 | `check_failed` | 502 / 503 | the tunnel did not carry traffic, or could not be checked |
-| `pending_approval` | 403 | the node is pending and has not been approved yet |
-| `node_inactive` | 403 | the node is removed, and this endpoint no longer serves it |
+| `pending_approval` | — | declared, not produced by this build: a pending node learns its state from `node.state` and `notice`, never from an error |
+| `node_inactive` | 403 | the node is blocked or removed, and this endpoint no longer serves it |
 | `relocate_required` | 409 | the request names a different host; that is `agent/relocate`, not this endpoint |
 | `conflict` | 409 | the node's state does not permit this operation |
 | `unauthorized` | 401 | no agent key, an unknown key, or a key that does not match this node |
@@ -317,8 +317,9 @@ digest, and only the digest leaves.
 `policy.mesh_poll` in the server's configuration, where the default is `15m` and `0` turns the poll off
 (the node then makes no request between its cycles).
 
-Refusals: `unauthorized` (no key, unknown key, key of another node), `pending_approval`,
-`node_inactive`, `relocate_required` (the stored domain no longer matches what the node presents).
+Refusals: `unauthorized` (no key, unknown key), `url_invalid` (the body does not parse or carries a field
+this build does not know), `node_inactive` (blocked or removed), `internal_error`. A `pending` node syncs
+like any other: its credentials exist, and it is the peers' sets that exclude it until approval.
 
 ### 3.3 `POST {prefix}/agent/unblock`
 
@@ -415,8 +416,8 @@ working immediately.
 ### 5.1 `GET {prefix}/healthz`
 
 ```json
-{"api_version": "1", "build": "v0.3.1", "domain": "mn.example.com",
- "schema_version": 5, "status": "ok", "mesh_generation": "9f3c1a2b4d5e7788"}
+{"api_version": "1", "build": "v0.6.0", "domain": "mn.example.com",
+ "schema_version": 6, "status": "ok", "mesh_generation": "9f3c1a2b4d5e7788"}
 ```
 
 `200` when the database answers a ping inside 2 seconds, `503` with `status: "degraded"` and
@@ -472,7 +473,7 @@ to a public address and the endpoint is still unreachable from outside.
 | `termit_mn_checks_total` | counter | probes, per result (`ok`/`failed`/`unknown`) |
 | `termit_mn_enrollments_total` | counter | enrollment attempts, per result |
 | `termit_mn_syncs_total` | counter | syncs served |
-| `termit_mn_check_duration_seconds` | histogram | how long a probe takes |
+| `termit_mn_check_duration_seconds` | histogram | how long one scheduler cycle took |
 | `termit_mn_check_queue_due` | gauge | checks waiting |
 | `termit_mn_check_queue_oldest_due_seconds` | gauge | age of the oldest waiting check |
 | `termit_mn_check_next_due_timestamp_seconds` | gauge | when the next check runs |

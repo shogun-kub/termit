@@ -160,8 +160,10 @@ func runInviteCreate(args []string, stdout, stderr io.Writer) int {
 // of the whole mesh.
 func inviteBlock(domain, prefix, code, note string) string {
 	var b strings.Builder
-	b.WriteString("\nsend this to them (the installer asks for their node's domain):\n\n")
-	fmt.Fprintf(&b, "  sh uv.sh --mn https://%s%s --invite %s\n", domain, prefix, code)
+	b.WriteString("\nsend this to them (the wizard asks for their own domain; these are the other two answers):\n\n")
+	b.WriteString("  sh uv.sh --wizard\n")
+	fmt.Fprintf(&b, "  server: https://%s%s\n", domain, prefix)
+	fmt.Fprintf(&b, "  invite: %s\n", code)
 	if note != "" {
 		fmt.Fprintf(&b, "\nfor: %s\n", note)
 	}

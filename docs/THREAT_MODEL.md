@@ -70,7 +70,7 @@ visibility.
   │            │              └─────┘   │   └─ secret path ─▶ core │   │ admin socket (0600) │
   └────────────┘                        │        │                 │   └──────────┬──────────┘
         │                               │        ▼                 │              │
-        │ subscription (S11)            │  WARP sidecar ─▶ internet │◀── sync ─────┘
+        │ subscription (S11)            │  WARP egress ─▶ internet  │◀── sync ─────┘
         ▼                               └──────────────────────────┘   HTTPS, agent key
    MN /sub/<token>                                 │
                                                    ▼
@@ -206,6 +206,19 @@ nginx and the core with it.
 | A node's certificate key leaks | impersonation of that node's decoy | `termit-uv renew-cert --force` with a new key; the server follows the new pin at the next sync |
 | An operator deletes the audit log | evidence is gone | retention is a year; the log lives in the same database as the registry, so an attacker with write access can remove it |
 
+### 5.9 The update path (S9, S12)
+
+Both binaries can replace themselves from a published release: `termit-uv upgrade` installs the release
+the management server names, `termit-mn update` the newest published one. The digest is checked against
+the `SHA256SUMS` served from the same release directory, so the trust anchor is the release account and
+github.com, not a signature.
+
+| Threat | Mitigation | Residual |
+|---|---|---|
+| A tampered release is installed | the asset's SHA-256 must equal the digest in the release's `SHA256SUMS`; a mismatch aborts before anything is replaced | binary and checksum come from the same origin, so whoever can publish to the release directory can publish both. There is no signature and no pinned signing key: a compromise of the maintainer's account or of GitHub is code execution as root on every node that updates |
+| An update bricks a node or the server | the running binary is kept as `<binary>.prev`; a node whose new binary fails to converge, and a server whose new build fails to restart, are put back automatically and the command fails loudly | a build that starts and then misbehaves is not detected by this. That case is what the release process is for: a pre-release is proved on the production nodes first (AGENTS §9) |
+| A node moves to a build the mesh was not proved against | the default target is `server_version`, never `latest`, and the version pattern refuses a pre-release | an operator's `--to` is trusted: naming a version is a deliberate act |
+
 ## 6. Residual risk and known limitations
 
 These are decisions, not bugs, and each one is a sentence an operator should be able to repeat:
@@ -244,7 +257,10 @@ These are decisions, not bugs, and each one is a sentence an operator should be 
     was never updated, and the gate follows the record. `deploy/vulnerabilities.json` keeps the entry for
     `govulncheck`, with a deadline that tracks the record's correction rather than a module bump. Until the
     entry is gone, the mitigation is the unit's own boundary: unprivileged, no writable path, 256 MB.
-12. **The system is new.** The threat model is reviewed with the code it describes; the parts with
+12. **An update trusts the release account.** The checksum that protects an update comes from the same
+    release directory as the binary, so the security of `termit-uv upgrade` and `termit-mn update` is the
+    security of the GitHub account that publishes them. There is no signature and no pinned key (§5.9).
+13. **The system is new.** The threat model is reviewed with the code it describes; the parts with
     real-world evidence behind them are listed in §7. Anything not listed there is reasoning, not
     measurement.
 
@@ -259,6 +275,7 @@ These are decisions, not bugs, and each one is a sentence an operator should be 
 | the core config is validated before it is applied | `xray -test` gate in the install step and in the agent's reconciliation; golden tests; lab |
 | direct traffic is never captured | lab: an SSH session stays open through install, sync, WARP toggle and certificate renewal; no routing or firewall code exists to run |
 | WARP fail-open keeps traffic flowing with a dead sidecar | `test/lab/warp_test.go`: a real client fetches the Cloudflare trace through the node with nothing listening on the sidecar port and gets `warp=off` |
+| a failed update leaves the previous binary in place | `cmd/uv/upgrade_test.go` (a bad checksum, a missing asset, a pre-release and a converge failure) and `cmd/mn/update_test.go` (a restart failure rolls the binary back) |
 | the admin surface is a `0600` unix socket | `cmd/mn/socket_linux.go` creates the socket `0600` in a `0750` directory; `termit-mn` is the only client |
 | the decoy is self-contained | decoy golden tests: no external hosts in the generated tree |
 | the table never locks an operator out by itself | `test/lab/firewall_test.go`: the rollback oneshot removes an unconfirmed table, `off` returns the ruleset to its previous digest, and a lockout drill with `--ssh-from` was run by hand; `test/lab/harden_test.go`: the boot unit restores a confirmed table and leaves a removed one alone |

@@ -111,12 +111,14 @@ Deliberate design choices worth knowing before you deploy it:
 
 ## Status
 
-`v0.4.2` is the newest release. M1–M5 are implemented and verified on a three-machine acceptance lab
+`v0.6.0` is the newest release. M1–M5 are implemented and verified on a three-machine acceptance lab
 (Debian 13 in unprivileged containers), and the release pipeline builds verified artifacts for
 linux/amd64 and linux/arm64. Since `0.4.0` the WARP tunnel runs inside the proxy core instead of a
-sidecar, so it needs no `/dev/net/tun`, and `warp.family` decides which address family leaves through it.
-The passes behind the releases are recorded in [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md)
-(M5-8 for `0.3.2`, §11.9–§11.11 for `0.4.0`–`0.4.2`): three production hosts — a management server in a container and two
+sidecar, so it needs no `/dev/net/tun`, and `warp.family` decides which address family leaves through it;
+`0.5.0` added the second transport, Hysteria2, and `0.6.0` the MASQUE sidecar, the WARP transport that
+carries UDP. The passes behind the releases are recorded in
+[`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) (§3.4.11 for `0.3.2`, §3.5.11–§3.5.15 for
+`0.4.0`–`0.4.2`, §3.8.2 for `0.6.0`): three production hosts — a management server in a container and two
 nodes behind real domains — with the host firewall confirmed and surviving a reboot, the ban engine and
 the blocklist active, WARP egress verified through Cloudflare's own trace, the owner's page reachable over
 TLS, and a phone app passing traffic through both nodes. `v0.3.2` and its predecessors carry their own

@@ -29,7 +29,7 @@ Legend: **Q** = question, **Rec** = recommended default, **Why** = what changes 
 | nginx ownership | **One generated vhost**, `sites-available/termit.conf`, symlinked into `sites-enabled`. The distribution's default vhost is parked at `sites-available/default.termit-disabled` (renaming inside `sites-enabled` does not disable it — the include is a glob) and restored by `termit-uv uninstall`. `http2 on;` is set on the TLS listener: without it XHTTP's h2 offer is answered `400`. |
 | Changing the client set | **Validated restart in M1.5**, hot add/remove through the Xray API in M3. A restart costs one connection and only happens when the generated config changes; the API path needs the client diff that only the daily peer sync produces. |
 | Certificate lifecycle | **ACME HTTP-01 with the token written into the nginx webroot** (no listener of ours on `:80`). Issued during `termit-uv init`, renewed by `termit-uv-renew.timer` daily (`RandomizedDelaySec=1h`, `Persistent=true`) when inside `acme.renew_before_days` (default 30). `termit-uv renew-cert --force` replaces it regardless of the clock. A failure never removes the existing certificate and is visible as `last run: failed` in `termit-uv status`. |
-| Local devices | **In the state file** (`local_users`), managed with `termit-uv device add|list|remove`, written into the core config as `local-<id>@termit` clients. Never sent to MN: a family phone is not a mesh node, and the mesh does not need to know it exists. |
+| Local devices | **In the state file** (`local_users`), managed with `termit-uv device add\|list\|remove`, written into the core config as `local-<id>@termit` clients. Never sent to MN: a family phone is not a mesh node, and the mesh does not need to know it exists. |
 
 The remaining questions below are still open; the ones that matter before M1 are repeated in
 `IMPLEMENTATION_PLAN.md` §9.
@@ -51,7 +51,7 @@ The remaining questions below are still open; the ones that matter before M1 are
 | Rate limiting of proxied traffic | **Not implemented.** The operator is responsible for not abusing their own node; a limiter adds latency to the one thing the node exists for and is a timing fingerprint. The single exception is an opt-in BitTorrent block. |
 ---
 
-## 0b. The QUIC transport (2026-11-21, decided; plan in `IMPLEMENTATION_PLAN.md` §10.3)
+## 0b. The QUIC transport (2026-11-21, decided; plan in `IMPLEMENTATION_PLAN.md` §3.6.2)
 
 | Question | Decision |
 |---|---|
@@ -63,6 +63,18 @@ The remaining questions below are still open; the ones that matter before M1 are
 | Permissions | The transport runs as its own user, `termit-hy`, which is the group of the certificate directory; the core's user cannot read the key. Its unit carries `CAP_NET_BIND_SERVICE` for UDP/443, no writable path, and `MemoryMax=256M`. |
 | The accepted advisory | **The record is stale, the code is not.** GO-2026-5288 on `vuln.go.dev` is `UNREVIEWED` and names no fixed version, so the build carries it on purpose: `deploy/vulnerabilities.json` still needs the entry for `govulncheck`. The advisory behind it, GHSA-9fw6-xgg2-mq9q, lists 2.8.1 as the last affected release and 2.8.2 as the fix, and this build pins 2.14.0; the node also never enables the sniffing the PoC needs. The memory cap turns an OOM into a restart of the transport alone. The entry's deadline (`0.7.0`) tracks the record's correction, not a module bump — deleting it early would turn the gate red for a finding the code cannot fix. |
 | Client-side fingerprint | Not a node setting. The profile's uTLS fingerprint is what a client offers, and fragmentation is a client-side mask; a node can only choose what it presents (its own certificate, the decoy behind masquerade). |
+
+---
+
+## 0c. The update path (2026-11-22, decided)
+
+| Question | Decision |
+|---|---|
+| What does a node install? | **The version its server names** — `server_version` from the last sync, never `latest` and never a `vX.Y.ZpN` build. `--to vX.Y.Z` is the operator's override. A node follows its server; the release feed is the server's business. |
+| What does the server install? | **The newest published release**, resolved by following the `releases/latest` redirect rather than `api.github.com`, which answers `403` on a shared address. GitHub does not point that redirect at a pre-release, which is the rule a binary wants. |
+| Does the check appear in `status` or `doctor`? | **No.** Neither `termit-mn status` nor any diagnostic command carries it (the server has no `doctor`), because a status call must not reach GitHub: the server answers questions about the mesh, and "an update exists" is not one of them. The menus are where an offer is made. |
+| How is a swap made safe? | The digest comes from the release's `SHA256SUMS`, the new binary is written beside the running one, the old file is kept as `<binary>.prev`, and a converge (node) or restart (server) that fails puts it back. |
+| Who restarts what? | `termit-mn update --apply` restarts `termit-mn` and nothing else; on a node the new binary runs `init` and the units are converged the usual way. `termit-mn invite policy` deliberately restarts nothing and says the running server keeps the old rule. |
 
 ---
 
@@ -142,7 +154,9 @@ mode for private/trusted groups.
 **Why** Changes the registration flow, the DB schema, and the admin CLI.
 
 **Q3.4** Agent authentication to MN.
-**Rec** Bearer secret (32 bytes, shown once, stored as Argon2id hash on MN, `0600` on UV) over TLS,
+**Rec** Bearer secret (32 bytes, shown once, `0600` on UV, and found on MN by its **SHA-256 digest**
+rather than an Argon2id hash: a salted hash cannot be looked up, and the secret is 32 random bytes, so
+there is no dictionary to slow down — see `SPIKES.md` S14) over TLS,
 with per-UV rate limiting. Optional Ed25519 request signing with timestamp+nonce as a later hardening
 step, so a stolen token is useless for replay.
 **Why** Determines whether we need a nonce table and clock-skew policy in v1.
@@ -159,7 +173,7 @@ phone apps, so it must not grant API access; it is rotatable and revocable per U
 fingerprint `chrome`, no `flow`, fallback to nginx for everything else (decoy site, ACME, subscription
 page), `xtls-rprx-vision` and REALITY deliberately left out.
 **Rec** Accept. A second profile stays possible behind the same interface, but REALITY is no longer the
-planned one: it was dropped on 2026-11-22 (§10.2 of the implementation plan), and Hysteria2 shipped instead
+planned one: it was dropped on 2026-11-22 (§3.6.1 of the implementation plan), and Hysteria2 shipped instead
 as a second transport rather than a second profile.
 **Why** This is what the UV script installs, what the MN probe must speak, and what the subscription
 URIs encode. It must be versioned (`profile: v1`) so MN can refuse incompatible UVs.
@@ -226,6 +240,12 @@ switchable at install and later via `termit-uv warp mode …`; implemented as `w
 (SOCKS5 on loopback), so host traffic, SSH, the decoy site, and inbound 443 are untouched.
 **Why** Proxy mode is the only WARP integration that provably keeps direct traffic intact; full-tunnel
 WARP would hijack the host's routing and break SSH/web.
+**Superseded on the transport, kept for the modes (2026-11-10, `0.4.0`).** The modes above are what
+shipped. The *transport* is now `warp.transport`: `wireguard`, the default since `0.4.0`, is a WireGuard
+outbound inside the core — one process, no `/dev/net/tun`, TCP and UDP — and `proxy` (this decision's
+`warp-cli` sidecar) is opt-in for networks that filter WireGuard; `0.6.0` added `usque`, the pinned MASQUE
+sidecar, whose relay carries UDP as well. Neither default nor sidecar touches host routing, so the reason
+above still holds. See `DESCRIPTION.md` §10 and `OPERATIONS.md` §6.1.
 **Decided 2026-11-10** WARP is **on by default** (`all`): an application on a client's device that
 asks "what address am I coming from?" must not be told the node's. Opt-out is `--no-warp` or
 `warp.mode: off`. Fail-open is the default and is implemented in the core (observatory + balancer with
@@ -289,6 +309,9 @@ read the mesh, which is why the state gate is at `pending` and `removed`.
 **Rec** Full desired state (`peers: [...]`), reconciled idempotently by UV; the response also carries
 `add`/`remove` lists for logging and for the operator's benefit.
 **Why** Diffs drift after a missed sync or a manual edit; full-state reconcile converges every time.
+**Decided by the build: full state only, no `add`/`remove` lists.** `peers` is the whole set and a node
+that missed an answer converges from the next one; a consumer that needs to know what moved compares the
+two sets it holds (`PROTOCOL.md` §3.4).
 
 **Q7.2** Applying peer changes to a running Xray: hot via the Xray API, or config rewrite + restart?
 **Rec** Hot add/remove through the Xray HandlerService API, with config-file rewrite + validated
@@ -314,7 +337,7 @@ portal archetypes, theme presets, invented terminology) is the primary reference
 the maintainer pointed at. Screenshots and serialized DOM are stored locally under
 `captures/decoy-samples/` (gitignored; the source URLs are deliberately not recorded anywhere in the
 repository). Findings and the fingerprint list are in `captures/decoy-samples/NOTES.md`; the design
-is in `DESCRIPTION.md` §5.3. Two archetypes will be implemented: a branded enterprise portal and one
+is in `DESCRIPTION.md` §5.3. Two archetypes were implemented: a branded enterprise portal and one
 high-fidelity product clone.
 **Why** The generator is called by the installer and by `termit-uv renew-site`; the interface must not leak
 into the MN contract.

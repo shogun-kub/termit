@@ -1,7 +1,8 @@
 # Termit — project description
 
-Status: draft v0.1 (pre-implementation). Audience: the maintainer and any agent or engineer who
-implements a slice of it.
+Status: the design of record for the code in this repository. `0.6.0` is the current release and
+`0.7.0` sits on `dev`, unreleased. Audience: the maintainer and any agent or engineer who implements a
+slice of it.
 
 Related documents:
 
@@ -42,10 +43,10 @@ operator sees the traffic — but the group gains the resilience of many indepen
 ## 3. Non-goals (v1)
 
 - TUIC, Shadowsocks, MTProto, Trojan. VLESS+XHTTP+TLS is the client-facing profile; Hysteria2 joined it as a
-  second transport in `0.5.0` (§10.3 of the plan), which is a kind the mesh reports, not a second profile.
+  second transport in `0.5.0` (§3.6.2 of the plan), which is a kind the mesh reports, not a second profile.
 - REALITY. Dropped on 2026-11-22: in its honest form (`dest` = the node's own vhost) it is externally the
   TLS the node already serves, and the variant that is cheaper to deploy is the one active probing catches
-  (§10.2 of the plan).
+  (§3.6.1 of the plan).
 - Traffic accounting, quotas, expiry, billing, Telegram bots.
 - A web admin UI on MN. v1 is an HTTP API plus the `termit-mn` CLI.
 - Multi-tenant MN (several independent groups on one instance), federation between MNs, or
@@ -83,11 +84,11 @@ operator sees the traffic — but the group gains the resilience of many indepen
                             │                                                       ▼ (base64 URIs
    ┌────────────────────────┴───────────────┐                          or JSON profile)
    │ UV (Debian 13, own domain)             │                          phone / desktop clients
-   │  termit-uv agent  ── :80 ACME+redirect │
-   │        │            decoy site (unix socket)                       
-   │        └── generates ── xray :443 ── VLESS+XHTTP+TLS ──► routing ──► direct
-   │                                        │                            └► block
-   │                                        └────────────────────────────└► WARP (SOCKS 127.0.0.1:40000)
+   │  nginx :80/:443 — TLS, decoy, ACME     │
+   │        │  location /<secret>/          │
+   │        └──► xray 127.0.0.1:8443 ── VLESS+XHTTP ──► routing ──► direct
+   │                                         │                      └► block
+   │                                         └──────────────────────└► WARP (in-core, or a sidecar)
    └────────────────────────────────────────┘
 ```
 
@@ -105,6 +106,8 @@ Two binaries, one repository:
 | `127.0.0.1:8443/tcp` | `xray` | VLESS+XHTTP, plaintext, loopback only |
 | `127.0.0.1:10085/tcp` | `xray` | management API (inbounds, users), loopback only |
 | `127.0.0.1:40000/tcp` | `warp-cli` (only on `warp.transport: proxy`) | WARP SOCKS5 proxy |
+| `127.0.0.1:40001/tcp` | `termit-usque-relay` (only on `warp.transport: usque`) | the hop the core dials, run by `termit-uv warp-relay`; it forwards each association from the control connection's own port |
+| `127.0.0.1:40002/tcp` | `termit-usque` (only on `warp.transport: usque`) | the MASQUE client's own SOCKS5 listener, behind the relay |
 | `:443/udp` | `hysteria` (only when the QUIC transport is enabled) | that transport; a browser finds it through the `Alt-Svc` the vhost advertises |
 
 The front is nginx because the routing decision is a **prefix** match. Xray's `fallbacks` compare the
@@ -122,7 +125,8 @@ The one exception to "one proxy process" is a transport the core cannot speak. I
 binary with a checksum, its own unit, user and state directory, a management listener on loopback only,
 a handshake whose shape is re-tested with every upgrade, and no policy of its own — its traffic enters
 the core through a loopback `socks` inbound, so WARP, the blocklist and the direct rules stay the core's
-decisions. `IMPLEMENTATION_PLAN.md` §10.3 is where that is being built.
+decisions. It is the shape `0.5.0` shipped for the QUIC transport and `0.6.0` for the MASQUE sidecar
+(plan §3.6.2).
 
 > Design note: this is the same three-layer shape the references use. The difference is that we
 > generate and own one nginx configuration file instead of overwriting the distribution's default
@@ -250,7 +254,7 @@ peer P (active)   vless://pair_uuid(A,P)@P.domain:443?…params(P)…#P-label
                   hy2://user(pair_uuid(A,P)):pass(pair_uuid(A,P))@P.domain:443?sni=P.domain#P-label (QUIC)
 ```
 
-The `hy2://` line exists only for a node that reported the QUIC transport (§5.1): the user name and the
+The `hy2://` line exists only for a node that reported the QUIC transport (§8): the user name and the
 password are a one-way derivation of the same credential the `vless://` line carries, so the server stores
 nothing extra, and a node that stops serving the transport simply loses its second line at the next sync.
 A subscription therefore has one to two links per node, never more, and the plain and JSON forms carry the
@@ -327,12 +331,13 @@ Rules (all thresholds configurable on MN, defaults in parentheses):
 
 - **Check cadence**: one cycle per UV per ~24 h, random minute, never earlier than 2 h after
   enrollment. MN may override `next_sync_after` in the sync response.
-- **Convergence between cycles**: the agent wakes on the interval the server states in
-  `policy.mesh_poll_seconds` (default fifteen minutes, `0` turns it off) and reads `{prefix}/healthz`,
-  which carries a digest of the mesh's shape. When the digest differs from the one its last sync
-  applied, the node reconciles immediately — so a join, a block or a removal reaches the rest of the
-  mesh in one interval rather than at each node's next cycle. The poll carries no credential and no
-  peer data, and with the interval at `0` the node makes no request at all between cycles.
+- **Convergence between cycles**: the agent wakes on the interval the server states in its sync policy
+  (`policy.mesh_poll_seconds` on the wire, from `policy.mesh_poll` in the server's configuration;
+  default fifteen minutes, `0` turns it off) and reads `{prefix}/healthz`, which carries a digest of
+  the mesh's shape. When the digest differs from the one its last sync applied, the node reconciles
+  immediately — so a join, a block or a removal reaches the rest of the mesh in one interval rather
+  than at each node's next cycle. The poll carries no credential and no peer data, and with the
+  interval at `0` the node makes no request at all between cycles.
 - **Retries inside a cycle**: 3 attempts, 10 min apart (adjustable), before a cycle counts as failed.
   Attempts never count towards a block: one cycle is one check, however many attempts it took.
 - **Active → unavailable**: first failed cycle. Stays in peers' configs.
@@ -340,7 +345,8 @@ Rules (all thresholds configurable on MN, defaults in parentheses):
 - **Unavailable → blocked**: when the consecutive failure streak reaches
   `policy.block_after_failed_cycles` (default 2, i.e. one grace check; ≈24–30 h at the daily cadence).
   A successful cycle resets the streak; a check that could not run neither advances nor resets it.
-  Peers drop it at their next sync or at the next mesh poll (convergence ≤ 5 min).
+  Peers drop it at their next sync or at their next mesh poll (one poll interval, fifteen minutes by
+  default).
 - **Blocked → active**: only an explicit, successful unblock request (Scenario B) or an admin action.
   No automatic un-blocking, to avoid flapping.
 - **MN never blocks on a check it could not perform.** A prober outage, MN-side DNS failure, or a
@@ -367,9 +373,10 @@ Rules (all thresholds configurable on MN, defaults in parentheses):
    approval is required), generates `agent_key` + `sub_token` + `probe_uuid`, and returns them once.
 6. UV stores them `0600`, adds `probe_uuid` as a client, and performs its first sync.
 7. Daily cycle, per UV, at its own random time: local self-check → `POST {prefix}/agent/sync`
-   (agent key) with the check report and the leaf certificate it serves (`X-Territ-Cert-SHA256`) →
-   MN runs/refreshes its own checks if due → response carries the
-   complete desired peer set, the subscription URL, and the next due time.
+   (agent key) with the check report, the transports it serves and the leaf certificate it serves
+   (`X-Territ-Cert-SHA256`) → MN runs/refreshes its own checks if due → response carries the
+   complete desired peer set, the subscription URL, the next due time, and the build the server runs
+   (`server_version`), which the node keeps beside its last sync.
 8. UV reconciles the running core with the desired set: the generated config is compared with the
    file **and** the core is asked which clients it actually serves, so an API update or a hand edit
    cannot hide behind a correct file. When the client set is the only difference, additions and
@@ -437,6 +444,10 @@ not a lab artifact: the preflight calls it out as a warning, never as a failure.
 - `invite+approval` — checks run, node is `pending` until `termit-mn uv approve`.
 - `open` — no invite needed (trusted private groups only; documented as unsafe for public use).
 
+The mode is read once at startup, so `termit-mn invite policy --mode …` edits `enrollment.mode` in place
+(comments and the rest of the file preserved, the result loaded again before it replaces the file) and
+then says what matters: the running server keeps the old rule until `systemctl restart termit-mn`.
+
 Invite codes: random 32-byte codes, stored hashed, with `max_uses`, `expires_at`, `note`, and a
 `created_by` audit trail.
 
@@ -491,7 +502,8 @@ Sync response shape (abridged; the whole set is in `internal/proto/sync.go`):
   "policy": {"check_interval_seconds": 86400, "sync_interval_seconds": 86400,
              "min_sync_delay_seconds": 300, "mesh_poll_seconds": 900},
   "next_sync_after": "2026-11-10T07:31:00Z",
-  "mesh_generation": "9f3c1a2b4d5e7788"
+  "mesh_generation": "9f3c1a2b4d5e7788",
+  "server_version": "v0.6.0"
 }
 ```
 
@@ -516,7 +528,7 @@ narrow (`Probe(ctx, vlessURL) (Latency, error)`) so a native Go implementation c
 without touching the state machine.
 
 The node checks its own WARP: the local self-check fetches
-`https://www.cloudflare.com/cdn-cgi/trace` through the WARP sidecar, and `termit-uv status` / `termit-uv doctor`
+`https://www.cloudflare.com/cdn-cgi/trace` through the node's own tunnel, and `termit-uv status` / `termit-uv doctor`
 report the address Cloudflare saw or say that traffic left directly. The sync request carries the same
 ok/class summary as every other self-check item; the detail stays on the node. The design listed an
 MN-side WARP check as optional and it is not in this build: the node-side check answers the question
@@ -617,10 +629,11 @@ These are non-negotiable and must be enforced by tests:
    brings its own pinned version and checksum, unit, user and state directory, a loopback-only management
    listener, a handshake fingerprint that is re-tested on every upgrade, and no routing of its own: its
    traffic reaches the core through a loopback inbound, so the core's routing stays the only place policy
-   lives. The WARP sidecar is the second kind of exception, and only one of it ever runs, chosen by
-   `warp.transport`: `warp-cli` in proxy mode (Cloudflare's package) or `usque` (ours to pin and check). It
-   gets the same terms — its own unit, user and state, a loopback listener, no routing of its own — and the
-   core reaches it through a SOCKS outbound, so nothing about it can capture host traffic.
+   lives. The WARP egress is the second kind of exception, and only when `warp.transport` names a sidecar:
+   `warp-cli` in proxy mode (Cloudflare's package) or `usque` (ours to pin and check); the default,
+   `wireguard`, is an outbound inside the core and adds no process at all. A sidecar gets the same terms —
+   its own unit, user and state, a loopback listener, no routing of its own — and the core reaches it
+   through a SOCKS outbound, so nothing about it can capture host traffic.
 
 ## 12. Lessons taken from the references
 
@@ -711,6 +724,15 @@ Non-interactive by design; `termit-uv doctor` for diagnosis, `termit-uv uninstal
 that cannot run WARP is not a failed install: `termit-uv init` records the refusal, keeps the mode the owner
 asked for, and leaves traffic on the direct path.
 
+An installed node moves to another release with `termit-uv upgrade`. Without `--to` it installs the
+version the management server reported at the last sync — `server_version`, which `termit-uv status`
+prints as `server:` — so a node follows its server and never picks up `latest` or a `vX.Y.ZpN` build.
+The binary is checked against the release's `SHA256SUMS`, written beside the running one, and swapped in
+with the previous file kept as `termit-uv.prev`; the new binary then runs `init` against the same
+configuration, because it is the one that knows what its own release needs. A converge that fails puts
+the previous binary back. `--check` says what a run would do and downloads nothing, `--release-base`
+points at a mirror, and the menu's Node group says so plainly when there is nothing to install.
+
 The Xray release is pinned in the binary with a per-architecture SHA-256 taken from the release's
 `.dgst` file. The archive is verified before anything is extracted, cached by digest, and a mismatch
 is refused instead of installed. `xray.download_base` (or `--xray-download-base`) points at a mirror,
@@ -749,8 +771,10 @@ failing step.
 distribution's default vhost back where it found it. It never removes packages: nginx may serve other
 sites on the host, and it stays running with the stock page once Termit's vhost is gone.
 
-`termit-uv init` converges one step at a time: `preflight`, `user`, `dirs`, `packages`, `xray-binary`,
-`identity`, `decoy`, `xray-config`, `web`, `units`, `start`. A step whose effect is already present
+`termit-uv init` converges one step at a time: `preflight`, `user`, `dirs`, `packages`, `warp`,
+`xray-binary`, `identity`, `decoy`, `xray-config`, `web`, `units`, `certificate`, `start`, `warp-egress`
+(plus the QUIC transport's and the MASQUE sidecar's own steps, which exist only when the configuration
+asks for them). A step whose effect is already present
 does nothing, an interrupted run resumes, and `--only/--skip/--force/--dry-run` make the pipeline
 inspectable. Every generated file is checked before it becomes live: `xray -test` for the core config
 (with the previous file restored on failure) and `nginx -t` for the vhost (same rollback).
@@ -776,7 +800,8 @@ the reason the refresh is not left to the owner: a page that lists peers the ser
 device that was just added, is worse than no page at all.
 
 `termit-uv wizard` is a front end to `init`, not a second installer: it asks for the domain, the ACME
-contact, the decoy archetype, the egress mode and the invite code, writes each answer to `wizard.yaml`
+contact, the decoy archetype, the egress mode, whether to serve the QUIC transport, whether to harden
+the host and the invite code, writes each answer to `wizard.yaml`
 beside the configuration so an interrupted run resumes with those answers as defaults, and then runs the
 same `init` and `enroll` with the same flags. A node that is already installed is reported rather than
 re-installed: the wizard runs the pipeline in dry-run mode and exits when every step reports its effect
@@ -797,7 +822,7 @@ ends with its own tally and the report ends with one verdict — problems found,
 so the reader does not scan twenty lines to answer "is anything wrong". A check that cannot be performed is
 a skip, never a failure: an unavailable `systemctl` says nothing about a node.
 
-The node's clock belongs to `termit-uv-agent`: it wakes at the server-given `next_sync_at` (a day out,
+The node's clock belongs to `termit-uv-agent`: it wakes at the server-given `next_sync_after` (a day out,
 jittered per node), runs the local self-check, syncs, and retries a failed cycle on a 5 min → 1 h
 backoff. `termit-uv agent --once` runs one cycle by hand, `termit-uv status --json` prints what the loop persists
 (schedule, last result, self-check, peers), `termit-uv unblock` asks MN to re-verify a blocked node and
@@ -817,7 +842,7 @@ reads one config file and owns nothing else.
 ### 13.3 MN install
 
 ```
-termit-mn init --domain mn.example.com --admin        # creates config, DB, master key, prints invite code
+termit-mn init --domain mn.example.com      # creates config, DB, master key, admin token and invite code
 systemctl enable --now termit-mn
 ```
 
@@ -826,33 +851,52 @@ admin socket in `/run/termit/mn/`. `termit-mn backup` produces a consistent snap
 `termit-mn restore` validates the file. **The master key must be backed up with the database**: without it,
 pair credentials cannot be re-derived.
 
+`termit-mn update` moves an installed server to another release: `--check` (the default) follows the
+`releases/latest` redirect and says whether this build is behind, `--apply` downloads the binary,
+checks it against the release's `SHA256SUMS`, swaps it in with the previous file kept as
+`termit-mn.prev`, restarts `termit-mn`, and puts the previous binary back if the restart fails. The
+server has nothing above it to follow, so an operator decides when it moves; the check is deliberately
+absent from `termit-mn status` — and the server has no `doctor` command to hide one in — because a
+status call must not reach GitHub and "an update exists" is not a fact about the mesh.
+
 ### 13.4 Operator workflow
 
 ```
 termit-mn invite create --note "berlin box" --uses 1
+termit-mn invite policy                # the rule a new node meets: invite, invite+approval or open
+termit-mn invite policy --mode invite  # edits enrollment.mode; the server keeps the old rule until it restarts
 termit-mn uv list                      # state, last seen, agent version
 termit-mn uv approve uv_…   |  termit-mn uv block uv_…  |  termit-mn uv unblock uv_…  |  termit-mn uv rm uv_…
 termit-mn check now uv_…    |  termit-mn check now --all
 termit-mn policy show       |  termit-mn policy set check_interval 12h   # or probe_retries 3, block_after_failed_cycles 4
 termit-mn sub rotate uv_…   # the only way to hand out a lost subscription URL again: the old one stops
+termit-mn update --check    |  termit-mn update --apply    # the server's own binary, from the newest release
 termit-mn status            # state counts, per-node last/next check, effective interval
 ```
+
+On a node the equivalent pair is `termit-uv status` (its `server:` line is the build the server
+reported) and `termit-uv upgrade`, which installs exactly that build (§13.2).
 
 ## 14. Data model (MN, SQLite)
 
 ```
 uv(id, label, domain, self_uuid, probe_uuid, profile_json, state, state_reason,
    created_at, approved_at, last_seen_at, last_request_ip, agent_version,
-   agent_key_hash, sub_token_hash, failed_cycles, credential_epoch, invite_id, notes)
+   agent_key_hash, agent_key_sealed, sub_token_hash, sub_token_sealed,
+   failed_cycles, credential_epoch, invite_id, notes,
+   next_check_at, last_check_at, cert_sha256)
+uv_transport(uv_id, kind)                 -- what a node reported it serves: vless, hysteria2
 uv_event(id, uv_id, at, from_state, to_state, reason, actor)
 check(id, uv_id, at, kind, ok, latency_ms, error_class, detail_json)
-invite(id, code_hash, created_at, created_by, expires_at, max_uses, used_count, note)
+invite(id, code_hash, created_at, created_by, expires_at, max_uses, used_count, note, revoked_at)
 admin(id, name, token_hash, created_at, last_used_at)
 settings(key, value)
 audit(id, at, actor, action, target, detail_json)
 ```
 
-Indexes: `uv(state)`, `check(uv_id, at desc)`, `check(at)` for pruning. Retention: checks 90 days,
+Indexes: `uv(domain)` (unique), `uv(state)`, `uv(last_seen_at)`, `uv(next_check_at)`,
+`uv_event(uv_id, at desc)`, `check(uv_id, at desc)`, `check(at)` for pruning, `invite(code_hash)`
+(unique), `admin(token_hash)` (unique), `audit(at)`. Retention: checks 90 days,
 audit 1 year, `uv_event` forever (small).
 
 ## 15. Security summary
@@ -869,9 +913,9 @@ audit 1 year, `uv_event` forever (small).
 - No secret in URLs except the subscription token; no secret in logs; no secret in metrics.
 - The decoy site is deterministic per install (seeded), self-contained (no external fonts/CDNs), and
   answers a POST plausibly. It is a disguise, not a security control — stated explicitly in docs.
-- Threat model and known limitations to be written in `docs/THREAT_MODEL.md` before v1.0:
-  malicious node owner, stolen subscription token, MN compromise (master key ⇒ all pair creds),
-  offline DB theft, traffic analysis of the XHTTP flow, and the fact that blocking is cooperative.
+- Threat model and known limitations are in [`THREAT_MODEL.md`](THREAT_MODEL.md): malicious node owner,
+  stolen subscription token, MN compromise (master key ⇒ all pair creds), offline DB theft, traffic
+  analysis of the XHTTP flow, and the fact that blocking is cooperative.
 
 ## 16. Testing strategy
 
@@ -883,9 +927,9 @@ audit 1 year, `uv_event` forever (small).
    addresses. This exercises the real stack: real systemd units, real Xray, real TLS handshakes, real
    process restarts, real reboot survival.
    - ACME: Let's Encrypt cannot validate a LAN-only name, so both binaries accept an **ACME directory
-     URL** (`acme.directory_url`, `acme.email`, `acme.skip_tls_verify` for the lab only). A local
+     URL** (`acme.directory`, `acme.email`, `acme.skip_tls_verify` for the lab only). A local
      Pebble instance signs the lab certificates; MN's prober accepts an extra root
-     (`probe.extra_roots`) so that certificate checks remain real (chain, hostname, expiry) rather
+     (`prober.ca_file`) so that certificate checks remain real (chain, hostname, expiry) rather
      than disabled.
    - Scenario C works unchanged in the lab: MN sees the UV's LAN source address and the LAN resolver
      returns the same address, so the DNS-consistency check is genuinely tested.
@@ -895,17 +939,19 @@ audit 1 year, `uv_event` forever (small).
    - Scenarios: enroll → sync → both peers visible in each other's Xray config → kill one node →
      `unavailable` → `blocked` → peers converge → unblock → `active` → relocate to a rebuilt machine.
 3. **Docker Compose** (developer convenience, no lab hardware): the same scenarios with Pebble and a
-   local DNS server, used for fast iteration and CI. It is a weaker signal than the lab, never the
-   release gate.
+   local DNS server, for fast iteration. It is planned, not built — `test/integration` is the directory
+   it will occupy; the lab remains the acceptance gate.
 4. **Manual VPS checklist** (release gate for v1.0): fresh Debian 13, real domain, real Let's
    Encrypt, browser opens the decoy, `curl` through the subscription works from a phone, SSH
    unaffected, reboot survives, renewal simulated with `--force`, uninstall leaves no listeners.
-5. **CI**: `golangci-lint`, `go test ./...`, `govulncheck`, cross-builds (linux/amd64, linux/arm64)
-   with checksums, Docker integration suite on Linux runners. The lab suite runs on demand from the
-   maintainer's machine (it needs the lab credentials, which never enter CI).
+5. **CI**: `golangci-lint`, `go vet`, the unit suite with `-race`, the release tool's tests and
+   `govulncheck` over the explicit package patterns (`./cmd/... ./internal/...`, never `./...`: the
+   third-party reference trees sit inside this module), and cross-builds for `linux/amd64` and
+   `linux/arm64`. The lab suite runs on demand from the maintainer's machine (it needs the lab
+   credentials, which never enter CI).
 
 ## 17. Open questions
 
-Tracked in [`QUESTIONS.md`](QUESTIONS.md). The remaining ones that affect the plan: the exact XHTTP
-mode/tuning constants (locked in the M0 spike), the decoy template source the maintainer wants to
-use, and the Go module path / release URL once the repository exists.
+Tracked in [`QUESTIONS.md`](QUESTIONS.md), which keeps every decision taken and the few still open. The
+XHTTP mode and tuning constants, the decoy template source and the module path were settled there and are
+not open.
