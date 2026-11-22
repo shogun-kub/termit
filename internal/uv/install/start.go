@@ -75,6 +75,7 @@ func (s *startStep) Run(ctx context.Context) error {
 
 	// The MASQUE sidecar is a second process too, and the core's SOCKS hop carries nothing until it
 	// listens: a sidecar that failed its first start sits in a start-limit grave, so clear it first.
+	// The relay in front of it starts second, and the core dials the relay.
 	if s.e.cfg.Warp.UsesUsque() {
 		_, _ = s.e.exec.Run(ctx, Cmd{Name: "systemctl", Args: []string{"reset-failed", service.UsqueUnitName}})
 		if _, err := s.e.exec.Run(ctx, Cmd{Name: "systemctl", Args: []string{"enable", "--now", service.UsqueUnitName}}); err != nil {
@@ -82,6 +83,13 @@ func (s *startStep) Run(ctx context.Context) error {
 		}
 		if !s.e.serviceActive(ctx, service.UsqueUnitName) {
 			return fmt.Errorf("%s did not stay running", service.UsqueUnitName)
+		}
+		_, _ = s.e.exec.Run(ctx, Cmd{Name: "systemctl", Args: []string{"reset-failed", service.UsqueRelayUnitName}})
+		if _, err := s.e.exec.Run(ctx, Cmd{Name: "systemctl", Args: []string{"enable", "--now", service.UsqueRelayUnitName}}); err != nil {
+			return fmt.Errorf("enable %s: %w", service.UsqueRelayUnitName, err)
+		}
+		if !s.e.serviceActive(ctx, service.UsqueRelayUnitName) {
+			return fmt.Errorf("%s did not stay running", service.UsqueRelayUnitName)
 		}
 	}
 

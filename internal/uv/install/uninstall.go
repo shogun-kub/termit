@@ -27,6 +27,7 @@ var unitNames = []string{
 	service.XrayUnitName,
 	service.HysteriaUnitName,
 	service.UsqueUnitName,
+	service.UsqueRelayUnitName,
 	service.AgentUnitName,
 	service.RenewTimerName,
 	service.RenewUnitName,

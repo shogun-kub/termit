@@ -175,13 +175,16 @@ func familyAddresses(addresses []string, family string) []string {
 const (
 	// DefaultWarpSocks is warp-cli's proxy-mode SOCKS5 listener on loopback.
 	DefaultWarpSocks = "127.0.0.1:40000"
-	// DefaultUsqueSocks is the MASQUE sidecar's SOCKS5 listener. It sits beside warp-cli's address
-	// rather than on it, so a node that switched transports leaves the other one alone.
+	// DefaultUsqueSocks is the address the core hands proxied traffic to on the MASQUE transport. It is
+	// the relay's listener, not the sidecar's: usque keys a UDP association on the TCP connection that
+	// asked for it, so a relay sits in front and sends the flow from that connection's own port.
 	DefaultUsqueSocks = "127.0.0.1:40001"
+	// DefaultUsqueSidecar is where the MASQUE sidecar itself listens, behind the relay.
+	DefaultUsqueSidecar = "127.0.0.1:40002"
 	// WarpTransportProxy is the sidecar path: the core hands proxied traffic to warp-cli's SOCKS5
 	// listener. It carries TCP only, which is why UDP is routed direct on this transport.
 	WarpTransportProxy = "proxy"
-	// WarpTransportUsque is the MASQUE sidecar, whose SOCKS5 listener carries UDP.
+	// WarpTransportUsque is the MASQUE sidecar, whose SOCKS5 listener carries UDP behind the relay.
 	WarpTransportUsque = "usque"
 	// WarpTransportWireGuard keeps the tunnel inside the core. UDP and TCP take the same path, and no
 	// package, daemon or loopback port is involved.

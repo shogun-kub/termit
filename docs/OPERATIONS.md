@@ -600,9 +600,12 @@ would rather lose connectivity than expose the address.
 one process, no package, no loopback port — and it carries UDP as well as TCP. `proxy` is the older
 path, still opt-in: `warp-cli` in proxy mode, a SOCKS5 listener carrying TCP only, with UDP going direct
 and `warp status` saying so. `usque` is the third: the MASQUE client runs as a pinned sidecar
-(`termit-usque.service`, user `termit-usque`, loopback SOCKS5 on `127.0.0.1:40001`), and because that
+(`termit-usque.service`, user `termit-usque`, loopback SOCKS5 on `127.0.0.1:40002`), and because that
 listener associates UDP, both protocols reach WARP without the core speaking MASQUE and without a host
-route. It exists for the day Cloudflare's client cannot carry UDP, and for the day MASQUE is the only
+route. The core does not dial the sidecar directly: `termit-usque-relay.service` listens on
+`127.0.0.1:40001` and forwards each association from the very port of the control connection it opened,
+because usque refuses a datagram that does not come from it and the core's SOCKS client does not reuse
+the port. It exists for the day Cloudflare's client cannot carry UDP, and for the day MASQUE is the only
 door: the core's outbound is a SOCKS hop either way, so switching between `proxy` and `usque` changes the
 sidecar, not the routing. Registering the device accepts Cloudflare's terms of service on the operator's
 behalf (`usque register --accept-tos`), the same acceptance a `warp-cli` registration already makes; an

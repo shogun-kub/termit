@@ -10,6 +10,10 @@ import (
 // UsqueUnitName is the unit that runs the MASQUE sidecar.
 const UsqueUnitName = "termit-usque.service"
 
+// UsqueRelayUnitName is the unit that runs the loopback relay in front of the sidecar: the core reaches
+// the sidecar through it, because the sidecar keys a UDP association on the control connection's address.
+const UsqueRelayUnitName = "termit-usque-relay.service"
+
 // UsqueUser is the account the sidecar runs as. It reads the registered device key and listens on
 // loopback, so it needs neither the core's account nor the certificate's.
 const UsqueUser = "termit-usque"
@@ -79,5 +83,64 @@ SystemCallArchitectures=native
 [Install]
 WantedBy=multi-user.target
 `, UsqueUser, UsqueUser, binary, host, port, config)
+	return []byte(b.String()), nil
+}
+
+// UsqueRelay renders the relay's unit. It is the address the core dials: the sidecar refuses a UDP
+// datagram that does not come from the port of the connection that asked for the association, and the
+// relay is what makes those equal. It runs as the sidecar's account and needs nothing more than loopback.
+func UsqueRelay(binary, listen, upstream string) ([]byte, error) {
+	if !filepath.IsAbs(binary) && !strings.HasPrefix(binary, "/") {
+		return nil, fmt.Errorf("service: binary %q must be an absolute path", binary)
+	}
+	if _, _, err := net.SplitHostPort(listen); err != nil {
+		return nil, fmt.Errorf("service: relay listen address %q: %w", listen, err)
+	}
+	if _, _, err := net.SplitHostPort(upstream); err != nil {
+		return nil, fmt.Errorf("service: relay upstream address %q: %w", upstream, err)
+	}
+	var b strings.Builder
+	b.WriteString(unitHeader)
+	fmt.Fprintf(&b, `
+[Unit]
+Description=Termit WARP relay (loopback SOCKS5 in front of the MASQUE sidecar)
+Documentation=https://github.com/shogun-kub/termit
+After=network-online.target termit-usque.service
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=%s
+Group=%s
+ExecStart=%s warp-relay --listen %s --upstream %s
+Restart=always
+RestartSec=3s
+UMask=0077
+MemoryMax=128M
+
+# It listens on loopback and forwards datagrams: no capability, no writable path, no new privileges.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target
+`, UsqueUser, UsqueUser, binary, listen, upstream)
 	return []byte(b.String()), nil
 }

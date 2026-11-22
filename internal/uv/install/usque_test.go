@@ -152,4 +152,7 @@ func TestInitStartsTheSidecar(t *testing.T) {
 	if !sb.active[service.UsqueUnitName] {
 		t.Errorf("init left %s inactive", service.UsqueUnitName)
 	}
+	if !sb.active[service.UsqueRelayUnitName] {
+		t.Errorf("init left %s inactive", service.UsqueRelayUnitName)
+	}
 }

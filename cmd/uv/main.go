@@ -165,6 +165,8 @@ func (a *application) run(args []string) int {
 		return exitOK
 	case "warp":
 		return a.runWarp(rest)
+	case "warp-relay":
+		return a.runWarpRelay(rest)
 	case "firewall":
 		return a.runFirewall(rest)
 	case "bans":
@@ -204,6 +206,7 @@ Commands:
   unblock      ask the server to verify this node and lift a block
   migrate      move this node to a new domain (--relocate)
   warp         show the egress, or change its mode (all, selected, off)
+  warp-relay   the loopback relay in front of the MASQUE sidecar (its systemd unit runs this)
   firewall     the host firewall: status, on, off, confirm — off until you say otherwise
   bans         what the guard banned, and your own permanent blocks
   guard        the ban engine: status, or run it in the foreground

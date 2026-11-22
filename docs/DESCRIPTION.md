@@ -575,10 +575,13 @@ inside the core, carrying TCP and UDP, and it needs no device: the install step 
 Cloudflare's API over HTTPS and writes the identity to the state directory. `proxy` is `warp-cli` in
 **proxy mode** — a SOCKS5 listener on loopback carrying TCP only — installed from Cloudflare's signed apt
 repository, and it does need `/dev/net/tun`. `usque` is the MASQUE sidecar: a pinned release with a checked
-digest, its own unit, user and state directory, a loopback SOCKS5 listener on `127.0.0.1:40001` with UDP, and
-no routing of its own; it is the answer for a box whose WARP client cannot carry UDP, and for the day
-Cloudflare's client speaks only MASQUE. `termit-uv warp status` reports the mode, the transport's own
-state and where a real fetch through the tunnel came out; `termit-uv warp mode` changes the mode. If the
+digest, its own unit, user and state directory, and no routing of its own. The core does not dial it
+directly: `termit-usque-relay.service` listens on `127.0.0.1:40001` and the sidecar on `40002`, because
+usque keys a UDP association on the control connection's own address and the core's SOCKS client does not
+reuse it. Through that pair both protocols reach WARP; it is the answer for a box whose WARP client cannot
+carry UDP, and for the day Cloudflare's client speaks only MASQUE. `termit-uv warp status` reports the
+mode, the transport's own state and where a real fetch through the tunnel came out; `termit-uv warp mode`
+changes the mode. If the
 chosen transport cannot work on the box, the step and the command refuse with that exact reason, the mode
 stays recorded, and the node keeps working with direct egress; nothing is silently degraded.
 `termit-uv uninstall` disconnects the tunnel and leaves the package installed.

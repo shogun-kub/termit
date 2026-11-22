@@ -237,6 +237,7 @@ func (s *usqueOffStep) Check(context.Context) (CheckResult, error) {
 func (s *usqueOffStep) paths() []string {
 	return []string{
 		filepath.Join(s.e.cfg.Paths.UnitDir, service.UsqueUnitName),
+		filepath.Join(s.e.cfg.Paths.UnitDir, service.UsqueRelayUnitName),
 		s.e.cfg.Paths.UsqueBinary(),
 		s.e.cfg.Paths.UsqueConfig,
 	}
@@ -246,7 +247,7 @@ func (s *usqueOffStep) Run(ctx context.Context) error {
 	if s.e.cfg.Warp.UsesUsque() {
 		return nil
 	}
-	if _, err := s.e.exec.Run(ctx, Cmd{Name: "systemctl", Args: []string{"disable", "--now", service.UsqueUnitName}}); err != nil {
+	if _, err := s.e.exec.Run(ctx, Cmd{Name: "systemctl", Args: []string{"disable", "--now", service.UsqueUnitName, service.UsqueRelayUnitName}}); err != nil {
 		// A unit that is not loaded is the common case here; the file removal below is what matters.
 		s.e.log.Debug("usque: systemctl disable", "err", err)
 	}

@@ -94,11 +94,16 @@ func (s *unitsStep) unitFiles() (map[string][]byte, error) {
 	// The MASQUE sidecar's unit exists only while it is the transport, for the same reason as the QUIC
 	// transport's: a unit for a binary that is not installed is a failed service on every boot.
 	if s.e.cfg.Warp.UsesUsque() {
-		sidecarUnit, err := service.Usque(s.e.cfg.Paths.UsqueBinary(), s.e.cfg.Paths.UsqueConfig, xray.DefaultUsqueSocks)
+		sidecarUnit, err := service.Usque(s.e.cfg.Paths.UsqueBinary(), s.e.cfg.Paths.UsqueConfig, xray.DefaultUsqueSidecar)
 		if err != nil {
 			return nil, err
 		}
 		files[filepath.Join(s.e.cfg.Paths.UnitDir, service.UsqueUnitName)] = sidecarUnit
+		relayUnit, err := service.UsqueRelay(binary, xray.DefaultUsqueSocks, xray.DefaultUsqueSidecar)
+		if err != nil {
+			return nil, err
+		}
+		files[filepath.Join(s.e.cfg.Paths.UnitDir, service.UsqueRelayUnitName)] = relayUnit
 	}
 	// The blocklist timer exists only when there is a list to fetch: a daily unit that fails because
 	// nobody configured a URL is noise in the journal, not a feature.
