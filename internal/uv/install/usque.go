@@ -20,8 +20,9 @@ import (
 const (
 	// usqueVersion is the pinned release of the MASQUE sidecar.
 	usqueVersion = "4.2.1"
-	// usqueReleaseBase is the release directory; the assets are per-architecture zip archives.
-	usqueReleaseBase = "https://github.com/Diniboy1123/usque/releases/download/v" + usqueVersion
+	// usqueReleaseBase is the release directory. The tag has no path component, unlike Hysteria's
+	// "app/v2.14.0", so the base stops at "download" and archiveSource appends "/v<version>".
+	usqueReleaseBase = "https://github.com/Diniboy1123/usque/releases/download"
 )
 
 // usqueAssets pins the release archive and its digest per GOARCH, taken from the release's
