@@ -122,36 +122,40 @@ func usqueArchiveEntry(archive, name string) ([]byte, error) {
 
 // usqueRegisterStep registers the device with Cloudflare through the sidecar's own command.
 //
-// The file it writes holds the device key and the access token, so it is a credential: `0600` from the
-// first moment it exists, never rewritten once written (a second registration is a second device), and
-// never printed. The command's own output is discarded for the same reason — it names the account.
+// The file it writes holds the device key and the access token, so it is a credential: `0640`
+// root:termit-usque from the first moment it exists (the unit's user reads it, the world does not),
+// never rewritten once written (a second registration is a second device), and never printed. The
+// command's own output is discarded for the same reason — it names the account.
 type usqueRegisterStep struct{ e *stepEnv }
 
 func (*usqueRegisterStep) Name() string { return "usque-register" }
+
+// unusable says why the device file cannot serve the sidecar, or "" when it can.
+func (s *usqueRegisterStep) unusable() string {
+	path := s.e.cfg.Paths.UsqueConfig
+	info, err := os.Stat(path)
+	if err != nil {
+		return "the sidecar has no registered device"
+	}
+	if info.Mode().Perm()&0o007 != 0 {
+		return "the sidecar's device file is readable by others"
+	}
+	if !parsesDeviceFile(path) {
+		return "the sidecar's device file is not a registration"
+	}
+	// Group-read is what lets the unit's own user open it; a file written before that rule has none.
+	if info.Mode().Perm()&0o040 == 0 {
+		return "the sidecar's user cannot read the device file"
+	}
+	return ""
+}
 
 func (s *usqueRegisterStep) Check(context.Context) (CheckResult, error) {
 	if !s.e.cfg.Warp.UsesUsque() {
 		return CheckResult{Satisfied: true, Detail: "the MASQUE sidecar is not the transport"}, nil
 	}
-	path := s.e.cfg.Paths.UsqueConfig
-	info, err := os.Stat(path)
-	if err != nil {
-		return CheckResult{Detail: "the sidecar has no registered device"}, nil
-	}
-	// Group-read is what lets the unit's own user open it; the world must not.
-	if info.Mode().Perm()&0o007 != 0 {
-		return CheckResult{Detail: "the sidecar's device file is readable by others"}, nil
-	}
-	body, err := os.ReadFile(path) // #nosec G304 -- a path from the configuration.
-	if err != nil {
-		return CheckResult{Detail: "the sidecar's device file cannot be read"}, nil
-	}
-	var registered struct {
-		PrivateKey string `json:"private_key"`
-		ID         string `json:"id"`
-	}
-	if err := json.Unmarshal(body, &registered); err != nil || registered.PrivateKey == "" || registered.ID == "" {
-		return CheckResult{Detail: "the sidecar's device file is not a registration"}, nil
+	if why := s.unusable(); why != "" {
+		return CheckResult{Detail: why}, nil
 	}
 	return CheckResult{Satisfied: true, Detail: "a device is registered"}, nil
 }
@@ -161,30 +165,30 @@ func (s *usqueRegisterStep) Run(ctx context.Context) error {
 		return nil
 	}
 	path := s.e.cfg.Paths.UsqueConfig
-	if result, err := s.Check(ctx); err != nil {
-		return err
-	} else if result.Satisfied {
-		return nil
-	}
-	// A file that exists but fails the check is a half-written or corrupted credential: it is moved
-	// aside rather than reused, because registering on top of it would keep a key the service cannot
-	// use. The backup is deleted when the new registration succeeds.
-	backup := path + ".broken"
-	if _, err := os.Stat(path); err == nil {
-		if err := os.Rename(path, backup); err != nil {
-			return fmt.Errorf("usque: move the unusable device file aside: %w", err)
+	if !parsesDeviceFile(path) {
+		// A file that exists but does not parse is a half-written or corrupted credential: it is moved
+		// aside rather than reused, because registering on top of it would keep a key the service cannot
+		// use. The backup is deleted when the new registration succeeds.
+		backup := path + ".broken"
+		if _, err := os.Stat(path); err == nil {
+			if err := os.Rename(path, backup); err != nil {
+				return fmt.Errorf("usque: move the unusable device file aside: %w", err)
+			}
+			_ = os.Chmod(backup, 0o600)
 		}
-		_ = os.Chmod(backup, 0o600)
+		binary := s.e.cfg.Paths.UsqueBinary()
+		// --accept-tos: without it the sidecar asks for Cloudflare's terms on stdin, and an install has
+		// none ("failed to read user input: EOF"). Registering already means accepting them, as
+		// `warp-cli` does.
+		args := []string{"register", "-c", path, "-n", "termit-uv", "--accept-tos"}
+		if _, err := s.e.exec.Run(ctx, Cmd{Name: binary, Args: args}); err != nil {
+			return fmt.Errorf("usque: register the device: %w", err)
+		}
+		s.e.log.Info("registered a WARP device for the MASQUE sidecar")
+		_ = os.Remove(backup)
 	}
-	binary := s.e.cfg.Paths.UsqueBinary()
-	// --accept-tos: without it the sidecar asks for Cloudflare's terms on stdin, and an install has none
-	// ("failed to read user input: EOF"). Registering already means accepting them, as `warp-cli` does.
-	args := []string{"register", "-c", path, "-n", "termit-uv", "--accept-tos"}
-	if _, err := s.e.exec.Run(ctx, Cmd{Name: binary, Args: args}); err != nil {
-		return fmt.Errorf("usque: register the device: %w", err)
-	}
-	// The sidecar runs as its own user and reads this file at start, so it becomes root:termit-usque 0640
-	// instead of root-only: the device key stays out of the world's reach either way.
+	// A registration that predates the rule above is made readable too: registering a second device to
+	// fix a mode would be the wrong repair, and a chown of a correct file is idempotent.
 	if _, err := s.e.exec.Run(ctx, Cmd{Name: "chown", Args: []string{"root:" + service.UsqueUser, path}}); err != nil {
 		return fmt.Errorf("usque: give %s to root:%s: %w", path, service.UsqueUser, err)
 	}
@@ -192,9 +196,23 @@ func (s *usqueRegisterStep) Run(ctx context.Context) error {
 		return fmt.Errorf("usque: chmod %s: %w", path, err)
 	}
 	s.e.st.AddPath(path, state.KindFile, "usque-register", s.e.now())
-	_ = os.Remove(backup)
-	s.e.log.Info("registered a WARP device for the MASQUE sidecar")
 	return nil
+}
+
+// parsesDeviceFile reports whether the file at path is a registration the sidecar can use.
+func parsesDeviceFile(path string) bool {
+	body, err := os.ReadFile(path) // #nosec G304 -- a path from the configuration.
+	if err != nil {
+		return false
+	}
+	var registered struct {
+		PrivateKey string `json:"private_key"`
+		ID         string `json:"id"`
+	}
+	if err := json.Unmarshal(body, &registered); err != nil {
+		return false
+	}
+	return registered.PrivateKey != "" && registered.ID != ""
 }
 
 // usqueOffStep removes the sidecar when the configuration no longer asks for it: a unit for a binary

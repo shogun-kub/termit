@@ -90,6 +90,47 @@ func TestUsqueRegisterAcceptsTheTerms(t *testing.T) {
 	}
 }
 
+// TestUsqueRegisterFixesAnOldDeviceFile: the first switch registered a root-only file before the sidecar
+// had a user of its own, so the step has to repair that file instead of registering a second device.
+func TestUsqueRegisterFixesAnOldDeviceFile(t *testing.T) {
+	t.Parallel()
+	cfg := testConfig(t)
+	cfg.Warp.Transport = config.WarpTransportUsque
+	cfg.Paths.UsqueConfig = filepath.Join(cfg.Paths.ConfigDir, "usque.json")
+	if err := os.MkdirAll(filepath.Dir(cfg.Paths.UsqueConfig), 0o755); err != nil {
+		t.Fatalf("create the config directory: %v", err)
+	}
+	body := []byte(`{"private_key":"a2V5","id":"device-1"}`)
+	if err := os.WriteFile(cfg.Paths.UsqueConfig, body, 0o600); err != nil {
+		t.Fatalf("write the device file: %v", err)
+	}
+
+	fake := &fakeExecutor{handler: func(Cmd) (Result, error) { return okResult("") }}
+	env := &stepEnv{
+		cfg:  cfg,
+		exec: fake,
+		log:  slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{})),
+		now:  func() time.Time { return engineNow },
+		arch: "amd64",
+		st:   state.New(cfg.Domain, engineNow),
+	}
+	if err := (&usqueRegisterStep{env}).Run(context.Background()); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if len(fake.calls) != 1 || fake.calls[0].Name != "chown" {
+		t.Errorf("commands = %+v, want a single chown and no second registration", fake.calls)
+	}
+	if chmodIsReal {
+		info, err := os.Stat(cfg.Paths.UsqueConfig)
+		if err != nil {
+			t.Fatalf("stat the device file: %v", err)
+		}
+		if perm := info.Mode().Perm(); perm != 0o640 {
+			t.Errorf("device file mode = %04o, want 0640", perm)
+		}
+	}
+}
+
 // TestInitStartsTheSidecar: the units step only writes the unit, so the sidecar stays "loaded;
 // disabled; inactive" unless the start step enables it — which is exactly what the first production
 // switch left behind, with the core's SOCKS hop pointing at a closed port.

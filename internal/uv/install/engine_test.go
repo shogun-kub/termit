@@ -68,7 +68,7 @@ func newSandbox() *sandbox {
 			return okResult("")
 		case "systemctl":
 			return s.systemctl(cmd)
-		case "nginx", "chown":
+		case "nginx", "chown", "usermod":
 			return okResult("")
 		case "nft":
 			return s.nft(cmd)

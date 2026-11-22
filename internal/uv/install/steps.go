@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/shogun-kub/termit/internal/uv/config"
+	"github.com/shogun-kub/termit/internal/uv/service"
 	"github.com/shogun-kub/termit/internal/uv/state"
 	"github.com/shogun-kub/termit/internal/uv/warp"
 )
@@ -197,22 +198,33 @@ func (s *userStep) Run(ctx context.Context) error {
 		}
 		s.e.st.AddPath(user, state.KindUser, "user", s.e.now())
 	}
-	// The transport reaches the certificate through the state directory, which belongs to the core's
-	// group: without the membership it cannot traverse the path and every handshake fails.
+	// The transports reach the certificate and the sidecar's device file through directories that belong
+	// to the core's group: without the membership they cannot traverse the path.
+	var transports []string
 	if s.e.cfg.Hysteria != nil {
-		if _, err := s.e.exec.Run(ctx, Cmd{Name: "usermod", Args: []string{"-a", "-G", serviceUser, transportUser}}); err != nil {
-			return fmt.Errorf("add %s to group %s: %w", transportUser, serviceUser, err)
+		transports = append(transports, transportUser)
+	}
+	if s.e.cfg.Warp.UsesUsque() {
+		transports = append(transports, service.UsqueUser)
+	}
+	for _, user := range transports {
+		if _, err := s.e.exec.Run(ctx, Cmd{Name: "usermod", Args: []string{"-a", "-G", serviceUser, user}}); err != nil {
+			return fmt.Errorf("add %s to group %s: %w", user, serviceUser, err)
 		}
 	}
 	return nil
 }
 
-// serviceUsers are the accounts a node needs: the core's, and the transport's when it is enabled.
+// serviceUsers are the accounts a node needs: the core's, and a transport's when it is enabled.
 func (e *stepEnv) serviceUsers() []string {
-	if e.cfg.Hysteria == nil {
-		return []string{serviceUser}
+	users := []string{serviceUser}
+	if e.cfg.Hysteria != nil {
+		users = append(users, transportUser)
 	}
-	return []string{serviceUser, transportUser}
+	if e.cfg.Warp.UsesUsque() {
+		users = append(users, service.UsqueUser)
+	}
+	return users
 }
 
 // dirsStep creates the agent's directories with the modes the safety rules require.
