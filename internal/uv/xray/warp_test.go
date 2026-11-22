@@ -347,8 +347,8 @@ func TestWarpRefusesAnUnknownTransport(t *testing.T) {
 	spec := testSpec()
 	spec.Warp = xray.WarpSpec{Mode: "all", Transport: "masque"}
 	_, err := xray.Generate(spec)
-	if err == nil || !strings.Contains(err.Error(), "must be proxy or wireguard") {
-		t.Fatalf("Generate = %v, want a refusal naming the two transports", err)
+	if err == nil || !strings.Contains(err.Error(), "must be proxy, wireguard or usque") {
+		t.Fatalf("Generate = %v, want a refusal naming the transports", err)
 	}
 }
 

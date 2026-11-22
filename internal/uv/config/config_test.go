@@ -473,8 +473,20 @@ func TestWarpTransportDefaultsAndMigration(t *testing.T) {
 	}
 	broken := "schema_version: 1\ndomain: node.example.com\nemail: a@example.com\nwarp:\n  mode: all\n  transport: masque\n"
 	if _, err := config.Parse(strings.NewReader(broken)); err == nil ||
-		!strings.Contains(err.Error(), "must be proxy or wireguard") {
-		t.Fatalf("Parse = %v, want a refusal naming the two transports", err)
+		!strings.Contains(err.Error(), "must be proxy, wireguard or usque") {
+		t.Fatalf("Parse = %v, want a refusal naming the transports", err)
+	}
+	// Every transport this build knows must load, and usque is the one that carries UDP without the
+	// core: a typo in its name would silently fall back to the documented behaviour of an old file.
+	for _, transport := range []string{"proxy", "wireguard", "usque"} {
+		body := "schema_version: 1\ndomain: node.example.com\nemail: a@example.com\nwarp:\n  mode: all\n  transport: " + transport + "\n"
+		parsed, err := config.Parse(strings.NewReader(body))
+		if err != nil {
+			t.Fatalf("transport %q: %v", transport, err)
+		}
+		if parsed.Warp.TransportOrDefault() != transport {
+			t.Errorf("transport %q parsed as %q", transport, parsed.Warp.TransportOrDefault())
+		}
 	}
 }
 

@@ -1587,6 +1587,12 @@ Acceptance for the remainder: a node on the `proxy` transport either carries UDP
 enabled, a UDP payload from a client exits at Cloudflare's address, while SSH, ACME and the decoy still
 leave from the node's own. No `ip rule`/`ip route` change exists on the host.
 
+**Option D is in `0.6.0`** (`warp.transport: usque`): the MASQUE client runs as a pinned, digest-checked
+sidecar with its own unit, user and loopback SOCKS5 listener, and its listener carries UDP, so the document
+sends both protocols to the WARP hop and the split disappears. The proof it must still collect is the
+production pass — the exit address and a UDP flow (DNS) through the tunnel — because every part of this
+crosses a network nobody here controls.
+
 The hysteria half of that is proved on production (§11.13): a client through the QUIC transport on then5
 exited at `104.28.222.18` with `warp=on`, and the address families the node does not serve were refused
 rather than answered with the node's own address. The `proxy` transport cannot carry UDP at all — `warp-cli`
@@ -1654,7 +1660,11 @@ getting a clear refusal, and the decoy/ACME/direct-traffic invariants unchanged.
 must show an old MN and a new UV (and the reverse) refusing the mismatch instead of writing a config
 that cannot work.
 
-### 10.3 Hysteria2 as a second transport
+### 10.3 Hysteria2 as a second transport — done in 0.5.0 and 0.5.1
+
+**Completed.** Phase 1 (the pinned binary, the unit, the generated config, the loopback hop) shipped in
+`0.5.0`; phase 2 (the envelope the mesh reads, the links in `uri`/`device`/the page) in `0.5.1`; the
+production passes are §11.12 and §11.13. What this section argued is what the code does.
 
 The node's profile is TLS that nginx terminates. Where a network interferes with that shape, the answer
 that works today is a QUIC transport: it runs on UDP, so the interference aimed at TCP/443 does not see

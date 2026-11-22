@@ -594,11 +594,17 @@ direct while WARP does not answer. Recovery is equally automatic. With `fail_ope
 names the WARP outbound directly, so the node fails closed instead — the right choice for an owner who
 would rather lose connectivity than expose the address.
 
-### 6.1 The transport: WireGuard inside the core, or the proxy
+### 6.1 The transport: WireGuard inside the core, the proxy, or the sidecar
 
 `warp.transport` decides where the tunnel lives. `wireguard` is a WireGuard outbound inside the core —
 one process, no package, no loopback port — and it carries UDP as well as TCP. `proxy` is the older
-path, still opt-in: `warp-cli` in proxy mode, a SOCKS5 listener carrying TCP only.
+path, still opt-in: `warp-cli` in proxy mode, a SOCKS5 listener carrying TCP only, with UDP going direct
+and `warp status` saying so. `usque` is the third: the MASQUE client runs as a pinned sidecar
+(`termit-usque.service`, user `termit-usque`, loopback SOCKS5 on `127.0.0.1:40001`), and because that
+listener associates UDP, both protocols reach WARP without the core speaking MASQUE and without a host
+route. It exists for the day Cloudflare's client cannot carry UDP, and for the day MASQUE is the only
+door: the core's outbound is a SOCKS hop either way, so switching between `proxy` and `usque` changes the
+sidecar, not the routing.
 
 ```bash
 termit-uv init --warp-transport wireguard   # registers the node, writes the identity, applies it
