@@ -20,6 +20,7 @@ type jsonWarp struct {
 	Mode      string      `json:"mode"`
 	Transport string      `json:"transport"`
 	State     string      `json:"state"`
+	UDP       string      `json:"udp"`
 	Detail    string      `json:"detail,omitempty"`
 	Socks     string      `json:"socks,omitempty"`
 	Selected  []string    `json:"selected,omitempty"`
@@ -102,6 +103,13 @@ through the tunnel says Cloudflare sees. WARP is on by default; `+"`termit-uv wa
 		}
 	}
 
+	// UDP follows the transport, not the mode: only the core's own stack carries it.
+	if report.Transport == config.WarpTransportWireGuard && report.State == "on" {
+		report.UDP = "warp"
+	} else {
+		report.UDP = "direct"
+	}
+
 	if *jsonOut {
 		body, err := json.MarshalIndent(report, "", "  ")
 		if err != nil {
@@ -132,6 +140,16 @@ through the tunnel says Cloudflare sees. WARP is on by default; `+"`termit-uv wa
 			fmt.Fprintf(a.stdout, "domains: %s\n", strings.Join(report.Selected, ", "))
 		}
 		fmt.Fprintf(a.stdout, "fail:    %s\n", map[bool]string{true: "open (direct)", false: "closed (no egress)"}[cfg.Warp.FailOpenEnabled()])
+	}
+	if report.Transport == config.WarpTransportWireGuard {
+		// The core's own stack terminates UDP too, so a QUIC flow leaves from Cloudflare's address as
+		// well; that is what §11.13 measured through the transport.
+		fmt.Fprintln(a.stdout, "udp:     through warp (the core's own stack)")
+	} else if report.Transport == config.WarpTransportProxy && cfg.Warp.UsesWarp() {
+		// warp-cli's SOCKS5 listener has no UDP ASSOCIATE: a UDP flow handed to it never returns, so the
+		// generator sends UDP direct and the address WARP exists to hide is not hidden for it. Saying so
+		// is the honest end of "carries UDP through WARP or says it cannot" (§10.1).
+		fmt.Fprintln(a.stdout, "udp:     not carried — this transport has no UDP association, so UDP exits directly")
 	}
 	return exitOK
 }
