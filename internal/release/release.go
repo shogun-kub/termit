@@ -10,12 +10,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -25,9 +25,11 @@ import (
 // BaseURL is where the project publishes its releases. A caller may replace it with a mirror.
 const BaseURL = "https://github.com/shogun-kub/termit/releases/download"
 
-// LatestURL is the API endpoint that names the newest published release; GitHub does not answer it with
-// a pre-release or a draft, which is exactly the rule a binary wants.
-const LatestURL = "https://api.github.com/repos/shogun-kub/termit/releases/latest"
+// LatestURL is the page that redirects to the newest published release. It is a redirect rather than the
+// JSON API on purpose: the API refuses an unauthenticated caller quickly (403 on a shared address) and
+// needs a token for any real use, while this redirect is the same one uv.sh follows and works wherever
+// github.com works. GitHub does not point it at a pre-release or a draft, which is the rule a binary wants.
+const LatestURL = "https://github.com/shogun-kub/termit/releases/latest"
 
 // MaxBytes caps one download: a release binary is tens of megabytes, and anything past this is not one.
 const MaxBytes = 64 << 20
@@ -61,8 +63,8 @@ func Fetch(ctx context.Context, client *http.Client, base, component, version, a
 	return body, nil
 }
 
-// Newest asks the API which release is the newest published one. The URL is a parameter so a test (and a
-// mirror that speaks the same shape) can answer instead of GitHub.
+// Newest follows the "latest" redirect and reads the tag it lands on. The URL is a parameter so a test (and
+// a mirror that speaks the same shape) can answer instead of GitHub.
 func Newest(ctx context.Context, client *http.Client, url string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
@@ -70,7 +72,7 @@ func Newest(ctx context.Context, client *http.Client, url string) (string, error
 	if err != nil {
 		return "", err
 	}
-	request.Header.Set("Accept", "application/vnd.github+json")
+	request.Header.Set("Accept", "text/html")
 	response, err := client.Do(request)
 	if err != nil {
 		return "", err
@@ -79,16 +81,11 @@ func Newest(ctx context.Context, client *http.Client, url string) (string, error
 	if response.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("%s answered %s", url, response.Status)
 	}
-	var body struct {
-		Tag string `json:"tag_name"`
+	tag := path.Base(response.Request.URL.Path)
+	if !Version.MatchString(tag) {
+		return "", fmt.Errorf("%s points at %q, which is not a release", url, tag)
 	}
-	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&body); err != nil {
-		return "", fmt.Errorf("read the release: %w", err)
-	}
-	if !Version.MatchString(body.Tag) {
-		return "", fmt.Errorf("the newest release is named %q, which is not a release", body.Tag)
-	}
-	return body.Tag, nil
+	return tag, nil
 }
 
 // Install puts a verified binary beside the running one, keeping the previous file as "<exe>.prev". It

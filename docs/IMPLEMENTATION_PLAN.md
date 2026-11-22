@@ -2141,9 +2141,19 @@ the only part a production pass has to see — the upgrade path itself.
 
 **State on 2026-11-22.** The menu tree, the node picker, the wizard's QUIC question, the invite block, the
 invite policy, the grouped doctor, the node card, the page's egress line and QUIC note, `termit-uv upgrade`
-and `termit-mn update` are on `dev`. Completion is deferred out of this release: both binaries declare their
-flags inside each command, so there is no registry to generate a script from — building one is a 0.8.0
-item, not a polish task. What is left here is the lab run and the production pass.
+and `termit-mn update` are on `dev`, and the two update paths have been run on the lab with locally built
+binaries (`v0.7.0`, commit-stamped, `pscp`'d into `/usr/bin`): the menu and its card on the node, a real
+`termit-uv upgrade --to v0.6.0` (download, digest, swap, converge) and a real `termit-mn update --apply`
+(the server came back on `0.6.0` and was put back). Completion is deferred out of this release: both
+binaries declare their flags inside each command, so there is no registry to generate a script from —
+building one is a 0.8.0 item, not a polish task. What is left here is the production pass.
+
+**The lab found two defects the tests could not.** The first upgrade replaced the binary, failed the
+converge step and rolled back — `init` ran without `--config`, so an installed node looked like a fresh
+machine asking for its domain; `runConverge` now carries the path, and the rollback that followed is the
+reason the node kept serving. The server's update asked `api.github.com`, which answered `403` from the
+lab — the same block that makes `uv.sh` read the `releases/latest` redirect instead; `release.Newest`
+now follows that redirect, which needs no token, no quota and no host that a node cannot reach.
 
 **Two menu items that join §10.10.**
 

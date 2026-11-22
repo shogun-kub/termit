@@ -152,3 +152,17 @@ func TestUpgradeOfferSaysWhenThereIsNothingToDo(t *testing.T) {
 		t.Errorf("a node whose server never reported a version planned %q", plan)
 	}
 }
+
+// The new binary has to converge the configuration the operator named: without the path it treats an
+// installed node as a fresh machine and asks for a domain that was answered long ago. The lab found this
+// on the first real upgrade, and the rollback that followed is what kept the node serving.
+func TestConvergeRunsInitOnTheNamedConfiguration(t *testing.T) {
+	t.Parallel()
+	got := convergeArgs("/etc/termit/uv/config.yaml")
+	if strings.Join(got, " ") != "init --config /etc/termit/uv/config.yaml" {
+		t.Errorf("converge args = %v", got)
+	}
+	if plain := convergeArgs(""); strings.Join(plain, " ") != "init" {
+		t.Errorf("converge args without a path = %v", plain)
+	}
+}

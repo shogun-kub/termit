@@ -65,7 +65,7 @@ kept beside it, and a failure to converge puts the previous binary back.`)
 
 	// The new binary converges the node: it is the one that knows what its own release needs. Running the
 	// old code here would converge to the old shape and then call it done.
-	if err := a.runConverge(ctx, exe); err != nil {
+	if err := a.runConverge(ctx, exe, convergeArgs(*configFlag)); err != nil {
 		fmt.Fprintf(a.stderr, "termit-uv upgrade: %s did not converge the node: %v\n", target, err)
 		if restoreErr := release.Restore(previous, exe); restoreErr != nil {
 			fmt.Fprintf(a.stderr, "termit-uv upgrade: and the previous binary could not be put back: %v\n", restoreErr)
@@ -120,13 +120,23 @@ func upgradeBinary(ctx context.Context, client *http.Client, base, exe, ver, arc
 }
 
 // runConverge runs the freshly installed binary. It is a seam: production replaces the process with
-// `exe init`, and a test says it would have.
-func (a *application) runConverge(ctx context.Context, exe string) error {
+// `exe init`, and a test says it would have. The configuration path travels with it — without one, init
+// treats an installed node as a fresh machine and asks for a domain the operator already gave.
+func (a *application) runConverge(ctx context.Context, exe string, args []string) error {
 	if a.convergeFn != nil {
-		return a.convergeFn(ctx, exe)
+		return a.convergeFn(ctx, exe, args)
 	}
-	cmd := exec.CommandContext(ctx, exe, "init", "--config", a.configPath)
+	cmd := exec.CommandContext(ctx, exe, args...)
 	cmd.Stdout = a.stdout
 	cmd.Stderr = a.stderr
 	return cmd.Run()
+}
+
+// convergeArgs is what the new binary is told to do: converge, on the configuration the operator named.
+func convergeArgs(configPath string) []string {
+	args := []string{"init"}
+	if configPath != "" {
+		args = append(args, "--config", configPath)
+	}
+	return args
 }

@@ -124,18 +124,19 @@ func TestRestorePutsThePreviousBinaryBack(t *testing.T) {
 	}
 }
 
-// Newest reads the tag the API answers with; the endpoint already excludes pre-releases, and a tag that is
-// not a release is refused rather than installed.
-func TestNewestReadsTheTag(t *testing.T) {
+// Newest follows the "latest" redirect and reads the tag it lands on; a redirect that lands on something
+// that is not a release is refused rather than installed.
+func TestNewestFollowsTheRedirect(t *testing.T) {
 	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.Contains(r.Header.Get("Accept"), "json") {
-			t.Errorf("the request does not ask for JSON: %q", r.Header.Get("Accept"))
+		if r.URL.Path == "/latest" {
+			http.Redirect(w, r, "/releases/tag/v9.9.9", http.StatusFound)
+			return
 		}
-		fmt.Fprint(w, `{"tag_name":"v9.9.9"}`)
+		fmt.Fprint(w, "the release page")
 	}))
 	t.Cleanup(server.Close)
-	got, err := release.Newest(context.Background(), server.Client(), server.URL)
+	got, err := release.Newest(context.Background(), server.Client(), server.URL+"/latest")
 	if err != nil {
 		t.Fatalf("Newest: %v", err)
 	}
@@ -143,16 +144,12 @@ func TestNewestReadsTheTag(t *testing.T) {
 		t.Errorf("tag = %q", got)
 	}
 
-	for _, tag := range []string{"v9.9.9p1", "latest", "main"} {
-		odd := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			fmt.Fprintf(w, `{"tag_name":%q}`, tag)
-		}))
-		func() {
-			defer odd.Close()
-			if _, err := release.Newest(context.Background(), odd.Client(), odd.URL); err == nil {
-				t.Errorf("Newest accepted %q", tag)
-			}
-		}()
+	odd := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/releases/tag/untagged-abc", http.StatusFound)
+	}))
+	t.Cleanup(odd.Close)
+	if _, err := release.Newest(context.Background(), odd.Client(), odd.URL+"/latest"); err == nil {
+		t.Error("Newest accepted a tag that is not a release")
 	}
 }
 

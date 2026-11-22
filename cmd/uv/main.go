@@ -96,7 +96,7 @@ type application struct {
 	getenv func(string) string
 	// convergeFn runs the freshly installed binary after an upgrade; nil means `exe init`. Tests set it,
 	// so an upgrade test never starts a second process.
-	convergeFn func(context.Context, string) error
+	convergeFn func(context.Context, string, []string) error
 }
 
 // translator is the language of the current session. A command that never resolves one gets the

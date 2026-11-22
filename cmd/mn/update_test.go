@@ -20,7 +20,9 @@ func updateServer(t *testing.T, tag, body string) *httptest.Server {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/latest":
-			fmt.Fprintf(w, `{"tag_name":%q}`, tag)
+			http.Redirect(w, r, "/releases/tag/"+tag, http.StatusFound)
+		case strings.HasPrefix(r.URL.Path, "/releases/tag/"):
+			fmt.Fprint(w, "the release page")
 		case r.URL.Path == "/"+tag+"/SHA256SUMS":
 			fmt.Fprintf(w, "%s  %s\n", release.Digest([]byte(body)), asset)
 		case r.URL.Path == "/"+tag+"/"+asset:
