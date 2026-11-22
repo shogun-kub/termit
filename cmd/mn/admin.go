@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -147,8 +148,24 @@ func runInviteCreate(args []string, stdout, stderr io.Writer) int {
 	if *expires > 0 {
 		fmt.Fprintf(stdout, "expires: %s\n", time.Now().Add(time.Duration(*expires)*time.Hour).UTC().Format(time.RFC3339))
 	}
+	if cfg, err := config.Load(*configPath); err == nil && cfg.Domain != "" {
+		fmt.Fprint(stdout, inviteBlock(cfg.Domain, cfg.APIPrefix, result.Code, *note))
+	}
 	fmt.Fprintln(stdout, "the code is shown once: it is stored only as a digest")
 	return exitOK
+}
+
+// inviteBlock is what the operator sends to the other person: one command with the server's URL and its
+// prefix already filled in. Assembling that line by hand out of three commands was the first-day papercut
+// of the whole mesh.
+func inviteBlock(domain, prefix, code, note string) string {
+	var b strings.Builder
+	b.WriteString("\nsend this to them (the installer asks for their node's domain):\n\n")
+	fmt.Fprintf(&b, "  sh uv.sh --mn https://%s%s --invite %s\n", domain, prefix, code)
+	if note != "" {
+		fmt.Fprintf(&b, "\nfor: %s\n", note)
+	}
+	return b.String()
 }
 
 func runInviteList(args []string, stdout, stderr io.Writer) int {

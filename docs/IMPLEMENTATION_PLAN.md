@@ -2108,8 +2108,9 @@ can be cut anywhere.
 
 - **An invite that carries its own instructions.** `termit-mn invite create` prints the ready-to-send
   block: the `sh uv.sh --mn <url> --invite <code>` line with the MN URL and its API prefix already filled
-  in, the note as the person's name, and with `--qr` the same URL as a terminal code. Today the operator
-  assembles that line by hand out of three commands — the first-day papercut of the whole mesh.
+  in, and the note as the person's name. Today the operator assembles that line by hand out of three
+  commands — the first-day papercut of the whole mesh. (The terminal QR this item first imagined is
+  dropped: a node is installed by typing a command, not by scanning one.)
 - **The page the owner sends.** `termit-uv options` gains what the reader needs next to each link: a copy
   button (inline script; the no-external-host rule is about the decoy, not this page), a "voice and video"
   marker on the `(QUIC)` row — that is the link that carries UDP — and the node's own egress line

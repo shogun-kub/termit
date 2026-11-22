@@ -194,6 +194,17 @@ termit-mn invite revoke ABCD-EFGH-IJKL
 An invite code is a secret with a limited number of uses; pass it over a channel you trust, and
 revoke it if it leaks. Each use consumes one slot.
 
+`invite create` prints the line to forward, with the server's URL and its API prefix already in it — the
+person on the other side pastes one command and is asked for their own node's domain:
+
+```
+send this to them (the installer asks for their node's domain):
+
+  sh uv.sh --mn https://mn.example.com/6rfjdqfn5nno --invite ABCD-EFGH-IJKL
+
+for: node-a for Anna
+```
+
 ## Watch and manage nodes
 
 | Goal | Command |

@@ -180,3 +180,19 @@ func TestInvitePolicyMenu(t *testing.T) {
 		t.Errorf("declining to open enrollment produced %q", plan)
 	}
 }
+
+// The block the operator forwards has to carry everything one paste needs: the server, its prefix and the
+// code, in the one command the installer understands.
+func TestInviteBlockIsOnePaste(t *testing.T) {
+	t.Parallel()
+	block := inviteBlock("mn.example.com", "/6rfjdqfn5nno", "ABCD-EFGH-IJKL", "anna")
+	if !strings.Contains(block, "sh uv.sh --mn https://mn.example.com/6rfjdqfn5nno --invite ABCD-EFGH-IJKL") {
+		t.Errorf("block = %q, want the whole command on one line", block)
+	}
+	if !strings.Contains(block, "for: anna") {
+		t.Errorf("block = %q, want the note as the person's name", block)
+	}
+	if strings.Contains(inviteBlock("mn.example.com", "/p", "CODE", ""), "for:") {
+		t.Error("a code with no note grew a name")
+	}
+}
