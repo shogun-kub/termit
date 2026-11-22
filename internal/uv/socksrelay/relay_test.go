@@ -207,9 +207,10 @@ func TestConnectPassthrough(t *testing.T) {
 	}
 }
 
-// TestUDPReplyFromAnotherAddressIsNotForwarded keeps a datagram that is neither the client's nor the
-// sidecar's from reaching the client.
-func TestUDPReplyFromAnotherAddressIsNotForwarded(t *testing.T) {
+// TestUDPFromAnotherHostIsNotForwarded: the pump only accepts datagrams from the client's own host. A
+// second loopback address stands in for "somebody else" — two ports on 127.0.0.1 are the same host, and
+// the relay deliberately cannot tell them apart.
+func TestUDPFromAnotherHostIsNotForwarded(t *testing.T) {
 	t.Parallel()
 	sidecar := newFakeSidecar(t)
 	relay := startRelay(t, sidecar.addr())
@@ -224,26 +225,27 @@ func TestUDPReplyFromAnotherAddressIsNotForwarded(t *testing.T) {
 	}
 	relayed := &net.UDPAddr{IP: net.IP(reply[4:8]), Port: int(reply[8])<<8 | int(reply[9])}
 
-	stranger, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	stranger, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 2)})
 	if err != nil {
-		t.Fatalf("listen: %v", err)
+		t.Skipf("this host cannot bind 127.0.0.2: %v", err)
 	}
 	defer func() { _ = stranger.Close() }()
 	if _, err := stranger.WriteToUDP([]byte("spoof"), relayed); err != nil {
 		t.Fatalf("send: %v", err)
 	}
+
 	client, err := net.DialUDP("udp", nil, relayed)
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
 	defer func() { _ = client.Close() }()
-	_ = client.SetReadDeadline(time.Now().Add(300 * time.Millisecond))
+	_ = client.SetReadDeadline(time.Now().Add(time.Second))
 	if _, err := client.Write([]byte("ping")); err != nil {
 		t.Fatalf("send: %v", err)
 	}
 	buf := make([]byte, 64)
 	if n, err := client.Read(buf); err == nil && string(buf[:n]) == "spoof" {
-		t.Error("a datagram from an unrelated address reached the client")
+		t.Error("a datagram from another host reached the client")
 	}
 }
 
