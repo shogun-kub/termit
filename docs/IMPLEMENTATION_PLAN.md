@@ -1521,11 +1521,14 @@ the envelope for a second kind (10.2), and Hysteria2 as that kind (10.3). Each u
 first two are worth shipping even if the third slips. The first two shipped in `0.5.0`; the third went in
 with them and was finished in `0.5.1`, and what is left of each is named below.
 
-**Numbering.** `0.6.0` is free to cut: GO-2026-5288 is a stale record, not a live advisory. Its source,
-GHSA-9fw6-xgg2-mq9q, lists 2.8.1 as the last affected release and 2.8.2 as the fix; this build pins 2.14.0 and
-never enables the sniffing the PoC needs. `vuln.go.dev` never got the fixed version — the record is
-`UNREVIEWED` — so `govulncheck` still reports the module, `deploy/vulnerabilities.json` still needs the entry,
-and its deadline now tracks the record's correction (`0.7.0`), not a module bump.
+**Numbering.** `0.6.0` is cut and published; the next release is `0.7.0`, and its scope is §10.9 (update
+offers) plus §10.10 (the owner's interface) and the three debts §11.15 recorded. The advisory entry
+GO-2026-5288 is still in `deploy/vulnerabilities.json` with `must_be_gone_by: 0.7.0`: a stale record, not a
+live advisory. Its source, GHSA-9fw6-xgg2-mq9q, lists 2.8.1 as the last affected release and 2.8.2 as the
+fix; this build pins 2.14.0 and never enables the sniffing the PoC needs. `vuln.go.dev` never got the fixed
+version — the record is `UNREVIEWED` — so `govulncheck` still reports the module and `deploy/release` will
+refuse to cut `0.7.0` while the entry is there. Re-check the record first; if it is still stale, moving the
+deadline is a deliberate act with its reason in the commit, not a quiet edit.
 
 Everything after them is postponed to a later release: understood and wanted, but nothing in 0.5.0
 depends on it. Each postponed item still names the rule that keeps it out, so nobody re-discovers the
@@ -2097,6 +2100,37 @@ Open when this is implemented: whether the menu line is the only door (for the n
 interactive door and the prompt is the point), and whether `upgrade` should accept a version the server never
 offered (yes, with the operator naming it; the prompt is the convenience, not the permission).
 
+### 10.10 The owner's interface — 0.7.0's UI/UX work
+
+The commands work; this is about the minutes an owner spends on them, and about what a reader can answer
+without a second command. Each item names the thing the reader sees, and each is independent, so the list
+can be cut anywhere.
+
+- **An invite that carries its own instructions.** `termit-mn invite create` prints the ready-to-send
+  block: the `sh uv.sh --mn <url> --invite <code>` line with the MN URL and its API prefix already filled
+  in, the note as the person's name, and with `--qr` the same URL as a terminal code. Today the operator
+  assembles that line by hand out of three commands — the first-day papercut of the whole mesh.
+- **The page the owner sends.** `termit-uv options` gains what the reader needs next to each link: a copy
+  button (inline script; the no-external-host rule is about the decoy, not this page), a "voice and video"
+  marker on the `(QUIC)` row — that is the link that carries UDP — and the node's own egress line
+  (`warp: usque, via …`) so the page answers "what does this node do" without `warp status`.
+- **One screen for "what does my node do?"** The menu's status screen becomes a card: domain, build, the
+  server's build with a marker when they differ, transports served, egress, peers grouped by transport,
+  last sync, drift. It is the screen an owner screenshots when asking for help, so it should not need a
+  second one.
+- **`doctor` grouped, with a verdict.** Host, node and tunnel as three groups with one summary line each,
+  and a closing line that says ok / warn / unknown. Today it is one flat list of twenty lines that the
+  reader has to scan to the end to answer "is anything wrong".
+- **`uv show` as the operator's answer.** `termit-mn uv show <node>` gains the last probe's detail, the
+  transports the node serves, when it is next checked, and its subscription URL — so "check this person's
+  node" and "send them the link" are one command instead of three.
+- **Completion for both binaries.** `termit-uv completion bash|zsh` and `termit-mn completion …`, generated
+  from the same flag definitions the parser uses, so it cannot drift from the commands.
+
+Open when implemented: whether the page's copy button is worth inline script at all (clipboard APIs are
+gated, and a plain selectable link is already copyable), and whether completion ships in the binaries or in
+the packaging — the binaries are the only thing we control on both.
+
 ## 11. Planned: WARP over WireGuard inside the core (0.5.0)
 
 The one thing `0.3.2` gave up is that UDP leaves from the node's address: `warp-cli`'s proxy mode cannot
@@ -2585,3 +2619,12 @@ Pre-releases on the way: `v0.6.0p1` (`9445a9b`), p2 (`d3ddce1`), p3 (`9738ee2`),
 (`295931a`), p6 (`9a53ab2`, whose CI failed on the relay's spoof test), p7 (`8e4fe30`). The MN took p1, p2
 and later `v0.6.0`; then5 took p1–p7. Backups: `/root/termit-mn-pre-060p1-20261122-153137`,
 `/root/termit-pre-060p1-20261122-173207`, and the p2/p5 copies beside them.
+
+**After the pass, on `dev`, the three debts were fixed**: `warp.family` is documented as a `wireguard` key
+(the MASQUE sidecar is dual-stack and takes no family flag), the egress probe waits for the relay's port
+instead of warning about the node's own address, and `init --hysteria` prints its firewall hint only when
+`firewall.json` really lacks UDP/443. Then then5 was put on `usque` for the steady state and left there:
+`warp status` says `udp: through warp (the MASQUE sidecar)`, TCP through the relay exits at
+`2a09:bac1:2520::48e:5e` (`warp=on`), a STUN query through the same port returns `104.28.222.16`, the decoy
+answers `200`, `doctor` 20 ok and `in sync: 5 client(s), 3 peer(s)`. The `0.6.0` binary still prints the old
+probe warning during `init` — the fix ships in `0.7.0`.
