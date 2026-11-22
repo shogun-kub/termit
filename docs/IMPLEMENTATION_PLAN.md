@@ -2013,8 +2013,9 @@ What decides the real design, before any code:
 - **The terminal.** `termit-uv uri --qr` printing half-block characters is a nice-to-have, not part of this
   item: the phone case needs the page, and a terminal QR is a second renderer to keep right.
 
-A `0.5.x` patch carried it after all: the advisory list blocks `0.6.0` until hysteria ships a fix (§10
-intro), and a page nobody can scan is not worth waiting for that.
+A `0.5.x` patch carried it after all: `0.6.0` was reserved for a hysteria bump that never had anything to
+bump (GO-2026-5288 turned out to be a stale record, §10 intro), and a page nobody can scan is not worth
+waiting for that.
 
 Acceptance: on a phone, the camera opens a row's code and the client imports the link; the page references
 no external host and still passes the existing test that fails a page referencing one (`internal/uv/options/options_test.go`); a Go test round-trips the encoder
