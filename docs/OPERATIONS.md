@@ -743,9 +743,13 @@ termit-uv options            # renders it and prints the address
 termit-uv options --rotate   # new address; the old one answers 404
 ```
 
-`https://<node-domain>/<32 hex characters>/` shows this node's own device, every mesh peer the subscription
-describes, and the two subscription forms, each with a copy button. It is a **static file in the decoy
-site's tree**, so nginx needs no new location, and the consequences are worth knowing:
+`https://<node-domain>/<32 hex characters>/` shows this node's own device, every local device, every mesh
+peer the subscription describes, and the two subscription forms, each with a copy button and — for the links
+— a QR code the phone's camera can read. The code is drawn in-process by `internal/uv/options`: no encoder
+service and no CDN, because the page must reference no external host and the credentials must not leave the
+node. It is the same secret as the text, so a screenshot is a leak in exactly the way a copied link is. It is
+a **static file in the decoy site's tree**, so nginx needs no new location, and the consequences are worth
+knowing:
 
 - The path is generated once and lives in the state file (`options.token`), not in the configuration;
   `termit-uv status` prints the address, so it can be found again months later.
@@ -1300,6 +1304,11 @@ QUIC traffic, so the flag adds it. The applied table is not touched — the fire
 `firewall on` — and `init` says so; publish the port with `termit-uv firewall on` followed by
 `termit-uv firewall confirm`. `--no-hysteria` removes the block and leaves the port in the list: it is the
 operator's line, and a node may publish it for something else.
+
+Both flags end the run with a sync: what a node serves reaches the server in a sync request and nowhere
+else, so without one the mesh keeps the previous set — an old second link, or none for a transport that
+was just turned on — until the node's next cycle, which can be a day away. A node that is not enrolled is
+told that the server will learn it at the first sync after enrollment.
 
 **A known advisory, and what it costs.** GO-2026-5288 says a crafted QUIC packet can drive the server out
 of memory when sniffing is on, and v2.14.0 is the newest release — there is no fixed version to install.

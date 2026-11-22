@@ -3,6 +3,34 @@ What each release changed, written for the people who run Termit. Newest first;
 carries every section back to the last release: the versions in between were handed out only as
 pre-releases, and whoever installs the release skipped them.
 
+## 0.5.2 — 2026-11-22
+
+### Added
+
+- **A QR code beside every client link on the owner's page.** A phone has no shared clipboard with the node,
+  so the page that exists to hand out links now lets the camera read them: every row — the node's own, each
+  local device's, each peer's — opens a code under the copy button. It is drawn by the node's own Go code
+  (`rsc.io/qr`, BSD-3, no dependencies) and never by an encoder service or a CDN: the page must reference no
+  external host, and the credentials must not leave the node. The code carries the full link, so it is the
+  same secret as the text and a screenshot leaks it the same way.
+- **`warp status` says when the transport cannot carry UDP.** The `proxy` transport is `warp-cli`'s SOCKS5
+  listener, which has no UDP association, so UDP exits directly while the report said `warp=on`. The status
+  now names the gap in text and carries it in `--json` as `"udp": "direct"`; the core's own stack reports
+  `"udp": "warp"`.
+
+### Fixed
+
+- **Turning the transport on or off now tells the server.** What a node serves travels in its sync request
+  and in nothing else, so a node that enabled the QUIC transport went on being advertised with the TLS
+  profile alone until its next cycle — up to a day — and nothing said so. `init --hysteria` and
+  `init --no-hysteria` now sync at the end (and say so), which is the same request `termit-uv sync` sends.
+  A node that is not enrolled gets a line saying when the server will learn it.
+- **A node that stops serving a transport loses its second link.** The server wrote the transport record
+  only when a node announced something, and since 0.5.0 a node serving the TLS profile alone announces
+  nothing — so a retired transport's row stayed for ever and the subscription kept handing out a link the
+  node no longer had. The record is now written on every sync, with "nothing announced" read as the TLS
+  profile alone.
+
 ## 0.5.1 — 2026-11-21
 
 ### Added

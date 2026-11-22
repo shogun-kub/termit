@@ -77,6 +77,9 @@ type Data struct {
 type LinkView struct {
 	Link
 	Text pageText
+	// QR is the link drawn as a scannable code, empty when it does not fit. It is markup this package
+	// built, which is why it is a value the template prints rather than escapes.
+	QR template.HTML
 }
 
 // pageText is the resolved strings for one language. It exists so the template holds no prose and the
@@ -85,7 +88,7 @@ type pageText struct {
 	Title, Subtitle, Local, LocalNote, Devices, DevicesNote, Subscription string
 	Mesh, NoPeers, Warning, PlainName, PlainNote                          string
 	JSONName, JSONNote, ThisPage, ThisPageNote                            string
-	Copy, Copied, CopyFailed, Footer, Degraded                            string
+	Copy, QR, Copied, CopyFailed, Footer, Degraded                        string
 }
 
 func textFor(lang i18n.Lang) pageText {
@@ -108,6 +111,7 @@ func textFor(lang i18n.Lang) pageText {
 		ThisPage:     tr.T(i18n.PageThisPage),
 		ThisPageNote: tr.T(i18n.PageThisPageNote),
 		Copy:         tr.T(i18n.PageCopy),
+		QR:           tr.T(i18n.PageQR),
 		Copied:       tr.T(i18n.PageCopied),
 		CopyFailed:   tr.T(i18n.PageCopyFailed),
 		Footer:       tr.T(i18n.PageFooter),
@@ -242,6 +246,10 @@ code { flex: 1 1 auto; min-width: 0; font: .8rem/1.45 ui-monospace, SFMono-Regul
 button { flex: 0 0 auto; font: inherit; font-size: .8rem; padding: .45rem .7rem; border-radius: .4rem;
   border: 1px solid var(--line); background: var(--card); color: var(--accent); cursor: pointer; }
 button:hover { border-color: var(--accent); }
+.qr { margin-top: .55rem; }
+.qr summary { cursor: pointer; font-size: .8rem; color: var(--dim); }
+.qr svg { display: block; width: 100%; max-width: 20rem; height: auto; margin-top: .5rem;
+  background: #fff; border-radius: .3rem; }
 .note { color: var(--dim); font-size: .85rem; margin: .6rem 0 0; }
 .warn { color: var(--warn); }
 footer { margin-top: 2.5rem; color: var(--dim); font-size: .8rem; text-align: center; }
@@ -336,6 +344,7 @@ document.addEventListener('click', function (event) {
     {{if .Degraded}}<span class="tag">{{.Text.Degraded}}</span>{{end}}
   </div>
   <div class="uri"><code>{{.URI}}</code><button type="button" data-copy>{{.Text.Copy}}</button></div>
+  {{if .QR}}<details class="qr"><summary>{{.Text.QR}}</summary>{{.QR}}</details>{{end}}
 </li>
 {{end}}
 `))
@@ -349,15 +358,15 @@ func Render(d Data) ([]byte, error) {
 	d.Text = textFor(d.Lang)
 	d.LocalView = make([]LinkView, 0, len(d.Local))
 	for _, link := range d.Local {
-		d.LocalView = append(d.LocalView, LinkView{Link: link, Text: d.Text})
+		d.LocalView = append(d.LocalView, LinkView{Link: link, Text: d.Text, QR: qrSVG(link.URI)})
 	}
 	d.DevicesView = make([]LinkView, 0, len(d.Devices))
 	for _, device := range d.Devices {
-		d.DevicesView = append(d.DevicesView, LinkView{Link: device, Text: d.Text})
+		d.DevicesView = append(d.DevicesView, LinkView{Link: device, Text: d.Text, QR: qrSVG(device.URI)})
 	}
 	d.PeersView = make([]LinkView, 0, len(d.Peers))
 	for _, peer := range d.Peers {
-		d.PeersView = append(d.PeersView, LinkView{Link: peer, Text: d.Text})
+		d.PeersView = append(d.PeersView, LinkView{Link: peer, Text: d.Text, QR: qrSVG(peer.URI)})
 	}
 	var buf strings.Builder
 	if err := pageTemplate.Execute(&buf, d); err != nil {

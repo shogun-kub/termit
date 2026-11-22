@@ -1517,7 +1517,13 @@ path cooperate.
 
 v0.5.0 is three of these items, in this order: a WARP that carries UDP (10.1), the profile options and
 the envelope for a second kind (10.2), and Hysteria2 as that kind (10.3). Each unblocks the next, and the
-first two are worth shipping even if the third slips.
+first two are worth shipping even if the third slips. The first two shipped in `0.5.0`; the third went in
+with them and was finished in `0.5.1`, and what is left of each is named below.
+
+**Numbering, until the advisory list is clear again.** `deploy/vulnerabilities.json` refuses any version at
+or past `0.6.0` while GO-2026-5288 is accepted, and hysteria `v2.14.0` is still the newest module release
+(checked 2026-11-22), so `0.6.0` cannot be cut today: the next release is a `0.5.x` patch. Moving the
+deadline to `0.7.0` is the alternative, and it needs the recorded reason that no fixed release exists.
 
 Everything after them is postponed to a later release: understood and wanted, but nothing in 0.5.0
 depends on it. Each postponed item still names the rule that keeps it out, so nobody re-discovers the
@@ -1539,8 +1545,9 @@ What keeps it a 0.5.0 item:
 - **The transport must stay swappable.** Cloudflare is moving WARP to MASQUE, and the tunnel is a
   registration plus an outbound whose tag the routing rule names. That indirection is the work; option D
   must drop into it without touching routing, the fail-open balancer or the state.
-- **Hysteria2 will carry UDP through it** (§10.3). The hop is proved for TCP on the lab; the same path with
-  UDP payloads, and the identity a peer sees at the exit, is part of this item's acceptance.
+- **Hysteria2 carries UDP through it** (§10.3). The hop is proved for TCP on the lab and, with UDP
+  payloads, on production (§11.13): the exit a QUIC client sees is Cloudflare's, and the node's own
+  traffic keeps its own address.
 
 | Option | UDP | Host routing | Cost |
 |---|---|---|---|
@@ -1578,6 +1585,13 @@ Acceptance for the remainder: a node on the `proxy` transport either carries UDP
 `warp status` that it cannot; option D can replace the outbound by changing a tag; and with Hysteria2
 enabled, a UDP payload from a client exits at Cloudflare's address, while SSH, ACME and the decoy still
 leave from the node's own. No `ip rule`/`ip route` change exists on the host.
+
+The hysteria half of that is proved on production (§11.13): a client through the QUIC transport on then5
+exited at `104.28.222.18` with `warp=on`, and the address families the node does not serve were refused
+rather than answered with the node's own address. The `proxy` transport cannot carry UDP at all — `warp-cli`
+has no UDP association — and since `0.5.2` `warp status` says so instead of reporting a bare `warp=on`, in
+text and in `--json` as `udp: not carried` / `"udp": "direct"`. That leaves option D (MASQUE) as the only way
+to close the gap for `proxy`, which is the swap the tag indirection exists for.
 
 ### 10.2 More protocols and protocol options
 
@@ -1699,9 +1713,11 @@ Phases:
    instead of the missing `-test`, the core's loopback inbound, the firewall rule, Alt-Svc and a `doctor`
    line. Verified end to end on the lab: a client over UDP/443 exited through WARP (`104.28.254.16`) while
    the node's own traffic kept its own address, and the core logged the flow on the hop inbound.
-2. Profile (in progress): the envelope exists — a node reports `{kind, version}` for what it serves and the
-   subscription renders one link per kind (`hy2://` in the list, a `hysteria2` outbound in sing-box), with
-   the password derived from each pair's UUID. What is left is the parameters side of the envelope: a kind
+2. Profile (done in `0.5.1`): the envelope exists — a node reports `{kind, version}` for what it serves and
+   the subscription renders one link per kind (`hy2://` in the list, a `hysteria2` outbound in sing-box), with
+   the password derived from each pair's UUID — and every place that hands out a link shows both: `uri`,
+   `device add`, `device list`, and the owner's page, which since `0.5.1` files the node's own second link
+   with the node rather than with its devices. What is left is the parameters side of the envelope: a kind
    whose parameters vary has no place to say so yet, and the prober has no way to read a kind it does not
    implement.
 3. Prober (done): MN links hysteria's client and probes the transport (§10.2, constraint 3). The target
@@ -1709,7 +1725,9 @@ Phases:
    path — every other node keeps the worker binary, which checks what a VLESS client would see. The
    certificate pin is read the same way on both paths, and the server's probe credential joins the node's
    transport user set so the QUIC half can authenticate at all.
-4. Production pass: this is a network change, so it ships as a pre-release first (AGENTS §9).
+4. Production pass (done, §11.12 and §11.13): the transport is network, so it shipped as a pre-release to
+   the production nodes first, and what the exit really was — not what the code intended — is recorded
+   there.
 
 Acceptance: on the lab, a node with hysteria2 as a second profile — a client through it reaches the
 internet with WARP as the egress and the blocklist applied, a torrent is refused, the decoy answers a
@@ -1945,6 +1963,66 @@ only by the peer and reaches `active` on the peer's `ok`; stopping the peer leav
 in decision 1, recorded in the guide; a stale result never moves the node; the state-machine tests are
 unchanged, because no transition was added.
 
+### 10.8 A QR code beside every client link — shipped in 0.5.2
+
+**Shipped in `0.5.2`**, with the decisions this section argues for settled this way: the code is drawn by
+the node's own Go code (`rsc.io/qr`, BSD-3 and dependency-free, rather than ~300 lines of encoder nobody
+could verify without a phone), one `<svg>` per link inside a `<details>` so the page keeps its size, level L,
+the quiet zone in the viewBox, and a code on every row — the node's own, each local device's, each peer's.
+The full link is encoded rather than a shortened form, because the code has to be exactly what the copy
+button copies; at level L a 570-byte mesh URI is an 81×81 grid, which a 320-pixel-wide element shows at about
+four pixels a module. What follows is the reasoning that led there.
+
+Every row of the owner's page (`termit-uv options`) carries a copy button, and copying is the wrong gesture
+for the device the links exist for: a phone has no shared clipboard with the node, so the owner either types
+a 600-character URI or sends it through a messenger. A QR next to the link turns that into one camera action,
+and it is the same secret, only drawn — the page is behind the node's unguessable token, so nothing new is
+exposed, though a screenshot of the screen becomes scannable by whoever sees it, which the docs will say.
+
+The obvious implementation was forbidden by a rule this repository already has: no `img src="https://api.
+qrserver.com/…"` and no CDN copy of a QR library, because the page would (a) send the node's credentials to
+a third party and (b) reference an external host — the decoy's whole point is that a page which phones home
+is a fingerprint (`AGENTS.md` §5, "Decoy site"). So the encoder is ours, in one of two shapes:
+
+| shape | cost | notes |
+|---|---|---|
+| Go encoder, inline SVG per link | byte mode + Reed–Solomon, versions 1–40, ~300 lines with vectors | the page keeps the only JS it has (copy); testable in Go; no vendored JavaScript to audit |
+| a QR library embedded in the page | ~15 KB of MIT JavaScript, with attribution | smaller Go change, a second language to keep in step with the page's CSP and with the options test that fails a page referencing an external host (`internal/uv/options/options_test.go`) |
+
+The Go encoder is the recommendation: it is the shape the rest of the page already uses (the page is
+`html/template` over a Go value, so a `QR string` field per link renders as an `<svg>` with no script at
+all), and a QR is arithmetic, which tests well — the standard vectors for "HELLO WORLD" and a short URL, plus
+a round-trip through an independent decoder if one can be kept out of the shipped binary.
+
+What decides the real design, before any code:
+
+- **Density.** The node's own `vless://` link is a few hundred characters before fragmentation: XHTTP
+  extras, `mode=packet-up`, the path, `fragment=…`, `sb.tls.*`. That is a large, dense code — readable from a
+  still screen, unreliable from a moving one, and hopeless in a small inset. `hy2://` is a tenth of it. Two
+  ways out, and the choice must be made explicitly rather than discovered on a phone: draw the full link and
+  accept that the scan needs a steady hand, or draw a *minimal* link (scheme, credential, host, `type`,
+  `security`, `sni`, path — the parameters that connect) and leave `fragment` and `sb.tls.*` to the copy
+  button. The second is more useful and needs a size on the QR that a screen can show.
+- **Which rows.** All of them: the node's own two, every local device's two, and each peer's. A peer's link
+  is the one a new device most often needs, and it arrives with the subscription rather than from `device`.
+- **Where it appears.** Inline under the row (a second line in the same `<li>`), not a modal: the page has no
+  modal machinery and a phone cannot easily close one. One code visible at a time keeps the page readable.
+- **Error correction and size.** Level M with a module size that fits the column; the quiet zone is part of
+  the SVG's viewBox, because a code that touches the row's border does not scan.
+- **The terminal.** `termit-uv uri --qr` printing half-block characters is a nice-to-have, not part of this
+  item: the phone case needs the page, and a terminal QR is a second renderer to keep right.
+
+A `0.5.x` patch carried it after all: the advisory list blocks `0.6.0` until hysteria ships a fix (§10
+intro), and a page nobody can scan is not worth waiting for that.
+
+Acceptance: on a phone, the camera opens a row's code and the client imports the link; the page references
+no external host and still passes the existing test that fails a page referencing one (`internal/uv/options/options_test.go`); a Go test round-trips the encoder
+against the published vectors and fails if a link with a control character or an over-long URI is passed
+without a clear error; `go test` grows no dependency.
+
+Documents when this ships: `docs/guide/ru/using-uv.md` and its English counterpart (the page description),
+`docs/OPERATIONS.md` §8 for the owner's page, `--help` for the optional flag, and a changelog entry that
+names the screenshot consequence.
 ## 11. Planned: WARP over WireGuard inside the core (0.5.0)
 
 The one thing `0.3.2` gave up is that UDP leaves from the node's address: `warp-cli`'s proxy mode cannot
@@ -2352,3 +2430,30 @@ removed afterwards. On then4 the subscription then carried both styles and both 
 
 Backups: MN `/root/termit-mn-pre-050p1-20261121-181849` (previous pass) and the 0.5.1 run's own; then5
 `/root/termit-pre-050p1-20261121-181930` plus the 0.5.1 backups; then4 `/root/termit-pre-050p1-*`.
+
+### 11.14 Production pass, 0.5.2, 2026-11-22
+
+`0.5.2` carries two fixes for the transport record and two things the owner can see: a QR code beside every
+link on the page, and a `warp status` line that admits the `proxy` transport cannot carry UDP.
+
+**The pre-release is `v0.5.2p1`** (`e85fa2e`), installed on the server, then5 and then4; schema stayed 6,
+`healthz` answers `"build":"v0.5.2p1"`, `doctor` 0 on both nodes.
+
+**The transport record was exercised in both directions, which no unit test can do on this network.** On
+then5, which serves the transport, `init --no-hysteria` removed the block, stopped the unit, printed
+`what this node serves travels with a sync, so it runs now:` and synced (`already in sync: 4 client(s), 2
+peer(s)`). then4's subscription immediately showed **one** `hy2://` link instead of two — the server wrote
+the record with the TLS profile alone, which is exactly what the old code did not do, so a retired transport
+used to stay in the mesh for ever. `init --hysteria` put the block and the port back, the unit came up, and
+the subscription had **two** `hy2://` links again (`then4`, `then5`).
+
+**The page.** `termit-uv options` on then5 rendered 182 KB with five link rows and five codes — the node's
+own `vless` and `hy2`, then4's two and the participant's one — and no external reference at all: the encoder
+runs on the node, which is the reason it exists at all.
+
+**The honest UDP line.** then5, whose transport is the core's own WireGuard, reports
+`udp:     through warp (the core's own stack)`. A node on `proxy` says `not carried — this transport has no
+UDP association, so UDP exits directly`, and `--json` carries `"udp": "direct"`; that is §10.1's second half
+met for the one transport that cannot do better.
+
+Backups: `sh uv.sh` and `sh mn.sh` wrote their own before the install (see `.spike-out/prod.md`).

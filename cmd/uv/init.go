@@ -266,6 +266,19 @@ credential is ever regenerated.`)
 		fmt.Fprintln(a.stdout, "\nhardening: the configuration and the ban engine are in place; the table is not applied.")
 		fmt.Fprintln(a.stdout, "next: termit-uv firewall on        (it removes itself in five minutes unless you confirm)")
 	}
+	if (set["hysteria"] || set["no-hysteria"]) && !*dryRun {
+		// What this node serves travels to the server in a sync request and in nothing else. Without this,
+		// the mesh goes on handing out the old set — a second link that no longer exists, or none for a
+		// transport that was just turned on — until the node's next cycle, which can be a day away.
+		if st := installer.State(); st.Credentials != nil && st.Credentials.AgentKey != "" {
+			fmt.Fprintln(a.stdout, "\nwhat this node serves travels with a sync, so it runs now:")
+			if code := a.runSync([]string{"--config", *configFlag}); code != exitOK {
+				fmt.Fprintln(a.stderr, "termit-uv init: the sync failed; run `termit-uv sync` yourself, or the mesh keeps the old set")
+			}
+		} else {
+			fmt.Fprintln(a.stdout, "\nnot enrolled: the server learns the transport at the first sync after enrollment")
+		}
+	}
 	if len(pendingWork) > 0 {
 		fmt.Fprintf(a.stdout, "not yet installed by this build: %s\n", joinWords(pendingWork))
 	}
