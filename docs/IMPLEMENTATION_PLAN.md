@@ -2430,3 +2430,30 @@ removed afterwards. On then4 the subscription then carried both styles and both 
 
 Backups: MN `/root/termit-mn-pre-050p1-20261121-181849` (previous pass) and the 0.5.1 run's own; then5
 `/root/termit-pre-050p1-20261121-181930` plus the 0.5.1 backups; then4 `/root/termit-pre-050p1-*`.
+
+### 11.14 Production pass, 0.5.2, 2026-11-22
+
+`0.5.2` carries two fixes for the transport record and two things the owner can see: a QR code beside every
+link on the page, and a `warp status` line that admits the `proxy` transport cannot carry UDP.
+
+**The pre-release is `v0.5.2p1`** (`e85fa2e`), installed on the server, then5 and then4; schema stayed 6,
+`healthz` answers `"build":"v0.5.2p1"`, `doctor` 0 on both nodes.
+
+**The transport record was exercised in both directions, which no unit test can do on this network.** On
+then5, which serves the transport, `init --no-hysteria` removed the block, stopped the unit, printed
+`what this node serves travels with a sync, so it runs now:` and synced (`already in sync: 4 client(s), 2
+peer(s)`). then4's subscription immediately showed **one** `hy2://` link instead of two — the server wrote
+the record with the TLS profile alone, which is exactly what the old code did not do, so a retired transport
+used to stay in the mesh for ever. `init --hysteria` put the block and the port back, the unit came up, and
+the subscription had **two** `hy2://` links again (`then4`, `then5`).
+
+**The page.** `termit-uv options` on then5 rendered 182 KB with five link rows and five codes — the node's
+own `vless` and `hy2`, then4's two and the participant's one — and no external reference at all: the encoder
+runs on the node, which is the reason it exists at all.
+
+**The honest UDP line.** then5, whose transport is the core's own WireGuard, reports
+`udp:     through warp (the core's own stack)`. A node on `proxy` says `not carried — this transport has no
+UDP association, so UDP exits directly`, and `--json` carries `"udp": "direct"`; that is §10.1's second half
+met for the one transport that cannot do better.
+
+Backups: `sh uv.sh` and `sh mn.sh` wrote their own before the install (see `.spike-out/prod.md`).
