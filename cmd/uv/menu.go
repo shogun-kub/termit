@@ -11,6 +11,7 @@ import (
 
 	"github.com/shogun-kub/termit/internal/i18n"
 	"github.com/shogun-kub/termit/internal/menuplan"
+	"github.com/shogun-kub/termit/internal/proto"
 	"github.com/shogun-kub/termit/internal/termui"
 	"github.com/shogun-kub/termit/internal/uv/config"
 	"github.com/shogun-kub/termit/internal/uv/state"
@@ -180,12 +181,70 @@ func (a *application) menuHeader(ui *termui.UI) {
 	case err != nil:
 		ui.State("fail", tr.Tf(i18n.MenuStateError, err.Error()))
 	default:
+		// The card an owner screenshots when asking for help: what this node is, what it serves, where its
+		// traffic leaves, and how the mesh looks from here. Every value is local — the card is drawn on
+		// every screen, and a probe on every keystroke is not a header.
 		ui.KV("domain", cfg.Domain)
 		ui.KV("identity", state.Fingerprint(node.Identity.SelfUUID))
 		ui.KV("peer path", state.Fingerprint(node.Identity.XHTTPPath))
+		ui.KV("serves", servesLine(cfg))
+		ui.KV("egress", egressLine(cfg))
+		if node.ServerVersion != "" {
+			ui.KV("server", serverLine(node.ServerVersion))
+		}
+		if len(node.Peers) > 0 {
+			ui.KV("peers", peersLine(node.Peers))
+		}
+		if !node.Schedule.LastSyncAt.IsZero() {
+			ui.KV("sync", humanAge(a.now(), node.Schedule.LastSyncAt))
+		}
 		ui.State("ok", tr.T(i18n.MenuInstalled))
 	}
 	ui.Blank()
+}
+
+// servesLine names the transports this node answers on. The configuration decides, so asking costs
+// nothing and the card cannot drift from what the core was told.
+func servesLine(cfg *config.Config) string {
+	if cfg.Hysteria != nil {
+		return fmt.Sprintf("TLS/443 + Hysteria2 UDP/%d", proto.HysteriaPort)
+	}
+	return "TLS/443 only"
+}
+
+// egressLine says where proxied traffic leaves and how it gets there; "direct" is a mode, not a failure.
+func egressLine(cfg *config.Config) string {
+	mode := cfg.Warp.Mode
+	if mode == "" {
+		mode = config.WarpAll
+	}
+	if mode == config.WarpOff {
+		return "off (direct)"
+	}
+	return mode + " via " + cfg.Warp.TransportOrDefault()
+}
+
+// serverLine names the build the management server reported, and says plainly when this node is behind
+// it — the one line of the card that can be wrong about two machines at once.
+func serverLine(server string) string {
+	if server == version.Version {
+		return server
+	}
+	return server + " (this node is behind)"
+}
+
+// peersLine counts the mesh and says how much of it the server marks degraded.
+func peersLine(peers []state.Peer) string {
+	degraded := 0
+	for _, peer := range peers {
+		if peer.Degraded {
+			degraded++
+		}
+	}
+	if degraded == 0 {
+		return fmt.Sprintf("%d", len(peers))
+	}
+	return fmt.Sprintf("%d (%d degraded)", len(peers), degraded)
 }
 
 // menuEntries is the menu in order. Every entry answers with argv, never with behaviour, and every level

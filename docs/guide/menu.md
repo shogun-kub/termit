@@ -33,6 +33,11 @@ a provisioning script is a hang, not a convenience.
 │    domain        node-a.example.com                                  │
 │    identity      3f9c1a2b                                            │
 │    peer path     e9438a65                                            │
+│    serves        TLS/443 only                                        │
+│    egress        all via wireguard                                   │
+│    server        v0.7.0                                              │
+│    peers         3 (1 degraded)                                      │
+│    sync          2h ago                                              │
 │    ✔ installed                                                       │
 │                                                                      │
 │    1   State                what this node is, and whether it is…   │
@@ -63,6 +68,11 @@ again.
 Both menus are one screen of at most ten choices per level: a group opens its own screen, the title
 repeats which group it is, and `0` goes back up. Nothing to remember: the number you see is the number you
 type.
+
+The header above the choices is the node's card: domain, identity fingerprints, the transports it serves,
+where proxied traffic leaves, the server's build (marked when this node is behind it), how much of the mesh
+it sees and when it last synced. It is drawn from local state on every screen, so it costs nothing; the
+`State → status` screen has the rest.
 
 ## Node menu (`termit-uv`)
 
