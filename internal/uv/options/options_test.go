@@ -55,14 +55,18 @@ func TestParseListReadsTheSubscriptionLikeAClient(t *testing.T) {
 		"vless://11111111-2222-4333-8444-555555555555@one.example.com:443?type=xhttp#one.example.com",
 		"vless://11111111-2222-4333-8444-555555555555@two.example.com:443?type=xhttp#two.example.com (degraded)",
 		"vless://no-label.example.com:443?type=xhttp",
+		// A label with a space arrives percent-encoded, which is correct for a URI and wrong on a page:
+		// the owner read `then5.bookinet.ru%20(QUIC)` there.
+		"vless://11111111-2222-4333-8444-555555555555@three.example.com:443?type=xhttp#three.example.com%20(QUIC)",
+		"vless://11111111-2222-4333-8444-555555555555@four.example.com:443?type=xhttp#four.example.com%20(degraded)",
 	}
 	body := base64.StdEncoding.EncodeToString([]byte(strings.Join(uris, "\n") + "\n"))
 	links, err := options.ParseList([]byte(body))
 	if err != nil {
 		t.Fatalf("ParseList: %v", err)
 	}
-	if len(links) != 3 {
-		t.Fatalf("parsed %d links, want 3", len(links))
+	if len(links) != 5 {
+		t.Fatalf("parsed %d links, want 5", len(links))
 	}
 	if links[0].Label != "one.example.com" || links[0].Degraded {
 		t.Errorf("first link = %+v", links[0])
@@ -72,6 +76,12 @@ func TestParseListReadsTheSubscriptionLikeAClient(t *testing.T) {
 	}
 	if links[2].Label == "" {
 		t.Errorf("a link without a label lost its label entirely: %+v", links[2])
+	}
+	if links[3].Label != "three.example.com (QUIC)" {
+		t.Errorf("an encoded label is shown encoded: %+v", links[3])
+	}
+	if !links[4].Degraded {
+		t.Errorf("an encoded degraded marker was not recognised: %+v", links[4])
 	}
 
 	if _, err := options.ParseList([]byte("not base64 %%%")); err == nil {
