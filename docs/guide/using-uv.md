@@ -140,8 +140,10 @@ Every link it shows carries both dialects of the fragmentation switch — Happ's
 `sb.tls.fragment=1`/`sb.tls.record_fragment=1`, which `podkop-engine` and the patched sing-box builds read
 from the URI — so the same link works in either client without being edited by hand. That is not universal:
 **Throne** and the Nekoray family it comes from parse neither, because they keep TLS fragmentation in their
-own profile settings (`tls.fragment`, `tls.record_fragment`) and in their route rules — there it is a
-checkbox, not a link parameter. The JSON form of the subscription carries it as `"fragment": true` and
+own settings — in Throne for Android it is *Edit profile → “TLS Client Hello fragment”* (a tri-state, default
+“Keep default”, beside “TLS record fragment”), or, once for everything, *Settings → Presets → “TLS Client
+Hello fragment”* with its implementation and size; on the desktop build the same three live in the profile
+under “TLS Camouflage Settings”. The JSON form of the subscription carries it as `"fragment": true` and
 `"record_fragment": true`, so a client that imports the profile instead of the link gets it without a click. Each row also opens a
 QR code under the copy button: point the phone's camera at it and the client imports the link, which is the
 one gesture a phone has and the reason the page exists. The code is drawn by the node itself — the page
