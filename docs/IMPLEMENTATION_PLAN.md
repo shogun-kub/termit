@@ -2131,6 +2131,63 @@ Open when implemented: whether the page's copy button is worth inline script at 
 gated, and a plain selectable link is already copyable), and whether completion ships in the binaries or in
 the packaging — the binaries are the only thing we control on both.
 
+### 10.11 0.7.0: the scope and the order it lands in
+
+`0.7.0` is §10.9 (both halves), §10.10 (the six items above), three items below that came out of the
+planning discussion, and the three debts §11.15 recorded (already on `dev`). Everything except §10.9 is
+local: the menu, the wizard and the printed reports. §10.9 is the release's one network-facing piece, and
+the only part a production pass has to see — the upgrade path itself.
+
+**Two menu items that join §10.10.**
+
+- **A tree instead of a list.** Both menus grow one level: at most ten choices per screen, grouped by
+  object. Node: Состояние (`status`, `doctor`), Сеть (`net`, `warp`, `transport`), Клиенты (`options`,
+  `uri`, `devices`), Меш (`sync`, `drift`, `enroll`, `unblock`), Защита (`firewall`, `bans`, `guard`),
+  Сайт (`certificate`, `decoy`), Узел (`install`, `wizard`, `migrate`, `uninstall`), Помощь. Server:
+  Состояние (`status`, `check`, `guard`), Узлы, Приглашения, Клиенты (`sub`, `policy`), Защита
+  (`firewall`, `bans`), Обслуживание (`backup`, `restore`, `admin`), Помощь. `menuEntry.children`, a level
+  stack with the breadcrumb in the title, `0 ←` on every level below the first, `q` from anywhere. The
+  four tables that were fake sub-menus (devices, warp, firewall, bans) become real ones and move into
+  `internal/menuplan`, where firewall and bans already live. A test walks the tree: ≤10 per level, and the
+  leaves are exactly the commands the menu offered before, so nothing is lost in the move.
+- **The QUIC question in the wizard.** Between WARP and `harden`, one yes/no: serve Hysteria2 on UDP/443
+  beside the TLS profile. The answer is stored in the draft, becomes `--hysteria` in `wizardInitArgs`, and
+  appears in the summary. Default stays "no", so a TLS-only node is what pressing Enter gives.
+
+**A server item of its own: the invite policy.** `enrollment.mode` (`invite`, `invite+approval`, `open`)
+is read at startup, so today changing it means editing YAML by hand and restarting. It gets a command and a
+menu line: `termit-mn invite policy` shows the mode and `--mode …` writes it, editing the YAML node tree so
+the operator's comments survive, validating the result with the same loader before the file is replaced,
+and saying plainly that the running server keeps the old mode until it restarts (`systemctl restart
+termit-mn`). `open` needs `--force`: at that mode a leaked invite is an account.
+
+**§10.9 in the same release.** Node: `termit-uv upgrade [--to v<version>] [--check]` downloads the release
+binary and `SHA256SUMS` from GitHub, verifies the digest, writes beside the running binary and renames over
+it, keeps the previous file, then runs the new binary with `init --no-enroll` to converge, and restores the
+previous file if that fails. Without `--to` it installs the version the MN reports as its own (`server_version`,
+which sync already carries) — never `latest`, never a `p*` build. The menu's Узел group offers it only when
+the server's build is a plain release and differs from the node's. Server: `termit-mn update --check/--apply`
+does the same against the newest release on GitHub; neither result appears in `status` or `doctor`.
+
+**Order.** (1) The menu tree, both binaries. (2) The wizard's QUIC question. (3) The §10.10 items in the
+order they were written. (4) The invite policy. (5) The upgrade and the update. (6) `docs/guide/menu.md`
+and its Russian mirror, `CHANGELOG` and the plan's §11.15-style record of the pass.
+
+**Proving it without a pre-release.** The lab runs the tree built locally: `deploy/release --version
+v0.7.0` produces the same layout CI does (binaries, `uv.sh`, `SHA256SUMS`), its output goes onto the lab
+machines with `pscp`, and `go test -tags=lab -count=1 ./test/lab -run '…'` runs everything except the warp
+scenarios. The lab is reinstalled from scratch first, so the run proves a first install and the menu that
+follows it; then §10.9 is proved against the lab as well — `upgrade --to v0.6.0` (a real download,
+digest check and swap), a corrupted `SHA256SUMS` to exercise the rollback, and a downgrade back. Nothing is
+published as `v0.7.0p<n>`: the first pre-release is cut when the tree is ready for the production pass, and
+not before.
+
+**What the release must show.** A fresh install through the menu (piped answers, not a hand-driven
+terminal), every group reachable in two keystrokes, `doctor` with a verdict line, an invite block that
+installs a node without the operator assembling a command, the wizard producing a node that serves both
+transports, the policy command writing a mode the next start obeys, an upgrade that keeps the node
+serving, and a deliberate upgrade failure that leaves the previous binary in place.
+
 ## 11. Planned: WARP over WireGuard inside the core (0.5.0)
 
 The one thing `0.3.2` gave up is that UDP leaves from the node's address: `warp-cli`'s proxy mode cannot
