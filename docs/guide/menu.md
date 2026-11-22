@@ -35,16 +35,17 @@ a provisioning script is a hang, not a convenience.
 │    peer path     e9438a65                                            │
 │    ✔ installed                                                       │
 │                                                                      │
-│    1   status               identity, certificate, peers, sync, WARP │
-│    2   doctor               check the host and the node, change…     │
+│    1   State                what this node is, and whether it is…   │
+│    2   Network              counters, WARP, the second transport     │
 │    …                                                                 │
+│    8   Help                 every command and flag                   │
 │    q   quit                                                          │
 │                                                                      │
-│  choose [1-21, q]:                                                   │
+│  choose [1-8, q]:                                                    │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
-Answer with the number or with the label — `3` and `install or converge` are the same answer, because
+Answer with the number or with the label — `1` and `State` are the same answer, because
 the label is what you are looking at. An empty line takes the default shown in brackets, `q` quits, and
 an answer that matches nothing re-asks instead of exiting: a menu that dies on a typo is a menu nobody
 trusts. The questions a step asks follow the same rule: a value the command cannot work without is asked
@@ -59,76 +60,97 @@ question that names something already in existence — a node, an invite code �
 cancel and says so in its label; a question that sets a new value (a domain being installed) still asks
 again.
 
+Both menus are one screen of at most ten choices per level: a group opens its own screen, the title
+repeats which group it is, and `0` goes back up. Nothing to remember: the number you see is the number you
+type.
+
 ## Node menu (`termit-uv`)
 
-| Item | What it does | The command it runs |
-|---|---|---|
-| status | domain, identity fingerprints, certificate, peers, last and next sync, WARP | `termit-uv status` |
-| doctor | host and node diagnostics; changes nothing | `termit-uv doctor` |
-| connection diagnostics | samples the TCP counters: is the node dropping, or the path? | `termit-uv net` |
-| install or converge | first run asks for domain, email and WARP; later runs only re-check | `termit-uv init …` |
-| setup wizard | the whole first installation as questions; remembers the answers between runs | `termit-uv wizard` |
-| client options | the private page with every client link, and its address | `termit-uv options` |
-| join the mesh | asks for the server URL and an invite code | `termit-uv enroll …` |
-| lift a block | asks the server to verify this node and let it back in | `termit-uv unblock` |
-| move to another domain | relocates the node to a new domain (Scenario C) | `termit-uv migrate --relocate …` |
-| sync now | fetch the peer set now instead of waiting for the daily sync | `termit-uv sync` |
-| check drift | report whether the running core matches the server | `termit-uv sync --check` |
-| devices | list, add or remove this node's own devices | `termit-uv device …` |
-| print vless URI | the URI of this node's own device | `termit-uv uri` |
-| egress (WARP) | show, switch between `all`, `off` and `selected`, or rotate the device | `termit-uv warp …` |
-| QUIC transport | turn the second transport on or off; the answer defaults to what the node already does | `termit-uv init --hysteria` / `--no-hysteria` |
-| firewall | the host table: status, on, off, confirm, refresh, restore | `termit-uv firewall …` |
-| bans | what the guard banned, and your own permanent blocks | `termit-uv bans …` |
-| guard | whether the ban engine runs, and what it banned | `termit-uv guard status` |
-| certificate | renew now; optionally force a reissue | `termit-uv renew-cert [--force]` |
-| decoy site | regenerate the site, optionally with another archetype | `termit-uv renew-site …` |
-| uninstall | asks twice, names what `--purge` takes | `termit-uv uninstall [--purge]` |
-| help | every command and flag | `termit-uv help` |
+Eight choices, each a group that opens its own screen; `0` goes back up. Every leaf prints the command it
+runs.
+
+**State** — *what this node is, and whether it is healthy*
+
+- `status` — domain, identity fingerprints, certificate, peers, last and next sync, WARP
+- `doctor` — host and node diagnostics; changes nothing
+
+**Network** — *counters, WARP, the second transport*
+
+- `net` — sample the TCP counters: is the node dropping, or the path?
+- `warp` — show the egress, switch between `all`, `off` and `selected`, or rotate the device
+- `transport` — turn Hysteria2 on UDP/443 on or off; the answer defaults to what the node already does
+
+**Clients** — *links, the client page, devices*
+
+- `options` — the private page with every client link, and its address
+- `uri` — the URI of this node's own device
+- `devices` — list, add or remove this node's own devices
+
+**Mesh** — *sync, enrollment, lifting a block*
+
+- `sync` — fetch the peer set now instead of waiting for the daily sync
+- `sync --check` — report whether the running core matches the server
+- `enroll` — join a mesh: the server URL and an invite code
+- `unblock` — ask the server to verify this node and let it back in
+
+**Defence** — *firewall, bans, the guard*
+
+- `firewall` — the host table: status, on, off, confirm, refresh, restore
+- `bans` — what the guard banned, and your own permanent blocks
+- `guard status` — whether the ban engine runs, and what it banned
+
+**Site** — *certificate and the masking site*
+
+- `renew-cert` — renew now; optionally force a reissue
+- `renew-site` — regenerate the site, optionally with another archetype
+
+**Node** — *install, relocate, uninstall*
+
+- `init` — install or converge; the first run asks for domain, email and WARP
+- `wizard` — the whole first installation as questions; remembers the answers between runs
+- `migrate --relocate` — move the node to another domain (Scenario C)
+- `uninstall` — asks twice, names what `--purge` takes
+
+**Help** — every command and flag.
 
 ## Server menu (`termit-mn`)
 
-| Item | What it does | The command it runs |
-|---|---|---|
-| status | server, database, prober, node table | `termit-mn status` |
-| nodes | list, show, approve, reject, block, unblock, remove, reissue, agent key, forget | `termit-mn uv …` |
-| invites | create, list, revoke codes | `termit-mn invite …` |
-| check now | the whole mesh, or one node | `termit-mn check now --all` / `termit-mn check now <node>` |
-| policy | show thresholds, or change one | `termit-mn policy …` |
-| subscription | rotate a node's subscription token | `termit-mn sub rotate <node>` |
-| admin token | replace the admin token you are using | `termit-mn admin rotate` |
-| backup | write a consistent snapshot | `termit-mn backup` |
-| restore from a snapshot | put the database and certificates back; asks for the archive and says the server must be stopped | `termit-mn restore --from … --force` |
-| firewall | the host table: status, on, off, confirm, refresh, restore | `termit-mn firewall …` |
-| bans | what the guard banned, and your own permanent blocks | `termit-mn bans …` |
-| guard | whether the ban engine runs, and what it banned | `termit-mn guard status` |
-| help | every command and flag | `termit-mn help` |
+Seven choices; `0` goes back up.
 
-The server menu is a front end for the admin CLI, so it needs what the admin CLI needs: a running
-server and the admin token. Give the token to the menu itself and every admin command it runs inherits it:
+**State** — *server, check, thresholds, the guard*
 
-```bash
-termit-mn menu --token-file /etc/termit/mn/admin.token
-```
+- `status` — server, database, prober, node table
+- `check now --all` / `check now <node>` — the whole mesh, or one node
+- `policy` — show thresholds, or change one
+- `guard status` — whether the ban engine runs, and what it banned
 
-The header names the credential the session runs on (`admin token from --token-file …`, from
-`TERMIT_MN_ADMIN_TOKEN`, or from `TERMIT_MN_ADMIN_TOKEN_FILE`), says plainly when there is none, and the
-admin actions then refuse to run in the CLI's own words. `--config` and `--socket` work the same way.
-The local commands — `backup`, `restore`, `firewall`, `bans`, `guard` — read the host rather than the
-API, take none of those flags, and the menu leaves them out of what it passes.
+**Nodes** — *the mesh, one verb at a time*
 
-The node menu takes `--config` for the same reason: `termit-uv menu --config /path/to/config.yaml`
-inspects and acts on that node, not on the default one.
+- `uv list` — every node with its domain, state and last contact
+- `uv show`, `uv approve`, `uv reject`, `uv block`, `uv unblock`, `uv rm`, `uv reissue`, `uv agentkey`,
+  `uv forget` — each asks which node, from a list of the mesh rather than an id, and the two that break
+  something (`reissue`, `forget`) confirm first
 
-Starting the server is deliberately absent. `termit-mn serve` belongs to the systemd unit, where its log is
-collected; a menu that starts a long-running foreground server would hide that log behind a menu
-screen. The same reasoning keeps four other commands out: `termit-uv agent` and `guard run`, which are
-loops the units own; `firewall rollback`, which is the rollback timer's own command and says so in its
-help; and `version`, which is in the header of every screen. `termit-mn init` stays out too — the menu
-talks to a running server, and there is no server yet when that command is the one you need. Everything
-else the binary accepts has a menu entry, and `help` prints the full list — and since every entry runs
-the command line it prints, an entry cannot do anything the CLI cannot.
+**Invites** — *codes for new nodes*
 
+- `invite list`, `invite create` (with a note), `invite revoke`
+
+**Subscription** — *rotate a node's subscription token*
+
+- `sub rotate` — asks which node and, optionally, the server's public name
+
+**Defence** — *firewall and bans*
+
+- `firewall` — the host table: status, on, off, confirm, refresh, restore
+- `bans` — what the guard banned, and your own permanent blocks
+
+**Service** — *token, backups, restore*
+
+- `admin rotate` — replace the admin token you are using
+- `backup` — write a consistent snapshot
+- `restore` — put the database and certificates back; asks for the archive and says the server must be stopped
+
+**Help** — every command and flag.
 ## Colour
 
 Colour is used when stdout is a terminal. `NO_COLOR=1` (any value) or `TERM=dumb` turns it off, and

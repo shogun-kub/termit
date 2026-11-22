@@ -4,8 +4,6 @@
 package menuplan
 
 import (
-	"fmt"
-
 	"github.com/shogun-kub/termit/internal/i18n"
 	"github.com/shogun-kub/termit/internal/termui"
 )
@@ -44,28 +42,12 @@ func Bans() []Option {
 	}
 }
 
-// Choose draws the options and returns the argv of the one picked. An option that asks for a value
-// prompts first and appends the answer; an empty answer is refused, because every one of them names the
-// thing the command acts on.
-func Choose(ui *termui.UI, tr i18n.Translator, options []Option) ([][]string, error) {
-	items := make([]termui.Item, len(options))
-	for i, option := range options {
-		items[i] = termui.Item{Label: tr.T(option.Label), Hint: tr.T(option.Hint)}
-	}
-	answer, err := ui.Menu(items)
-	if err != nil || answer == "" {
-		return nil, err
-	}
-	index, err := termui.Index(answer)
-	if err != nil {
-		return nil, err
-	}
-	if index >= len(options) {
-		return nil, fmt.Errorf("%q is not one of the choices", answer)
-	}
-	argv := append([]string(nil), options[index].Argv...)
-	if ask := options[index].Ask; ask != "" {
-		value, err := ui.Required(tr.T(ask), "")
+// Run turns one option into the command it names, asking the question the option declares. The choice
+// itself belongs to the caller's menu: an option is a line, not a screen.
+func (o Option) Run(ui *termui.UI, tr i18n.Translator) ([][]string, error) {
+	argv := append([]string(nil), o.Argv...)
+	if o.Ask != "" {
+		value, err := ui.Required(tr.T(o.Ask), "")
 		if err != nil {
 			return nil, err
 		}

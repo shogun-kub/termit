@@ -26,6 +26,9 @@ type menuEntry struct {
 	// plan builds the commands to run. A nil plan with a nil error means the operator cancelled; an
 	// error means the answer was unusable and nothing runs.
 	plan func(ui *termui.UI) ([][]string, error)
+	// children, when set, opens a level instead of running a command: the entry is a group, and the
+	// list stays short enough to read.
+	children func() []menuEntry
 }
 
 // runMenu is the interactive front end: the binary with no arguments on a terminal, or `termit-uv menu`.
@@ -59,15 +62,22 @@ func (a *application) runMenu(args []string) int {
 	a.tr = i18n.New(i18n.Console(lang, a.env))
 
 	ui := termui.New(a.stdin(), a.stdout, a.menuStyle())
-	entries := a.menuEntries()
+	levels := []menuLevel{{entries: a.menuEntries()}}
 
 	for {
+		level := levels[len(levels)-1]
 		ui.Clear()
 		a.menuHeader(ui)
-		items := make([]termui.Item, len(entries))
 		tr := a.translator()
-		for i, entry := range entries {
-			items[i] = termui.Item{Label: tr.T(entry.labelKey), Hint: tr.T(entry.hintKey)}
+		if level.title != "" {
+			ui.Title(tr.T(level.title))
+		}
+		items := make([]termui.Item, 0, len(level.entries)+1)
+		for _, entry := range level.entries {
+			items = append(items, termui.Item{Label: tr.T(entry.labelKey), Hint: tr.T(entry.hintKey)})
+		}
+		if len(levels) > 1 {
+			items = append(items, termui.Item{Key: "0", Label: tr.T(i18n.MenuBackLabel), Hint: tr.T(i18n.MenuBackHint)})
 		}
 		choice, err := ui.Menu(items)
 		if errors.Is(err, io.EOF) {
@@ -81,22 +91,31 @@ func (a *application) runMenu(args []string) int {
 		if choice == "" {
 			return exitOK
 		}
+		if choice == "0" && len(levels) > 1 {
+			levels = levels[:len(levels)-1]
+			continue
+		}
 		index, err := termui.Index(choice)
 		if err != nil {
 			ui.Error(err.Error())
 			continue
 		}
-		if index >= len(entries) {
-			ui.Error(a.translator().Tf(i18n.MenuPastEnd, choice))
+		if index >= len(level.entries) {
+			ui.Error(tr.Tf(i18n.MenuPastEnd, choice))
+			continue
+		}
+		entry := level.entries[index]
+		if entry.children != nil {
+			levels = append(levels, menuLevel{entries: entry.children(), title: entry.labelKey})
 			continue
 		}
 
-		plan, err := entries[index].plan(ui)
+		plan, err := entry.plan(ui)
 		switch {
 		case err != nil:
 			ui.Error(err.Error())
 		case plan == nil:
-			ui.Say(a.translator().T(i18n.MenuCancelled))
+			ui.Say(tr.T(i18n.MenuCancelled))
 		default:
 			if code := a.runPlan(ui, plan, base); code != exitOK {
 				// A failed command has explained itself; keep the summary on screen long enough to read.
@@ -108,6 +127,13 @@ func (a *application) runMenu(args []string) int {
 			return exitOK
 		}
 	}
+}
+
+// menuLevel is one screen of the menu: a list of entries and the group it belongs to, which the header
+// repeats so a deep screen still says where the operator is.
+type menuLevel struct {
+	entries []menuEntry
+	title   i18n.Key
 }
 
 // runPlan runs the commands an entry produced, one at a time, and stops at the first failure. The flags
@@ -162,120 +188,96 @@ func (a *application) menuHeader(ui *termui.UI) {
 	ui.Blank()
 }
 
-// menuEntries is the menu in order. Every entry answers with argv, never with behaviour.
+// menuEntries is the menu in order. Every entry answers with argv, never with behaviour, and every level
+// stays under ten choices so a screen can be read without scrolling.
 func (a *application) menuEntries() []menuEntry {
 	return []menuEntry{
-		{
-			labelKey: i18n.MenuStatusLabel,
-			hintKey:  i18n.MenuStatusHint,
-			plan:     fixed("status"),
-		},
-		{
-			labelKey: i18n.MenuDoctorLabel,
-			hintKey:  i18n.MenuDoctorHint,
-			plan:     fixed("doctor"),
-		},
-		{
-			labelKey: i18n.MenuNetLabel,
-			hintKey:  i18n.MenuNetHint,
-			plan:     fixed("net"),
-		},
-		{
-			labelKey: i18n.MenuInstallLabel,
-			hintKey:  i18n.MenuInstallHint,
-			plan:     a.planInstall,
-		},
-		{
-			labelKey: i18n.MenuWizardLabel,
-			hintKey:  i18n.MenuWizardHint,
-			plan:     fixed("wizard"),
-		},
-		{
-			labelKey: i18n.MenuOptionsLabel,
-			hintKey:  i18n.MenuOptionsHint,
-			plan:     fixed("options"),
-		},
-		{
-			labelKey: i18n.MenuEnrollLabel,
-			hintKey:  i18n.MenuEnrollHint,
-			plan:     a.planEnroll,
-		},
-		{
-			labelKey: i18n.MenuUnblockLabel,
-			hintKey:  i18n.MenuUnblockHint,
-			plan:     fixed("unblock"),
-		},
-		{
-			labelKey: i18n.MenuMigrateLabel,
-			hintKey:  i18n.MenuMigrateHint,
-			plan:     a.planMigrate,
-		},
-		{
-			labelKey: i18n.MenuSyncLabel,
-			hintKey:  i18n.MenuSyncHint,
-			plan:     fixed("sync"),
-		},
-		{
-			labelKey: i18n.MenuDriftLabel,
-			hintKey:  i18n.MenuDriftHint,
-			plan:     fixed("sync", "--check"),
-		},
-		{
-			labelKey: i18n.MenuDevicesLabel,
-			hintKey:  i18n.MenuDevicesHint,
-			plan:     a.planDevices,
-		},
-		{
-			labelKey: i18n.MenuURILabel,
-			hintKey:  i18n.MenuURIHint,
-			plan:     fixed("uri"),
-		},
-		{
-			labelKey: i18n.MenuWarpLabel,
-			hintKey:  i18n.MenuWarpHint,
-			plan:     a.planWarp,
-		},
-		{
-			labelKey: i18n.MenuTransportLabel,
-			hintKey:  i18n.MenuTransportHint,
-			plan:     a.planTransport,
-		},
-		{
-			labelKey: i18n.MenuFirewallLabel,
-			hintKey:  i18n.MenuFirewallHint,
-			plan:     a.planFirewall,
-		},
-		{
-			labelKey: i18n.MenuBansLabel,
-			hintKey:  i18n.MenuBansHint,
-			plan:     a.planBans,
-		},
-		{
-			labelKey: i18n.MenuGuardLabel,
-			hintKey:  i18n.MenuGuardHint,
-			plan:     fixed("guard", "status"),
-		},
-		{
-			labelKey: i18n.MenuCertificateLabel,
-			hintKey:  i18n.MenuCertificateHint,
-			plan:     a.planCertificate,
-		},
-		{
-			labelKey: i18n.MenuDecoyLabel,
-			hintKey:  i18n.MenuDecoyHint,
-			plan:     a.planDecoy,
-		},
-		{
-			labelKey: i18n.MenuUninstallLabel,
-			hintKey:  i18n.MenuUninstallHint,
-			plan:     a.planUninstall,
-		},
-		{
-			labelKey: i18n.MenuHelpLabel,
-			hintKey:  i18n.MenuHelpHint,
-			plan:     fixed("help"),
-		},
+		{labelKey: i18n.MenuGroupStateLabel, hintKey: i18n.MenuGroupStateHint, children: func() []menuEntry {
+			return []menuEntry{
+				{labelKey: i18n.MenuStatusLabel, hintKey: i18n.MenuStatusHint, plan: fixed("status")},
+				{labelKey: i18n.MenuDoctorLabel, hintKey: i18n.MenuDoctorHint, plan: fixed("doctor")},
+			}
+		}},
+		{labelKey: i18n.MenuGroupNetworkLabel, hintKey: i18n.MenuGroupNetworkHint, children: func() []menuEntry {
+			return []menuEntry{
+				{labelKey: i18n.MenuNetLabel, hintKey: i18n.MenuNetHint, plan: fixed("net")},
+				{labelKey: i18n.MenuWarpLabel, hintKey: i18n.MenuWarpHint, children: a.warpEntries},
+				{labelKey: i18n.MenuTransportLabel, hintKey: i18n.MenuTransportHint, plan: a.planTransport},
+			}
+		}},
+		{labelKey: i18n.MenuGroupClientsLabel, hintKey: i18n.MenuGroupClientsHint, children: func() []menuEntry {
+			return []menuEntry{
+				{labelKey: i18n.MenuOptionsLabel, hintKey: i18n.MenuOptionsHint, plan: fixed("options")},
+				{labelKey: i18n.MenuURILabel, hintKey: i18n.MenuURIHint, plan: fixed("uri")},
+				{labelKey: i18n.MenuDevicesLabel, hintKey: i18n.MenuDevicesHint, children: a.deviceEntries},
+			}
+		}},
+		{labelKey: i18n.MenuGroupMeshLabel, hintKey: i18n.MenuGroupMeshHint, children: func() []menuEntry {
+			return []menuEntry{
+				{labelKey: i18n.MenuSyncLabel, hintKey: i18n.MenuSyncHint, plan: fixed("sync")},
+				{labelKey: i18n.MenuDriftLabel, hintKey: i18n.MenuDriftHint, plan: fixed("sync", "--check")},
+				{labelKey: i18n.MenuEnrollLabel, hintKey: i18n.MenuEnrollHint, plan: a.planEnroll},
+				{labelKey: i18n.MenuUnblockLabel, hintKey: i18n.MenuUnblockHint, plan: fixed("unblock")},
+			}
+		}},
+		{labelKey: i18n.MenuGroupDefenceLabel, hintKey: i18n.MenuGroupDefenceHint, children: func() []menuEntry {
+			return []menuEntry{
+				{labelKey: i18n.MenuFirewallLabel, hintKey: i18n.MenuFirewallHint,
+					children: func() []menuEntry { return a.optionEntries(menuplan.Firewall()) }},
+				{labelKey: i18n.MenuBansLabel, hintKey: i18n.MenuBansHint,
+					children: func() []menuEntry { return a.optionEntries(menuplan.Bans()) }},
+				{labelKey: i18n.MenuGuardLabel, hintKey: i18n.MenuGuardHint, plan: fixed("guard", "status")},
+			}
+		}},
+		{labelKey: i18n.MenuGroupSiteLabel, hintKey: i18n.MenuGroupSiteHint, children: func() []menuEntry {
+			return []menuEntry{
+				{labelKey: i18n.MenuCertificateLabel, hintKey: i18n.MenuCertificateHint, plan: a.planCertificate},
+				{labelKey: i18n.MenuDecoyLabel, hintKey: i18n.MenuDecoyHint, plan: a.planDecoy},
+			}
+		}},
+		{labelKey: i18n.MenuGroupNodeLabel, hintKey: i18n.MenuGroupNodeHint, children: func() []menuEntry {
+			return []menuEntry{
+				{labelKey: i18n.MenuInstallLabel, hintKey: i18n.MenuInstallHint, plan: a.planInstall},
+				{labelKey: i18n.MenuWizardLabel, hintKey: i18n.MenuWizardHint, plan: fixed("wizard")},
+				{labelKey: i18n.MenuMigrateLabel, hintKey: i18n.MenuMigrateHint, plan: a.planMigrate},
+				{labelKey: i18n.MenuUninstallLabel, hintKey: i18n.MenuUninstallHint, plan: a.planUninstall},
+			}
+		}},
+		{labelKey: i18n.MenuHelpLabel, hintKey: i18n.MenuHelpHint, plan: fixed("help")},
 	}
+}
+
+// warpEntries is where proxied traffic leaves. The four mode changes and the rotation are separate
+// commands, so they are separate lines.
+func (a *application) warpEntries() []menuEntry {
+	return []menuEntry{
+		{labelKey: i18n.SubWarpShowLabel, hintKey: i18n.SubWarpShowHint, plan: fixed("warp", "status")},
+		{labelKey: i18n.SubWarpAllLabel, hintKey: i18n.SubWarpAllHint, plan: fixed("warp", "mode", "all")},
+		{labelKey: i18n.SubWarpOffLabel, hintKey: i18n.SubWarpOffHint, plan: fixed("warp", "mode", "off")},
+		{labelKey: i18n.SubWarpSelectedLabel, hintKey: i18n.SubWarpSelectedHint, plan: a.planWarpSelected},
+		{labelKey: i18n.SubWarpRotateLabel, hintKey: i18n.SubWarpRotateHint, plan: a.planWarpRotate},
+	}
+}
+
+// deviceEntries is the node's own devices: the ones that use it without the server.
+func (a *application) deviceEntries() []menuEntry {
+	return []menuEntry{
+		{labelKey: i18n.SubDevicesListLabel, hintKey: i18n.SubDevicesListHint, plan: fixed("device", "list")},
+		{labelKey: i18n.SubDevicesAddLabel, hintKey: i18n.SubDevicesAddHint, plan: a.planDeviceAdd},
+		{labelKey: i18n.SubDevicesRemoveLabel, hintKey: i18n.SubDevicesRemoveHint, plan: a.planDeviceRemove},
+	}
+}
+
+// optionEntries turns a shared table into a level. The question an option declares is asked when the
+// option is chosen, not when the level is drawn.
+func (a *application) optionEntries(options []menuplan.Option) []menuEntry {
+	entries := make([]menuEntry, len(options))
+	for i, option := range options {
+		option := option
+		entries[i] = menuEntry{labelKey: option.Label, hintKey: option.Hint,
+			plan: func(ui *termui.UI) ([][]string, error) { return option.Run(ui, a.translator()) }}
+	}
+	return entries
 }
 
 // labelOf is the entry's label in one language. It exists so tests can find an entry without
@@ -386,82 +388,49 @@ func (a *application) planEnroll(ui *termui.UI) ([][]string, error) {
 	return [][]string{{"enroll", "--invite", invite, "--mn", mn}}, nil
 }
 
-// planDevices handles the local devices on this node.
-func (a *application) planDevices(ui *termui.UI) ([][]string, error) {
-	tr := a.translator()
-	ui.Blank()
-	choice, err := ui.Menu([]termui.Item{
-		{Label: tr.T(i18n.SubDevicesListLabel), Hint: tr.T(i18n.SubDevicesListHint)},
-		{Label: tr.T(i18n.SubDevicesAddLabel), Hint: tr.T(i18n.SubDevicesAddHint)},
-		{Label: tr.T(i18n.SubDevicesRemoveLabel), Hint: tr.T(i18n.SubDevicesRemoveHint)},
-	})
-	if err != nil || choice == "" {
+// planDeviceAdd names a new local device: a phone, a laptop, whatever only this node serves.
+func (a *application) planDeviceAdd(ui *termui.UI) ([][]string, error) {
+	label, err := ui.Required(a.translator().T(i18n.PromptDeviceLabel), "phone")
+	if err != nil {
 		return nil, err
 	}
-	switch choice {
-	case "1":
-		return [][]string{{"device", "list"}}, nil
-	case "2":
-		label, err := ui.Required(tr.T(i18n.PromptDeviceLabel), "phone")
-		if err != nil {
-			return nil, err
-		}
-		return [][]string{{"device", "add", "--label", label}}, nil
-	default:
-		label, err := ui.Required(tr.T(i18n.PromptDeviceRemove), "")
-		if err != nil {
-			return nil, err
-		}
-		return [][]string{{"device", "remove", label}}, nil
-	}
+	return [][]string{{"device", "add", "--label", label}}, nil
 }
 
-// planWarp changes where proxied traffic leaves.
-func (a *application) planWarp(ui *termui.UI) ([][]string, error) {
-	tr := a.translator()
-	ui.Blank()
-	choice, err := ui.Menu([]termui.Item{
-		{Label: tr.T(i18n.SubWarpShowLabel), Hint: tr.T(i18n.SubWarpShowHint)},
-		{Label: tr.T(i18n.SubWarpAllLabel), Hint: tr.T(i18n.SubWarpAllHint)},
-		{Label: tr.T(i18n.SubWarpOffLabel), Hint: tr.T(i18n.SubWarpOffHint)},
-		{Label: tr.T(i18n.SubWarpSelectedLabel), Hint: tr.T(i18n.SubWarpSelectedHint)},
-		{Label: tr.T(i18n.SubWarpRotateLabel), Hint: tr.T(i18n.SubWarpRotateHint)},
-	})
-	if err != nil || choice == "" {
+// planDeviceRemove removes one by its label. An empty answer cancels: the device list is small, and
+// retyping a name is cheaper than removing the wrong one.
+func (a *application) planDeviceRemove(ui *termui.UI) ([][]string, error) {
+	label, err := ui.Prompt(a.translator().T(i18n.PromptDeviceRemove), "")
+	if err != nil {
 		return nil, err
 	}
-	switch choice {
-	case "1":
-		return [][]string{{"warp", "status"}}, nil
-	case "2":
-		return [][]string{{"warp", "mode", "all"}}, nil
-	case "3":
-		return [][]string{{"warp", "mode", "off"}}, nil
-	case "4":
-		domains, err := ui.Required(tr.T(i18n.PromptWarpDomains), "")
-		if err != nil {
-			return nil, err
-		}
-		return [][]string{{"warp", "mode", "selected", "--selected", domains}}, nil
-	default:
-		rotate, err := ui.Confirm(tr.T(i18n.PromptWarpRotate), false)
-		if err != nil {
-			return nil, err
-		}
-		if !rotate {
-			return nil, nil
-		}
-		return [][]string{{"warp", "rotate"}}, nil
+	label = strings.TrimSpace(label)
+	if label == "" {
+		return nil, nil
 	}
+	return [][]string{{"device", "remove", label}}, nil
 }
 
-// planFirewall and planBans are the two groups the server's menu draws as well.
-func (a *application) planFirewall(ui *termui.UI) ([][]string, error) {
-	return menuplan.Choose(ui, a.translator(), menuplan.Firewall())
+// planWarpSelected sends only the named domains through WARP.
+func (a *application) planWarpSelected(ui *termui.UI) ([][]string, error) {
+	domains, err := ui.Required(a.translator().T(i18n.PromptWarpDomains), "")
+	if err != nil {
+		return nil, err
+	}
+	return [][]string{{"warp", "mode", "selected", "--selected", domains}}, nil
 }
 
-func (a *application) planBans(ui *termui.UI) ([][]string, error) {
-	return menuplan.Choose(ui, a.translator(), menuplan.Bans())
+// planWarpRotate moves the node to a fresh WARP identity, which is what gets it out of an exit address
+// Cloudflare has started treating as suspicious.
+func (a *application) planWarpRotate(ui *termui.UI) ([][]string, error) {
+	rotate, err := ui.Confirm(a.translator().T(i18n.PromptWarpRotate), false)
+	if err != nil {
+		return nil, err
+	}
+	if !rotate {
+		return nil, nil
+	}
+	return [][]string{{"warp", "rotate"}}, nil
 }
 
 // planMigrate moves the node to another domain. The configured domain is the default, so a move already

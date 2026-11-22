@@ -24,6 +24,8 @@ type menuEntry struct {
 	labelKey i18n.Key
 	hintKey  i18n.Key
 	plan     func(ui *termui.UI) ([][]string, error)
+	// children, when set, opens a level instead of running a command: the entry is a group.
+	children func() []menuEntry
 	// local marks an entry whose command takes no admin flags: the menu's own flags are not passed to it,
 	// because a flag set that never declared them refuses them.
 	local bool
@@ -128,13 +130,21 @@ func withFlags(argv, base []string) []string {
 }
 
 func (m *menu) loop() int {
-	entries := m.entries()
+	levels := []menuLevel{{entries: m.entries()}}
 	for {
+		level := levels[len(levels)-1]
 		m.ui.Clear()
 		m.header()
-		items := make([]termui.Item, len(entries))
-		for i, entry := range entries {
-			items[i] = termui.Item{Label: m.translator().T(entry.labelKey), Hint: m.translator().T(entry.hintKey)}
+		tr := m.translator()
+		if level.title != "" {
+			m.ui.Title(tr.T(level.title))
+		}
+		items := make([]termui.Item, 0, len(level.entries)+1)
+		for _, entry := range level.entries {
+			items = append(items, termui.Item{Label: tr.T(entry.labelKey), Hint: tr.T(entry.hintKey)})
+		}
+		if len(levels) > 1 {
+			items = append(items, termui.Item{Key: "0", Label: tr.T(i18n.MenuBackLabel), Hint: tr.T(i18n.MenuBackHint)})
 		}
 		choice, err := m.ui.Menu(items)
 		if errors.Is(err, io.EOF) {
@@ -147,19 +157,27 @@ func (m *menu) loop() int {
 		if choice == "" {
 			return exitOK
 		}
+		if choice == "0" && len(levels) > 1 {
+			levels = levels[:len(levels)-1]
+			continue
+		}
 		index, err := termui.Index(choice)
-		if err != nil || index >= len(entries) {
+		if err != nil || index >= len(level.entries) {
 			m.ui.Error(fmt.Sprintf("%q is not one of the choices", choice))
 			continue
 		}
 
-		entry := entries[index]
+		entry := level.entries[index]
+		if entry.children != nil {
+			levels = append(levels, menuLevel{entries: entry.children(), title: entry.labelKey})
+			continue
+		}
 		plan, err := entry.plan(m.ui)
 		switch {
 		case err != nil:
 			m.ui.Error(err.Error())
 		case plan == nil:
-			m.ui.Say(m.translator().T(i18n.MenuCancelled))
+			m.ui.Say(tr.T(i18n.MenuCancelled))
 		default:
 			if code := m.runPlan(plan, !entry.local); code != exitOK {
 				_ = m.ui.Pause()
@@ -170,6 +188,13 @@ func (m *menu) loop() int {
 			return exitOK
 		}
 	}
+}
+
+// menuLevel is one screen: a list of entries and the group it belongs to, which the header repeats so a
+// deep screen still says where the operator is.
+type menuLevel struct {
+	entries []menuEntry
+	title   i18n.Key
 }
 
 func (m *menu) runPlan(plan [][]string, inherit bool) int {
@@ -209,25 +234,139 @@ func (m *menu) header() {
 // starting a long-running server from a menu would hide its log.
 func (m *menu) entries() []menuEntry {
 	return []menuEntry{
-		{labelKey: i18n.MnEntryStatusLabel, hintKey: i18n.MnEntryStatusHint, plan: fixedMn("status")},
-		{labelKey: i18n.MnEntryNodesLabel, hintKey: i18n.MnEntryNodesHint, plan: m.planNodes},
-		{labelKey: i18n.MnEntryInvitesLabel, hintKey: i18n.MnEntryInvitesHint, plan: m.planInvites},
-		{labelKey: i18n.MnEntryCheckLabel, hintKey: i18n.MnEntryCheckHint, plan: m.planCheck},
-		{labelKey: i18n.MnEntryPolicyLabel, hintKey: i18n.MnEntryPolicyHint, plan: m.planPolicy},
+		{labelKey: i18n.MnGroupStateLabel, hintKey: i18n.MnGroupStateHint, children: func() []menuEntry {
+			return []menuEntry{
+				{labelKey: i18n.MnEntryStatusLabel, hintKey: i18n.MnEntryStatusHint, plan: fixedMn("status")},
+				{labelKey: i18n.MnEntryCheckLabel, hintKey: i18n.MnEntryCheckHint, plan: m.planCheck},
+				{labelKey: i18n.MnEntryPolicyLabel, hintKey: i18n.MnEntryPolicyHint, plan: m.planPolicy},
+				{labelKey: i18n.MnEntryGuardLabel, hintKey: i18n.MnEntryGuardHint, plan: fixedMn("guard", "status"), local: true},
+			}
+		}},
+		// The node verbs are leaves of their own: the picker asks which node, so a menu of verbs is one
+		// screen and each verb is one command.
+		{labelKey: i18n.MnEntryNodesLabel, hintKey: i18n.MnEntryNodesHint, children: func() []menuEntry {
+			return []menuEntry{
+				{labelKey: i18n.MnNodesListLabel, hintKey: i18n.MnNodesListHint, plan: fixedMn("uv", "list")},
+				{labelKey: i18n.MnNodesShowLabel, hintKey: i18n.MnNodesShowHint, plan: m.nodeVerb("show")},
+				{labelKey: i18n.MnNodesApproveLabel, hintKey: i18n.MnNodesApproveHint, plan: m.nodeVerb("approve")},
+				{labelKey: i18n.MnNodesRejectLabel, hintKey: i18n.MnNodesRejectHint, plan: m.nodeVerb("reject")},
+				{labelKey: i18n.MnNodesBlockLabel, hintKey: i18n.MnNodesBlockHint, plan: m.nodeVerb("block")},
+				{labelKey: i18n.MnNodesUnblockLabel, hintKey: i18n.MnNodesUnblockHint, plan: m.nodeVerb("unblock")},
+				{labelKey: i18n.MnNodesRemoveLabel, hintKey: i18n.MnNodesRemoveHint, plan: m.nodeVerb("rm")},
+				{labelKey: i18n.MnNodesReissueLabel, hintKey: i18n.MnNodesReissueHint, plan: m.nodeVerb("reissue")},
+				{labelKey: i18n.MnNodesAgentKeyLabel, hintKey: i18n.MnNodesAgentKeyHint, plan: m.nodeVerb("agentkey")},
+				{labelKey: i18n.MnNodesForgetLabel, hintKey: i18n.MnNodesForgetHint, plan: m.nodeVerb("forget")},
+			}
+		}},
+		{labelKey: i18n.MnEntryInvitesLabel, hintKey: i18n.MnEntryInvitesHint, children: func() []menuEntry {
+			return []menuEntry{
+				{labelKey: i18n.MnInvitesListLabel, hintKey: i18n.MnInvitesListHint, plan: fixedMn("invite", "list")},
+				{labelKey: i18n.MnInvitesCreateLabel, hintKey: i18n.MnInvitesCreateHint, plan: m.planInviteCreate},
+				{labelKey: i18n.MnInvitesRevokeLabel, hintKey: i18n.MnInvitesRevokeHint, plan: m.planInviteRevoke},
+			}
+		}},
 		{labelKey: i18n.MnEntrySubLabel, hintKey: i18n.MnEntrySubHint, plan: m.planSubscription},
-		{labelKey: i18n.MnEntryAdminLabel, hintKey: i18n.MnEntryAdminHint, plan: m.planAdminToken},
-		// These two take no admin flags: `backup` writes a local snapshot, `help` prints the usage.
-		{labelKey: i18n.MnEntryBackupLabel, hintKey: i18n.MnEntryBackupHint, plan: fixedMn("backup"), local: true},
-		{labelKey: i18n.MnEntryRestoreLabel, hintKey: i18n.MnEntryRestoreHint, plan: m.planRestore, local: true},
-		// The hardening surface is local too: these commands read the host, not the API, so the admin
-		// flags the menu carries would be refused by their flag sets.
-		{labelKey: i18n.MnEntryFirewallLabel, hintKey: i18n.MnEntryFirewallHint, plan: m.planFirewall, local: true},
-		{labelKey: i18n.MnEntryBansLabel, hintKey: i18n.MnEntryBansHint, plan: m.planBans, local: true},
-		{labelKey: i18n.MnEntryGuardLabel, hintKey: i18n.MnEntryGuardHint, plan: fixedMn("guard", "status"), local: true},
+		// The hardening surface is local: these commands read the host, not the API, so the admin flags the
+		// menu carries would be refused by their flag sets.
+		{labelKey: i18n.MnGroupDefenceLabel, hintKey: i18n.MnGroupDefenceHint, children: func() []menuEntry {
+			return []menuEntry{
+				{labelKey: i18n.MnEntryFirewallLabel, hintKey: i18n.MnEntryFirewallHint,
+					children: func() []menuEntry { return optionsAsEntries(menuplan.Firewall(), m.translator()) }},
+				{labelKey: i18n.MnEntryBansLabel, hintKey: i18n.MnEntryBansHint,
+					children: func() []menuEntry { return optionsAsEntries(menuplan.Bans(), m.translator()) }},
+			}
+		}},
+		{labelKey: i18n.MnGroupServiceLabel, hintKey: i18n.MnGroupServiceHint, children: func() []menuEntry {
+			return []menuEntry{
+				{labelKey: i18n.MnEntryAdminLabel, hintKey: i18n.MnEntryAdminHint, plan: m.planAdminToken},
+				{labelKey: i18n.MnEntryBackupLabel, hintKey: i18n.MnEntryBackupHint, plan: fixedMn("backup"), local: true},
+				{labelKey: i18n.MnEntryRestoreLabel, hintKey: i18n.MnEntryRestoreHint, plan: m.planRestore, local: true},
+			}
+		}},
 		{labelKey: i18n.MnEntryHelpLabel, hintKey: i18n.MnEntryHelpHint, plan: fixedMn("help"), local: true},
 	}
 }
 
+// optionsAsEntries turns a shared table into a level; the questions an option declares are asked when the
+// option is chosen. Firewall and bans are host commands, so their leaves take no admin flags.
+func optionsAsEntries(options []menuplan.Option, tr i18n.Translator) []menuEntry {
+	entries := make([]menuEntry, len(options))
+	for i, option := range options {
+		option := option
+		entries[i] = menuEntry{labelKey: option.Label, hintKey: option.Hint, local: true,
+			plan: func(ui *termui.UI) ([][]string, error) { return option.Run(ui, tr) }}
+	}
+	return entries
+}
+
+// nodeVerb returns the plan for one `uv` verb: which node, then the reason or the confirmation the verb
+// needs. It is the whole of the old node sub-menu, one verb at a time.
+func (m *menu) nodeVerb(verb string) func(*termui.UI) ([][]string, error) {
+	return func(ui *termui.UI) ([][]string, error) {
+		tr := m.translator()
+		node, err := m.pickNode(ui)
+		if err != nil {
+			return nil, err
+		}
+		if node == "" {
+			return nil, nil
+		}
+		argv := []string{"uv", verb, node}
+		switch verb {
+		case "rm", "block":
+			reason, err := ui.Prompt(tr.T(i18n.MnPromptReason), "")
+			if err != nil {
+				return nil, err
+			}
+			if reason != "" {
+				argv = append(argv, "--reason", reason)
+			}
+		case "reissue", "forget":
+			// Both break something: a new key stops the old one, and a forgotten record stops the node
+			// itself from syncing until it enrolls again.
+			question := i18n.PromptReissue
+			if verb == "forget" {
+				question = i18n.PromptForget
+			}
+			sure, err := ui.Confirm(tr.T(question), false)
+			if err != nil {
+				return nil, err
+			}
+			if !sure {
+				return nil, nil
+			}
+		}
+		return [][]string{argv}, nil
+	}
+}
+
+// planInviteCreate makes a code, with a note so the operator remembers who it was for.
+func (m *menu) planInviteCreate(ui *termui.UI) ([][]string, error) {
+	tr := m.translator()
+	note, err := ui.Prompt(tr.T(i18n.MnPromptNote), "")
+	if err != nil {
+		return nil, err
+	}
+	argv := []string{"invite", "create"}
+	if note != "" {
+		argv = append(argv, "--note", note)
+	}
+	return [][]string{argv}, nil
+}
+
+// planInviteRevoke revokes a code. An empty answer cancels: the code is a thing the operator either has
+// or does not.
+func (m *menu) planInviteRevoke(ui *termui.UI) ([][]string, error) {
+	code, err := ui.Prompt(m.translator().T(i18n.MnPromptInviteCode), "")
+	if err != nil {
+		return nil, err
+	}
+	code = strings.TrimSpace(code)
+	if code == "" {
+		return nil, nil
+	}
+	return [][]string{{"invite", "revoke", code}}, nil
+}
 func fixedMn(argv ...string) func(*termui.UI) ([][]string, error) {
 	return func(*termui.UI) ([][]string, error) { return [][]string{argv}, nil }
 }
@@ -323,108 +462,6 @@ func (m *menu) meshNodes() ([]admin.NodeView, error) {
 	return m.nodes(ctx)
 }
 
-func (m *menu) planNodes(ui *termui.UI) ([][]string, error) {
-	tr := m.translator()
-	ui.Blank()
-	choice, err := ui.Menu([]termui.Item{
-		{Label: tr.T(i18n.MnNodesListLabel), Hint: tr.T(i18n.MnNodesListHint)},
-		{Label: tr.T(i18n.MnNodesShowLabel), Hint: tr.T(i18n.MnNodesShowHint)},
-		{Label: tr.T(i18n.MnNodesApproveLabel), Hint: tr.T(i18n.MnNodesApproveHint)},
-		{Label: tr.T(i18n.MnNodesRejectLabel), Hint: tr.T(i18n.MnNodesRejectHint)},
-		{Label: tr.T(i18n.MnNodesBlockLabel), Hint: tr.T(i18n.MnNodesBlockHint)},
-		{Label: tr.T(i18n.MnNodesUnblockLabel), Hint: tr.T(i18n.MnNodesUnblockHint)},
-		{Label: tr.T(i18n.MnNodesRemoveLabel), Hint: tr.T(i18n.MnNodesRemoveHint)},
-		{Label: tr.T(i18n.MnNodesReissueLabel), Hint: tr.T(i18n.MnNodesReissueHint)},
-		{Label: tr.T(i18n.MnNodesAgentKeyLabel), Hint: tr.T(i18n.MnNodesAgentKeyHint)},
-		{Label: tr.T(i18n.MnNodesForgetLabel), Hint: tr.T(i18n.MnNodesForgetHint)},
-	})
-	if err != nil || choice == "" {
-		return nil, err
-	}
-	verb := map[string]string{
-		"1": "list", "2": "show", "3": "approve", "4": "reject",
-		"5": "block", "6": "unblock", "7": "rm",
-		"8": "reissue", "9": "agentkey", "10": "forget",
-	}[choice]
-	if verb == "" {
-		return nil, fmt.Errorf("%q is not one of the choices", choice)
-	}
-	if verb == "list" {
-		return [][]string{{"uv", "list"}}, nil
-	}
-	node, err := m.pickNode(ui)
-	if err != nil {
-		return nil, err
-	}
-	if node == "" {
-		return nil, nil
-	}
-
-	argv := []string{"uv", verb, node}
-	switch verb {
-	case "rm", "block":
-		reason, err := ui.Prompt(tr.T(i18n.MnPromptReason), "")
-		if err != nil {
-			return nil, err
-		}
-		if reason != "" {
-			argv = append(argv, "--reason", reason)
-		}
-	case "reissue", "forget":
-		// Both break something: a new key stops the old one, and a forgotten record stops the node
-		// itself from syncing until it enrolls again.
-		question := i18n.PromptReissue
-		if verb == "forget" {
-			question = i18n.PromptForget
-		}
-		sure, err := ui.Confirm(tr.T(question), false)
-		if err != nil {
-			return nil, err
-		}
-		if !sure {
-			return nil, nil
-		}
-	}
-	return [][]string{argv}, nil
-}
-
-func (m *menu) planInvites(ui *termui.UI) ([][]string, error) {
-	tr := m.translator()
-	ui.Blank()
-	choice, err := ui.Menu([]termui.Item{
-		{Label: tr.T(i18n.MnInvitesListLabel), Hint: tr.T(i18n.MnInvitesListHint)},
-		{Label: tr.T(i18n.MnInvitesCreateLabel), Hint: tr.T(i18n.MnInvitesCreateHint)},
-		{Label: tr.T(i18n.MnInvitesRevokeLabel), Hint: tr.T(i18n.MnInvitesRevokeHint)},
-	})
-	if err != nil || choice == "" {
-		return nil, err
-	}
-	switch choice {
-	case "1":
-		return [][]string{{"invite", "list"}}, nil
-	case "2":
-		note, err := ui.Prompt(tr.T(i18n.MnPromptNote), "")
-		if err != nil {
-			return nil, err
-		}
-		argv := []string{"invite", "create"}
-		if note != "" {
-			argv = append(argv, "--note", note)
-		}
-		return [][]string{argv}, nil
-	default:
-		code, err := ui.Prompt(tr.T(i18n.MnPromptInviteCode), "")
-		if err != nil {
-			return nil, err
-		}
-		code = strings.TrimSpace(code)
-		if code == "" {
-			return nil, nil
-		}
-		return [][]string{{"invite", "revoke", code}}, nil
-	}
-}
-
 func (m *menu) planCheck(ui *termui.UI) ([][]string, error) {
 	tr := m.translator()
 	whole, err := ui.Confirm(tr.T(i18n.MnPromptCheckAll), true)
@@ -467,16 +504,6 @@ func (m *menu) planPolicy(ui *termui.UI) ([][]string, error) {
 		return nil, err
 	}
 	return [][]string{{"policy", "set", key, value}}, nil
-}
-
-// planFirewall and planBans are the two groups the node's menu draws as well; `planRestore` is the one
-// destructive local command, so it asks for the archive and then says what it replaces.
-func (m *menu) planFirewall(ui *termui.UI) ([][]string, error) {
-	return menuplan.Choose(ui, m.translator(), menuplan.Firewall())
-}
-
-func (m *menu) planBans(ui *termui.UI) ([][]string, error) {
-	return menuplan.Choose(ui, m.translator(), menuplan.Bans())
 }
 
 // planRestore replaces the server's database and certificates from an archive. The running server holds
@@ -523,16 +550,6 @@ func (m *menu) planAdminToken(ui *termui.UI) ([][]string, error) {
 
 func (m *menu) planSubscription(ui *termui.UI) ([][]string, error) {
 	tr := m.translator()
-	ui.Blank()
-	choice, err := ui.Menu([]termui.Item{
-		{Label: tr.T(i18n.MnSubRotateLabel), Hint: tr.T(i18n.MnSubRotateHint)},
-	})
-	if err != nil || choice == "" {
-		return nil, err
-	}
-	if choice != "1" {
-		return nil, fmt.Errorf("%q is not one of the choices", choice)
-	}
 	node, err := m.pickNode(ui)
 	if err != nil {
 		return nil, err

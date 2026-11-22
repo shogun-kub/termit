@@ -30,17 +30,57 @@ func newMenu(answers string) (*menu, *[]string, *strings.Builder) {
 	return m, &ran, out
 }
 
+// planOf runs the plan of the leaf named by label, wherever it lives in the tree.
 func planOf(t *testing.T, m *menu, label, answers string) ([][]string, error) {
 	t.Helper()
-	for _, entry := range m.entries() {
-		if entry.labelOf(m.translator()) != label {
-			continue
+	return runEntry(t, m, findEntry(t, m, label), answers)
+}
+
+// runEntry gives the entry a fresh UI carrying the answers and returns what it planned.
+func runEntry(t *testing.T, m *menu, entry menuEntry, answers string) ([][]string, error) {
+	t.Helper()
+	m.ui = termui.New(strings.NewReader(answers), &strings.Builder{}, termui.Style{})
+	return entry.plan(m.ui)
+}
+
+// findEntry finds an entry anywhere in the tree, so a test names the command it means.
+func findEntry(t *testing.T, m *menu, label string) menuEntry {
+	t.Helper()
+	var find func(entries []menuEntry) (menuEntry, bool)
+	find = func(entries []menuEntry) (menuEntry, bool) {
+		for _, entry := range entries {
+			if entry.labelOf(m.translator()) == label {
+				return entry, true
+			}
+			if entry.children != nil {
+				if found, ok := find(entry.children()); ok {
+					return found, true
+				}
+			}
 		}
-		m.ui = termui.New(strings.NewReader(answers), &strings.Builder{}, termui.Style{})
-		return entry.plan(m.ui)
+		return menuEntry{}, false
+	}
+	if entry, ok := find(m.entries()); ok {
+		return entry
 	}
 	t.Fatalf("the menu has no %q entry", label)
-	return nil, nil
+	return menuEntry{}
+}
+
+// childOf is the entry named label inside the group named group.
+func childOf(t *testing.T, m *menu, group, label string) menuEntry {
+	t.Helper()
+	parent := findEntry(t, m, group)
+	if parent.children == nil {
+		t.Fatalf("%q is not a group", group)
+	}
+	for _, entry := range parent.children() {
+		if entry.labelOf(m.translator()) == label {
+			return entry
+		}
+	}
+	t.Fatalf("%q has no %q entry", group, label)
+	return menuEntry{}
 }
 
 func TestServerMenuEntriesMapToCommands(t *testing.T) {
@@ -53,19 +93,14 @@ func TestServerMenuEntriesMapToCommands(t *testing.T) {
 		"help":   "help",
 	}
 	seen := map[string]bool{}
-	for _, entry := range m.entries() {
-		label := entry.labelOf(m.translator())
-		expected, ok := want[label]
-		if !ok {
-			continue
-		}
+	for _, label := range []string{"status", "backup", "guard", "help"} {
 		seen[label] = true
 		plan, err := planOf(t, m, label, "")
 		if err != nil {
 			t.Fatalf("%s: %v", label, err)
 		}
-		if got := strings.Join(plan[0], " "); got != expected {
-			t.Errorf("%s runs %q, want %q", label, got, expected)
+		if got := strings.Join(plan[0], " "); got != want[label] {
+			t.Errorf("%s runs %q, want %q", label, got, want[label])
 		}
 	}
 	for label := range want {
@@ -78,29 +113,31 @@ func TestServerMenuEntriesMapToCommands(t *testing.T) {
 func TestNodeMenuAsksForTheNodeItActsOn(t *testing.T) {
 	t.Parallel()
 	cases := map[string]struct {
+		verb    string
 		answers string
 		want    string
 	}{
-		"list needs no node": {"1\n", "uv list"},
-		"show":               {"2\nnode1.example.com\n", "uv show node1.example.com"},
-		"approve":            {"3\nnode1.example.com\n", "uv approve node1.example.com"},
-		"block records a reason": {"5\nnode1.example.com\ncertificate is broken\n",
-			"uv block node1.example.com --reason certificate is broken"},
-		"remove records a reason": {"7\nnode1.example.com\nhardware gone\n",
-			"uv rm node1.example.com --reason hardware gone"},
-		"reissue":   {"8\nnode1.example.com\ny\n", "uv reissue node1.example.com"},
-		"agent key": {"9\nnode1.example.com\n", "uv agentkey node1.example.com"},
-		"forget":    {"10\nnode1.example.com\ny\n", "uv forget node1.example.com"},
+		"list needs no node":      {"list", "", "uv list"},
+		"show":                    {"show", "node1.example.com\n", "uv show node1.example.com"},
+		"approve":                 {"approve", "node1.example.com\n", "uv approve node1.example.com"},
+		"block records a reason":  {"block", "node1.example.com\ncertificate is broken\n", "uv block node1.example.com --reason certificate is broken"},
+		"remove records a reason": {"remove", "node1.example.com\nhardware gone\n", "uv rm node1.example.com --reason hardware gone"},
+		"reissue":                 {"reissue", "node1.example.com\ny\n", "uv reissue node1.example.com"},
+		"agent key":               {"agent key", "node1.example.com\n", "uv agentkey node1.example.com"},
+		"forget":                  {"forget", "node1.example.com\ny\n", "uv forget node1.example.com"},
 	}
 	for name, tc := range cases {
-		m, _, _ := newMenu("")
-		plan, err := planOf(t, m, "nodes", tc.answers)
-		if err != nil {
-			t.Fatalf("%s: %v", name, err)
-		}
-		if got := strings.Join(plan[0], " "); got != tc.want {
-			t.Errorf("%s: runs %q, want %q", name, got, tc.want)
-		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			m, _, _ := newMenu("")
+			plan, err := runEntry(t, m, childOf(t, m, "nodes", tc.verb), tc.answers)
+			if err != nil {
+				t.Fatalf("plan: %v", err)
+			}
+			if got := strings.Join(plan[0], " "); got != tc.want {
+				t.Errorf("runs %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 
@@ -110,14 +147,14 @@ func TestNodeMenuAsksForTheNodeItActsOn(t *testing.T) {
 func TestNodeMenuCancelsOnAnEmptyNode(t *testing.T) {
 	t.Parallel()
 	m, _, _ := newMenu("")
-	plan, err := planOf(t, m, "nodes", "2\n\n")
+	plan, err := runEntry(t, m, childOf(t, m, "nodes", "show"), "\n")
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
 	if plan != nil {
 		t.Errorf("plan = %v, want a cancel", plan)
 	}
-	plan, err = planOf(t, m, "nodes", "2\nnode1.example.com\n")
+	plan, err = runEntry(t, m, childOf(t, m, "nodes", "show"), "node1.example.com\n")
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
@@ -130,12 +167,12 @@ func TestNodeMenuCancelsOnAnEmptyNode(t *testing.T) {
 func TestReissueAndForgetAskFirst(t *testing.T) {
 	t.Parallel()
 	cases := map[string]string{
-		"reissue": "8\nnode1.example.com\nn\n",
-		"forget":  "10\nnode1.example.com\nn\n",
+		"reissue": "node1.example.com\nn\n",
+		"forget":  "node1.example.com\nn\n",
 	}
 	for name, answers := range cases {
 		m, _, _ := newMenu("")
-		plan, err := planOf(t, m, "nodes", answers)
+		plan, err := runEntry(t, m, childOf(t, m, "nodes", name), answers)
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
@@ -185,13 +222,18 @@ func TestHardeningEntriesTakeNoAdminFlags(t *testing.T) {
 		"nodes":                   false,
 	}
 	seen := map[string]bool{}
-	for _, entry := range m.entries() {
-		label := entry.labelOf(m.translator())
-		expected, ok := want[label]
-		if !ok {
+	for label, expected := range want {
+		seen[label] = true
+		entry := findEntry(t, m, label)
+		if entry.children != nil {
+			// A group is never run; its leaves are, and they are the ones that must agree.
+			for _, child := range entry.children() {
+				if child.local != expected {
+					t.Errorf("%s/%s: local = %v, want %v", label, child.labelOf(m.translator()), child.local, expected)
+				}
+			}
 			continue
 		}
-		seen[label] = true
 		if entry.local != expected {
 			t.Errorf("%s: local = %v, want %v", label, entry.local, expected)
 		}
@@ -208,17 +250,18 @@ func TestHardeningEntriesTakeNoAdminFlags(t *testing.T) {
 func TestServerMenuDrawsTheHardeningSubMenus(t *testing.T) {
 	t.Parallel()
 	cases := map[string]struct {
+		group   string
 		entry   string
 		answers string
 		want    string
 	}{
-		"firewall on":      {"firewall", "2\n", "firewall on"},
-		"bans list":        {"bans", "1\n", "bans list"},
-		"bans unblock one": {"bans", "5\n203.0.113.7\n", "bans unblock 203.0.113.7"},
+		"firewall on":      {"firewall", "on", "", "firewall on"},
+		"bans list":        {"bans", "list", "", "bans list"},
+		"bans unblock one": {"bans", "unblock", "203.0.113.7\n", "bans unblock 203.0.113.7"},
 	}
 	for name, tc := range cases {
 		m, _, _ := newMenu("")
-		plan, err := planOf(t, m, tc.entry, tc.answers)
+		plan, err := runEntry(t, m, childOf(t, m, tc.group, tc.entry), tc.answers)
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
@@ -231,17 +274,18 @@ func TestServerMenuDrawsTheHardeningSubMenus(t *testing.T) {
 func TestInviteMenu(t *testing.T) {
 	t.Parallel()
 	cases := map[string]struct {
+		entry   string
 		answers string
 		want    string
 	}{
-		"list":                  {"1\n", "invite list"},
-		"create with a note":    {"2\nfor the second node\n", "invite create --note for the second node"},
-		"create without a note": {"2\n\n", "invite create"},
-		"revoke":                {"3\nABCD-EFGH\n", "invite revoke ABCD-EFGH"},
+		"list":                  {"list", "", "invite list"},
+		"create with a note":    {"create", "for the second node\n", "invite create --note for the second node"},
+		"create without a note": {"create", "\n", "invite create"},
+		"revoke":                {"revoke", "ABCD-EFGH\n", "invite revoke ABCD-EFGH"},
 	}
 	for name, tc := range cases {
 		m, _, _ := newMenu("")
-		plan, err := planOf(t, m, "invites", tc.answers)
+		plan, err := runEntry(t, m, childOf(t, m, "invites", tc.entry), tc.answers)
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
@@ -296,7 +340,7 @@ func TestPolicyMenu(t *testing.T) {
 func TestSubscriptionMenuRotates(t *testing.T) {
 	t.Parallel()
 	m, _, _ := newMenu("")
-	plan, err := planOf(t, m, "subscription", "1\nnode1.example.com\n\n")
+	plan, err := planOf(t, m, "subscription", "node1.example.com\n\n")
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
@@ -305,7 +349,7 @@ func TestSubscriptionMenuRotates(t *testing.T) {
 	}
 
 	withDomain, _, _ := newMenu("")
-	plan, err = planOf(t, withDomain, "subscription", "1\nnode1.example.com\nmn.example.com\n")
+	plan, err = planOf(t, withDomain, "subscription", "node1.example.com\nmn.example.com\n")
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
@@ -317,7 +361,7 @@ func TestSubscriptionMenuRotates(t *testing.T) {
 func TestServerMenuRunsTheChosenCommand(t *testing.T) {
 	t.Parallel()
 	// Choosing status runs `status` and nothing else; quitting then leaves.
-	m, ran, out := newMenu("1\n\nq\n")
+	m, ran, out := newMenu("1\n1\n\nq\n")
 	if code := m.loop(); code != exitOK {
 		t.Fatalf("loop = %d, want 0", code)
 	}
@@ -333,7 +377,7 @@ func TestServerMenuStopsAtAFailingStep(t *testing.T) {
 	t.Parallel()
 	out := &strings.Builder{}
 	m := &menu{
-		ui:  termui.New(strings.NewReader("1\n\nq\n"), out, termui.Style{}),
+		ui:  termui.New(strings.NewReader("1\n1\n\nq\n"), out, termui.Style{}),
 		run: func([]string) int { return exitFailure },
 		// Pinned like newMenu's: a bare menu takes its language from the console, and CI's console is
 		// UTF-8, so without this the assertion below reads Russian output on Linux and English here.
@@ -631,5 +675,35 @@ func TestMatchNodesNeverGuesses(t *testing.T) {
 		if got := len(matchNodes(nodes, typed)); got != want {
 			t.Errorf("%q matched %d nodes, want %d", typed, got, want)
 		}
+	}
+}
+
+// The tree has to fit on one screen per level, and every command the flat menu offered has to still be
+// reachable: the move regrouped them, it dropped none.
+func TestTheServerMenuTreeFitsOnOneScreen(t *testing.T) {
+	t.Parallel()
+	m, _, _ := newMenu("")
+	top := m.entries()
+	if len(top) != 7 {
+		t.Errorf("the top level has %d entries, want 7", len(top))
+	}
+	leaves := 0
+	var walk func(entries []menuEntry)
+	walk = func(entries []menuEntry) {
+		if len(entries) > 10 {
+			t.Errorf("a level has %d entries, want at most 10", len(entries))
+		}
+		for _, entry := range entries {
+			if entry.children != nil {
+				walk(entry.children())
+				continue
+			}
+			leaves++
+		}
+	}
+	walk(top)
+	// 13 commands, with the node verb menu and the two hardening tables turned into levels of their own.
+	if leaves != 33 {
+		t.Errorf("the tree has %d leaves, want 33", leaves)
 	}
 }

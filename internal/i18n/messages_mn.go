@@ -72,6 +72,12 @@ const (
 	MnSubHead            Key = "mn.sub.head"
 	MnSubRotateLabel     Key = "mn.sub.rotate.label"
 	MnSubRotateHint      Key = "mn.sub.rotate.hint"
+	MnGroupStateLabel    Key = "mn.group.state.label"
+	MnGroupStateHint     Key = "mn.group.state.hint"
+	MnGroupDefenceLabel  Key = "mn.group.defence.label"
+	MnGroupDefenceHint   Key = "mn.group.defence.hint"
+	MnGroupServiceLabel  Key = "mn.group.service.label"
+	MnGroupServiceHint   Key = "mn.group.service.hint"
 	MnPromptNode         Key = "mn.prompt.node"
 	MnPickNodePrompt     Key = "mn.pick_node.prompt"
 	MnPickNodeCancel     Key = "mn.pick_node.cancel"
@@ -164,6 +170,12 @@ var messagesMNRU = map[Key]string{
 	MnSubRotateLabel: "сменить токен",
 	MnSubRotateHint:  "напечатать новый токен; старый URL перестанет работать",
 
+	MnGroupStateLabel:   "Состояние",
+	MnGroupStateHint:    "сервер, проверка, пороги, страж",
+	MnGroupDefenceLabel: "Защита",
+	MnGroupDefenceHint:  "межсетевой экран и баны",
+	MnGroupServiceLabel: "Обслуживание",
+	MnGroupServiceHint:  "токен, резервные копии, восстановление",
 	MnPromptNode:        "Узел: домен, ID или часть домена (пусто — отмена)",
 	MnPickNodePrompt:    "какой узел?",
 	MnPickNodeCancel:    "отмена",
@@ -256,6 +268,12 @@ var messagesMNEN = map[Key]string{
 	MnSubRotateLabel: "rotate",
 	MnSubRotateHint:  "print a new token; the old URL stops working",
 
+	MnGroupStateLabel:   "State",
+	MnGroupStateHint:    "server, check, thresholds, the guard",
+	MnGroupDefenceLabel: "Defence",
+	MnGroupDefenceHint:  "firewall and bans",
+	MnGroupServiceLabel: "Service",
+	MnGroupServiceHint:  "token, backups, restore",
 	MnPromptNode:        "Node: domain, id or part of a domain (empty cancels)",
 	MnPickNodePrompt:    "which node?",
 	MnPickNodeCancel:    "cancel",
