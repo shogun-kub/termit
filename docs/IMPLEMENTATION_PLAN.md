@@ -1517,7 +1517,13 @@ path cooperate.
 
 v0.5.0 is three of these items, in this order: a WARP that carries UDP (10.1), the profile options and
 the envelope for a second kind (10.2), and Hysteria2 as that kind (10.3). Each unblocks the next, and the
-first two are worth shipping even if the third slips.
+first two are worth shipping even if the third slips. The first two shipped in `0.5.0`; the third went in
+with them and was finished in `0.5.1`, and what is left of each is named below.
+
+**Numbering, until the advisory list is clear again.** `deploy/vulnerabilities.json` refuses any version at
+or past `0.6.0` while GO-2026-5288 is accepted, and hysteria `v2.14.0` is still the newest module release
+(checked 2026-11-22), so `0.6.0` cannot be cut today: the next release is a `0.5.x` patch. Moving the
+deadline to `0.7.0` is the alternative, and it needs the recorded reason that no fixed release exists.
 
 Everything after them is postponed to a later release: understood and wanted, but nothing in 0.5.0
 depends on it. Each postponed item still names the rule that keeps it out, so nobody re-discovers the
@@ -1539,8 +1545,9 @@ What keeps it a 0.5.0 item:
 - **The transport must stay swappable.** Cloudflare is moving WARP to MASQUE, and the tunnel is a
   registration plus an outbound whose tag the routing rule names. That indirection is the work; option D
   must drop into it without touching routing, the fail-open balancer or the state.
-- **Hysteria2 will carry UDP through it** (§10.3). The hop is proved for TCP on the lab; the same path with
-  UDP payloads, and the identity a peer sees at the exit, is part of this item's acceptance.
+- **Hysteria2 carries UDP through it** (§10.3). The hop is proved for TCP on the lab and, with UDP
+  payloads, on production (§11.13): the exit a QUIC client sees is Cloudflare's, and the node's own
+  traffic keeps its own address.
 
 | Option | UDP | Host routing | Cost |
 |---|---|---|---|
@@ -1578,6 +1585,12 @@ Acceptance for the remainder: a node on the `proxy` transport either carries UDP
 `warp status` that it cannot; option D can replace the outbound by changing a tag; and with Hysteria2
 enabled, a UDP payload from a client exits at Cloudflare's address, while SSH, ACME and the decoy still
 leave from the node's own. No `ip rule`/`ip route` change exists on the host.
+
+The hysteria half of that is proved on production (§11.13): a client through the QUIC transport on then5
+exited at `104.28.222.18` with `warp=on`, and the address families the node does not serve were refused
+rather than answered with the node's own address. What is still open is the `proxy` transport, whose UDP
+`warp-cli` cannot carry at all — for it the acceptance is the second half of the sentence, and `warp status`
+has to say so.
 
 ### 10.2 More protocols and protocol options
 
@@ -1699,9 +1712,11 @@ Phases:
    instead of the missing `-test`, the core's loopback inbound, the firewall rule, Alt-Svc and a `doctor`
    line. Verified end to end on the lab: a client over UDP/443 exited through WARP (`104.28.254.16`) while
    the node's own traffic kept its own address, and the core logged the flow on the hop inbound.
-2. Profile (in progress): the envelope exists — a node reports `{kind, version}` for what it serves and the
-   subscription renders one link per kind (`hy2://` in the list, a `hysteria2` outbound in sing-box), with
-   the password derived from each pair's UUID. What is left is the parameters side of the envelope: a kind
+2. Profile (done in `0.5.1`): the envelope exists — a node reports `{kind, version}` for what it serves and
+   the subscription renders one link per kind (`hy2://` in the list, a `hysteria2` outbound in sing-box), with
+   the password derived from each pair's UUID — and every place that hands out a link shows both: `uri`,
+   `device add`, `device list`, and the owner's page, which since `0.5.1` files the node's own second link
+   with the node rather than with its devices. What is left is the parameters side of the envelope: a kind
    whose parameters vary has no place to say so yet, and the prober has no way to read a kind it does not
    implement.
 3. Prober (done): MN links hysteria's client and probes the transport (§10.2, constraint 3). The target
@@ -1709,7 +1724,9 @@ Phases:
    path — every other node keeps the worker binary, which checks what a VLESS client would see. The
    certificate pin is read the same way on both paths, and the server's probe credential joins the node's
    transport user set so the QUIC half can authenticate at all.
-4. Production pass: this is a network change, so it ships as a pre-release first (AGENTS §9).
+4. Production pass (done, §11.12 and §11.13): the transport is network, so it shipped as a pre-release to
+   the production nodes first, and what the exit really was — not what the code intended — is recorded
+   there.
 
 Acceptance: on the lab, a node with hysteria2 as a second profile — a client through it reaches the
 internet with WARP as the egress and the blocklist applied, a torrent is refused, the decoy answers a
@@ -1986,8 +2003,9 @@ What decides the real design, before any code:
 - **The terminal.** `termit-uv uri --qr` printing half-block characters is a nice-to-have, not part of this
   item: the phone case needs the page, and a terminal QR is a second renderer to keep right.
 
-It is small enough to ride with `0.6.0`, which has to be cut anyway: the accepted advisory in
-`deploy/vulnerabilities.json` must be gone from that release.
+It rides with the next feature release, `0.6.0` — the release the advisory list already forces, once a
+fixed hysteria exists (§10 intro); a `0.5.x` patch, the only release that can be cut today, carries fixes
+and not this.
 
 Acceptance: on a phone, the camera opens a row's code and the client imports the link; the page references
 no external host and still passes the existing test that fails a page referencing one (`internal/uv/options/options_test.go`); a Go test round-trips the encoder
