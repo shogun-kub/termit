@@ -190,9 +190,11 @@ UDP/443 and reaching the core through a loopback SOCKS inbound. It carries no ro
 | The transport is distinguished from the node's website | QUIC to the same domain and port, presenting the node's own certificate, with a masquerade that proxies to the decoy | a network that treats QUIC differently does so anyway; nothing here hides that it is QUIC |
 
 One accepted advisory belongs here rather than in a footnote: **GO-2026-5288**, a crafted QUIC packet that
-drives a sniffing server out of memory, has no fix in the pinned release. The unit's memory cap turns that
-into a restart of the transport rather than an OOM that takes nginx and the core with it, and the advisory
-is recorded in `deploy/vulnerabilities.json` with the release that must not carry it.
+drives a sniffing server out of memory. The record on `vuln.go.dev` is `UNREVIEWED` and names no fixed
+version, so the build carries the exclusion; the advisory behind it, GHSA-9fw6-xgg2-mq9q, lists 2.8.1 as the
+last affected release and fixed it in 2.8.2, and this build pins 2.14.0 and never enables the sniffing the PoC
+needs. The unit's memory cap turns a blow-up into a restart of the transport rather than an OOM that takes
+nginx and the core with it.
 
 ### 5.8 Loss scenarios
 
@@ -237,11 +239,11 @@ These are decisions, not bugs, and each one is a sentence an operator should be 
    is there to stop automated probing and to let an operator block what they already know is hostile.
 10. **Compromised endpoints are out of scope.** Root on a client, on a node, or on the server defeats
    every control above, by definition.
-11. **An accepted advisory is a dated exception, not a fix.** The pinned QUIC transport release carries
-    GO-2026-5288, which no release fixes yet; `deploy/vulnerabilities.json` records it with the release
-    that must not carry it, and `deploy/release` refuses to cut that version while the entry is present.
-    Until the entry is gone, the mitigation is the unit's own boundary: unprivileged, no writable path,
-    256 MB.
+11. **An accepted advisory is a dated exception, not a fix.** The pinned QUIC transport release is named in
+    GO-2026-5288 even though the advisory's own range ends at 2.8.1 and the fix shipped in 2.8.2: the record
+    was never updated, and the gate follows the record. `deploy/vulnerabilities.json` keeps the entry for
+    `govulncheck`, with a deadline that tracks the record's correction rather than a module bump. Until the
+    entry is gone, the mitigation is the unit's own boundary: unprivileged, no writable path, 256 MB.
 12. **The system is new.** The threat model is reviewed with the code it describes; the parts with
     real-world evidence behind them are listed in §7. Anything not listed there is reasoning, not
     measurement.
