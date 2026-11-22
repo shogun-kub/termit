@@ -298,6 +298,7 @@ func (a *application) menuEntries() []menuEntry {
 			return []menuEntry{
 				{labelKey: i18n.MenuInstallLabel, hintKey: i18n.MenuInstallHint, plan: a.planInstall},
 				{labelKey: i18n.MenuWizardLabel, hintKey: i18n.MenuWizardHint, plan: fixed("wizard")},
+				{labelKey: i18n.MenuUpgradeLabel, hintKey: i18n.MenuUpgradeHint, plan: a.planUpgrade},
 				{labelKey: i18n.MenuMigrateLabel, hintKey: i18n.MenuMigrateHint, plan: a.planMigrate},
 				{labelKey: i18n.MenuUninstallLabel, hintKey: i18n.MenuUninstallHint, plan: a.planUninstall},
 			}
@@ -490,6 +491,34 @@ func (a *application) planWarpRotate(ui *termui.UI) ([][]string, error) {
 		return nil, nil
 	}
 	return [][]string{{"warp", "rotate"}}, nil
+}
+
+// planUpgrade offers the server's release when the two differ. It is the only menu entry that replaces the
+// running binary, so a node with nothing to install says so instead of offering a no-op.
+func (a *application) planUpgrade(ui *termui.UI) ([][]string, error) {
+	tr := a.translator()
+	cfg, err := config.Load(a.menuConfigPath())
+	if err != nil {
+		ui.Say(tr.T(i18n.MenuNoConfig))
+		return nil, nil
+	}
+	node, err := state.LoadInstalled(cfg.Paths.StatePath())
+	if err != nil || !releaseVersion.MatchString(node.ServerVersion) {
+		ui.Say(tr.T(i18n.MenuUpgradeNoOffer))
+		return nil, nil
+	}
+	if node.ServerVersion == version.Version {
+		ui.Say(tr.Tf(i18n.MenuUpgradeSame, node.ServerVersion))
+		return nil, nil
+	}
+	sure, err := ui.Confirm(tr.Tf(i18n.PromptUpgrade, node.ServerVersion), true)
+	if err != nil {
+		return nil, err
+	}
+	if !sure {
+		return nil, nil
+	}
+	return [][]string{{"upgrade"}}, nil
 }
 
 // planMigrate moves the node to another domain. The configured domain is the default, so a move already

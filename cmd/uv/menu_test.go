@@ -181,9 +181,9 @@ func TestTheMenuTreeFitsOnOneScreen(t *testing.T) {
 		}
 	}
 	walk(top)
-	// 22 commands, four of which were their own menu and are now groups of 5, 3, 6 and 5 leaves.
-	if leaves != 37 {
-		t.Errorf("the tree has %d leaves, want 37", leaves)
+	// 23 commands, four of which were their own menu and are now groups of 5, 3, 6 and 5 leaves.
+	if leaves != 38 {
+		t.Errorf("the tree has %d leaves, want 38", leaves)
 	}
 }
 

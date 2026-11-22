@@ -267,7 +267,7 @@ self-check:   ok 2026-11-10T11:17:04Z
 | `termit-uv warp` / `termit-uv warp status` | показать выход | `--json` |
 | `termit-uv warp mode` | сменить выход | `off`, `all`, `selected --selected a.example,b.example` |
 | `termit-uv unblock` | попросить сервер перепроверить и разблокировать | `--domain`, `--vless-url`, `--no-sync` |
-| `termit-uv migrate` | перевести узел на новый домен | `--relocate`, `--domain`, `--no-sync` |
+| `termit-uv upgrade` | заменить бинарник узла опубликованным релизом | `--to vX.Y.Z` (по умолчанию — версия сервера), `--check`, `--release-base URL` || `termit-uv migrate` | перевести узел на новый домен | `--relocate`, `--domain`, `--no-sync` |
 | `termit-uv renew-cert` | продлить сертификат сейчас | `--force` (перевыпустить, даже если не пора) |
 | `termit-uv renew-site` | перегенерировать сайт-приманку | `--template product\|portal`, `--seed`, `--dry-run` |
 | `termit-uv uninstall` | убрать то, что создал Termit | `--purge` (ещё конфигурация, состояние, сертификаты, пользователь), `--dry-run` |

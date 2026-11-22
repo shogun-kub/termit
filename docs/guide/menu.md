@@ -118,6 +118,8 @@ runs.
 
 - `init` — install or converge; the first run asks for domain, email and WARP
 - `wizard` — the whole first installation as questions; remembers the answers between runs
+- `upgrade` — install the release the server names; offered only when it is a release and differs from
+  this build
 - `migrate --relocate` — move the node to another domain (Scenario C)
 - `uninstall` — asks twice, names what `--purge` takes
 

@@ -72,16 +72,21 @@ const (
 	MenuHelpHint         Key = "menu.help.hint"
 
 	// The recovery and hardening entries: a blocked node, a moved node, and the host's own defences.
-	MenuUnblockLabel  Key = "menu.unblock.label"
-	MenuUnblockHint   Key = "menu.unblock.hint"
-	MenuMigrateLabel  Key = "menu.migrate.label"
-	MenuMigrateHint   Key = "menu.migrate.hint"
-	MenuFirewallLabel Key = "menu.firewall.label"
-	MenuFirewallHint  Key = "menu.firewall.hint"
-	MenuBansLabel     Key = "menu.bans.label"
-	MenuBansHint      Key = "menu.bans.hint"
-	MenuGuardLabel    Key = "menu.guard.label"
-	MenuGuardHint     Key = "menu.guard.hint"
+	MenuUpgradeLabel   Key = "menu.upgrade.label"
+	MenuUpgradeHint    Key = "menu.upgrade.hint"
+	MenuUpgradeNoOffer Key = "menu.upgrade.no_offer"
+	MenuUpgradeSame    Key = "menu.upgrade.same"
+	PromptUpgrade      Key = "prompt.upgrade"
+	MenuUnblockLabel   Key = "menu.unblock.label"
+	MenuUnblockHint    Key = "menu.unblock.hint"
+	MenuMigrateLabel   Key = "menu.migrate.label"
+	MenuMigrateHint    Key = "menu.migrate.hint"
+	MenuFirewallLabel  Key = "menu.firewall.label"
+	MenuFirewallHint   Key = "menu.firewall.hint"
+	MenuBansLabel      Key = "menu.bans.label"
+	MenuBansHint       Key = "menu.bans.hint"
+	MenuGuardLabel     Key = "menu.guard.label"
+	MenuGuardHint      Key = "menu.guard.hint"
 
 	// The sub-menus: the device list, the egress switch, and the two groups both binaries share.
 	SubDevicesListLabel   Key = "sub.devices.list.label"
@@ -293,16 +298,21 @@ var messagesUVRU = map[Key]string{
 	MenuHelpLabel:         "справка",
 	MenuHelpHint:          "все команды и флаги",
 
-	MenuUnblockLabel:  "снять блокировку",
-	MenuUnblockHint:   "попросить сервер проверить узел и вернуть его в строй",
-	MenuMigrateLabel:  "переехать на другой домен",
-	MenuMigrateHint:   "перенести узел на новый домен (сценарий C)",
-	MenuFirewallLabel: "межсетевой экран",
-	MenuFirewallHint:  "таблица хоста: состояние, включить, выключить, подтвердить",
-	MenuBansLabel:     "блокировки",
-	MenuBansHint:      "кого заблокировал страж и что заблокировали вы",
-	MenuGuardLabel:    "движок блокировок",
-	MenuGuardHint:     "работает ли страж и сколько он заблокировал",
+	MenuUnblockLabel:   "снять блокировку",
+	MenuUnblockHint:    "попросить сервер проверить узел и вернуть его в строй",
+	MenuUpgradeLabel:   "обновить узел",
+	MenuUpgradeHint:    "взять релиз, который называет сервер; прошлый бинарник остаётся рядом",
+	MenuUpgradeNoOffer: "Обновлять нечего: сервер ещё не назвал свой релиз (синхронизация) или назвал не релиз.",
+	MenuUpgradeSame:    "Узел уже на %s, как и сервер.",
+	PromptUpgrade:      "Поставить %s и дать новому бинарнику сойтись?",
+	MenuMigrateLabel:   "переехать на другой домен",
+	MenuMigrateHint:    "перенести узел на новый домен (сценарий C)",
+	MenuFirewallLabel:  "межсетевой экран",
+	MenuFirewallHint:   "таблица хоста: состояние, включить, выключить, подтвердить",
+	MenuBansLabel:      "блокировки",
+	MenuBansHint:       "кого заблокировал страж и что заблокировали вы",
+	MenuGuardLabel:     "движок блокировок",
+	MenuGuardHint:      "работает ли страж и сколько он заблокировал",
 
 	SubDevicesListLabel:   "список",
 	SubDevicesListHint:    "имена и префиксы UUID",
@@ -507,16 +517,21 @@ var messagesUVEN = map[Key]string{
 	MenuHelpLabel:         "help",
 	MenuHelpHint:          "every command and flag",
 
-	MenuUnblockLabel:  "lift a block",
-	MenuUnblockHint:   "ask the server to verify this node and let it back in",
-	MenuMigrateLabel:  "move to another domain",
-	MenuMigrateHint:   "relocate this node to a new domain (Scenario C)",
-	MenuFirewallLabel: "firewall",
-	MenuFirewallHint:  "the host table: status, on, off, confirm",
-	MenuBansLabel:     "bans",
-	MenuBansHint:      "what the guard banned, and what you blocked yourself",
-	MenuGuardLabel:    "guard",
-	MenuGuardHint:     "whether the ban engine runs, and how much it banned",
+	MenuUnblockLabel:   "lift a block",
+	MenuUnblockHint:    "ask the server to verify this node and let it back in",
+	MenuUpgradeLabel:   "upgrade this node",
+	MenuUpgradeHint:    "take the release the server names; the previous binary stays beside it",
+	MenuUpgradeNoOffer: "Nothing to upgrade to: the server has not named its release yet (sync), or named something that is not one.",
+	MenuUpgradeSame:    "This node is already on %s, the same as the server.",
+	PromptUpgrade:      "Install %s and let the new binary converge the node?",
+	MenuMigrateLabel:   "move to another domain",
+	MenuMigrateHint:    "relocate this node to a new domain (Scenario C)",
+	MenuFirewallLabel:  "firewall",
+	MenuFirewallHint:   "the host table: status, on, off, confirm",
+	MenuBansLabel:      "bans",
+	MenuBansHint:       "what the guard banned, and what you blocked yourself",
+	MenuGuardLabel:     "guard",
+	MenuGuardHint:      "whether the ban engine runs, and how much it banned",
 
 	SubDevicesListLabel:   "list",
 	SubDevicesListHint:    "labels and UUID prefixes",

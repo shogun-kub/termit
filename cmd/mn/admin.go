@@ -307,6 +307,29 @@ func runUVState(verb string, args []string, stdout, stderr io.Writer) int {
 	return exitOK
 }
 
+// probeDetail says what the last probe actually did: which leg answered and how fast, or which failure
+// class it stopped on. A bare "failed" leaves the operator guessing between a DNS problem and a dead
+// worker.
+func probeDetail(ok bool, class, kind string, latencyMS int) string {
+	parts := make([]string, 0, 3)
+	if ok {
+		parts = append(parts, "ok")
+	} else {
+		detail := "failed"
+		if class != "" {
+			detail += " (" + class + ")"
+		}
+		parts = append(parts, detail)
+	}
+	if kind != "" {
+		parts = append(parts, kind)
+	}
+	if latencyMS > 0 {
+		parts = append(parts, fmt.Sprintf("%d ms", latencyMS))
+	}
+	return strings.Join(parts, ", ")
+}
+
 // runUVForget erases a removed node, which is what frees its domain for a new enrollment.
 func runUVForget(args []string, stdout, stderr io.Writer) int {
 	flags, configPath, socket, token, tokenFile := uvFlags("termit-mn uv forget", stderr)
@@ -551,6 +574,24 @@ func runUVShow(args []string, stdout, stderr io.Writer) int {
 			state = "ok"
 		}
 		fmt.Fprintf(stdout, "last self-check: %s %s\n", result.SelfCheck.At.UTC().Format(time.RFC3339), state)
+	}
+	if len(result.Checks) > 0 {
+		last := result.Checks[0]
+		for _, check := range result.Checks[1:] {
+			if check.At.After(last.At) {
+				last = check
+			}
+		}
+		fmt.Fprintf(stdout, "probe detail: %s %s\n", last.At.UTC().Format(time.RFC3339),
+			probeDetail(last.OK, last.ErrorClass, last.Kind, last.LatencyMS))
+	}
+	if result.Node.NextCheckAt != nil {
+		fmt.Fprintf(stdout, "next check:   %s (in %s)\n", result.Node.NextCheckAt.UTC().Format(time.RFC3339),
+			time.Until(*result.Node.NextCheckAt).Round(time.Minute))
+	}
+	if result.Node.HasSubToken {
+		fmt.Fprintln(stdout, "subscription: a token is set; `termit-mn sub rotate <node>` issues a new link "+
+			"(the server keeps only its digest)")
 	}
 	if len(result.Events) > 0 {
 		fmt.Fprintln(stdout, "events:")

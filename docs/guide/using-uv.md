@@ -267,7 +267,7 @@ interval. You do not need a timer of your own; the systemd units are installed b
 | `termit-uv warp` / `termit-uv warp status` | report egress | `--json` |
 | `termit-uv warp mode` | change egress | `off`, `all`, `selected --selected a.example,b.example` |
 | `termit-uv unblock` | ask the server to re-verify and unblock | `--domain`, `--vless-url`, `--no-sync` |
-| `termit-uv migrate` | move this node to its new domain | `--relocate`, `--domain`, `--no-sync` |
+| `termit-uv upgrade` | replace this node's binary with a published release | `--to vX.Y.Z` (default: the server's version), `--check`, `--release-base URL` || `termit-uv migrate` | move this node to its new domain | `--relocate`, `--domain`, `--no-sync` |
 | `termit-uv renew-cert` | renew the certificate now | `--force` (reissue even if not due) |
 | `termit-uv renew-site` | regenerate the decoy site | `--template product\|portal`, `--seed`, `--dry-run` |
 | `termit-uv uninstall` | remove what Termit created | `--purge` (also config, state, certificates, user), `--dry-run` |
