@@ -1592,7 +1592,10 @@ leave from the node's own. No `ip rule`/`ip route` change exists on the host.
 sidecar with its own unit, user and loopback SOCKS5 listener, and its listener carries UDP, so the document
 sends both protocols to the WARP hop and the split disappears. The proof it must still collect is the
 production pass — the exit address and a UDP flow (DNS) through the tunnel — because every part of this
-crosses a network nobody here controls.
+crosses a network nobody here controls. The pass found that the sidecar alone cannot carry UDP for this
+core — `usque` keys a SOCKS5 UDP association on the control connection's own address — so the released form
+puts a small loopback relay (`termit-usque-relay.service`) in front of it; §11.15 has the measurement and
+the code in question.
 
 The hysteria half of that is proved on production (§11.13): a client through the QUIC transport on then5
 exited at `104.28.222.18` with `warp=on`, and the address families the node does not serve were refused
@@ -2528,3 +2531,57 @@ UDP association, so UDP exits directly`, and `--json` carries `"udp": "direct"`;
 met for the one transport that cannot do better.
 
 Backups: `sh uv.sh` and `sh mn.sh` wrote their own before the install (see `.spike-out/prod.md`).
+### 11.15 Production pass, 0.6.0, 2026-11-22
+
+`0.6.0` adds the MASQUE transport (`warp.transport: usque`), carries the server's build in the sync answer,
+decodes a peer's label on the page, and records the advisory and the three protocol decisions. The pass was
+required because option D is a third-party daemon plus a loopback hop, and Cloudflare's MASQUE endpoints are
+not reachable from the lab.
+
+**It found four bugs before it found the transport working**, each invisible to the unit tests and to the
+lab because each is a fact about a real host:
+
+1. The pinned release URL carried the tag twice (`.../download/v4.2.1/v4.2.1/...`, a 404); the base now
+   stops at `download`, and a test pins the URL the release really serves.
+2. `usque register` asks for Cloudflare's terms on stdin unless `--accept-tos` is passed, and an install has
+   no stdin: `failed to read user input: EOF`. The flag is passed and OPERATIONS says whose acceptance it is.
+3. The unit was written and nothing started it — `units` only reloads systemd, and the start step knew
+   `termit-hysteria` but not `termit-usque`: `loaded; disabled; inactive`, with the core's SOCKS hop pointing
+   at a closed port. The start step enables it.
+4. The unit's `User=termit-usque` did not exist (`Failed to determine user credentials: No such process`,
+   status 217/USER), and the device file was `root:root 0600`, which the sidecar's account could not read.
+   The user step creates the account and joins it to the core's group; the file is `root:termit-usque 0640`,
+   and a registration written before that rule is repaired instead of registering a second device.
+
+**Then the real blocker.** With the sidecar up, TCP through it worked and UDP did not. `usque`'s SOCKS5
+(upstream `txthinking/socks5`, `request.go`) keys the association on the client address of the control
+connection — for a wildcard request it takes `c.RemoteAddr()` — and `UDPHandle` refuses a datagram from any
+other source: `udp address 127.0.0.1:53284 is not associated with tcp`. Xray's socks client opens a fresh
+UDP socket, so every flow died there; a plain `socks -> socks(127.0.0.1:40002)` config with no VLESS in it
+reproduced it. `internal/socks5.go` on usque's `main` is identical to `v4.2.1`, and `v4.2.1` is still the
+newest release, so there was no upstream fix to wait for.
+
+**The relay.** `termit-usque-relay.service` (`termit-uv warp-relay`) listens on `127.0.0.1:40001`, which is
+what the core dials, and the sidecar moved to `40002`. Per association the relay opens its own control
+connection to the sidecar, binds the UDP socket to that connection's port and forwards the SOCKS5 datagrams
+verbatim; TCP goes through the same relay as a plain CONNECT. A unit test drives a fake sidecar that refuses
+a mismatched source port, so the property the relay exists for is checked without usque.
+
+**What production proved, on then5 with `v0.6.0p7`.** Through `127.0.0.1:40001`:
+`curl` exits at `2a09:bac5:31cd:…` with `warp=on`, and a STUN query — the same ICE/STUN a voice client uses —
+returns `104.28.222.16:…`, i.e. UDP leaves at Cloudflare and not at the node's own `144.31.53.114`.
+`warp status` reports `udp: through warp (the MASQUE sidecar)`. With the sidecar and the relay stopped it
+reports `egress: unavailable` and `udp: direct`, the decoy still answers `200`, and direct traffic leaves at
+the node's address: the document's balancer carries `fallbackTag: direct`, which is the fail-open. The node
+then went back to `wireguard`: `egress: on via 104.28.222.16`, the sidecar's unit, binary and device file
+gone, `doctor` 20 ok, `in sync: 5 client(s), 3 peer(s)`.
+
+One observation recorded rather than fixed: `warp.family: ipv4` is not applied on this transport — the MASQUE
+tunnel is dual-stack and the trace egressed over IPv6 (`2a09:…`). That is not the node's own address and so
+not the 0.5.0 leak, but it is not what the key says either; the sidecar would have to be told, which it
+cannot be through its command line today.
+
+Pre-releases on the way: `v0.6.0p1` (`9445a9b`), p2 (`d3ddce1`), p3 (`9738ee2`), p4 (`bdd963d`), p5
+(`295931a`), p6 (`9a53ab2`, whose CI failed on the relay's spoof test), p7 (`8e4fe30`). The MN took p1, p2
+and later `v0.6.0`; then5 took p1–p7. Backups: `/root/termit-mn-pre-060p1-20261122-153137`,
+`/root/termit-pre-060p1-20261122-173207`, and the p2/p5 copies beside them.
