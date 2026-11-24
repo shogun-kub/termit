@@ -2431,13 +2431,14 @@ installs a node without the operator assembling a command, the wizard producing 
 transports, the policy command writing a mode the next start obeys, an upgrade that keeps the node
 serving, and a deliberate upgrade failure that leaves the previous binary in place.
 
-**The advisory gate.** The advisory entry GO-2026-5288 is still in `deploy/vulnerabilities.json` with
-`must_be_gone_by: 0.7.0`: a stale record, not a
-live advisory. Its source, GHSA-9fw6-xgg2-mq9q, lists 2.8.1 as the last affected release and 2.8.2 as the
-fix; this build pins 2.14.0 and never enables the sniffing the PoC needs. `vuln.go.dev` never got the fixed
-version — the record is `UNREVIEWED` — so `govulncheck` still reports the module and `deploy/release` will
-refuse to cut `0.7.0` while the entry is there. Re-check the record first; if it is still stale, moving the
-deadline is a deliberate act with its reason in the commit, not a quiet edit.
+**The advisory gate.** The entry GO-2026-5288 was due by `0.7.0`; the deadline moved to `0.8.0` on
+2026-11-24, before the tag. It is a stale record, not a live advisory. Its source, GHSA-9fw6-xgg2-mq9q,
+lists 2.8.1 as the last affected release and 2.8.2 as the fix; this build pins 2.14.0 and never enables the
+sniffing the PoC needs. `vuln.go.dev` never got the fixed version — the record is `UNREVIEWED` — so
+`govulncheck` still reports the module (`deploy/vulngate` on 2026-11-24 printed `accepted: GO-2026-5288`,
+with three other advisories `in the module graph, not called`), and `deploy/release` refused to cut `0.7.0`
+while the entry named it. Deleting the entry would turn the gate red for a finding the code cannot fix; the
+record is what has to change, and `0.8.0` inherits the re-check.
 
 ## 5. Not implemented yet
 
