@@ -761,6 +761,18 @@ On a node:
   below 0 days and warns below 14.
 - The agent reports the new leaf on its next sync; the server follows the pin, so a renewal does not
   break the probes.
+- Issuance is refused while the domain does not resolve to this host: the CA's fetch could never
+  complete, and five failures block the name for an hour. `termit-uv doctor` shows the same `dns` check,
+  and `termit-uv init` stops on it before the certificate step runs. A node behind a proxy or a NAT
+  port-forward — where the name points elsewhere on purpose — declares it once:
+
+  ```yaml
+  acme:
+    allow_remote_ip: true
+  ```
+
+  With it the check is a warning, and reaching the node through that address becomes the operator's
+  promise: whatever answers the A record must forward `:80` (the challenge) and `:443` (the service).
 
 On the MN, `termit-mn serve` issues a certificate at startup if it is inside `acme.renew_before_days`, then
 re-checks every six hours. A renewal replaces the files and the running server serves the new pair on
@@ -801,7 +813,7 @@ Handing out links one `termit-uv uri` at a time is fine for a shell and awkward 
 also serve a page that collects them:
 
 ```bash
-termit-uv options            # renders it and prints the address
+termit-uv options            # re-render it and print the address (init and sync already created it)
 termit-uv options --rotate   # new address; the old one answers 404
 ```
 

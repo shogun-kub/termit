@@ -51,7 +51,23 @@ pre-releases, and whoever installs the release skipped them.
 - **The client page says what its links are for.** The header carries the node's egress line, and a link
   from the second transport is marked `(QUIC)` with the note that it is the one to pick for voice and video.
 
+- **A certificate is not requested for a name that does not point at this host.** The `dns` check compares
+  the A record with this machine's addresses and now fails instead of warning, so `init` stops before it
+  spends a Let's Encrypt attempt the CA can never complete, and `renew-cert` refuses for the same reason —
+  five failed authorizations block the name for an hour. A node behind a proxy or a NAT port-forward
+  declares that once with `acme.allow_remote_ip: true` and is told, in the warning, that reaching the node
+  through that address is now its promise. `termit-uv doctor` reports the same check.
+
 ### Changed
+
+- **The page of client links exists without being asked for.** `init`, `sync`, the agent's cycle and a
+  device change mint its random address the first time and keep it afterwards, instead of waiting for
+  `termit-uv options`: a node that never ran that command had links but no page, and `status` had no
+  `options:` line to print. `termit-uv options --rotate` still moves the address.
+
+- **Three wizard questions say what the answer is for.** The domain asks for the whole name — subdomain
+  and domain together; the contact address says it is the mailbox that receives expiry notices; the ACME
+  directory says to just press Enter when the answer is not known.
 
 - **An empty answer to a question that names something already in existence cancels.** A node, an invite
   code: the prompt says so, and the action runs nothing. Questions that set a new value still ask again.
