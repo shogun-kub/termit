@@ -302,30 +302,50 @@ func (p *preflight) checkPorts(ctx context.Context) Check {
 }
 
 func (p *preflight) checkDNS(ctx context.Context) Check {
-	if p.opts.Config == nil || p.opts.Config.Domain == "" {
+	return checkDomain(ctx, p.opts.Config, p.opts.LookupHost)
+}
+
+// checkDomain answers one question: does the configured name resolve to an address of this host?
+//
+// A name that resolves elsewhere is a failure, not a warning. Issuance spends an attempt on a fetch
+// the CA cannot complete, and Let's Encrypt answers the fifth failure for a name with an hour-long
+// block — so the node reports the mismatch and stops before talking to the CA at all. A proxy or a
+// NAT port-forward is the one legitimate reason for the name to point elsewhere; the operator says so
+// once, in acme.allow_remote_ip, rather than the node guessing.
+func checkDomain(ctx context.Context, cfg *config.Config, lookup func(context.Context, string) ([]string, error)) Check {
+	if cfg == nil || cfg.Domain == "" {
 		return Check{Name: "dns", Status: StatusSkip, Detail: "no domain configured"}
 	}
-	domain := p.opts.Config.Domain
+	domain := cfg.Domain
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	addrs, err := p.opts.LookupHost(ctx, domain)
+	addrs, err := lookup(ctx, domain)
 	if err != nil || len(addrs) == 0 {
 		return Check{
-			Name: "dns", Status: StatusWarn, Detail: fmt.Sprintf("%s does not resolve here", domain),
-			Hint: "the ACME CA resolves the name from outside this host; verify the A record independently",
+			Name: "dns", Status: StatusFail, Detail: domain + " does not resolve here",
+			Hint: "create the A record for " + domain + " pointing at this server; set acme.allow_remote_ip " +
+				"only if the name reaches this host through a proxy you verified from outside",
 		}
 	}
-	state := StatusWarn
-	hint := "this host cannot see its own public address; verify that the A record points at this server from outside"
 	for _, addr := range addrs {
 		ip := net.ParseIP(addr)
 		if ip != nil && !ip.IsLoopback() && isLocalAddress(ip) {
-			state, hint = StatusOK, ""
-			break
+			return Check{Name: "dns", Status: StatusOK, Detail: domain + " → " + strings.Join(addrs, ", ")}
 		}
 	}
-	return Check{Name: "dns", Status: state, Detail: domain + " → " + strings.Join(addrs, ", "), Hint: hint}
+	detail := domain + " → " + strings.Join(addrs, ", ") + ", none of them is this host"
+	if cfg.ACME.AllowRemoteIP {
+		return Check{
+			Name: "dns", Status: StatusWarn, Detail: detail,
+			Hint: "acme.allow_remote_ip is set: whatever answers that address must forward port 80 and 443 here",
+		}
+	}
+	return Check{
+		Name: "dns", Status: StatusFail, Detail: detail,
+		Hint: "point the A record at this server; set acme.allow_remote_ip only when a verified proxy or " +
+			"NAT forwards port 80 here",
+	}
 }
 
 func (p *preflight) checkACME(ctx context.Context) Check {

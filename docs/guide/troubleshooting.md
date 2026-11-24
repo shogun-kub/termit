@@ -56,7 +56,7 @@ how you tell "the box is broken" from "the path to it is broken". For anything e
 | Symptom | Likely cause | What to do |
 |---|---|---|
 | `termit-uv init` stops at `ports` | something already listens on 80/443 | stop it, re-run `termit-uv init` |
-| `termit-uv init` stops at `dns` | the record does not resolve here yet | fix DNS; the install itself does not need it, enrolment does |
+| `termit-uv init` stops at `dns` | the record does not point at this box yet | fix DNS: the certificate is refused until the name reaches this server, so `init` stops before it spends an attempt. A proxy or NAT in front declares itself with `acme.allow_remote_ip: true` |
 | `termit-uv init` stops at `certificate` | port 80 unreachable from the internet, or DNS is wrong | check both from outside; `termit-uv init --only certificate` re-runs just this step |
 | `termit-uv enroll` → `dns_mismatch` | the domain resolves elsewhere, or the request came through a proxy | fix the A/AAAA record and retry; the server compares the record with the address your request came from |
 | `termit-uv enroll` → `invalid_invite` | code mistyped, revoked, expired or used up | `termit-mn invite list` on the server, create a new one |

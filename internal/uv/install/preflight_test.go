@@ -2,6 +2,8 @@ package install
 
 import (
 	"context"
+	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -59,8 +61,25 @@ func healthyChecks(t *testing.T, exec *fakeExecutor, cfg *config.Config) Preflig
 			return nil, os.ErrNotExist
 		},
 		DiskFree:   func(string) (uint64, error) { return 8 << 30, nil },
-		LookupHost: func(context.Context, string) ([]string, error) { return []string{"203.0.113.7"}, nil },
+		LookupHost: func(context.Context, string) ([]string, error) { return ownAddresses(t), nil },
 	}
+}
+
+// ownAddresses is what a name that points at this machine resolves to, which is what a healthy host
+// has: the check compares the answer against the interfaces, so a fake public address is a mismatch.
+func ownAddresses(t *testing.T) []string {
+	t.Helper()
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		t.Fatalf("list interfaces: %v", err)
+	}
+	for _, addr := range addrs {
+		if network, ok := addr.(*net.IPNet); ok && !network.IP.IsLoopback() {
+			return []string{network.IP.String()}
+		}
+	}
+	t.Skip("this host has no non-loopback address")
+	return nil
 }
 
 func TestPreflightPortsNamesEachPortOnce(t *testing.T) {
@@ -143,7 +162,7 @@ func TestPreflightHealthyHost(t *testing.T) {
 		"arch":    StatusOK,
 		"clock":   StatusOK,
 		"ports":   StatusOK,
-		"dns":     StatusWarn, // a public address is not one of this host's own
+		"dns":     StatusOK, // the fixture's name resolves to this host, which is what a real one must do
 		"acme":    StatusOK,
 		"tun":     StatusOK,
 		"disk":    StatusOK,
@@ -332,5 +351,36 @@ func TestHumanBytes(t *testing.T) {
 		if got := humanBytes(input); got != want {
 			t.Errorf("humanBytes(%d) = %q, want %q", input, got, want)
 		}
+	}
+}
+
+// TestTheCertificateStepRefusesAForeignName: an attempt spent on a name the CA cannot reach is a wasted
+// one, and the fifth failure blocks the name for an hour. The one deliberate exception — a proxy or a
+// NAT port-forward — is declared in the configuration instead of guessed.
+func TestTheCertificateStepRefusesAForeignName(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	cfg := config.Default()
+	cfg.Domain = "node.example.com"
+	foreign := func(context.Context, string) ([]string, error) { return []string{"203.0.113.7"}, nil }
+
+	if got := checkDomain(ctx, cfg, foreign); got.Status != StatusFail {
+		t.Fatalf("a name pointing elsewhere = %q, want %q", got.Status, StatusFail)
+	}
+	if got := checkDomain(ctx, cfg, func(context.Context, string) ([]string, error) {
+		return nil, errors.New("no such host")
+	}); got.Status != StatusFail {
+		t.Fatalf("a name that does not resolve = %q, want %q", got.Status, StatusFail)
+	}
+
+	cfg.ACME.AllowRemoteIP = true
+	if got := checkDomain(ctx, cfg, foreign); got.Status != StatusWarn {
+		t.Fatalf("allow_remote_ip = %q, want %q", got.Status, StatusWarn)
+	}
+
+	cfg.ACME.AllowRemoteIP = false
+	own := func(context.Context, string) ([]string, error) { return ownAddresses(t), nil }
+	if got := checkDomain(ctx, cfg, own); got.Status != StatusOK {
+		t.Fatalf("a name pointing at this host = %q, want %q (%s)", got.Status, StatusOK, got.Detail)
 	}
 }

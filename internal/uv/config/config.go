@@ -139,6 +139,11 @@ type ACME struct {
 	SkipTLSVerify bool `yaml:"skip_tls_verify,omitempty"`
 	// RenewBeforeDays renews the certificate this many days before it expires.
 	RenewBeforeDays int `yaml:"renew_before_days"`
+	// AllowRemoteIP lets issuance proceed when the domain does not resolve to an address of this host.
+	// A proxy or a NAT port-forward in front of the node is a setup the operator has verified by hand,
+	// so it is declared here instead of guessed: without it the node refuses to spend an ACME attempt
+	// the CA can never complete, and five failures block the name for an hour.
+	AllowRemoteIP bool `yaml:"allow_remote_ip,omitempty"`
 }
 
 // Xray pins the proxy core.
