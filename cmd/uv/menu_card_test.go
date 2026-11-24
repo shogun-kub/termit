@@ -3,6 +3,7 @@ package main
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/shogun-kub/termit/internal/termui"
 	"github.com/shogun-kub/termit/internal/uv/config"
@@ -52,6 +53,26 @@ func TestPeersLineCountsDegraded(t *testing.T) {
 	}
 	if got := peersLine(peers[:1]); got != "1" {
 		t.Errorf("peers = %q, want a plain count when nothing is degraded", got)
+	}
+}
+
+// The card's sync line is read at a glance, so an age says "2h ago" and not "2h0m0s ago".
+func TestHumanAgeReadsLikeAPerson(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC)
+	for _, tc := range []struct {
+		then time.Time
+		want string
+	}{
+		{now.Add(-40 * time.Second), "40s ago"},
+		{now.Add(-90 * time.Second), "2m ago"},
+		{now.Add(-2 * time.Hour), "2h ago"},
+		{now.Add(-150 * time.Minute), "2h30m ago"},
+		{now.Add(5 * time.Minute), "in 5m"},
+	} {
+		if got := humanAge(now, tc.then); got != tc.want {
+			t.Errorf("humanAge(%v) = %q, want %q", tc.then, got, tc.want)
+		}
 	}
 }
 
