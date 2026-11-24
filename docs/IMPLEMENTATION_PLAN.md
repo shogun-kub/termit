@@ -2951,4 +2951,4 @@ below resolves the names the prose still uses.
 | M5-1 … M5-8 | §3.4.10; the production pass is §3.4.11 |
 
 New in this revision, with no old number: §1, §2, §3 and the introductions to its chapters, §4 and its
-sections, §5 and its introductions, §5.1.1, §5.1.2, §5.2.5, §5.2.6, §7 and §8.
+sections, §5 and its introductions, §5.1.1, §5.1.2, §5.1.3, §5.2.5, §5.2.6, §7 and §8.
