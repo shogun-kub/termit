@@ -61,8 +61,8 @@ type Credentials struct {
 }
 
 // Options is the owner's private options page: the random path segment it lives under and when it was
-// last rendered. An empty Token means the owner never asked for the page, and nothing creates one
-// behind their back.
+// last rendered. The token is minted by the first init, sync or `termit-uv options` — every node has
+// one address for its links without the owner having to remember to ask for it.
 type Options struct {
 	Token      string    `json:"token,omitempty"`
 	RenderedAt time.Time `json:"rendered_at,omitempty"`

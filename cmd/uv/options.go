@@ -224,24 +224,31 @@ func localURI(cfg *config.Config, node *state.State) string {
 	return uri
 }
 
-// refreshOptions re-renders an existing page and never creates one: a node whose owner never asked for
-// it should not grow one because a sync ran. Callers treat a failure as a warning — the page is a
-// convenience, and a certificate renewal must not fail because a page could not be written.
+// refreshOptions re-renders the owner's page, and mints its address the first time: a node should not
+// need a command typed by hand before its links have a page, and `init` and `sync` already run at the
+// moment the links are known. Callers treat a failure as a warning — the page is a convenience, and a
+// certificate renewal must not fail because a page could not be written.
 func (a *application) refreshOptions(cfg *config.Config) error {
 	node, err := state.LoadInstalled(cfg.Paths.StatePath())
 	if err != nil {
 		return err
 	}
-	if !options.ValidToken(node.Options.Token) || node.Identity.SelfUUID == "" {
+	if node.Identity.SelfUUID == "" || node.Identity.XHTTPPath == "" {
 		return nil
+	}
+	token := node.Options.Token
+	if !options.ValidToken(token) {
+		if token, err = options.NewToken(); err != nil {
+			return err
+		}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
-	page, err := options.Render(a.optionsData(ctx, cfg, node, node.Options.Token))
+	page, err := options.Render(a.optionsData(ctx, cfg, node, token))
 	if err != nil {
 		return err
 	}
-	dir := filepath.Join(cfg.Paths.SiteDir, node.Options.Token)
+	dir := filepath.Join(cfg.Paths.SiteDir, token)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
@@ -249,7 +256,7 @@ func (a *application) refreshOptions(cfg *config.Config) error {
 	if err := state.WriteFileAtomic(pagePath, page, 0o644); err != nil {
 		return err
 	}
-	node.Options.RenderedAt = a.now().UTC()
+	node.Options = state.Options{Token: token, RenderedAt: a.now().UTC()}
 	node.AddPath(dir, state.KindDir, "options", a.now())
 	node.AddPath(pagePath, state.KindFile, "options", a.now())
 	node.Touch()

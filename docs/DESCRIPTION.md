@@ -796,9 +796,9 @@ node's own device; it is the one place a credential is printed on purpose, to st
 accepts, the mesh peers as the subscription describes them, and the two subscription forms, each with a
 copy button. It is a static file in the decoy site's tree under a random 32-character path, so nginx
 needs no new location for it; the path is a capability like the subscription token, generated once,
-stored in the state file and replaced by `--rotate`. Nothing creates the page implicitly: `init`,
-`renew-site`, `sync`, the agent's daily cycle and `device add`/`device remove` re-render an existing one
-(the decoy step rewrites the whole tree) and leave a node that never asked for it alone. The mesh half is
+stored in the state file and replaced by `--rotate`. The owner does not have to remember it: `init`,
+`sync`, the agent's daily cycle and `device add`/`device remove` mint the address on the first run and
+re-render the page afterwards (the decoy step rewrites the whole tree). The mesh half is
 the reason the refresh is not left to the owner: a page that lists peers the server dropped, or omits a
 device that was just added, is worse than no page at all.
 

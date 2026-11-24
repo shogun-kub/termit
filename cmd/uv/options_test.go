@@ -12,6 +12,7 @@ import (
 
 	"github.com/shogun-kub/termit/internal/proto"
 	"github.com/shogun-kub/termit/internal/uv/config"
+	"github.com/shogun-kub/termit/internal/uv/options"
 	"github.com/shogun-kub/termit/internal/uv/state"
 )
 
@@ -389,5 +390,42 @@ func TestOptionsHandsOutTheQUICLink(t *testing.T) {
 	want := "hy2://" + proto.HysteriaUser(device) + ":" + proto.HysteriaPassword(device) + "@" + cfg.Domain + ":443"
 	if !strings.Contains(html, want) {
 		t.Errorf("the page has no QUIC link for the device (%s):\n%s", want, html)
+	}
+}
+
+// TestTheFirstSyncMintsThePage: the owner should not have to remember a command before the node has one
+// address for its links. init and sync mint it, and a second run must not move it out from under a
+// bookmarked URL.
+func TestTheFirstSyncMintsThePage(t *testing.T) {
+	t.Parallel()
+	app, cfg, _ := optionsFixture(t, "")
+
+	if err := app.refreshOptions(cfg); err != nil {
+		t.Fatalf("refreshOptions: %v", err)
+	}
+	node, err := state.LoadInstalled(cfg.Paths.StatePath())
+	if err != nil {
+		t.Fatalf("load state: %v", err)
+	}
+	if !options.ValidToken(node.Options.Token) {
+		t.Fatalf("the sync minted no token: %q", node.Options.Token)
+	}
+	page, err := os.ReadFile(filepath.Join(cfg.Paths.SiteDir, node.Options.Token, "index.html"))
+	if err != nil {
+		t.Fatalf("the page was not written: %v", err)
+	}
+	if !strings.Contains(string(page), cfg.Domain) {
+		t.Error("the minted page does not name the node")
+	}
+
+	if err := app.refreshOptions(cfg); err != nil {
+		t.Fatalf("second refreshOptions: %v", err)
+	}
+	again, err := state.LoadInstalled(cfg.Paths.StatePath())
+	if err != nil {
+		t.Fatalf("load state: %v", err)
+	}
+	if again.Options.Token != node.Options.Token {
+		t.Errorf("the address moved on a re-render: %q → %q", node.Options.Token, again.Options.Token)
 	}
 }
