@@ -454,8 +454,11 @@ Invite codes: random 32-byte codes, stored hashed, with `max_uses`, `expires_at`
 ## 8. MN ↔ UV protocol
 
 HTTP/1.1 + JSON over TLS 1.3, `Authorization: Bearer <agent_key>` for agent endpoints.
-`api_version` is part of every response; MN declares `min_agent_version` and UV refuses to run
-against an API it does not understand. Errors are RFC 9457-style problem objects with a stable
+`api_version` is part of every response, so a build can name the protocol it was answered in; v1 has no
+compatibility gate — no `min_agent_version`, and no side refuses an answer whose version it does not
+recognise (`IMPLEMENTATION_PLAN.md` §5.1.3). What keeps mixed builds usable is the field discipline: a new
+*request* field is the breaking kind and arrives only with an `api_version` change, while an unknown value
+inside a known field is dropped, not refused. Errors are RFC 9457-style problem objects with a stable
 `code` (`invite_invalid`, `pending_approval`, `check_failed`, `dns_mismatch`, `rate_limited`, …).
 
 | Method | Path | Auth | Purpose |

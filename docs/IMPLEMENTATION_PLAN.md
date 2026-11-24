@@ -2447,7 +2447,7 @@ names the rule that keeps it out and what it depends on, so nobody re-discovers 
 
 ### 5.1 0.7.x candidates
 
-Small and unplanned. Either may land in a `0.7.x` patch or wait for `0.8.0`; neither is in `0.7.0`'s
+Small and unplanned. Any of them may land in a `0.7.x` patch or wait for `0.8.0`; none is in `0.7.0`'s
 scope (§4.1).
 
 #### 5.1.1 Parameters in the profile envelope
@@ -2470,6 +2470,21 @@ says either — "the sidecar would have to be told, which it cannot be through i
 
 The constraint is the third-party daemon's interface; it depends on `usque` growing a family flag, or on a
 rule the core can apply without being told.
+
+#### 5.1.3 The minimum agent version
+
+`DESCRIPTION.md` §8 promised that MN declares `min_agent_version` and UV refuses to run below it. Nothing
+carries it: the sync answer has `api_version` and `server_version`, no key names a minimum, and neither side
+reads the other's protocol version. The release sweep caught the claim while checking §8 against the wire.
+
+The constraint is the shape of the promise, not the field: `agent/sync` is called by every node and its body
+is decoded with unknown fields refused, so a new *request* field is the breaking kind and arrives only with
+an `api_version` change. And "UV refuses to run" is a refusal keyed on the server's word, which can strand a
+node that is otherwise healthy — the case `doctor` reports, not one it should enforce. Mixed builds already
+work because an unknown value inside a known field is dropped rather than refused.
+
+It returns with the first change that genuinely needs a gate between builds; until then §8 states what the
+wire does.
 
 ### 5.2 0.8.0
 
