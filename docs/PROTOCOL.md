@@ -297,7 +297,8 @@ Rules the node may rely on:
 A blocked or removed node cannot sync: `403 node_inactive`. A wrong or unknown key is `401
 unauthorized` — the same answer, so a guesser learns nothing from the difference. A `pending` node may
 sync — it needs the credentials it was issued — and it stays absent from every other node's set until an
-operator approves it (the state table in [`DESCRIPTION.md`](DESCRIPTION.md) §7.1).
+operator approves it (the state table in [`DESCRIPTION.md`](DESCRIPTION.md) §7.1); its own answer carries
+the peer set, whose pair credentials no peer will accept until then.
 
 ### 3.5 `POST {prefix}/agent/unblock`
 

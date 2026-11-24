@@ -297,8 +297,11 @@ Scenario C.
 **Rec** It keeps its subscription URL, but the node is excluded from everyone else's configs and its
 own node is absent from its list — the peers it reads no longer contain its pair credential, so the
 URL buys no traffic. It is kept because an unblock restores access without reissuing anything, and
-`termit-uv status` shows `blocked` and points to `termit-uv unblock`. A `pending` or `removed` node
-receives nothing: the subscription answers `404`, like an unknown token.
+`termit-uv status` shows `blocked` and points to `termit-uv unblock`. A `pending` or `removed` node gets no
+subscription: the URL answers `404`, like an unknown token. A pending node still syncs, because it needs
+what enrollment issued, and its answer carries the peer set like any other — those pair credentials buy
+nothing until an operator approves it, because no peer has been told about the node and refuses every
+handshake that presents them (`MN-API.md` §3.2).
 **Why** Scenario B says MN "offers him his subscription again", implying it was never destroyed.
 Keeping the URL for a member who may come back is not the same as letting a node that is not a member
 read the mesh, which is why the state gate is at `pending` and `removed`.

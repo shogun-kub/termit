@@ -319,7 +319,9 @@ digest, and only the digest leaves.
 
 Refusals: `unauthorized` (no key, unknown key), `url_invalid` (the body does not parse or carries a field
 this build does not know), `node_inactive` (blocked or removed), `internal_error`. A `pending` node syncs
-like any other: its credentials exist, and it is the peers' sets that exclude it until approval.
+like any other: its credentials exist, and it is the peers' sets that exclude it until approval. Its own
+answer carries the full peer set too, and those pair credentials are inert until approval, because no peer
+has been told about the node.
 
 ### 3.3 `POST {prefix}/agent/unblock`
 
