@@ -60,6 +60,10 @@ type Data struct {
 	Devices []Link
 	// Peers is the mesh as the subscription last described it, without this node.
 	Peers []Link
+	// PeerNodes is how many machines those links describe. A peer that serves two transports is one node
+	// with two rows: which transports a node serves is its owner's choice, and it can change without the
+	// mesh growing, so the heading counts machines rather than rows.
+	PeerNodes int
 	// Warning explains an empty or stale Peers list in one sentence. Render shows it above the mesh
 	// section instead of silently pretending the mesh is empty.
 	Warning string
@@ -304,7 +308,7 @@ footer { margin-top: 2.5rem; color: var(--dim); font-size: .8rem; text-align: ce
 </section>
 {{end}}
 
-<h2>{{printf .Text.Mesh (len .Peers)}}</h2>
+<h2>{{printf .Text.Mesh .PeerNodes}}</h2>
 <section>
   {{if .Warning}}<p class="note warn">{{.Text.Warning}}</p>{{end}}
   {{if .Peers}}
@@ -376,6 +380,19 @@ document.addEventListener('click', function (event) {
 {{end}}
 `))
 
+// nodeCount is how many machines a set of links describes: one row per transport, one node per address.
+func nodeCount(links []Link) int {
+	seen := make(map[string]bool, len(links))
+	for _, link := range links {
+		key := strings.ToLower(hostOf(link.URI))
+		if key == "" {
+			key = strings.ToLower(link.Label)
+		}
+		seen[key] = true
+	}
+	return len(seen)
+}
+
 // views pairs each link with the words its row needs. A QUIC link gets the one sentence that makes it
 // worth picking: it is the transport voice and video work best on, which is what the second transport is
 // for. The caller already labels it "(QUIC)", so the marker and the transport cannot drift.
@@ -397,6 +414,7 @@ func Render(d Data) ([]byte, error) {
 		d.Lang = i18n.Default
 	}
 	d.Text = textFor(d.Lang)
+	d.PeerNodes = nodeCount(d.Peers)
 	d.LocalView = views(d.Local, d.Text)
 	d.DevicesView = views(d.Devices, d.Text)
 	d.PeersView = views(d.Peers, d.Text)

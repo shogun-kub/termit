@@ -20,7 +20,7 @@ import (
 // write, and the answer to "is this node installed" must be the wizard's own dry run of the pipeline —
 // the real thing, not a stub.
 // countAfter returns the integer that follows prefix, or -1 when there is none. It is how a test reads
-// "peers:  2 (a, b)" from status and "Mesh (2)" from the page without depending on the padding.
+// "peers:  2 (a, b)" from status and "Меш (2)" from the page without depending on the padding.
 func countAfter(text, prefix string) int {
 	i := strings.Index(text, prefix)
 	if i < 0 {
@@ -96,8 +96,9 @@ func TestLabOwnerSurface(t *testing.T) {
 			}
 		}
 		// The lab has three nodes: the subscription lists all three, and the page must not count this
-		// node among the peers it is shown next to.
-		if !strings.Contains(page, "Mesh (2)") {
+		// node among the peers it is shown next to. The heading counts machines, so a peer that serves a
+		// second transport is still one row of the mesh and one node in the count.
+		if !strings.Contains(page, "Меш (2)") {
 			t.Errorf("the page does not list the two other nodes, or still counts this one")
 		}
 		// A wrong path must not answer with the page: the address is the only secret.
@@ -138,7 +139,7 @@ func TestLabOwnerSurface(t *testing.T) {
 		if want < 0 {
 			t.Fatalf("status does not say how many peers there are")
 		}
-		if got := countAfter(uv.MustRun(t, ctx, "curl -sS --max-time 30 "+url), "Mesh ("); got != want {
+		if got := countAfter(uv.MustRun(t, ctx, "curl -sS --max-time 30 "+url), "Меш ("); got != want {
 			t.Errorf("the page lists %d peer(s), the node has %d", got, want)
 		}
 		// The mesh the page describes has to be the one the last sync applied, so a sync must rewrite

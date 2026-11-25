@@ -65,7 +65,9 @@ pre-releases, and whoever installs the release skipped them.
 - **The page of client links exists without being asked for.** `init`, `sync`, the agent's cycle and a
   device change mint its random address the first time and keep it afterwards, instead of waiting for
   `termit-uv options`: a node that never ran that command had links but no page, and `status` had no
-  `options:` line to print. `termit-uv options --rotate` still moves the address.
+  `options:` line to print. `termit-uv options --rotate` still moves the address. The mesh heading counts
+  machines, not rows: a peer that serves a second transport is one node, and which transports it serves is
+  its owner's choice.
 
 - **Three wizard questions say what the answer is for.** The domain asks for the whole name — subdomain
   and domain together; the contact address says it is the mailbox that receives expiry notices; the ACME
