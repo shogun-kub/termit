@@ -379,6 +379,13 @@ func TestTheCertificateStepRefusesAForeignName(t *testing.T) {
 	}
 
 	cfg.ACME.AllowRemoteIP = false
+	// Debian's /etc/hosts answers the host's own name with 127.0.1.1, and a node whose host name is its
+	// domain must not be refused because of it.
+	loopback := func(context.Context, string) ([]string, error) { return []string{"127.0.1.1"}, nil }
+	if got := checkDomain(ctx, cfg, loopback); got.Status != StatusOK {
+		t.Fatalf("a name from the host's own /etc/hosts = %q, want %q", got.Status, StatusOK)
+	}
+
 	own := func(context.Context, string) ([]string, error) { return ownAddresses(t), nil }
 	if got := checkDomain(ctx, cfg, own); got.Status != StatusOK {
 		t.Fatalf("a name pointing at this host = %q, want %q (%s)", got.Status, StatusOK, got.Detail)

@@ -330,7 +330,10 @@ func checkDomain(ctx context.Context, cfg *config.Config, lookup func(context.Co
 	}
 	for _, addr := range addrs {
 		ip := net.ParseIP(addr)
-		if ip != nil && !ip.IsLoopback() && isLocalAddress(ip) {
+		// A loopback answer is this machine talking to itself. Debian's /etc/hosts maps the host name to
+		// 127.0.1.1, and a node whose host name is its domain would otherwise be refused its own name; the
+		// lab's relocation scenario puts the new name there for the same reason.
+		if ip != nil && (ip.IsLoopback() || isLocalAddress(ip)) {
 			return Check{Name: "dns", Status: StatusOK, Detail: domain + " → " + strings.Join(addrs, ", ")}
 		}
 	}
