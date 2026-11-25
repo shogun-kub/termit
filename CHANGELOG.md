@@ -76,6 +76,11 @@ pre-releases, and whoever installs the release skipped them.
 
 ### Fixed
 
+- **The page of client links is readable by nginx.** A page minted by a process with a restrictive
+  umask left its directory `0700`, and nginx answered `403` to the owner's own address — which is what
+  the lab found on the first node that minted one itself. The directory is now set public explicitly,
+  whatever umask the writer runs under, and a test holds it there.
+
 - **The egress probe waits for the MASQUE relay.** `init --warp-transport usque` used to probe while the
   relay was still starting, go out through the balancer's fallback and report the node's own address as the
   tunnel's exit. It now waits for the port and, if it never comes up, says it could not verify instead.
