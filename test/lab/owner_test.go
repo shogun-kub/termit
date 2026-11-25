@@ -157,7 +157,8 @@ func TestLabOwnerSurface(t *testing.T) {
 	t.Run("the server menu speaks Russian on a UTF-8 console", func(t *testing.T) {
 		out := l.MN.MustRun(t, ctx, "LANG=ru_RU.UTF-8 termit-mn menu --token-file /etc/termit/mn/admin.token < /dev/null")
 		t.Logf("menu:\n%s", oneLine(out))
-		if !strings.Contains(out, "Termit — сервер") || !strings.Contains(out, "состояние") {
+		// A group label, capitalised like the rest of them: the item labels are the lowercase ones.
+		if !strings.Contains(out, "Termit — сервер") || !strings.Contains(out, "Состояние") {
 			t.Errorf("the server menu is not Russian:\n%s", out)
 		}
 	})
@@ -167,7 +168,7 @@ func TestLabOwnerSurface(t *testing.T) {
 		if !strings.Contains(out, "Termit — server") {
 			t.Errorf("the server menu did not fall back to English:\n%s", out)
 		}
-		if strings.Contains(out, "состояние") {
+		if strings.Contains(out, "Состояние") {
 			t.Errorf("Cyrillic leaked onto a console that cannot show it:\n%s", out)
 		}
 	})
