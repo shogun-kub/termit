@@ -118,7 +118,10 @@ $env:GOPATH = "$(Get-Location)\.spike-out\gopath"
 ```
 
 The cache overrides are required: the file sandbox denies writes to `%LOCALAPPDATA%`, and a build then
-fails with a permission error rather than a compile error.
+fails with a permission error rather than a compile error. The same confinement breaks Windows' own TLS
+stack — `curl.exe`, `git`'s default backend and .NET fail with `SEC_E_NO_CREDENTIALS` while `node`,
+`git -c http.sslBackend=openssl` and every Go client work. Before blaming the network, read
+[`docs/MAINTENANCE.md`](docs/MAINTENANCE.md) §4.
 
 Build `golangci-lint` from source with this toolchain: a prebuilt binary refuses a newer module. Go is
 pinned by the `go` directive, patch included (`go 1.27.4`), because `govulncheck` gates on the toolchain

@@ -40,3 +40,60 @@ commands work anywhere with Go and a JRE:
 go test -coverprofile=coverage.out ./cmd/... ./internal/...
 SONAR_TOKEN=… sonar-scanner -Dsonar.host.url=<server>
 ```
+
+## 4. HTTPS from inside the agent's sandbox
+
+Windows' own TLS stack cannot get credentials while the harness confines the process to the workspace, so
+every Schannel client fails with
+
+```
+schannel: AcquireCredentialsHandle failed: SEC_E_NO_CREDENTIALS (0x8009030e)
+```
+
+and .NET turns the same failure into `The SSL connection could not be established`. It happens with and
+without the proxy, which is what makes it look like a network problem.
+
+**It is not the network.** Schannel keeps client credentials in the machine's crypto store, and the
+sandbox allows reading `%APPDATA%\Microsoft\Crypto` and `%ProgramData%\Microsoft\Crypto` but not writing
+them. The proof: the same `curl https://api.github.com/` answers `200` when that one command is run with
+the harness's `danger-full-access` escalation. The proxy at `127.0.0.1:8899`, the fake-IP DNS
+(`198.18.0.18`, the `cfw-tap` adapter) and the LAN are innocent — OpenSSL clients reach the same hosts with
+the same environment.
+
+What works without escalation, because it does not use Schannel:
+
+| Tool | Why |
+|---|---|
+| `node` (v24 here) | OpenSSL |
+| `git -c http.sslBackend=openssl …` | Git for Windows ships both backends |
+| `gh`, `go run ./deploy/…`, the Termit binaries | Go's `crypto/tls` |
+
+What breaks: `curl.exe`, `git` without the override, `Invoke-WebRequest`/`Invoke-RestMethod`, and anything
+else on Schannel. For a one-off of those, run that single command with `danger-full-access` instead of
+fighting it.
+
+Check the state of the machine in one line:
+
+```powershell
+curl.exe -sS -o NUL -w "%{http_code}\n" https://api.github.com/   # 000 plus the schannel error = confined
+```
+
+**Publishing a pre-release** is a `workflow_dispatch` of `release.yaml` on a `release/<version>` branch
+(`docs/RELEASE.md` §2). `gh` is not installed here; with `gh` it is `gh workflow run release.yaml --ref
+release/v0.7.0 -f publish_prerelease=true`. Without it, the same call from node — save it outside
+`.spike-out/`, which `clean` empties:
+
+```js
+// node dispatch.js <git-token-file>: the branch name is the version
+const https = require('https'), fs = require('fs');
+const token = fs.readFileSync(process.argv[2], 'utf8').trim();
+const ref = 'release/v0.7.0';
+const req = https.request({ host: 'api.github.com', method: 'POST',
+  path: '/repos/shogun-kub/termit/actions/workflows/release.yaml/dispatches',
+  headers: { authorization: `Bearer ${token}`, 'user-agent': 'termit', accept: 'application/vnd.github+json' } },
+  (res) => console.log(`dispatch: ${res.statusCode}`));   // 204, no body
+req.end(JSON.stringify({ ref, inputs: { publish_prerelease: 'true' } }));
+```
+
+The token is the personal one in `.spike-out/github-token` (kept by `clean`); it needs the `workflow`
+scope, and `GET /user` reports `200` when it is alive.
