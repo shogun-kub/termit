@@ -56,7 +56,9 @@ pre-releases, and whoever installs the release skipped them.
   spends a Let's Encrypt attempt the CA can never complete, and `renew-cert` refuses for the same reason —
   five failed authorizations block the name for an hour. A node behind a proxy or a NAT port-forward
   declares that once with `acme.allow_remote_ip: true` and is told, in the warning, that reaching the node
-  through that address is now its promise. `termit-uv doctor` reports the same check.
+  through that address is now its promise. `termit-uv doctor` reports the same check. An answer that comes
+  from the host's own `/etc/hosts` (`127.0.1.1`) counts as this machine, so a node whose host name is its
+  domain is not refused its own name.
 
 ### Changed
 
