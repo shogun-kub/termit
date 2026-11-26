@@ -60,6 +60,18 @@ pre-releases, and whoever installs the release skipped them.
   from the host's own `/etc/hosts` (`127.0.1.1`) counts as this machine, so a node whose host name is its
   domain is not refused its own name.
 
+- **The tunnel is measured, not just named.** `termit-uv warp status` prints how long the trace through the
+  tunnel took, and `doctor` says the same and warns when it takes more than two seconds: an exit that answers
+  in seconds is unusable to every client even while the egress check is green.
+
+- **`termit-mn uv show` says which transport the probe took.** A node that serves the TLS profile and
+  Hysteria2 is probed on one leg; the view lists both declared transports and marks the one that was tested,
+  so "ok" can no longer stand for a transport nobody checked.
+
+- **`doctor` compares the table in force with the configuration.** A node whose applied table was rendered
+  before a UDP port was added, or before `ssh_from` was narrowed, gets a warning naming the fields and the
+  command that fixes it, instead of a clean report.
+
 ### Changed
 
 - **The page of client links exists without being asked for.** `init`, `sync`, the agent's cycle and a
@@ -93,6 +105,13 @@ pre-releases, and whoever installs the release skipped them.
 - **`warp.family` is documented as a `wireguard` setting.** The MASQUE sidecar is dual-stack and takes no
   family flag, so on `usque` a non-default family is refused at load time and the default means nothing;
   the operations guide, the config comment and both guides say so.
+
+- **The firewall table and the configuration no longer drift apart unseen.** `firewall status` names the
+  fields that moved — `ports`, `udp_ports`, `ssh_from`, `default_deny` — and prints the applied UDP ports;
+  `firewall restore`, the boot unit, writes the same warning to the journal when the record it restores is
+  older than the configuration; and `init` prints the QUIC hint on every run, not only when `--hysteria` was
+  passed. The table is still applied only by `firewall on`: a host firewall that re-renders itself at boot
+  is a change of exposure nobody confirmed.
 
 ## 0.6.0 — 2026-11-22
 

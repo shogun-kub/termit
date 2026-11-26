@@ -86,6 +86,12 @@ unit `termit-uv-firewall.service` finishes the job before the network comes up:
 
 `termit-uv firewall restore --dry-run` answers what a reboot would do without rebooting.
 
+The record is a snapshot: it holds what you applied, not what the configuration says today. A UDP port added
+for Hysteria2, an `ssh_from` narrowed since — the table comes back as confirmed, and `status` names the fields
+that moved (`udp_ports`, `ports`, `ssh_from`, `default_deny`). The boot unit writes the same warning to its
+journal, `doctor` warns too, and `firewall on` + `confirm` write a record that matches. Nothing re-renders the
+table behind your back.
+
 ## The ban engine
 
 With `security.guard.enabled: true` — or `termit-uv init --harden` — `init` installs and starts

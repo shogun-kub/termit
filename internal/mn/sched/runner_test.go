@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/shogun-kub/termit/internal/mn/probe"
 	"github.com/shogun-kub/termit/internal/mn/sched"
 	"github.com/shogun-kub/termit/internal/mn/store"
+	"github.com/shogun-kub/termit/internal/proto"
 )
 
 var now = time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC)
@@ -43,7 +45,8 @@ func unknownResult() probe.Result {
 type staticTargeter struct{ ok bool }
 
 func (s staticTargeter) Target(_ context.Context, node store.UV) (probe.Target, bool) {
-	return probe.Target{ID: node.ID, Address: node.Domain, Port: 443, ServerName: node.Domain, Path: "/secret/"}, s.ok
+	return probe.Target{ID: node.ID, Address: node.Domain, Port: 443, ServerName: node.Domain,
+		Path: "/secret/", Transport: proto.KindVLESS}, s.ok
 }
 
 func newStore(t *testing.T) *store.Store {
@@ -506,4 +509,27 @@ func ids(cycles []sched.Cycle) []string {
 		out = append(out, cycle.Node.ID)
 	}
 	return out
+}
+
+// TestACheckSaysWhichTransportItProbed: a node may declare two transports while the server probes one,
+// so a check row that does not name its leg lets a green "ok" stand for a transport nobody tested.
+func TestACheckSaysWhichTransportItProbed(t *testing.T) {
+	t.Parallel()
+	db := newStore(t)
+	node := enroll(t, db, "uv_1", "one.example.com", store.StateActive)
+
+	if _, err := runner(db, &scriptedProber{results: []probe.Result{okResult()}}, staticTargeter{ok: true}).
+		CheckOne(context.Background(), node); err != nil {
+		t.Fatalf("CheckOne: %v", err)
+	}
+	checks, err := db.Checks(context.Background(), "uv_1", 10)
+	if err != nil {
+		t.Fatalf("Checks: %v", err)
+	}
+	if len(checks) == 0 {
+		t.Fatal("no check rows")
+	}
+	if !strings.Contains(checks[0].DetailJSON, `"transport":"vless"`) {
+		t.Errorf("the row does not say which transport it probed: %q", checks[0].DetailJSON)
+	}
 }

@@ -12,6 +12,7 @@ import (
 
 	"github.com/shogun-kub/termit/internal/acme"
 	"github.com/shogun-kub/termit/internal/decoy"
+	"github.com/shogun-kub/termit/internal/firewall"
 	"github.com/shogun-kub/termit/internal/uv/config"
 	"github.com/shogun-kub/termit/internal/uv/service"
 	"github.com/shogun-kub/termit/internal/uv/state"
@@ -65,6 +66,9 @@ func Diagnose(ctx context.Context, opts DiagnoseOptions) []Check {
 	// Only when it is enabled: a check for a transport nobody asked for is noise on a healthy node.
 	if cfg.Hysteria != nil {
 		checks = append(checks, diagnoseTransport(ctx, opts.Exec, cfg))
+	}
+	if check, ok := diagnoseFirewall(cfg); ok {
+		checks = append(checks, check)
 	}
 	warpClient := warp.New(warpRunner{exec: opts.Exec})
 	if opts.WarpHost != nil {
@@ -175,6 +179,37 @@ func diagnoseTransport(ctx context.Context, exec Executor, cfg *config.Config) C
 			Hint: "systemctl status " + service.HysteriaUnitName + "; `termit-uv init` starts it again"}
 	}
 	return Check{Name: "transport", Status: StatusOK, Detail: "hysteria " + hysteriaVersion + ", " + cfg.Paths.HysteriaConfig}
+}
+
+// diagnoseFirewall answers "does the table this node applied still describe its configuration". The boot
+// unit restores the record an operator confirmed, so a UDP port or an SSH source added afterwards waits
+// for the next `firewall on`; on a node whose QUIC transport is on, that wait is a transport nobody can
+// reach, and its packets are counted as a scan. A node with no table applied is not a finding here —
+// `firewall status` already says that the configuration asks for one.
+func diagnoseFirewall(cfg *config.Config) (Check, bool) {
+	if !cfg.Security.Firewall.Enabled {
+		return Check{}, false
+	}
+	applied, err := firewall.LoadApplied(cfg.Paths.FirewallPath())
+	if err != nil {
+		return Check{Name: "firewall", Status: StatusFail, Detail: err.Error()}, true
+	}
+	if applied == nil || !applied.RemovedAt.IsZero() {
+		return Check{}, false
+	}
+	want, err := cfg.Security.Table(firewall.NodePorts)
+	if err != nil {
+		return Check{Name: "firewall", Status: StatusFail, Detail: err.Error()}, true
+	}
+	if drift := firewall.Drift(applied, want); len(drift) > 0 {
+		return Check{
+			Name:   "firewall",
+			Status: StatusWarn,
+			Detail: "the applied table was rendered from an older configuration (" + strings.Join(drift, ", ") + " differ)",
+			Hint:   "`termit-uv firewall on`, then `termit-uv firewall confirm`",
+		}, true
+	}
+	return Check{Name: "firewall", Status: StatusOK, Detail: "the applied table matches the configuration"}, true
 }
 
 func diagnoseProxy(ctx context.Context, exec Executor, cfg *config.Config) Check {

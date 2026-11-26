@@ -1191,6 +1191,11 @@ firewall:   on, confirmed 3m ago
 firewall:   off since 1s ago
 ```
 
+`status` also prints the table's own ports (`table:`) and its UDP ones (`udp:`), and names the fields where
+the record is older than the configuration — `udp_ports`, `ports`, `ssh_from`, `default_deny`. That drift is
+what a reboot otherwise hides: the boot unit restores the record as confirmed and writes the same warning to
+its journal. `firewall on` then `confirm` is the only thing that makes the two agree.
+
 If you reach SSH from a fixed address, restrict port 22 to it — the networks are compiled into the table,
 so the restriction survives a rebuild:
 

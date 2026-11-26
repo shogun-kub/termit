@@ -542,6 +542,8 @@ func runUVShow(args []string, stdout, stderr io.Writer) int {
 			LatencyMS  int       `json:"latency_ms"`
 			ErrorClass string    `json:"error_class"`
 		} `json:"checks"`
+		Transports      []string `json:"transports"`
+		ProbedTransport string   `json:"probed_transport"`
 	}
 	callCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -563,6 +565,17 @@ func runUVShow(args []string, stdout, stderr io.Writer) int {
 	fmt.Fprintf(stdout, "agent:   %s\n", result.Node.AgentVersion)
 	fmt.Fprintf(stdout, "epoch:   %d\n", result.Node.CredentialEpoch)
 	fmt.Fprintf(stdout, "failed cycles: %d\n", result.Node.FailedCycles)
+	if len(result.Transports) > 1 {
+		parts := make([]string, 0, len(result.Transports))
+		for _, kind := range result.Transports {
+			if kind == result.ProbedTransport {
+				parts = append(parts, kind+" (probed)")
+				continue
+			}
+			parts = append(parts, kind+" (not probed)")
+		}
+		fmt.Fprintf(stdout, "transports: %s\n", strings.Join(parts, ", "))
+	}
 	if result.Check != nil {
 		state := "failed (" + result.Check.ErrorClass + ")"
 		if result.Check.OK {
