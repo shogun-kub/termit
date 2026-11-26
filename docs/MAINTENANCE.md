@@ -22,8 +22,8 @@ neither.
 A release's artifacts are spent once they are on the server and the scratch directory grows by hundreds of
 megabytes per cycle. After every push: `git push && go run ./deploy/clean` (or `make push`). `clean` drops
 the build output, the lab logs and everything in `.spike-out/` off its keep list (the toolchain, the
-caches, `lab.md`/`prod.md` and the credentials beside them), and refuses a directory holding its own
-`.git`. `--dry-run` lists what would go.
+caches, `lab.md`/`prod.md`, `release-run.js` and the credentials beside them), and refuses a directory
+holding its own `.git`. `--dry-run` lists what would go.
 
 Cache flags separate by cost: `--build-cache` drops compiled output (the next build recompiles and
 downloads nothing), `--module-cache` drops downloaded modules, `--all` both, `--toolchain` Go itself. Build
@@ -80,8 +80,9 @@ curl.exe -sS -o NUL -w "%{http_code}\n" https://api.github.com/   # 000 plus the
 
 **Publishing a pre-release** is a `workflow_dispatch` of `release.yaml` on a `release/<version>` branch
 (`docs/RELEASE.md` §2). `gh` is not installed here; with `gh` it is `gh workflow run release.yaml --ref
-release/v0.7.0 -f publish_prerelease=true`. Without it, the same call from node — save it outside
-`.spike-out/`, which `clean` empties:
+release/v0.7.0 -f publish_prerelease=true`. Without it, the same call from node is
+`.spike-out/release-run.js`, which dispatches, waits for the run and prints the release it published
+(`clean` keeps it; the script below is the same call if the file is ever lost):
 
 ```js
 // node dispatch.js <git-token-file>: the branch name is the version
