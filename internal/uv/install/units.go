@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/shogun-kub/termit/internal/uv/service"
 	"github.com/shogun-kub/termit/internal/uv/state"
@@ -23,7 +24,13 @@ func (*unitsStep) Name() string { return "units" }
 
 // unitFiles returns the absolute unit paths and their content.
 func (s *unitsStep) unitFiles() (map[string][]byte, error) {
-	xrayUnit, err := service.Xray(s.e.cfg.Paths.XrayBinary(), s.e.cfg.Paths.XrayConfig)
+	// The WireGuard tunnel lives inside the core; on the other transports the tunnel's own unit carries
+	// the schedule, so the core must not restart on it.
+	var coreRestart time.Duration
+	if s.e.cfg.Warp.UsesWireGuard() {
+		coreRestart = s.e.cfg.Warp.RestartEvery
+	}
+	xrayUnit, err := service.Xray(s.e.cfg.Paths.XrayBinary(), s.e.cfg.Paths.XrayConfig, coreRestart)
 	if err != nil {
 		return nil, err
 	}

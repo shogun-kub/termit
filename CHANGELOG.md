@@ -7,11 +7,11 @@ pre-releases, and whoever installs the release skipped them.
 
 ### Added
 
-- **The MASQUE sidecar can restart on a schedule.** `warp.restart_every: 6h` writes `RuntimeMaxSec=` into
-  `termit-usque.service`, so systemd stops the sidecar after that long and `Restart=always` starts the
-  replacement. A sidecar that has run for hours carries an aged MASQUE connection to Cloudflare — the first
-  request after an idle period can take seconds — and a fresh process bounds the damage. Off by default;
-  `usque` only, and refused on the other transports.
+- **The WARP tunnel can restart on a schedule.** `warp.restart_every: 6h` writes `RuntimeMaxSec=` into
+  the unit that carries the tunnel — the core's on `wireguard`, where a restart re-establishes the
+  WireGuard handshake and every proxied connection reconnects; the MASQUE sidecar's on `usque`. A tunnel
+  that has run for hours ages: the first request after an idle period can take seconds, and a fresh
+  process bounds the damage. Off by default; refused on `proxy`.
 
 ## 0.7.0 — 2026-11-27
 

@@ -284,8 +284,9 @@ func TestWarpDefaultsToAll(t *testing.T) {
 	}
 }
 
-// TestWarpRestartEvery: the key is a usque-only schedule, and a file that names it on another transport
-// is refused rather than silently ignored.
+// TestWarpRestartEvery: the key restarts the process that carries the tunnel — the core on wireguard,
+// the sidecar on usque. A file that asks for it on the proxy transport is refused rather than silently
+// ignored.
 func TestWarpRestartEvery(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -295,8 +296,9 @@ func TestWarpRestartEvery(t *testing.T) {
 		wantErr string
 	}{
 		{"usque with a schedule", "warp:\n  transport: usque\n  restart_every: 6h\n", 6 * time.Hour, ""},
+		{"wireguard with a schedule", "warp:\n  transport: wireguard\n  restart_every: 6h\n", 6 * time.Hour, ""},
+		{"the proxy has no unit to restart", "warp:\n  transport: proxy\n  restart_every: 6h\n", 0, "wireguard and usque"},
 		{"usque without one", "warp:\n  transport: usque\n", 0, ""},
-		{"wireguard with a schedule", "warp:\n  transport: wireguard\n  restart_every: 6h\n", 0, "usque"},
 		{"a negative schedule", "warp:\n  transport: usque\n  restart_every: -1h\n", 0, "negative"},
 	}
 	for _, tc := range tests {

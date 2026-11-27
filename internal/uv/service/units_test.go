@@ -10,7 +10,7 @@ import (
 
 func TestXrayUnit(t *testing.T) {
 	t.Parallel()
-	unit, err := service.Xray("/usr/lib/termit/bin/xray", "/etc/termit/uv/xray.json")
+	unit, err := service.Xray("/usr/lib/termit/bin/xray", "/etc/termit/uv/xray.json", 0)
 	if err != nil {
 		t.Fatalf("Xray: %v", err)
 	}
@@ -42,6 +42,26 @@ func TestXrayUnit(t *testing.T) {
 	}
 }
 
+// TestXrayUnitRestartsOnSchedule: the WireGuard tunnel lives inside the core, so the core's unit is what
+// carries the schedule; without the key it must not restart the proxy on its own.
+func TestXrayUnitRestartsOnSchedule(t *testing.T) {
+	t.Parallel()
+	unit, err := service.Xray("/usr/lib/termit/bin/xray", "/etc/termit/uv/xray.json", 6*time.Hour)
+	if err != nil {
+		t.Fatalf("Xray: %v", err)
+	}
+	if !strings.Contains(string(unit), "RuntimeMaxSec=6h") {
+		t.Error("the core unit does not restart the tunnel on schedule")
+	}
+	plain, err := service.Xray("/usr/lib/termit/bin/xray", "/etc/termit/uv/xray.json", 0)
+	if err != nil {
+		t.Fatalf("Xray: %v", err)
+	}
+	if strings.Contains(string(plain), "RuntimeMaxSec=") {
+		t.Error("the core restarts without being asked to")
+	}
+}
+
 func TestXrayUnitRefusesRelativePaths(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ binary, config string }{
@@ -49,7 +69,7 @@ func TestXrayUnitRefusesRelativePaths(t *testing.T) {
 		{"/usr/lib/termit/bin/xray", "xray.json"},
 		{"", ""},
 	} {
-		if _, err := service.Xray(tc.binary, tc.config); err == nil {
+		if _, err := service.Xray(tc.binary, tc.config, 0); err == nil {
 			t.Errorf("Xray(%q, %q) accepted a relative path", tc.binary, tc.config)
 		}
 	}
@@ -168,7 +188,7 @@ func TestRenewTimer(t *testing.T) {
 // back by itself; systemctl stop is still a stop, restart policy does not override it.
 func TestLongRunningUnitsRestartAfterACleanExit(t *testing.T) {
 	t.Parallel()
-	xray, err := service.Xray("/usr/lib/termit/bin/xray", "/etc/termit/uv/xray.json")
+	xray, err := service.Xray("/usr/lib/termit/bin/xray", "/etc/termit/uv/xray.json", 0)
 	if err != nil {
 		t.Fatalf("Xray: %v", err)
 	}

@@ -199,10 +199,11 @@ type Warp struct {
 	// wireguard transport honours it: the MASQUE sidecar is dual-stack and takes no family flag, so on
 	// "usque" anything but the default is refused at validation (docs/OPERATIONS.md §6.1 says so).
 	Family string `yaml:"family,omitempty"`
-	// RestartEvery restarts the MASQUE sidecar after this long. Its QUIC connection to Cloudflare
-	// degrades with age: the first request after an idle period can take seconds, and a fresh process is
-	// the cheap cure. Zero (the default) keeps it running. Only the usque transport has a sidecar to
-	// restart; the other transports either live inside the core or in warp-cli.
+	// RestartEvery restarts the process that carries the WARP tunnel after this long: the core on the
+	// wireguard transport (which re-establishes the WireGuard handshake) or the MASQUE sidecar on usque.
+	// A tunnel that has run for hours degrades — the first request after an idle period can take seconds
+	// — and a fresh process bounds the damage. Zero (the default) keeps it running. The proxy transport
+	// has no unit of its own and refuses the key.
 	RestartEvery time.Duration `yaml:"restart_every,omitempty"`
 }
 
@@ -495,8 +496,8 @@ func (c *Config) Validate() error {
 	if c.Warp.RestartEvery < 0 {
 		problems = append(problems, errors.New("warp.restart_every must not be negative"))
 	}
-	if c.Warp.RestartEvery > 0 && !c.Warp.UsesUsque() {
-		problems = append(problems, errors.New("warp.restart_every only applies to the usque transport"))
+	if c.Warp.RestartEvery > 0 && !c.Warp.UsesWireGuard() && !c.Warp.UsesUsque() {
+		problems = append(problems, errors.New("warp.restart_every applies to the wireguard and usque transports"))
 	}
 	problems = append(problems, c.Security.validate()...)
 	problems = append(problems, c.Paths.validate()...)
