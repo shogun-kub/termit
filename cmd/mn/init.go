@@ -22,9 +22,8 @@ import (
 	"github.com/shogun-kub/termit/internal/version"
 )
 
-// masterKeyEnv lets a deployment take the master key from the environment instead of a file, which is
-// what a container or a secret manager wants. The value is hex, like the file.
-const masterKeyEnv = "TERMIT_MN_MASTER"
+// masterKeyEnv, resolveMasterKey and the two sources live in masterkey.go: init and serve must read the key
+// the same way, or a server would start with a key it was not given.
 
 // defaultConfigPath is where the server keeps its configuration.
 const defaultConfigPath = "/etc/termit/mn/config.yaml"
@@ -291,17 +290,7 @@ func writeAdminToken(stdout io.Writer, path, token string) error {
 // ensureMasterKey returns the master key, generating it on the first run. An existing key is never
 // replaced: every pair credential in the mesh depends on it.
 func ensureMasterKey(path string) ([]byte, bool, error) {
-	if fromEnv := os.Getenv(masterKeyEnv); fromEnv != "" {
-		key, err := hex.DecodeString(strings.TrimSpace(fromEnv))
-		if err != nil {
-			return nil, false, fmt.Errorf("%s is not hex: %w", masterKeyEnv, err)
-		}
-		if len(key) < 32 {
-			return nil, false, fmt.Errorf("%s holds %d bytes, want at least 32", masterKeyEnv, len(key))
-		}
-		return key, false, nil
-	}
-	if key, err := store.ReadMasterKey(path); err == nil {
+	if key, _, err := resolveMasterKey(&config.Config{MasterKeyFile: path}); err == nil {
 		return key, false, nil
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return nil, false, err

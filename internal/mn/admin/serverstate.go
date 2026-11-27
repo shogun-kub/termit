@@ -25,6 +25,10 @@ type ServerInfo struct {
 	// CertificatePath is the server's own certificate. The dashboard reads its expiry on demand, so a
 	// renewal shows up without a restart.
 	CertificatePath string
+	// MasterKeySource is where the master key came from: "file" or "environment", empty when this process
+	// holds none. A standby keeps it on disk, a host that must not take over is given nothing, and only the
+	// server knows which it is (IMPLEMENTATION_PLAN.md §5.2.1 decision 8).
+	MasterKeySource string
 }
 
 // ServerState is the server half of the `termit-mn status` dashboard: the process, the database and the
@@ -39,7 +43,11 @@ type ServerState struct {
 	StartedAt     time.Time `json:"started_at,omitempty"`
 	UptimeSeconds int64     `json:"uptime_seconds"`
 	SchemaVersion int       `json:"schema_version"`
-	Database      struct {
+	// MasterKeySource is where the key came from: "file", "environment", or empty when this process holds
+	// none. It is how an operator tells a standby from a host that would have to be given the key before it
+	// could take a dead peer's nodes over.
+	MasterKeySource string `json:"master_key_source,omitempty"`
+	Database        struct {
 		Path  string `json:"path"`
 		Bytes int64  `json:"bytes"`
 	} `json:"database"`
@@ -75,13 +83,14 @@ func (s *Service) serverState(ctx context.Context) (any, *Error) {
 	}
 
 	state := ServerState{
-		Domain:        s.Server.Domain,
-		Listen:        s.Server.Listen,
-		APIPrefix:     s.Server.APIPrefix,
-		Version:       s.Server.Version,
-		StartedAt:     s.Server.Started,
-		SchemaVersion: s.Server.SchemaVersion,
-		Nodes:         counts,
+		Domain:          s.Server.Domain,
+		Listen:          s.Server.Listen,
+		APIPrefix:       s.Server.APIPrefix,
+		Version:         s.Server.Version,
+		StartedAt:       s.Server.Started,
+		SchemaVersion:   s.Server.SchemaVersion,
+		MasterKeySource: s.Server.MasterKeySource,
+		Nodes:           counts,
 	}
 	if !s.Server.Started.IsZero() {
 		state.UptimeSeconds = int64(now.Sub(s.Server.Started).Seconds())

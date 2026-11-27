@@ -7,6 +7,10 @@ pre-releases, and whoever installs the release skipped them.
 
 ### Added
 
+- **The master key can come from the environment.** `serve` (and `init`) read `TERMIT_MN_MASTER` first — hex, 32+ bytes, the shape `systemd-creds` hands over — and fall back to `master_key_file`. A standby can therefore be given the key without ever writing it to disk, and `termit-mn status` prints which source this process used, so a host that is not ready to take over says so before the outage.
+
+- **The replication journal is pruned.** The daily retention pass keeps the newest 1000 entries of this server's own log and drops the rest; a peer further behind than that takes a snapshot, which is the path a new peer takes anyway. A replica keeps the cursor, not a copy of a peer's log, so the table only ever holds one log.
+
 - **A replica can take over the nodes of a home that never comes back.** `termit-mn home adopt --from <peer>`
   makes this server the home of every node that peer homed (or one, with `--uv`). No cooperation is needed:
   the replica already holds the rows and the agent keys, sealed with the shared master key, so the nodes keep

@@ -2675,10 +2675,17 @@ and refuses if it does (`mesh.ErrUnreachable` is what separates "gone" from "ans
 is a fact about the network rather than the operator's optimism. A returning home pulls the adoption from the
 replica's journal and stops writing the row.
 
-What the replication slice still owes: the **quorum gate on `credential_epoch`**; `serve` reading
-`TERMIT_MN_MASTER` before the key file (decision 8, today only `init` honours it); journal pruning, without
-which the log grows forever; and the lab pair (`TERMIT_LAB_MN2` alone does not prove a partition — the
-split-brain rules stay unit tests).
+**And the two things a long-running mesh cannot do without.** The master key can come from the environment:
+`serve` and `init` read `TERMIT_MN_MASTER` first (hex, 32+ bytes) and fall back to `master_key_file`, so a
+standby can be handed its key by `systemd-creds` and never write it to disk (decision 8); `status` prints
+which source the process used. And the journal is pruned by the daily retention pass: the newest 1000 entries
+of this server's own log stay, the rest go, and a peer further behind than that takes the snapshot path that
+already exists. A replica keeps the cursor, not the peer's log, which is why the table only ever holds one
+log.
+
+What the replication slice still owes: the **quorum gate on `credential_epoch`** — the one decision left, and
+the reason a rotation in a split mesh is still unsafe — and the lab pair (`TERMIT_LAB_MN2` alone does not
+prove a partition; the split-brain rules stay unit tests).
 
 Acceptance: two MNs and two UVs. A node enrolled on A appears on B and in a subscription B renders; a
 block on A reaches B and the peer's next sync; replaying a delivered event changes nothing; a gap is

@@ -76,6 +76,11 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "database: %s (%s, schema %d)\n",
 			server.Database.Path, humanBytes(server.Database.Bytes), server.SchemaVersion)
 		fmt.Fprintf(stdout, "prober:   %s\n", describeProber(server.Prober.Up, server.Prober.Detail))
+		if server.MasterKeySource != "" {
+			fmt.Fprintf(stdout, "key:      %s\n", describeKeySource(server.MasterKeySource))
+		} else {
+			fmt.Fprintf(stdout, "key:      not held by this process\n")
+		}
 		fmt.Fprintf(stdout, "queue:    %s\n", describeQueue(server))
 		if server.Certificate != nil {
 			fmt.Fprintf(stdout, "cert:     %s (in %d days)\n",
@@ -107,6 +112,18 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 		return exitFailure
 	}
 	return exitOK
+}
+
+// describeKeySource says where the master key lives, because "this server could take over" and "this server
+// reads the key from a file" are different answers when the file is the replica's own copy.
+func describeKeySource(source string) string {
+	switch source {
+	case "environment":
+		return "from " + masterKeyEnv + " (never written to disk)"
+	case "file":
+		return "from the key file"
+	}
+	return source
 }
 
 // describePeer is one replication line: an unreached peer says so, a lagging one names the gap, and an

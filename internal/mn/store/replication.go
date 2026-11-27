@@ -258,6 +258,57 @@ func (s *Store) Cursors(ctx context.Context) (map[string]int64, error) {
 	return applied, rows.Err()
 }
 
+// KeepJournal is how many of this server's own entries stay in the log after pruning. A peer that falls
+// further behind than this takes a snapshot instead, which is the path that already exists for a new peer.
+const KeepJournal = 1000
+
+// PruneJournal drops this server's own entries beyond KeepJournal. The table only ever holds them: a peer's
+// log is applied through the cursor and never copied, because a third server pulls the origin and not this
+// copy — so the journal is one log, and pruning it is what keeps a long-running mesh from growing a file it
+// never reads. Returns how many rows went.
+//
+// The newest entry is never dropped: the sequence is per origin and only grows, and a log whose maximum moved
+// backwards would hand a peer a sequence it has already applied.
+func (s *Store) PruneJournal(ctx context.Context, keep int64) (int64, error) {
+	mnID, err := s.MeshID(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if keep < 1 {
+		keep = KeepJournal
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("store: begin the journal prune: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var before int64
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM replication_event`).Scan(&before); err != nil {
+		return 0, fmt.Errorf("store: count the journal: %w", err)
+	}
+	var newest int64
+	if err := tx.QueryRowContext(ctx,
+		`SELECT COALESCE(MAX(seq), 0) FROM replication_event WHERE mn_id = ?`, mnID).Scan(&newest); err != nil {
+		return 0, fmt.Errorf("store: read the newest entry: %w", err)
+	}
+	if newest > keep {
+		if _, err := tx.ExecContext(ctx,
+			`DELETE FROM replication_event WHERE mn_id = ? AND seq <= ?`, mnID, newest-keep); err != nil {
+			return 0, fmt.Errorf("store: prune this server's entries: %w", err)
+		}
+	}
+	// Counted rather than read from RowsAffected: the answer is what the log holds, not what a driver says.
+	var after int64
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM replication_event`).Scan(&after); err != nil {
+		return 0, fmt.Errorf("store: count the journal: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("store: commit the journal prune: %w", err)
+	}
+	return before - after, nil
+}
+
 // AdoptUV makes this server the home of a node whose home is gone for good, without that home's cooperation.
 // The row keeps its agent key — the copy here was sealed with the master key this server also holds, so
 // nothing has to be installed on the node — and only the home and the term move. A queued report for the old

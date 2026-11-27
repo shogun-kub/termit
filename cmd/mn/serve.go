@@ -130,6 +130,9 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 				SchemaVersion: store.SchemaVersion,
 				ProberUp:      proberInfo.Up,
 				ProberDetail:  proberInfo.Detail,
+				// Where the key came from, not just whether it exists: a standby keeps it on disk, a host
+				// that must not take over is given nothing, and an operator has to be able to tell.
+				MasterKeySource: masterKeySource(cfg, logger),
 			}
 		}
 		if err != nil {
@@ -297,12 +300,24 @@ func buildHandler(cfg *config.Config, db *store.Store, logger *slog.Logger,
 // mustMasterKey reads the master key once at startup. Without it neither enrollment nor sync can work,
 // so a failure here is a refusal to start rather than a degraded mode.
 func mustMasterKey(cfg *config.Config, logger *slog.Logger) []byte {
-	key, err := store.ReadMasterKey(cfg.MasterKeyFile)
+	key, source, err := resolveMasterKey(cfg)
 	if err != nil {
-		logger.Error("cannot read the master key", "path", cfg.MasterKeyFile, "err", err)
+		logger.Error("cannot read the master key", "path", cfg.MasterKeyFile, "env", masterKeyEnv, "err", err)
 		return nil
 	}
+	logger.Debug("master key loaded", "source", source)
 	return key
+}
+
+// masterKeySource names where the key came from, for the dashboard. An unreadable key is an empty source, not
+// a wrong one: `status` then says the process holds none, which is what it can act on.
+func masterKeySource(cfg *config.Config, logger *slog.Logger) string {
+	if _, source, err := resolveMasterKey(cfg); err == nil {
+		return source
+	} else {
+		logger.Debug("master key source unknown", "err", err)
+	}
+	return ""
 }
 
 // retention prunes on a daily tick. It runs once shortly after start as well, so a server that is
@@ -322,8 +337,14 @@ func retention(ctx context.Context, db *store.Store, logger *slog.Logger) {
 		if err != nil && ctx.Err() == nil {
 			logger.Warn("retention: audit", "err", err)
 		}
-		if checks > 0 || audit > 0 {
-			logger.Info("retention pruned", "checks", checks, "audit", audit)
+		// The journal is the one table that only grows while the mesh runs: a replica applies a peer's entry
+		// once and then has no use for it, and our own entries only serve a peer that is slightly behind.
+		journal, err := db.PruneJournal(ctx, store.KeepJournal)
+		if err != nil && ctx.Err() == nil {
+			logger.Warn("retention: journal", "err", err)
+		}
+		if checks > 0 || audit > 0 || journal > 0 {
+			logger.Info("retention pruned", "checks", checks, "audit", audit, "journal", journal)
 		}
 	}
 	select {

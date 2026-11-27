@@ -189,6 +189,13 @@ show a node the way in (the prefix is part of the URL; without it the node canno
 back up /etc/termit/mn/master.key together with the database: without it no pair credential can be derived.
 ```
 
+The key can also be handed over through the environment instead of the file: `serve` (and `init`) read
+`TERMIT_MN_MASTER` first — 32+ bytes of hex — and fall back to `master_key_file` only when it is empty. That
+is what `systemd-creds` is for: a standby takes the key that way and it is never written to disk.
+`termit-mn status` prints which one this process used (`key: from the key file` or `key: from
+TERMIT_MN_MASTER`), so a host that would have to be given a key before it could take over says so before the
+outage rather than during it.
+
 Store both values now. The admin token is needed for every `termit-mn` command; put it in the environment
 rather than in a shell history, or in a file for the jobs that have no shell:
 
@@ -485,8 +492,10 @@ nodes. A node whose home is away can sync to it: the answer is the last state th
 synced directly. A node can be moved to it by an explicit handoff, and the nodes of a home that is gone for
 good can be adopted by it. It does not take a node over on its own (no automatic failover — a split brain
 between two live homes is worse than a day of stale peers), a `credential_epoch` bump is not gated on quorum
-— do not rotate credentials while the mesh is apart — and the journal has no pruning yet. This is why the
-mesh is not announced in the guide yet.
+— do not rotate credentials while the mesh is apart — and this is why the mesh is not announced in the guide
+yet. The journal keeps the newest 1000 entries of this server's own log (the daily retention pass prunes the
+rest; a peer further behind than that takes a snapshot instead), and a replica never keeps a copy of a peer's
+log at all — it keeps the cursor.
 
 A trusted address that sends no header keeps its own address, so the server can be upgraded before the
 proxy is told to send one, and a proxy that is trusted for one name only still serves the rest.
