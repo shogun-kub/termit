@@ -6,6 +6,11 @@ cannot install it: a mesh on 0.6.0 or older moves with the bootstrap scripts it 
 server goes first, and while you go a fleet that mixes 0.6.0 and 0.7.0 keeps working, because
 `api_version` is 1 on both and the wire contract is additive.
 
+**0.5.1 and 0.5.2 take the same path.** Their configuration is a subset of 0.7.0's — the keys 0.6.0 and
+0.7.0 added are optional — and the state schema is 1 in 0.5.1, 0.5.2 and 0.7.0, so nothing is edited by
+hand: the same two commands carried both versions to 0.7.0 on the lab, with the identities and the client
+links unchanged.
+
 ## From 0.6.0 to 0.7.0
 
 ### The server
