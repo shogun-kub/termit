@@ -895,7 +895,7 @@ uv(id, label, domain, self_uuid, probe_uuid, profile_json, state, state_reason,
    created_at, approved_at, last_seen_at, last_request_ip, agent_version,
    agent_key_hash, agent_key_sealed, sub_token_hash, sub_token_sealed,
    failed_cycles, credential_epoch, invite_id, notes,
-   next_check_at, last_check_at, cert_sha256)
+   next_check_at, last_check_at, cert_sha256, home_mn)
 uv_transport(uv_id, kind)                 -- what a node reported it serves: vless, hysteria2
 uv_event(id, uv_id, at, from_state, to_state, reason, actor)
 check(id, uv_id, at, kind, ok, latency_ms, error_class, detail_json)
@@ -903,12 +903,19 @@ invite(id, code_hash, created_at, created_by, expires_at, max_uses, used_count, 
 admin(id, name, token_hash, created_at, last_used_at)
 settings(key, value)
 audit(id, at, actor, action, target, detail_json)
+replication_event(mn_id, seq, at, kind, payload)   -- the mesh journal, one log per server
+replication_cursor(mn_id, seq)                     -- how far one server applied another's log
 ```
+
+`home_mn` is the server that owns the row; empty means "this one", which is every node of a single-server
+mesh. The journal and the cursor are written and read by nothing yet: they are the store half of
+`IMPLEMENTATION_PLAN.md` §5.2.1, and the transport that fills them is the next slice.
 
 Indexes: `uv(domain)` (unique), `uv(state)`, `uv(last_seen_at)`, `uv(next_check_at)`,
 `uv_event(uv_id, at desc)`, `check(uv_id, at desc)`, `check(at)` for pruning, `invite(code_hash)`
-(unique), `admin(token_hash)` (unique), `audit(at)`. Retention: checks 90 days,
-audit 1 year, `uv_event` forever (small).
+(unique), `admin(token_hash)` (unique), `audit(at)`. The journal is keyed by `(mn_id, seq)`, which is also
+its read order. Retention: checks 90 days, audit 1 year, `uv_event` forever (small); the journal is pruned
+by a follow-up, once a peer's cursor proves it no longer needs the tail.
 
 ## 15. Security summary
 

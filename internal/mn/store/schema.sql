@@ -25,7 +25,11 @@ CREATE TABLE IF NOT EXISTS uv (
     notes           TEXT NOT NULL DEFAULT '',
     next_check_at   TEXT,
     last_check_at   TEXT,
-    cert_sha256     TEXT NOT NULL DEFAULT ''
+    cert_sha256     TEXT NOT NULL DEFAULT '',
+    -- home_mn is the management server that owns this row. Empty means "this one", which is every row
+    -- written before the mesh existed; a replica stores the origin's id here and may never write a row
+    -- it does not home (docs/IMPLEMENTATION_PLAN.md §5.2.1).
+    home_mn         TEXT NOT NULL DEFAULT ''
 );
 
 CREATE INDEX IF NOT EXISTS uv_state ON uv (state);
@@ -100,4 +104,22 @@ CREATE TABLE IF NOT EXISTS uv_transport (
     uv_id TEXT NOT NULL,
     kind  TEXT NOT NULL,
     PRIMARY KEY (uv_id, kind)
+);
+
+-- The mesh's journal: one append-only log per management server, keyed by that server's id and a
+-- sequence that only ever grows. A peer applies it in order and records how far it got; a peer that is
+-- new or too far behind starts from a snapshot instead (docs/IMPLEMENTATION_PLAN.md §5.2.1).
+CREATE TABLE IF NOT EXISTS replication_event (
+    mn_id   TEXT NOT NULL,
+    seq     INTEGER NOT NULL,
+    at      TEXT NOT NULL,
+    kind    TEXT NOT NULL,
+    payload BLOB NOT NULL,
+    PRIMARY KEY (mn_id, seq)
+);
+
+-- How far this server has applied another server's log. Its absence means "nothing applied yet".
+CREATE TABLE IF NOT EXISTS replication_cursor (
+    mn_id TEXT PRIMARY KEY,
+    seq   INTEGER NOT NULL
 );

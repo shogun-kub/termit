@@ -25,7 +25,7 @@ import (
 
 // SchemaVersion is the schema this build understands. A database with a higher version is refused
 // rather than migrated down: an older binary writing a newer schema is how registries get corrupted.
-const SchemaVersion = 6
+const SchemaVersion = 7
 
 //go:embed schema.sql
 var schemaFS embed.FS
@@ -37,6 +37,8 @@ var ErrNotInitialised = errors.New("store: database is not initialised")
 type Store struct {
 	db   *sql.DB
 	path string
+	// now is the clock the journal stamps events with; tests set it through Options.
+	now func() time.Time
 }
 
 // Options configure Open.
@@ -58,7 +60,7 @@ func Open(ctx context.Context, opts Options) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(opts.Path), 0o750); err != nil {
 		return nil, fmt.Errorf("store: create %s: %w", filepath.Dir(opts.Path), err)
 	}
-	return open(ctx, opts.Path, "rwc")
+	return open(ctx, opts.Path, "rwc", opts.Now)
 }
 
 // OpenReadOnly opens an existing database without creating it. `termit-mn status` and backups use it, so a
@@ -67,10 +69,10 @@ func OpenReadOnly(ctx context.Context, path string) (*Store, error) {
 	if _, err := os.Stat(path); err != nil {
 		return nil, fmt.Errorf("store: %s: %w", path, err)
 	}
-	return open(ctx, path, "ro")
+	return open(ctx, path, "ro", time.Now)
 }
 
-func open(ctx context.Context, path, mode string) (*Store, error) {
+func open(ctx context.Context, path, mode string, now func() time.Time) (*Store, error) {
 	dsn := "file:" + path + "?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&mode=" + mode
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
@@ -82,7 +84,7 @@ func open(ctx context.Context, path, mode string) (*Store, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("store: ping %s: %w", path, err)
 	}
-	s := &Store{db: db, path: path}
+	s := &Store{db: db, path: path, now: now}
 	if mode != "ro" {
 		// The registry holds hashes and node metadata: nobody but the server reads it.
 		if err := os.Chmod(path, 0o600); err != nil {
@@ -128,6 +130,11 @@ var migrations = map[int][]string{
 	},
 	5: {`ALTER TABLE uv ADD COLUMN cert_sha256 TEXT NOT NULL DEFAULT ''''`},
 	6: {`CREATE TABLE IF NOT EXISTS uv_transport (uv_id TEXT NOT NULL, kind TEXT NOT NULL, PRIMARY KEY (uv_id, kind))`},
+	7: {
+		`ALTER TABLE uv ADD COLUMN home_mn TEXT NOT NULL DEFAULT ''`,
+		`CREATE TABLE IF NOT EXISTS replication_event (mn_id TEXT NOT NULL, seq INTEGER NOT NULL, at TEXT NOT NULL, kind TEXT NOT NULL, payload BLOB NOT NULL, PRIMARY KEY (mn_id, seq))`,
+		`CREATE TABLE IF NOT EXISTS replication_cursor (mn_id TEXT PRIMARY KEY, seq INTEGER NOT NULL)`,
+	},
 }
 
 // migrate brings a database to SchemaVersion. Version 0 is a fresh file: the schema is applied as one

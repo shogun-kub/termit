@@ -519,12 +519,19 @@ func TestOpenMigratesFromFive(t *testing.T) {
 	if err := s.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
-	// Put the file back the way a build without the transport table left it.
+	// Put the file back the way a build without the transport table, the home column and the journal left
+	// it: version 5 knows none of them.
 	raw, err := sql.Open("sqlite", "file:"+path)
 	if err != nil {
 		t.Fatalf("open raw: %v", err)
 	}
-	for _, query := range []string{"DROP TABLE uv_transport", "PRAGMA user_version = 5"} {
+	for _, query := range []string{
+		"DROP TABLE uv_transport",
+		"DROP TABLE IF EXISTS replication_event",
+		"DROP TABLE IF EXISTS replication_cursor",
+		"ALTER TABLE uv DROP COLUMN home_mn",
+		"PRAGMA user_version = 5",
+	} {
 		if _, err := raw.Exec(query); err != nil {
 			t.Fatalf("%s: %v", query, err)
 		}

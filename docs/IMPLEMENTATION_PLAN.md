@@ -2612,6 +2612,14 @@ Deliberately not decided here, because each is a feature: automatic failover (a 
 live homes is worse than a day of stale peers), replicating check history and the audit log wholesale (the
 verdict rides the node row, the history stays home), and federation between independent meshes (§6).
 
+**Started on `dev`, 2026-11-27: the journal and the snapshot**
+(`internal/mn/store/replication.go`). Schema 7 adds `home_mn` and the two journal tables. The store mints
+its own mesh id, appends node and removal events, applies a peer's log in order — replay skipped, a gap, a
+conflict over a node it homes, and an unknown kind all refused before anything is written — and takes or
+applies a schema-versioned snapshot, refusing one older than what it already applied. Neither the node code
+nor the wire has changed yet: the producer wiring (each store write appending inside its own transaction)
+and the direct HTTPS transport are the next slices.
+
 Acceptance: two MNs and two UVs. A node enrolled on A appears on B and in a subscription B renders; a
 block on A reaches B and the peer's next sync; replaying a delivered event changes nothing; a gap is
 refused rather than papered over; a payload that does not decode is refused without advancing the cursor;
