@@ -276,6 +276,7 @@ func (a *application) menuEntries() []menuEntry {
 			return []menuEntry{
 				{labelKey: i18n.MenuSyncLabel, hintKey: i18n.MenuSyncHint, plan: fixed("sync")},
 				{labelKey: i18n.MenuDriftLabel, hintKey: i18n.MenuDriftHint, plan: fixed("sync", "--check")},
+				{labelKey: i18n.MenuAgentOnceLabel, hintKey: i18n.MenuAgentOnceHint, plan: fixed("agent", "--once")},
 				{labelKey: i18n.MenuEnrollLabel, hintKey: i18n.MenuEnrollHint, plan: a.planEnroll},
 				{labelKey: i18n.MenuUnblockLabel, hintKey: i18n.MenuUnblockHint, plan: fixed("unblock")},
 			}

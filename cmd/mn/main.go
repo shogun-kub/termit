@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/shogun-kub/termit/internal/termui"
@@ -90,7 +91,9 @@ func run(args []string, stdout, stderr *os.File) int {
 	}
 }
 
-func usage(w *os.File) {
+// usage prints the command list. It takes a writer rather than a file so a test can read the list and
+// hold the menu to it: every command here is either a menu entry or explained where it is not.
+func usage(w io.Writer) {
 	fmt.Fprint(w, `termit-mn — Termit management server and admin CLI
 
 Usage:
@@ -109,7 +112,7 @@ Admin:
   policy       read and change scheduler thresholds
   admin        rotate the admin token (the credential every admin command uses)
   update       replace the binary with the newest release; --check reports, --apply installs and restarts
-  sub          show and rotate subscription tokens
+  sub          rotate the subscription token of one node
   status       show server, nodes and the check schedule
 
 Hardening:

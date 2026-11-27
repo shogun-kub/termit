@@ -7,6 +7,13 @@ pre-releases, and whoever installs the release skipped them.
 
 ### Added
 
+- **The menu reaches two commands it could not before.** `termit-mn` gains "check for an update"
+  (`update --check`): asking whether a newer release exists no longer means agreeing to install it.
+  `termit-uv` gains "run one agent cycle" (`agent --once`): a self-check and a sync without waiting for
+  the timer. Every other command the help lists was already reachable; the exceptions that remain (the
+  commands a systemd unit runs, `version`, and the menu itself) are listed with their reasons in
+  `docs/guide/menu.md`, and a test fails when a documented command is in neither place.
+
 - **The server backs its registry up before it updates.** `termit-mn update --apply` writes a `termit-mn
   backup` archive before it replaces the binary, prints the path, and refuses to go on if it cannot. A
   schema migration moves the database forward and the previous binary then refuses a file it did not

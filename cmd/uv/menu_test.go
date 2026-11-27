@@ -1,9 +1,11 @@
 package main
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
+	"github.com/shogun-kub/termit/internal/i18n"
 	"github.com/shogun-kub/termit/internal/termui"
 	"github.com/shogun-kub/termit/internal/uv/config"
 )
@@ -157,6 +159,102 @@ func TestMenuEntriesRunTheCommandsTheyName(t *testing.T) {
 	}
 }
 
+// everyCommand answers "can an operator reach this from the menu?" for every command the help documents:
+// the label of the entry that runs it, or the reason there is deliberately none. The usage text is the
+// list of commands, so a command added there without a row here fails this suite — which is the rule
+// AGENTS.md §7 states: a new or changed option is either in the menu or explained where it is not.
+var everyCommand = map[string]struct {
+	menu i18n.Key
+	why  string
+}{
+	"init":       {menu: i18n.MenuInstallLabel},
+	"doctor":     {menu: i18n.MenuDoctorLabel},
+	"net":        {menu: i18n.MenuNetLabel},
+	"status":     {menu: i18n.MenuStatusLabel},
+	"device":     {menu: i18n.MenuDevicesLabel},
+	"renew-cert": {menu: i18n.MenuCertificateLabel},
+	"uri":        {menu: i18n.MenuURILabel},
+	"options":    {menu: i18n.MenuOptionsLabel},
+	"wizard":     {menu: i18n.MenuWizardLabel},
+	"renew-site": {menu: i18n.MenuDecoyLabel},
+	"enroll":     {menu: i18n.MenuEnrollLabel},
+	"sync":       {menu: i18n.MenuSyncLabel, why: "--check is the drift entry"},
+	"agent":      {menu: i18n.MenuAgentOnceLabel, why: "the bare command is the unit's loop; --once is the entry"},
+	"unblock":    {menu: i18n.MenuUnblockLabel},
+	"upgrade":    {menu: i18n.MenuUpgradeLabel, why: "--check is a flag of the entry, not a second line"},
+	"migrate":    {menu: i18n.MenuMigrateLabel},
+	"warp":       {menu: i18n.MenuWarpLabel},
+	"warp-relay": {why: "the loopback relay's own unit runs it; no operator action"},
+	"firewall":   {menu: i18n.MenuFirewallLabel, why: "rollback belongs to the rollback timer"},
+	"bans":       {menu: i18n.MenuBansLabel},
+	"guard":      {menu: i18n.MenuGuardLabel, why: "the entry runs status; run is the unit's loop"},
+	"uninstall":  {menu: i18n.MenuUninstallLabel},
+	"version":    {why: "the menu header prints it, so the build is always on screen"},
+	"menu":       {why: "the menu is the entry point"},
+	"help":       {menu: i18n.MenuHelpLabel},
+}
+
+// The menu is a front end for the CLI: a command a script can run and an operator cannot reach is either
+// a gap or a decision, and this test is where it has to be one of those two.
+func TestEveryDocumentedCommandIsInTheMenuOrExplained(t *testing.T) {
+	t.Parallel()
+	app, _ := menuApp(t, "", false)
+	var usage strings.Builder
+	app.usage(&usage)
+
+	labels := map[i18n.Key]bool{}
+	var walk func(entries []menuEntry)
+	walk = func(entries []menuEntry) {
+		for _, entry := range entries {
+			labels[entry.labelKey] = true
+			if entry.children != nil {
+				walk(entry.children())
+			}
+		}
+	}
+	walk(app.menuEntries())
+
+	documented := 0
+	for _, command := range documentedCommands(t, usage.String()) {
+		documented++
+		answer, ok := everyCommand[command]
+		if !ok {
+			t.Errorf("`%s` is documented but has no answer here: give it a menu entry, or the reason there is none",
+				command)
+			continue
+		}
+		switch {
+		case answer.menu != "" && !labels[answer.menu]:
+			t.Errorf("`%s` points at a menu entry that does not exist (%s)", command, answer.menu)
+		case answer.menu == "" && answer.why == "":
+			t.Errorf("`%s` is not in the menu and no reason is given", command)
+		}
+	}
+	if documented == 0 {
+		t.Fatal("the usage text documents no commands")
+	}
+	for command := range everyCommand {
+		if !strings.Contains(usage.String(), "  "+command+" ") {
+			t.Errorf("`%s` is in the table but no longer documented", command)
+		}
+	}
+}
+
+// documentedCommands reads the command names out of the usage text: one per line, indented, with at least
+// two spaces before the description.
+func documentedCommands(t *testing.T, usage string) []string {
+	t.Helper()
+	matches := regexp.MustCompile(`(?m)^  ([a-z][a-z0-9-]*)\s{2,}`).FindAllStringSubmatch(usage, -1)
+	if len(matches) == 0 {
+		t.Fatal("the usage text lists no commands")
+	}
+	out := make([]string, 0, len(matches))
+	for _, match := range matches {
+		out = append(out, match[1])
+	}
+	return out
+}
+
 // The menu is a tree: a level that does not fit on one screen is a screen nobody reads, and every
 // command the flat menu offered has to still be reachable — the move regrouped them, it dropped none.
 func TestTheMenuTreeFitsOnOneScreen(t *testing.T) {
@@ -181,9 +279,10 @@ func TestTheMenuTreeFitsOnOneScreen(t *testing.T) {
 		}
 	}
 	walk(top)
-	// 23 commands, four of which were their own menu and are now groups of 5, 3, 6 and 5 leaves.
-	if leaves != 38 {
-		t.Errorf("the tree has %d leaves, want 38", leaves)
+	// 23 commands, four of which were their own menu and are now groups of 5, 3, 6 and 5 leaves, plus
+	// the second cycle `agent --once` that the CLI always had.
+	if leaves != 39 {
+		t.Errorf("the tree has %d leaves, want 39", leaves)
 	}
 }
 

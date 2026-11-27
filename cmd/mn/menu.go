@@ -280,6 +280,8 @@ func (m *menu) entries() []menuEntry {
 		{labelKey: i18n.MnGroupServiceLabel, hintKey: i18n.MnGroupServiceHint, children: func() []menuEntry {
 			return []menuEntry{
 				{labelKey: i18n.MnEntryAdminLabel, hintKey: i18n.MnEntryAdminHint, plan: m.planAdminToken},
+				{labelKey: i18n.MnEntryUpdateCheckLabel, hintKey: i18n.MnEntryUpdateCheckHint,
+					plan: fixedMn("update", "--check"), local: true},
 				{labelKey: i18n.MnEntryUpdateLabel, hintKey: i18n.MnEntryUpdateHint, plan: m.planUpdate, local: true},
 				{labelKey: i18n.MnEntryBackupLabel, hintKey: i18n.MnEntryBackupHint, plan: fixedMn("backup"), local: true},
 				{labelKey: i18n.MnEntryRestoreLabel, hintKey: i18n.MnEntryRestoreHint, plan: m.planRestore, local: true},

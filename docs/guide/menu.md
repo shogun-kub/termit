@@ -100,6 +100,7 @@ runs.
 
 - `sync` — fetch the peer set now instead of waiting for the daily sync
 - `sync --check` — report whether the running core matches the server
+- `agent --once` — one self-check and one sync, without waiting for the timer
 - `enroll` — join a mesh: the server URL and an invite code
 - `unblock` — ask the server to verify this node and let it back in
 
@@ -165,8 +166,25 @@ Seven choices; `0` goes back up.
 - `restore` — put the database and certificates back; asks for the archive and says the server must be stopped
 - `update` — install the newest published release and restart the server; asks first, keeps the previous
   binary beside it, and puts it back if the restart fails
+- `update --check` — ask GitHub whether a newer release exists; installs nothing
 
 **Help** — every command and flag.
+## What the menu does not offer
+
+Every command the help lists is reachable from the menu except the ones below. Each is either run by a
+systemd unit or answers a question no menu screen can ask, and each is a decision rather than an oversight:
+
+- `termit-uv agent` without `--once`, `termit-uv warp-relay`, `termit-uv guard run`, `termit-mn serve` and
+  `termit-mn guard run` — the units run them. `agent --once` is in the menu as *run one agent cycle*.
+- `termit-mn init` — a fresh server is installed by `mn.sh`; the menu runs on an installed one.
+- `firewall rollback` — the rollback timer runs it, and the command's own help says it is not for
+  interactive use.
+- `version` — printed in the header above every screen.
+- `menu` — it is the menu.
+
+`TestEveryDocumentedCommandIsInTheMenuOrExplained`, in both binaries, fails when a command is in neither
+the menu nor this list. A new option therefore lands in the menu, or its reason lands here.
+
 ## Colour
 
 Colour is used when stdout is a terminal. `NO_COLOR=1` (any value) or `TERM=dumb` turns it off, and

@@ -231,9 +231,12 @@ investigated.
 ## 7. What a change must include
 
 See §10 for the list, and the checklist in `docs/RELEASE.md` §6 when the change goes into a release.
-Two rules it does not repeat: a golden-file update **only** when the generated config genuinely changed,
-with the reason in the commit; and no test that needs the public internet or the lab in the default
-`go test` run.
+Three rules it does not repeat: a golden-file update **only** when the generated config genuinely changed,
+with the reason in the commit; no test that needs the public internet or the lab in the default
+`go test` run; and a new or changed CLI command or flag reaches the menu, or its absence is stated with a
+reason in `docs/guide/menu.md` — the menu is a front end for the CLI, not a second, smaller one.
+`TestEveryDocumentedCommandIsInTheMenuOrExplained` in both binaries fails when a command is in neither
+place; the guide's "What the menu does not offer" is the other half of that contract.
 
 ## 8. Dependencies
 

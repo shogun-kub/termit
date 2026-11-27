@@ -54,6 +54,8 @@ const (
 	MenuSyncHint         Key = "menu.sync.hint"
 	MenuDriftLabel       Key = "menu.drift.label"
 	MenuDriftHint        Key = "menu.drift.hint"
+	MenuAgentOnceLabel   Key = "menu.agentonce.label"
+	MenuAgentOnceHint    Key = "menu.agentonce.hint"
 	MenuDevicesLabel     Key = "menu.devices.label"
 	MenuDevicesHint      Key = "menu.devices.hint"
 	MenuURILabel         Key = "menu.uri.label"
@@ -281,6 +283,8 @@ var messagesUVRU = map[Key]string{
 	MenuSyncHint:          "забрать список соседей сразу, не ожидая суток",
 	MenuDriftLabel:        "проверить расхождение",
 	MenuDriftHint:         "код 4 означает, что ядро отличается от сервера",
+	MenuAgentOnceLabel:    "прогнать цикл агента",
+	MenuAgentOnceHint:     "самопроверка и синхронизация один раз, не ожидая таймера",
 	MenuDevicesLabel:      "устройства",
 	MenuDevicesHint:       "телефоны и ноутбуки, которые пользуются только этим узлом",
 	MenuURILabel:          "напечатать vless-ссылку",
@@ -500,6 +504,8 @@ var messagesUVEN = map[Key]string{
 	MenuSyncHint:          "fetch the peer set immediately instead of waiting a day",
 	MenuDriftLabel:        "check drift",
 	MenuDriftHint:         "exit 4 tells you the core differs from the server",
+	MenuAgentOnceLabel:    "run one agent cycle",
+	MenuAgentOnceHint:     "self-check and sync once, without waiting for the timer",
 	MenuDevicesLabel:      "devices",
 	MenuDevicesHint:       "phones and laptops that use this node only",
 	MenuURILabel:          "print vless URI",

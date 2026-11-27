@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -680,6 +681,95 @@ func TestMatchNodesNeverGuesses(t *testing.T) {
 
 // The tree has to fit on one screen per level, and every command the flat menu offered has to still be
 // reachable: the move regrouped them, it dropped none.
+// everyCommand answers "can an operator reach this from the menu?" for every command the help documents:
+// the label of the entry that runs it, or the reason there is deliberately none. The usage text is the
+// list of commands, so a command added there without a row here fails this suite — which is the rule
+// AGENTS.md §7 states: a new or changed option is either in the menu or explained where it is not.
+var everyCommand = map[string]struct {
+	menu i18n.Key
+	why  string
+}{
+	"init":     {why: "mn.sh installs a server; the menu runs on an installed one"},
+	"serve":    {why: "the systemd unit runs it"},
+	"backup":   {menu: i18n.MnEntryBackupLabel},
+	"restore":  {menu: i18n.MnEntryRestoreLabel},
+	"invite":   {menu: i18n.MnEntryInvitesLabel},
+	"uv":       {menu: i18n.MnEntryNodesLabel, why: "uv check now is reachable as the check entry with one node"},
+	"check":    {menu: i18n.MnEntryCheckLabel},
+	"policy":   {menu: i18n.MnEntryPolicyLabel},
+	"admin":    {menu: i18n.MnEntryAdminLabel, why: "rotate is the only admin verb this build has"},
+	"update":   {menu: i18n.MnEntryUpdateLabel, why: "--check has its own entry"},
+	"sub":      {menu: i18n.MnEntrySubLabel, why: "rotate is the only sub verb this build has"},
+	"status":   {menu: i18n.MnEntryStatusLabel},
+	"firewall": {menu: i18n.MnEntryFirewallLabel, why: "rollback belongs to the rollback timer"},
+	"bans":     {menu: i18n.MnEntryBansLabel},
+	"guard":    {menu: i18n.MnEntryGuardLabel, why: "the entry runs status; run is the unit's loop"},
+	"version":  {why: "the menu header prints it"},
+	"menu":     {why: "the menu is the entry point"},
+	"help":     {menu: i18n.MnEntryHelpLabel},
+}
+
+// The menu is a front end for the CLI: a command a script can run and an operator cannot reach is either
+// a gap or a decision, and this test is where it has to be one of those two.
+func TestEveryDocumentedCommandIsInTheMenuOrExplained(t *testing.T) {
+	t.Parallel()
+	m, _, _ := newMenu("")
+	var printed strings.Builder
+	usage(&printed)
+
+	labels := map[i18n.Key]bool{}
+	var walk func(entries []menuEntry)
+	walk = func(entries []menuEntry) {
+		for _, entry := range entries {
+			labels[entry.labelKey] = true
+			if entry.children != nil {
+				walk(entry.children())
+			}
+		}
+	}
+	walk(m.entries())
+
+	documented := 0
+	for _, command := range documentedMnCommands(t, printed.String()) {
+		documented++
+		answer, ok := everyCommand[command]
+		if !ok {
+			t.Errorf("`%s` is documented but has no answer here: give it a menu entry, or the reason there is none",
+				command)
+			continue
+		}
+		switch {
+		case answer.menu != "" && !labels[answer.menu]:
+			t.Errorf("`%s` points at a menu entry that does not exist (%s)", command, answer.menu)
+		case answer.menu == "" && answer.why == "":
+			t.Errorf("`%s` is not in the menu and no reason is given", command)
+		}
+	}
+	if documented == 0 {
+		t.Fatal("the usage text documents no commands")
+	}
+	for command := range everyCommand {
+		if !strings.Contains(printed.String(), "  "+command+" ") {
+			t.Errorf("`%s` is in the table but no longer documented", command)
+		}
+	}
+}
+
+// documentedMnCommands reads the command names out of the usage text: one per line, indented, with at
+// least two spaces before the description.
+func documentedMnCommands(t *testing.T, printed string) []string {
+	t.Helper()
+	matches := regexp.MustCompile(`(?m)^  ([a-z][a-z0-9-]*)\s{2,}`).FindAllStringSubmatch(printed, -1)
+	if len(matches) == 0 {
+		t.Fatal("the usage text lists no commands")
+	}
+	out := make([]string, 0, len(matches))
+	for _, match := range matches {
+		out = append(out, match[1])
+	}
+	return out
+}
+
 func TestTheServerMenuTreeFitsOnOneScreen(t *testing.T) {
 	t.Parallel()
 	m, _, _ := newMenu("")
@@ -702,8 +792,9 @@ func TestTheServerMenuTreeFitsOnOneScreen(t *testing.T) {
 		}
 	}
 	walk(top)
-	// 15 commands, with the node verb menu and the two hardening tables turned into levels of their own.
-	if leaves != 35 {
-		t.Errorf("the tree has %d leaves, want 35", leaves)
+	// 15 commands, with the node verb menu and the two hardening tables turned into levels of their own,
+	// plus the check-only update the CLI always had.
+	if leaves != 36 {
+		t.Errorf("the tree has %d leaves, want 36", leaves)
 	}
 }
