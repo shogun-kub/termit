@@ -439,14 +439,42 @@ Install that key on the node and point its `mn.url` at the new home (`termit-uv 
 given. The node's id and its pair credentials survive the move — only the agent key changes. The new home
 announces the handoff in its own journal, so the old one stops writing the row the moment it pulls.
 
+**When the home never comes back.** `home handoff` needs the old home to give the node up, which a dead
+machine cannot do. `termit-mn home adopt --from <peer>` takes over every node that peer homed (or one, with
+`--uv`), and it is the one path that needs no cooperation:
+
+```
+termit-mn home adopt --from mn2
+peer:      mn2 (gone)
+taken:     3 node(s)
+new home:  mn_7f3a…
+  node1.example.com
+  node2.example.com
+  node3.example.com
+```
+
+The nodes keep their **agent keys** and their pair credentials: the replica's copies were sealed with the
+master key it shares, so nothing has to be installed on any node and nobody leaves the house. Two things are
+left to you: point the mesh's name (DNS or VIP) at this server, because a node has one `mn.url`
+(decision 9), and remove the gone peer from `mesh.peers`, or every pull will keep failing against it. Nodes
+enrolled on the old home after this server's last pull are unknown here — the command prints the cursor —
+and they have to enroll again.
+
+The command refuses while the old home still answers: that is a split brain, not a rescue, and `home handoff`
+is the procedure there. What it cannot tell apart is a dead machine from one this server simply cannot
+reach; if you adopt across a partition, two live homes write the same nodes until the name moves and the
+parted one pulls again (its term loses, so it stops writing the rows). That is why adoption is a command an
+operator runs, never a timeout.
+
 **What a replica does and does not do today.** It holds a copy of every node row and the transports each
 node serves, it refuses any write to a row another server homes, and its scheduler probes only its own
 nodes. A node whose home is away can sync to it: the answer is the last state the home published, marked
 `read_only`, and the node's report is kept there and handed to the home, which applies it as if the node had
-synced directly. A node can be moved to it by an explicit handoff. It does not take a node over on its own
-(no automatic failover — a split brain between two live homes is worse than a day of stale peers), a
-`credential_epoch` bump is not gated on quorum — do not rotate credentials while the mesh is apart — and the
-journal has no pruning yet. This is why the mesh is not announced in the guide yet.
+synced directly. A node can be moved to it by an explicit handoff, and the nodes of a home that is gone for
+good can be adopted by it. It does not take a node over on its own (no automatic failover — a split brain
+between two live homes is worse than a day of stale peers), a `credential_epoch` bump is not gated on quorum
+— do not rotate credentials while the mesh is apart — and the journal has no pruning yet. This is why the
+mesh is not announced in the guide yet.
 
 A trusted address that sends no header keeps its own address, so the server can be upgraded before the
 proxy is told to send one, and a proxy that is trusted for one name only still serves the rest.

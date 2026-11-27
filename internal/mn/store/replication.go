@@ -258,6 +258,88 @@ func (s *Store) Cursors(ctx context.Context) (map[string]int64, error) {
 	return applied, rows.Err()
 }
 
+// AdoptUV makes this server the home of a node whose home is gone for good, without that home's cooperation.
+// The row keeps its agent key — the copy here was sealed with the master key this server also holds, so
+// nothing has to be installed on the node — and only the home and the term move. A queued report for the old
+// home is dropped: the node's next sync writes the same facts to the server that now homes it.
+//
+// This is the one write that takes a row nobody offered. It is the operator's decision (the admin socket,
+// `home adopt`) and never a timeout's, and it refuses a row that is not the named server's.
+func (s *Store) AdoptUV(ctx context.Context, id, from string, now time.Time) (UV, error) {
+	mnID, err := s.MeshID(ctx)
+	if err != nil {
+		return UV{}, err
+	}
+	if from == "" || from == mnID {
+		return UV{}, fmt.Errorf("store: %s cannot be adopted from %q", id, from)
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return UV{}, fmt.Errorf("store: begin the adoption: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var (
+		home  string
+		term  int64
+		state State
+	)
+	switch err := tx.QueryRowContext(ctx, `SELECT home_mn, home_term, state FROM uv WHERE id = ?`, id).
+		Scan(&home, &term, &state); {
+	case errors.Is(err, sql.ErrNoRows):
+		return UV{}, ErrNotFound
+	case err != nil:
+		return UV{}, fmt.Errorf("store: read %s for the adoption: %w", id, err)
+	}
+	if home != from {
+		return UV{}, fmt.Errorf("%w: %s is homed by %q, not %q", ErrReplicationConflict, id, home, from)
+	}
+	if state == StateRemoved {
+		return UV{}, fmt.Errorf("store: %s is removed and cannot be adopted", id)
+	}
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE uv SET home_mn = ?, home_term = ? WHERE id = ?`, mnID, term+1, id); err != nil {
+		return UV{}, fmt.Errorf("store: adopt %s: %w", id, err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM mesh_report WHERE uv_id = ?`, id); err != nil {
+		return UV{}, fmt.Errorf("store: drop the queued report of %s: %w", id, err)
+	}
+	if err := recordNode(ctx, tx, mnID, now, id); err != nil {
+		return UV{}, err
+	}
+	node, err := scanUV(tx.QueryRowContext(ctx, `SELECT `+uvColumns+` FROM uv WHERE id = ?`, id))
+	if err != nil {
+		return UV{}, fmt.Errorf("store: read %s back: %w", id, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return UV{}, fmt.Errorf("store: commit the adoption: %w", err)
+	}
+	return node, nil
+}
+
+// UVsHomedBy lists the rows one server homes, by domain: what `home adopt` takes over and what an operator
+// sees before deciding to take it.
+func (s *Store) UVsHomedBy(ctx context.Context, mnID string) ([]UV, error) {
+	if mnID == "" {
+		return nil, errors.New("store: rows are homed by a server or by this one, and that is not nothing")
+	}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT `+uvColumns+` FROM uv WHERE home_mn = ? AND state <> ? ORDER BY domain`, mnID, string(StateRemoved))
+	if err != nil {
+		return nil, fmt.Errorf("store: list the rows of %s: %w", mnID, err)
+	}
+	defer func() { _ = rows.Close() }()
+	var nodes []UV
+	for rows.Next() {
+		node, err := scanUV(rows)
+		if err != nil {
+			return nil, err
+		}
+		nodes = append(nodes, node)
+	}
+	return nodes, rows.Err()
+}
+
 // AcceptHandoff makes this server the home of a node another server hands over: one transaction moves the
 // home and the term, replaces the agent key, and journals the node as this server's own. A row that is not
 // the caller's, or is removed, is refused.

@@ -64,6 +64,8 @@ const (
 	MnNodesForgetHint       Key = "mn.nodes.forget.hint"
 	MnNodesHandoffLabel     Key = "mn.nodes.handoff.label"
 	MnNodesHandoffHint      Key = "mn.nodes.handoff.hint"
+	MnNodesAdoptLabel       Key = "mn.nodes.adopt.label"
+	MnNodesAdoptHint        Key = "mn.nodes.adopt.hint"
 	MnInvitesHead           Key = "mn.invites.head"
 	MnInvitesListLabel      Key = "mn.invites.list.label"
 	MnInvitesListHint       Key = "mn.invites.list.hint"
@@ -104,6 +106,8 @@ const (
 	MnPromptReason          Key = "mn.prompt.reason"
 	MnPromptHandoffPeer     Key = "mn.prompt.handoffpeer"
 	MnPromptHandoff         Key = "mn.prompt.handoff"
+	MnPromptAdoptPeer       Key = "mn.prompt.adoptpeer"
+	MnPromptAdopt           Key = "mn.prompt.adopt"
 	MnPromptNote            Key = "mn.prompt.note"
 	MnPromptInviteCode      Key = "mn.prompt.invite_code"
 	MnPromptCheckAll        Key = "mn.prompt.check_all"
@@ -176,8 +180,12 @@ var messagesMNRU = map[Key]string{
 	MnNodesForgetHint:    "удалить запись домена, чтобы его можно было зарегистрировать заново",
 	MnNodesHandoffLabel:  "передать узел другому серверу",
 	MnNodesHandoffHint:   "узел переедет в меше; новый агентский ключ будет показан",
+	MnNodesAdoptLabel:    "принять узлы погибшего сервера",
+	MnNodesAdoptHint:     "если home не вернётся: узлы продолжат работать без визита",
 	MnPromptHandoffPeer:  "Имя пира из mesh.peers:",
 	MnPromptHandoff:      "Передать узел? Он не сможет синхронизироваться, пока вы не установите новый ключ.",
+	MnPromptAdoptPeer:    "Имя погибшего пира из mesh.peers:",
+	MnPromptAdopt:        "Принять его узлы? Если он ещё отвечает, это раскол, и нужна передача.",
 
 	MnInvitesHead:           "приглашения",
 	MnInvitesListLabel:      "список",
@@ -291,8 +299,12 @@ var messagesMNEN = map[Key]string{
 	MnNodesForgetHint:    "drop the record so the domain can be enrolled again",
 	MnNodesHandoffLabel:  "hand a node to another server",
 	MnNodesHandoffHint:   "hands the node over inside the mesh; prints its new agent key",
+	MnNodesAdoptLabel:    "take over a gone server's nodes",
+	MnNodesAdoptHint:     "when the home is gone for good: the nodes keep working without a visit",
 	MnPromptHandoffPeer:  "Peer name from mesh.peers:",
 	MnPromptHandoff:      "Hand the node over? It cannot sync until you install the new key.",
+	MnPromptAdoptPeer:    "Gone peer's name in mesh.peers:",
+	MnPromptAdopt:        "Take its nodes over? If it still answers, that is a split brain — use a handoff.",
 
 	MnInvitesHead:           "invites",
 	MnInvitesListLabel:      "list",

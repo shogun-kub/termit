@@ -3,11 +3,13 @@ package admin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/shogun-kub/termit/internal/mn/config"
 	"github.com/shogun-kub/termit/internal/mn/mesh"
 	"github.com/shogun-kub/termit/internal/mn/secret"
+	"github.com/shogun-kub/termit/internal/mn/store"
 )
 
 // HandoffOutcome is what `home handoff` reports: the node, the server that took it, the term that now orders
@@ -98,6 +100,98 @@ func (s *Service) handoff(ctx context.Context, raw json.RawMessage) (any, *Error
 	return HandoffOutcome{
 		UV: node.ID, Peer: cfg.Name, Home: state.MNID, Term: answer.Term, AgentKey: answer.AgentKey,
 	}, nil
+}
+
+// AdoptOutcome is what `home adopt` reports: the peer that is gone, the nodes that moved, and where they live
+// now. The operator repoints the mesh's name at this server; the nodes keep their credentials.
+type AdoptOutcome struct {
+	Peer    string   `json:"peer"`
+	Home    string   `json:"home"`
+	Adopted int      `json:"adopted"`
+	Nodes   []string `json:"nodes"`
+	// Cursor is how far this server had applied the gone home's journal. Nodes enrolled there after it are
+	// unknown here, so they cannot be adopted and have to enroll again.
+	Cursor int64 `json:"cursor"`
+}
+
+type adoptArgs struct {
+	Peer string `json:"peer"`
+	UV   string `json:"uv"`
+}
+
+// adopt takes over the nodes of a home that is gone for good (IMPLEMENTATION_PLAN.md §5.2.1). A handoff needs
+// the old home to give the node up, and it cannot if the machine is dead; the replica holds the rows, the
+// agent keys are sealed with a key this server also holds, so the nodes can keep working without a visit.
+//
+// The guard is the point: if the old home answers, it is not gone, and taking its rows would be a split brain
+// rather than a rescue. Then the answer is `home handoff`, which asks it. Only a peer that cannot be reached
+// at all — not a wrong credential, not a missing endpoint, but no answer — is adopted.
+func (s *Service) adopt(ctx context.Context, raw json.RawMessage) (any, *Error) {
+	var args adoptArgs
+	if err := json.Unmarshal(raw, &args); err != nil || args.Peer == "" {
+		return nil, &Error{Code: CodeBadRequest, Detail: "the peer whose nodes are gone is required"}
+	}
+	cfg, ok := s.peer(args.Peer)
+	if !ok {
+		names := make([]string, 0, len(s.Mesh.Peers))
+		for _, peer := range s.Mesh.Peers {
+			names = append(names, peer.Name)
+		}
+		return nil, &Error{Code: CodeBadRequest,
+			Detail: fmt.Sprintf("no peer %q in mesh.peers (configured: %v)", args.Peer, names)}
+	}
+	own, err := s.Store.MeshID(ctx)
+	if err != nil {
+		return nil, &Error{Code: CodeInternal, Detail: err.Error()}
+	}
+	// Its mesh id is what its rows are homed by, and it is learned from the first pull: a peer this server
+	// never pulled from has left nothing here to adopt.
+	goneMN, err := s.Store.GetSetting(ctx, mesh.PeerIDKey(cfg.Name))
+	if errors.Is(err, store.ErrNotFound) || goneMN == "" {
+		return nil, &Error{Code: CodeConflict,
+			Detail: fmt.Sprintf("%s has never been pulled from here, so it homed nothing this server holds", cfg.Name)}
+	}
+	peer, err := mesh.NewPeer(cfg, s.Master, 0)
+	if err != nil {
+		return nil, &Error{Code: CodeInternal, Detail: err.Error()}
+	}
+	if _, stateErr := peer.State(ctx); stateErr == nil {
+		return nil, &Error{Code: CodeConflict, Detail: fmt.Sprintf(
+			"%s answered, so it is not gone: use `home handoff`, which asks it to give the node up", cfg.Name)}
+	} else if !errors.Is(stateErr, mesh.ErrUnreachable) {
+		return nil, &Error{Code: CodeConflict, Detail: fmt.Sprintf(
+			"%s answered with an error (%v), so something is there: this is a handoff, not an adoption",
+			cfg.Name, stateErr)}
+	}
+
+	nodes, err := s.Store.UVsHomedBy(ctx, goneMN)
+	if err != nil {
+		return nil, &Error{Code: CodeInternal, Detail: err.Error()}
+	}
+	if args.UV != "" {
+		node, refused := s.resolveUV(ctx, args.UV)
+		if refused != nil {
+			return nil, refused
+		}
+		if node.HomeMN != goneMN {
+			return nil, &Error{Code: CodeConflict,
+				Detail: fmt.Sprintf("%s is not homed by %s", node.ID, cfg.Name)}
+		}
+		nodes = []store.UV{node}
+	}
+	cursor, err := s.Store.Cursor(ctx, goneMN)
+	if err != nil {
+		return nil, &Error{Code: CodeInternal, Detail: err.Error()}
+	}
+	taken := make([]string, 0, len(nodes))
+	for _, node := range nodes {
+		if _, err := s.Store.AdoptUV(ctx, node.ID, goneMN, s.Now().UTC()); err != nil {
+			return nil, &Error{Code: CodeInternal,
+				Detail: fmt.Sprintf("adopted %d of %d, then failed on %s: %v", len(taken), len(nodes), node.ID, err)}
+		}
+		taken = append(taken, node.Domain)
+	}
+	return AdoptOutcome{Peer: cfg.Name, Home: own, Adopted: len(taken), Nodes: taken, Cursor: cursor}, nil
 }
 
 // peer finds a configured peer by name.

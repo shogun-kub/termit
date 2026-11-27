@@ -2613,6 +2613,15 @@ without a credential migration:
 9. **Known limit: a node has one `mn.url`** (`internal/uv/config`). A handoff therefore needs the name to
    follow the new home (DNS or a VIP), or the operator visits every node. A list of MN addresses in the
    node's configuration is its own item, not this one.
+10. **A node whose home is gone for good can be adopted**, by an explicit command on the replica
+    (`termit-mn home adopt --from <peer>`), never by a timeout. A handoff needs the old home to give the node
+    up, and a dead machine cannot; the replica already holds the rows and the agent keys, sealed with the key
+    it shares, so the nodes keep working without a visit. Adoption raises `home_term`, keeps the agent key,
+    and refuses to run while the old home answers — an alive home is a handoff, not a rescue. The mesh's name
+    still has to move (decision 9), and nodes enrolled on the old home after the replica's last pull are
+    unknown there and enroll again. What it cannot tell apart is a dead home from one the replica merely
+    cannot reach: adopting across a partition leaves two live homes writing the same rows until the name
+    moves and the parted one pulls, which is why the decision is the operator's and not a timer's.
 
 Deliberately not decided here, because each is a feature: automatic failover (a split brain between two
 live homes is worse than a day of stale peers), replicating check history and the audit log wholesale (the
@@ -2657,6 +2666,14 @@ prints the new key once. The merge is ordered by the term: a newer term wins eve
 is skipped with the cursor still advancing, so a server returning from a partition cannot undo a handoff it
 missed and its stale writes cannot stall the journal. A removal from a server that no longer homes the row is
 skipped for the same reason — the plan's "refuse" would have stopped the pull for ever.
+
+**And adoption, for the home that never returns.** `home adopt --from <peer>` takes every row that peer homed
+(or one, with `--uv`) through `store.AdoptUV`: the term moves, the agent key survives — the replica's copy was
+sealed with the shared master key, so no node is visited — and the queued report for the gone home is dropped
+because the node's next sync writes the same facts here. The command asks the peer whether it still answers
+and refuses if it does (`mesh.ErrUnreachable` is what separates "gone" from "answered wrongly"), so the guard
+is a fact about the network rather than the operator's optimism. A returning home pulls the adoption from the
+replica's journal and stops writing the row.
 
 What the replication slice still owes: the **quorum gate on `credential_epoch`**; `serve` reading
 `TERMIT_MN_MASTER` before the key file (decision 8, today only `init` honours it); journal pruning, without

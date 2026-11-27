@@ -475,6 +475,12 @@ The node is not told: it cannot sync until somebody installs the new key and, be
 `mn.url`, points it at the new home (decision 9). Pair credentials are derived from the master key and the two
 ids, so they survive the move unchanged.
 
+A home that is gone for good is a different call — `termit-mn home adopt --from <peer>` on the replica — and
+it makes **no request at all**: the replica already holds the rows and the agent keys, sealed with the master
+key it shares. What it does ask the peer is whether it still answers, and a peer that does is refused: an
+alive home means a handoff, not an adoption. The adoption is announced in the replica's own journal
+(`home_term` + 1, the same key), so a home that returns later pulls it and stops writing the row.
+
 ---
 
 ## 4. Subscriptions

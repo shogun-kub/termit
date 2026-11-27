@@ -288,6 +288,7 @@ func (m *menu) entries() []menuEntry {
 				// A handoff prints a credential once and leaves the node unable to sync until it is installed,
 				// which is the same shape as rotating the admin token — the two sit together for that reason.
 				{labelKey: i18n.MnNodesHandoffLabel, hintKey: i18n.MnNodesHandoffHint, plan: m.planHandoff},
+				{labelKey: i18n.MnNodesAdoptLabel, hintKey: i18n.MnNodesAdoptHint, plan: m.planAdopt},
 			}
 		}},
 		{labelKey: i18n.MnEntryHelpLabel, hintKey: i18n.MnEntryHelpHint, plan: fixedMn("help"), local: true},
@@ -586,6 +587,25 @@ func (m *menu) planHandoff(ui *termui.UI) ([][]string, error) {
 		return nil, err
 	}
 	return [][]string{{"home", "handoff", "--uv", node, "--to", peer}}, nil
+}
+
+// planAdopt takes over the nodes of a home that is not coming back. It asks which peer and then confirms,
+// because the decision is "that machine is gone" and nothing here can prove it: the server refuses on its own
+// when the peer still answers.
+func (m *menu) planAdopt(ui *termui.UI) ([][]string, error) {
+	tr := m.translator()
+	peer, err := ui.Prompt(tr.T(i18n.MnPromptAdoptPeer), "")
+	if err != nil {
+		return nil, err
+	}
+	if peer = strings.TrimSpace(peer); peer == "" {
+		return nil, nil
+	}
+	sure, err := ui.Confirm(tr.T(i18n.MnPromptAdopt), false)
+	if err != nil || !sure {
+		return nil, err
+	}
+	return [][]string{{"home", "adopt", "--from", peer}}, nil
 }
 
 func (m *menu) planUpdate(ui *termui.UI) ([][]string, error) {

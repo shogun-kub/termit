@@ -149,9 +149,12 @@ func (p *Puller) DeliverReports(ctx context.Context) {
 			byHome[id] = peer
 		}
 	}
+	own, ownErr := p.Store.MeshID(ctx)
 	for _, report := range reports {
-		if report.Home == "" {
-			// The node row is gone: nothing to deliver, and nothing will ever own it again.
+		if report.Home == "" || (ownErr == nil && report.Home == own) {
+			// The node is gone, or this server homes it now — the handoff or the adoption already moved it.
+			// Either way its next sync writes these facts here, so a queued copy is a slower path to the
+			// same row.
 			p.dropReport(ctx, report.UV)
 			continue
 		}
@@ -407,7 +410,7 @@ func (p Peer) send(request *http.Request, path string, into any) error {
 	request.Header.Set("Authorization", "Bearer "+PullToken(p.MasterKey))
 	response, err := p.HTTP.Do(request)
 	if err != nil {
-		return fmt.Errorf("mesh: %s: %w", p.Config.Name, err)
+		return fmt.Errorf("%w: %s: %v", ErrUnreachable, p.Config.Name, err)
 	}
 	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK {
@@ -418,6 +421,11 @@ func (p Peer) send(request *http.Request, path string, into any) error {
 	}
 	return nil
 }
+
+// ErrUnreachable marks a peer that could not be talked to at all: a connection refused, a timeout, a name
+// that does not resolve. Everything else — a wrong credential, a missing endpoint — means something answered,
+// and "something answered" is a different fact about the other side than "it is gone".
+var ErrUnreachable = errors.New("mesh: the peer is unreachable")
 
 // errReportLoses marks an answer that says the report will never be applied: the node is unknown there, or
 // it is homed by somebody else. Retrying it would keep a dead entry in the queue for ever.

@@ -140,6 +140,8 @@ func (s *Service) Handle(ctx context.Context, req Request) (any, *Error) {
 		return s.meshState(ctx)
 	case "home.handoff":
 		return s.handoff(ctx, req.Args)
+	case "home.adopt":
+		return s.adopt(ctx, req.Args)
 	default:
 		return nil, &Error{Code: CodeBadRequest, Detail: fmt.Sprintf("unknown operation %q", req.Op)}
 	}

@@ -7,6 +7,14 @@ pre-releases, and whoever installs the release skipped them.
 
 ### Added
 
+- **A replica can take over the nodes of a home that never comes back.** `termit-mn home adopt --from <peer>`
+  makes this server the home of every node that peer homed (or one, with `--uv`). No cooperation is needed:
+  the replica already holds the rows and the agent keys, sealed with the shared master key, so the nodes keep
+  working without a visit — point the mesh's name at this server and their next sync lands here. It raises
+  `home_term`, and it refuses while the old home still answers: an alive home means `home handoff`, not a
+  rescue. A home that returns later pulls the adoption and stops writing the row. Nodes enrolled on the old
+  home after this server's last pull are unknown here and have to enroll again.
+
 - **A node can be moved to another management server.** `termit-mn home handoff --uv <id or domain> --to
   <peer>` moves one node inside the mesh: the target must be within `mesh.lag_max` journal entries of the old
   home (or `--force` says you accept that a node enrolled since its last pull has to re-enroll), it takes the

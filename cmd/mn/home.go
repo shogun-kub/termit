@@ -18,10 +18,58 @@ func runHome(args []string, stdout, stderr io.Writer) int {
 	switch args[0] {
 	case "handoff":
 		return runHandoff(args[1:], stdout, stderr)
+	case "adopt":
+		return runAdopt(args[1:], stdout, stderr)
 	default:
-		fmt.Fprintf(stderr, "termit-mn home: unknown verb %q; the only one is `handoff`\n", args[0])
+		fmt.Fprintf(stderr, "termit-mn home: unknown verb %q; it is `handoff` or `adopt`\n", args[0])
 		return exitUsage
 	}
+}
+
+// runAdopt takes over the nodes of a home that is gone for good. It is the rescue a dead machine needs: a
+// handoff cannot happen without the old home, and the nodes keep their keys, so nobody visits them.
+func runAdopt(args []string, stdout, stderr io.Writer) int {
+	flags, configPath, socket, token, tokenFile := uvFlags("termit-mn home adopt", stderr)
+	from := flags.String("from", "", "the peer that is gone, by its name in mesh.peers")
+	uv := flags.String("uv", "", "take over only this node (id or domain)")
+	if err := flags.Parse(args); err != nil {
+		return flagExit(err)
+	}
+	if flags.NArg() > 0 {
+		fmt.Fprintf(stderr, "termit-mn home adopt: unexpected argument %q\n", flags.Arg(0))
+		return exitUsage
+	}
+	if *from == "" {
+		fmt.Fprintln(stderr, "termit-mn home adopt: --from is required")
+		return exitUsage
+	}
+	client, err := adminClient(*configPath, *socket, *token, *tokenFile)
+	if err != nil {
+		fmt.Fprintf(stderr, "termit-mn home adopt: %v\n", err)
+		return exitFailure
+	}
+	callCtx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+
+	var outcome admin.AdoptOutcome
+	request := map[string]any{"peer": *from, "uv": *uv}
+	if err := client.Call(callCtx, "home.adopt", request, &outcome); err != nil {
+		fmt.Fprintf(stderr, "termit-mn home adopt: %v\n", err)
+		return exitFailure
+	}
+	fmt.Fprintf(stdout, "peer:      %s (gone)\n", outcome.Peer)
+	fmt.Fprintf(stdout, "taken:     %d node(s)\n", outcome.Adopted)
+	fmt.Fprintf(stdout, "new home:  %s\n", outcome.Home)
+	for _, domain := range outcome.Nodes {
+		fmt.Fprintf(stdout, "  %s\n", domain)
+	}
+	fmt.Fprintln(stdout)
+	fmt.Fprintln(stdout, "The nodes keep their agent keys and pair credentials: point the mesh's name at this")
+	fmt.Fprintln(stdout, "server and their next sync lands here. Remove the gone peer from mesh.peers, or every")
+	fmt.Fprintf(stdout, "pull will keep failing. Nodes enrolled on it after cursor %d are unknown here and have\n",
+		outcome.Cursor)
+	fmt.Fprintln(stdout, "to enroll again.")
+	return exitOK
 }
 
 // runHandoff moves one node to another server in the mesh and prints the agent key the node needs next.

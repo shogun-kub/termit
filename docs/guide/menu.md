@@ -169,6 +169,8 @@ Seven choices; `0` goes back up.
 - `update --check` — ask GitHub whether a newer release exists; installs nothing
 - `home handoff` — hand one node over to another server in the mesh; asks which node and which peer, and
   prints the node's new agent key once (the node cannot sync until it is installed)
+- `home adopt` — take over the nodes of a server that is gone for good; asks which peer, and refuses while
+  it still answers (that is a handoff, not a rescue)
 
 **Help** — every command and flag.
 ## What the menu does not offer
