@@ -23,6 +23,11 @@ go test -tags=lab ./test/lab -v -timeout 30m
 Run it with `-count=1`: `go test` caches a pass and reprints it in seconds, proving nothing about the
 build in front of you.
 
+`TERMIT_LAB_MN2` is optional and skips the tests that need a mesh. That server has to be prepared by hand
+first: it holds a copy of the same `master.key`, each server lists the other under `mesh.peers` with the
+peer's leaf pinned, and both run the same build — `OPERATIONS.md` §3.4 is the runbook. The harness only
+addresses it, it does not build the mesh.
+
 ## 2. Coordinates and credentials
 
 Concrete coordinates for this machine live in the gitignored `.spike-out/lab.md`; the key is a PuTTY
