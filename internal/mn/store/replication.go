@@ -437,6 +437,66 @@ func putReplicatedTransports(ctx context.Context, tx *sql.Tx, uvID string, kinds
 	return nil
 }
 
+// recordNode journals a node as it now stands, inside the caller's transaction. Every write that changes
+// a replicated field ends with it: the row and the entry commit together or not at all, so a crash cannot
+// leave a change the mesh will never hear about.
+func recordNode(ctx context.Context, tx *sql.Tx, mnID string, at time.Time, id string) error {
+	node, err := scanUV(tx.QueryRowContext(ctx, `SELECT `+uvColumns+` FROM uv WHERE id = ?`, id))
+	if err != nil {
+		return fmt.Errorf("store: read %s for the journal: %w", id, err)
+	}
+	// A row homed elsewhere is not this server's to announce. Its log is what a third server pulls, so an
+	// entry there would claim a decision this one never made; the home's next event overwrites the copy
+	// anyway. The write itself is refused once the read-only sync of a replica exists (§5.2.1, decision
+	// 3), which is where a node may reach this path.
+	if node.HomeMN != "" && node.HomeMN != mnID {
+		return nil
+	}
+	kinds, err := transportsTx(ctx, tx, id)
+	if err != nil {
+		return err
+	}
+	body, err := json.Marshal(nodeEvent{Node: node, Transports: kinds})
+	if err != nil {
+		return fmt.Errorf("store: encode %s for the journal: %w", id, err)
+	}
+	_, err = appendEventTx(ctx, tx, at, mnID, EventNode, body)
+	return err
+}
+
+// recordNodeRemoved journals the departure of a node, inside the caller's transaction.
+func recordNodeRemoved(ctx context.Context, tx *sql.Tx, mnID string, at time.Time, id string) error {
+	body, err := json.Marshal(nodeRemoved{ID: id})
+	if err != nil {
+		return fmt.Errorf("store: encode the removal of %s: %w", id, err)
+	}
+	_, err = appendEventTx(ctx, tx, at, mnID, EventNodeRemoved, body)
+	return err
+}
+
+// transportsTx is what one node reported it serves, read inside the caller's transaction so the journal
+// entry describes the same moment as the row it travels with.
+func transportsTx(ctx context.Context, tx *sql.Tx, uvID string) ([]string, error) {
+	rows, err := tx.QueryContext(ctx,
+		`SELECT kind FROM uv_transport WHERE uv_id = ? ORDER BY kind`, uvID)
+	if err != nil {
+		return nil, fmt.Errorf("store: read the transports of %s: %w", uvID, err)
+	}
+	defer func() { _ = rows.Close() }()
+	var kinds []string
+	for rows.Next() {
+		var kind string
+		if err := rows.Scan(&kind); err != nil {
+			return nil, fmt.Errorf("store: scan a transport of %s: %w", uvID, err)
+		}
+		kinds = append(kinds, kind)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: read the transports of %s: %w", uvID, err)
+	}
+	return kinds, nil
+}
+
 // homedNodes are the rows this server owns: its own (an empty home) and any written under its own id.
 func (s *Store) homedNodes(ctx context.Context, mnID string) ([]UV, error) {
 	rows, err := s.db.QueryContext(ctx,

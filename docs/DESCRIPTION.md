@@ -908,8 +908,9 @@ replication_cursor(mn_id, seq)                     -- how far one server applied
 ```
 
 `home_mn` is the server that owns the row; empty means "this one", which is every node of a single-server
-mesh. The journal and the cursor are written and read by nothing yet: they are the store half of
-`IMPLEMENTATION_PLAN.md` §5.2.1, and the transport that fills them is the next slice.
+mesh. Every write that changes a replicated field appends one journal entry in the same transaction, and a
+row homed by another server is never announced here — its log is what a third server pulls. What is still
+missing is the transport that hands the log to a peer: `IMPLEMENTATION_PLAN.md` §5.2.1.
 
 Indexes: `uv(domain)` (unique), `uv(state)`, `uv(last_seen_at)`, `uv(next_check_at)`,
 `uv_event(uv_id, at desc)`, `check(uv_id, at desc)`, `check(at)` for pruning, `invite(code_hash)`

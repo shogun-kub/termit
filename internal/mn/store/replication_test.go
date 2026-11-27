@@ -27,53 +27,94 @@ func enrolled(t *testing.T, s *store.Store, id, domain string) store.UV {
 	return node
 }
 
-func TestJournalIsOneGrowingLogPerServer(t *testing.T) {
+// journal reads one server's log from the start.
+func journal(t *testing.T, s *store.Store, mnID string) []store.ReplicationEvent {
+	t.Helper()
+	events, err := s.EventsSince(context.Background(), mnID, 0, 0)
+	if err != nil {
+		t.Fatalf("EventsSince: %v", err)
+	}
+	return events
+}
+
+// Every write that changes a replicated field leaves exactly one entry, in one growing log: the row and
+// its entry commit together, so a replica can rebuild from the log alone.
+func TestEveryReplicatedWriteLeavesOneEntry(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	home, _ := twoStores(t)
 
 	node := enrolled(t, home, "uv_one", "one.example.com")
-	first, err := home.AppendNode(ctx, node, []string{"vless"})
-	if err != nil {
-		t.Fatalf("AppendNode: %v", err)
+	if err := home.SetUVTransports(ctx, node.ID, []string{"vless"}); err != nil {
+		t.Fatalf("SetUVTransports: %v", err)
 	}
-	if first.Seq != 1 {
-		t.Errorf("first seq = %d, want 1", first.Seq)
+	if _, err := home.SetUVState(ctx, node.ID, store.StateActive, "checks passed", "prober", testNow); err != nil {
+		t.Fatalf("SetUVState: %v", err)
 	}
-	if first.MNID == "" || first.At.IsZero() || first.Kind != store.EventNode {
-		t.Errorf("first event = %+v, want an identified node event with a timestamp", first)
+	if err := home.RelocateUV(ctx, node.ID, "moved.example.com", node.SelfUUID, node.ProfileJSON, ""); err != nil {
+		t.Fatalf("RelocateUV: %v", err)
 	}
-	second, err := home.AppendNodeRemoved(ctx, "uv_one")
-	if err != nil {
-		t.Fatalf("AppendNodeRemoved: %v", err)
-	}
-	if second.Seq != 2 || second.MNID != first.MNID {
-		t.Errorf("second event = %+v, want seq 2 of the same log", second)
+	if err := home.SetAgentKeyHash(ctx, node.ID, "sha256$new", "sealed"); err != nil {
+		t.Fatalf("SetAgentKeyHash: %v", err)
 	}
 
-	journal, err := home.EventsSince(ctx, first.MNID, 0, 0)
+	mnID, err := home.MeshID(ctx)
 	if err != nil {
-		t.Fatalf("EventsSince: %v", err)
+		t.Fatalf("MeshID: %v", err)
 	}
-	if len(journal) != 2 || journal[0].Seq != 1 || journal[1].Seq != 2 {
-		t.Fatalf("journal = %+v, want two events in order", journal)
+	if events, err := home.EventsSince(ctx, "", 0, 0); err == nil || len(events) != 0 {
+		t.Fatalf("EventsSince with no server = %v, %d events", err, len(events))
 	}
-	after, err := home.EventsSince(ctx, first.MNID, 1, 0)
-	if err != nil {
-		t.Fatalf("EventsSince(after 1): %v", err)
+	events := journal(t, home, mnID)
+
+	if len(events) != 5 {
+		t.Fatalf("journal length = %d, want 5 (enroll, transports, state, relocate, key)", len(events))
 	}
-	if len(after) != 1 || after[0].Seq != 2 {
-		t.Errorf("events after 1 = %+v, want only the removal", after)
+	for i, event := range events {
+		if event.Seq != int64(i+1) || event.MNID != mnID || event.Kind != store.EventNode || event.At.IsZero() {
+			t.Fatalf("event %d = %+v, want seq %d of %s", i, event, i+1, mnID)
+		}
+	}
+	if last := events[len(events)-1]; last.Kind != store.EventNode {
+		t.Errorf("last event kind = %q", last.Kind)
 	}
 
-	// The kind set is closed: an event this build does not know is refused at the door, not stored for
-	// someone else to choke on.
+	// A touch is a request, not a decision: it must not grow the log, or every sync would.
+	if err := home.TouchUV(ctx, node.ID, "203.0.113.9", "termit-uv v0.7.0", testNow); err != nil {
+		t.Fatalf("TouchUV: %v", err)
+	}
+	if after := journal(t, home, mnID); len(after) != 5 {
+		t.Errorf("a touch grew the journal to %d entries", len(after))
+	}
+
+	// A forgotten node leaves a removal, and nothing of it stays in the transports.
+	if _, err := home.SetUVState(ctx, node.ID, store.StateRemoved, "forgotten", "admin", testNow); err != nil {
+		t.Fatalf("SetUVState: %v", err)
+	}
+	if err := home.ForgetUV(ctx, node.ID); err != nil {
+		t.Fatalf("ForgetUV: %v", err)
+	}
+	events = journal(t, home, mnID)
+	removal := events[len(events)-1]
+	if removal.Kind != store.EventNodeRemoved {
+		t.Errorf("last event = %+v, want a removal", removal)
+	}
+	served, err := home.UVTransports(ctx)
+	if err != nil {
+		t.Fatalf("UVTransports: %v", err)
+	}
+	if len(served[node.ID]) != 0 {
+		t.Errorf("a forgotten node still has transports: %v", served[node.ID])
+	}
+
 	if _, err := home.AppendEvent(ctx, "policy", map[string]string{"x": "y"}); !errors.Is(err, store.ErrUnknownEvent) {
 		t.Errorf("AppendEvent(policy) = %v, want ErrUnknownEvent", err)
 	}
 }
 
-func TestReplicaAppliesTheJournalInOrder(t *testing.T) {
+// The journal a server writes must rebuild its registry on another one, field for field: that is the
+// whole contract, and the reason every write path above was wired.
+func TestTheJournalRebuildsTheRegistry(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	home, replica := twoStores(t)
@@ -82,24 +123,40 @@ func TestReplicaAppliesTheJournalInOrder(t *testing.T) {
 	if err := home.SetUVTransports(ctx, node.ID, []string{"vless", "hysteria2"}); err != nil {
 		t.Fatalf("SetUVTransports: %v", err)
 	}
-	event, err := home.AppendNode(ctx, node, []string{"vless", "hysteria2"})
-	if err != nil {
-		t.Fatalf("AppendNode: %v", err)
+	if _, err := home.SetUVState(ctx, node.ID, store.StateActive, "checks passed", "prober", testNow); err != nil {
+		t.Fatalf("SetUVState: %v", err)
+	}
+	if err := home.RelocateUV(ctx, node.ID, "moved.example.com", "not-the-old-uuid", `{"network":"xhttp"}`, "pin"); err != nil {
+		t.Fatalf("RelocateUV: %v", err)
 	}
 
-	applied, err := replica.ApplyEvents(ctx, []store.ReplicationEvent{event})
+	mnID, err := home.MeshID(ctx)
+	if err != nil {
+		t.Fatalf("MeshID: %v", err)
+	}
+	events := journal(t, home, mnID)
+	applied, err := replica.ApplyEvents(ctx, events)
 	if err != nil {
 		t.Fatalf("ApplyEvents: %v", err)
 	}
-	if applied != 1 {
-		t.Errorf("applied = %d, want 1", applied)
+	if applied != len(events) {
+		t.Errorf("applied = %d, want %d", applied, len(events))
+	}
+
+	want, err := home.UVByID(ctx, node.ID)
+	if err != nil {
+		t.Fatalf("UVByID on the home: %v", err)
 	}
 	got, err := replica.UVByID(ctx, node.ID)
 	if err != nil {
 		t.Fatalf("UVByID on the replica: %v", err)
 	}
-	if got.Domain != node.Domain || got.HomeMN != event.MNID {
-		t.Errorf("replicated node = %+v, want %s homed by %s", got, node.Domain, event.MNID)
+	got.HomeMN = want.HomeMN // the origin's own row is empty; the replica records who sent it
+	if got != want {
+		t.Errorf("replica row = %+v\nhome row    = %+v", got, want)
+	}
+	if got.Domain != "moved.example.com" || got.State != store.StateActive {
+		t.Errorf("replica row = %+v, want the moved, active node", got)
 	}
 	served, err := replica.UVTransports(ctx)
 	if err != nil {
@@ -108,30 +165,24 @@ func TestReplicaAppliesTheJournalInOrder(t *testing.T) {
 	if len(served[node.ID]) != 2 {
 		t.Errorf("replicated transports = %v, want both kinds", served[node.ID])
 	}
-	if cursor, err := replica.Cursor(ctx, event.MNID); err != nil || cursor != event.Seq {
-		t.Errorf("cursor = %d, %v; want %d", cursor, err, event.Seq)
+	if cursor, err := replica.Cursor(ctx, mnID); err != nil || cursor != int64(len(events)) {
+		t.Errorf("cursor = %d, %v; want %d", cursor, err, len(events))
 	}
 
 	// A retry of the same batch changes nothing and is not an error: the transport will retry.
-	applied, err = replica.ApplyEvents(ctx, []store.ReplicationEvent{event})
-	if err != nil {
-		t.Fatalf("re-applying the same event: %v", err)
-	}
-	if applied != 0 {
-		t.Errorf("applied = %d on a replay, want 0", applied)
+	if applied, err := replica.ApplyEvents(ctx, events); err != nil || applied != 0 {
+		t.Errorf("replay = %d, %v; want 0, nil", applied, err)
 	}
 
-	// Mixing the applied event with a new one applies only the new one.
-	removed, err := home.AppendNodeRemoved(ctx, node.ID)
-	if err != nil {
-		t.Fatalf("AppendNodeRemoved: %v", err)
+	// A node that leaves the mesh leaves the replica too.
+	if _, err := home.SetUVState(ctx, node.ID, store.StateRemoved, "forgotten", "admin", testNow); err != nil {
+		t.Fatalf("SetUVState: %v", err)
 	}
-	applied, err = replica.ApplyEvents(ctx, []store.ReplicationEvent{event, removed})
-	if err != nil {
-		t.Fatalf("ApplyEvents(event, removal): %v", err)
+	if err := home.ForgetUV(ctx, node.ID); err != nil {
+		t.Fatalf("ForgetUV: %v", err)
 	}
-	if applied != 1 {
-		t.Errorf("applied = %d, want 1", applied)
+	if _, err := replica.ApplyEvents(ctx, journal(t, home, mnID)[len(events):]); err != nil {
+		t.Fatalf("ApplyEvents(after the removal): %v", err)
 	}
 	if _, err := replica.UVByID(ctx, node.ID); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("the removed node is still on the replica: %v", err)
@@ -143,44 +194,71 @@ func TestReplicaRefusesAGapAndBadPayloads(t *testing.T) {
 	ctx := context.Background()
 	home, replica := twoStores(t)
 
-	first := enrolled(t, home, "uv_one", "one.example.com")
-	event1, err := home.AppendNode(ctx, first, nil)
+	enrolled(t, home, "uv_one", "one.example.com")
+	enrolled(t, home, "uv_two", "two.example.com")
+	mnID, err := home.MeshID(ctx)
 	if err != nil {
-		t.Fatalf("AppendNode: %v", err)
+		t.Fatalf("MeshID: %v", err)
 	}
-	second := enrolled(t, home, "uv_two", "two.example.com")
-	event2, err := home.AppendNode(ctx, second, nil)
-	if err != nil {
-		t.Fatalf("AppendNode: %v", err)
+	events := journal(t, home, mnID)
+	if len(events) != 2 {
+		t.Fatalf("journal = %d events, want 2", len(events))
 	}
 
-	// The event after the missing one cannot be applied on its own: applying it would leave the replica
-	// with a node it cannot explain and a cursor that hides the hole.
-	if _, err := replica.ApplyEvents(ctx, []store.ReplicationEvent{event2}); !errors.Is(err, store.ErrReplicationGap) {
+	// The second event cannot be applied on its own: it would leave the replica with a node it cannot
+	// explain and a cursor that hides the hole.
+	if _, err := replica.ApplyEvents(ctx, events[1:]); !errors.Is(err, store.ErrReplicationGap) {
 		t.Fatalf("ApplyEvents(gap) = %v, want ErrReplicationGap", err)
 	}
-	if cursor, _ := replica.Cursor(ctx, event1.MNID); cursor != 0 {
+	if cursor, _ := replica.Cursor(ctx, mnID); cursor != 0 {
 		t.Errorf("cursor = %d after a refused batch, want 0", cursor)
 	}
 
 	// A batch that starts well and then fails leaves nothing behind: no half-applied node, no cursor.
-	broken := store.ReplicationEvent{MNID: event2.MNID, Seq: event2.Seq, Kind: event2.Kind,
-		Payload: json.RawMessage(`{"node":{"id":"uv_two"}}`)}
-	if _, err := replica.ApplyEvents(ctx, []store.ReplicationEvent{event1, broken}); err == nil {
+	broken := store.ReplicationEvent{MNID: events[1].MNID, Seq: events[1].Seq, Kind: events[1].Kind,
+		At: events[1].At, Payload: json.RawMessage(`{"node":{"id":"uv_two"}}`)}
+	if _, err := replica.ApplyEvents(ctx, []store.ReplicationEvent{events[0], broken}); err == nil {
 		t.Fatal("a node without a domain was applied")
 	}
-	if _, err := replica.UVByID(ctx, first.ID); !errors.Is(err, store.ErrNotFound) {
+	if _, err := replica.UVByID(ctx, "uv_one"); !errors.Is(err, store.ErrNotFound) {
 		t.Error("the first event of a refused batch was committed")
 	}
-	if cursor, _ := replica.Cursor(ctx, event1.MNID); cursor != 0 {
+	if cursor, _ := replica.Cursor(ctx, mnID); cursor != 0 {
 		t.Errorf("cursor = %d after a failed batch, want 0", cursor)
 	}
 
 	// A kind this build does not know is refused rather than skipped: an older build must not silently
 	// ignore a newer peer's change.
-	unknown := store.ReplicationEvent{MNID: event1.MNID, Seq: 1, Kind: "policy", Payload: json.RawMessage(`{}`)}
+	unknown := store.ReplicationEvent{MNID: mnID, Seq: 1, Kind: "policy", Payload: json.RawMessage(`{}`)}
 	if _, err := replica.ApplyEvents(ctx, []store.ReplicationEvent{unknown}); !errors.Is(err, store.ErrUnknownEvent) {
 		t.Errorf("ApplyEvents(unknown kind) = %v, want ErrUnknownEvent", err)
+	}
+}
+
+// A replica's own log is what a third server would pull, so it must not announce a change to a row it
+// does not home: the entry would claim a decision this server never made.
+func TestReplicaDoesNotJournalARowItDoesNotHome(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	home, replica := twoStores(t)
+
+	enrolled(t, home, "uv_one", "one.example.com")
+	mnID, err := home.MeshID(ctx)
+	if err != nil {
+		t.Fatalf("MeshID: %v", err)
+	}
+	if _, err := replica.ApplyEvents(ctx, journal(t, home, mnID)); err != nil {
+		t.Fatalf("ApplyEvents: %v", err)
+	}
+	if _, err := replica.SetUVState(ctx, "uv_one", store.StateBlocked, "someone edited it", "admin", testNow); err != nil {
+		t.Fatalf("SetUVState on the replica: %v", err)
+	}
+	ownID, err := replica.MeshID(ctx)
+	if err != nil {
+		t.Fatalf("MeshID: %v", err)
+	}
+	if events := journal(t, replica, ownID); len(events) != 0 {
+		t.Errorf("the replica journaled %d events for a row it does not home: %+v", len(events), events)
 	}
 }
 
@@ -189,21 +267,21 @@ func TestReplicaRefusesToTouchANodeItHomes(t *testing.T) {
 	ctx := context.Background()
 	home, replica := twoStores(t)
 
-	// The same node id exists on both sides: the home has a row for it, and so does the replica. Two
-	// homes for one id is the split the mesh refuses to merge.
+	// The same node id exists on both sides: two homes for one id is the split the mesh refuses to
+	// merge.
 	local := enrolled(t, replica, "uv_shared", "shared.example.com")
 	if local.HomeMN != "" {
 		t.Fatalf("a locally created node has home %q, want empty", local.HomeMN)
 	}
-	claim := testUV("uv_shared", "shared.example.com")
-	event, err := home.AppendNode(ctx, claim, nil)
+	enrolled(t, home, "uv_shared", "shared.example.com")
+	mnID, err := home.MeshID(ctx)
 	if err != nil {
-		t.Fatalf("AppendNode: %v", err)
+		t.Fatalf("MeshID: %v", err)
 	}
-	if _, err := replica.ApplyEvents(ctx, []store.ReplicationEvent{event}); !errors.Is(err, store.ErrReplicationConflict) {
+	if _, err := replica.ApplyEvents(ctx, journal(t, home, mnID)[:1]); !errors.Is(err, store.ErrReplicationConflict) {
 		t.Errorf("ApplyEvents over a homed row = %v, want ErrReplicationConflict", err)
 	}
-	if cursor, _ := replica.Cursor(ctx, event.MNID); cursor != 0 {
+	if cursor, _ := replica.Cursor(ctx, mnID); cursor != 0 {
 		t.Errorf("cursor = %d after a conflict, want 0", cursor)
 	}
 
@@ -279,11 +357,6 @@ func TestSnapshotCarriesTheOriginNodesAndNothingElse(t *testing.T) {
 	}
 	if err := home.ForgetUV(ctx, two.ID); err != nil {
 		t.Fatalf("ForgetUV: %v", err)
-	}
-	// A change on the home moves the journal, and the journal position is what makes a snapshot's age
-	// meaningful: without it two snapshots of the same content are indistinguishable from any order.
-	if _, err := home.AppendNodeRemoved(ctx, two.ID); err != nil {
-		t.Fatalf("AppendNodeRemoved: %v", err)
 	}
 	newer, err := home.Snapshot(ctx)
 	if err != nil {

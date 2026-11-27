@@ -2618,13 +2618,16 @@ Deliberately not decided here, because each is a feature: automatic failover (a 
 live homes is worse than a day of stale peers), replicating check history and the audit log wholesale (the
 verdict rides the node row, the history stays home), and federation between independent meshes (§6).
 
-**Started on `dev`, 2026-11-27: the journal and the snapshot**
+**Started on `dev`, 2026-11-27: the journal, the snapshot and the producers**
 (`internal/mn/store/replication.go`). Schema 7 adds `home_mn` and the two journal tables. The store mints
-its own mesh id, appends node and removal events, applies a peer's log in order — replay skipped, a gap, a
-conflict over a node it homes, and an unknown kind all refused before anything is written — and takes or
-applies a schema-versioned snapshot, refusing one older than what it already applied. Neither the node code
-nor the wire has changed yet: the producer wiring (each store write appending inside its own transaction)
-and the direct HTTPS transport are the next slices.
+its own mesh id; every write that changes a replicated field — enrollment, a state transition, a transport
+report, an approval, a relocation, a key or token rotation, a removal — appends one entry inside its own
+transaction, and a row homed by another server is never announced here. Applying a peer's log skips a
+replay and refuses a gap, a conflict over a node this server homes, and an unknown kind, all before
+anything is written; a snapshot is taken and applied, with a stale one refused. What is missing is the
+wire — `mesh.peers` in the configuration and the direct HTTPS pull — and the read-only sync a replica
+serves while its home is down. Until then the whole mechanism is tested on two databases in one process,
+which is what lets every rule above be pinned without the lab.
 
 Acceptance: two MNs and two UVs. A node enrolled on A appears on B and in a subscription B renders; a
 block on A reaches B and the peer's next sync; replaying a delivered event changes nothing; a gap is

@@ -229,8 +229,26 @@ func (s *Store) CreateUV(ctx context.Context, uv UV) error {
 	if !uv.State.Valid() {
 		return fmt.Errorf("store: %q is not a state", uv.State)
 	}
-	_, err := s.db.ExecContext(ctx, `INSERT INTO uv (`+uvColumns+`) VALUES (`+uvPlaceholders+`)`, uvArgs(uv)...)
-	return wrapDuplicate(err, "store: create node "+uv.ID)
+	mnID, err := s.MeshID(ctx)
+	if err != nil {
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("store: begin create: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, `INSERT INTO uv (`+uvColumns+`) VALUES (`+uvPlaceholders+`)`, uvArgs(uv)...); err != nil {
+		return wrapDuplicate(err, "store: create node "+uv.ID)
+	}
+	if err := recordNode(ctx, tx, mnID, s.now().UTC(), uv.ID); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("store: commit create: %w", err)
+	}
+	return nil
 }
 
 // CreateUVRedeemingInvite inserts a node and consumes one use of its invite in one transaction. A node
@@ -242,6 +260,10 @@ func (s *Store) CreateUVRedeemingInvite(ctx context.Context, uv UV, invite Invit
 	}
 	if !uv.State.Valid() {
 		return fmt.Errorf("store: %q is not a state", uv.State)
+	}
+	mnID, err := s.MeshID(ctx)
+	if err != nil {
+		return err
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -275,6 +297,9 @@ func (s *Store) CreateUVRedeemingInvite(ctx context.Context, uv UV, invite Invit
 		VALUES (?, ?, ?, ?, ?, ?)`,
 		uv.ID, formatTime(uv.CreatedAt), "", string(uv.State), "enrolled", "agent"); err != nil {
 		return fmt.Errorf("store: append enrollment event: %w", err)
+	}
+	if err := recordNode(ctx, tx, mnID, now, uv.ID); err != nil {
+		return err
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("store: commit enrollment: %w", err)
@@ -360,6 +385,10 @@ func (s *Store) SetUVState(ctx context.Context, id string, to State, reason, act
 	if !to.Valid() {
 		return Event{}, fmt.Errorf("store: %q is not a state", to)
 	}
+	mnID, err := s.MeshID(ctx)
+	if err != nil {
+		return Event{}, err
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return Event{}, fmt.Errorf("store: begin state change: %w", err)
@@ -381,6 +410,9 @@ func (s *Store) SetUVState(ctx context.Context, id string, to State, reason, act
 		VALUES (?, ?, ?, ?, ?, ?)`, id, at, string(from), string(to), reason, actor); err != nil {
 		return Event{}, fmt.Errorf("store: append event: %w", err)
 	}
+	if err := recordNode(ctx, tx, mnID, now, id); err != nil {
+		return Event{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return Event{}, fmt.Errorf("store: commit state change: %w", err)
 	}
@@ -393,11 +425,8 @@ func (s *Store) SetSubTokenHash(ctx context.Context, id, hash, sealed string) er
 	if hash == "" {
 		return errors.New("store: refusing an empty subscription token digest")
 	}
-	res, err := s.db.ExecContext(ctx, `UPDATE uv SET sub_token_hash = ?, sub_token_sealed = ? WHERE id = ?`, hash, sealed, id)
-	if err != nil {
-		return fmt.Errorf("store: set subscription token for %s: %w", id, err)
-	}
-	return expectOne(res, id)
+	return s.updateNode(ctx, id, "store: set subscription token for "+id,
+		`UPDATE uv SET sub_token_hash = ?, sub_token_sealed = ? WHERE id = ?`, hash, sealed, id)
 }
 
 // SetAgentKeyHash replaces a node's agent key digest and its sealed copy. The old key stops working at
@@ -406,24 +435,18 @@ func (s *Store) SetAgentKeyHash(ctx context.Context, id, hash, sealed string) er
 	if hash == "" {
 		return errors.New("store: refusing an empty agent key digest")
 	}
-	res, err := s.db.ExecContext(ctx, `UPDATE uv SET agent_key_hash = ?, agent_key_sealed = ? WHERE id = ?`, hash, sealed, id)
-	if err != nil {
-		return fmt.Errorf("store: set agent key for %s: %w", id, err)
-	}
-	return expectOne(res, id)
+	return s.updateNode(ctx, id, "store: set agent key for "+id,
+		`UPDATE uv SET agent_key_hash = ?, agent_key_sealed = ? WHERE id = ?`, hash, sealed, id)
 }
 
 // ApproveUV stamps the approval of a node that an operator let into the mesh.
 func (s *Store) ApproveUV(ctx context.Context, id string, now time.Time) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE uv SET approved_at = COALESCE(approved_at, ?) WHERE id = ?`,
-		formatTime(now), id)
-	if err != nil {
-		return fmt.Errorf("store: approve node %s: %w", id, err)
-	}
-	return nil
+	return s.updateNodeAt(ctx, id, now, "store: approve node "+id,
+		`UPDATE uv SET approved_at = COALESCE(approved_at, ?) WHERE id = ?`, formatTime(now), id)
 }
 
-// TouchUV records a successful agent request.
+// TouchUV records a successful agent request. It is deliberately not journaled: it fires on every sync
+// and would fill the log with a field the mesh does not decide anything from.
 func (s *Store) TouchUV(ctx context.Context, id, ip, agentVersion string, now time.Time) error {
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE uv SET last_seen_at = ?, last_request_ip = ?, agent_version = ? WHERE id = ?`,
@@ -437,28 +460,20 @@ func (s *Store) TouchUV(ctx context.Context, id, ip, agentVersion string, now ti
 // UpdateUV writes the mutable half of a node record: label, notes, profile and secrets hashes are
 // changed by admin actions and credential issuance, never by an agent request.
 func (s *Store) UpdateUV(ctx context.Context, uv UV) error {
-	res, err := s.db.ExecContext(ctx,
+	return s.updateNode(ctx, uv.ID, "store: update node "+uv.ID,
 		`UPDATE uv SET label = ?, profile_json = ?, probe_uuid = ?, agent_key_hash = ?, agent_key_sealed = ?, sub_token_hash = ?, sub_token_sealed = ?,
 		 failed_cycles = ?, credential_epoch = ?, notes = ? WHERE id = ?`,
 		uv.Label, uv.ProfileJSON, uv.ProbeUUID, uv.AgentKeyHash, uv.AgentKeySealed, uv.SubTokenHash, uv.SubTokenSealed,
 		uv.FailedCycles, uv.CredentialEpoch, uv.Notes, uv.ID)
-	if err != nil {
-		return wrapDuplicate(err, "store: update node "+uv.ID)
-	}
-	return expectOne(res, uv.ID)
 }
 
 // SetUVEndpoint records a rebuilt node's new identity: the same node id and credentials, but the
 // self UUID, profile and certificate the new box presents. It is what an unblock with a new URL
 // writes; the pair credentials are keyed by the node id and stay valid.
 func (s *Store) SetUVEndpoint(ctx context.Context, id, selfUUID, profileJSON, certPin string) error {
-	res, err := s.db.ExecContext(ctx,
+	return s.updateNode(ctx, id, "store: update the endpoint of "+id,
 		`UPDATE uv SET self_uuid = ?, profile_json = ?, cert_sha256 = ? WHERE id = ?`,
 		selfUUID, profileJSON, certPin, id)
-	if err != nil {
-		return fmt.Errorf("store: update the endpoint of %s: %w", id, err)
-	}
-	return expectOne(res, id)
 }
 
 // RelocateUV moves a node to a new host. The domain, the self UUID, the profile and the certificate
@@ -470,13 +485,43 @@ func (s *Store) RelocateUV(ctx context.Context, id, domain, selfUUID, profileJSO
 	if id == "" || domain == "" {
 		return errors.New("store: a node needs an id and a domain")
 	}
-	res, err := s.db.ExecContext(ctx,
+	return s.updateNode(ctx, id, "store: move "+id,
 		`UPDATE uv SET domain = ?, self_uuid = ?, profile_json = ?, cert_sha256 = ? WHERE id = ?`,
 		domain, selfUUID, profileJSON, certPin, id)
+}
+
+// updateNode runs one statement that changes a node and journals the row it produced, in one
+// transaction: a change the mesh is never told about is a replica that quietly diverges, and a journal
+// entry for a change that rolled back is a peer applying something that never happened.
+func (s *Store) updateNode(ctx context.Context, id, context, query string, args ...any) error {
+	return s.updateNodeAt(ctx, id, s.now().UTC(), context, query, args...)
+}
+
+func (s *Store) updateNodeAt(ctx context.Context, id string, at time.Time, context, query string, args ...any) error {
+	mnID, err := s.MeshID(ctx)
 	if err != nil {
-		return wrapDuplicate(err, "store: move "+id)
+		return err
 	}
-	return expectOne(res, id)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("store: begin %s: %w", context, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	res, err := tx.ExecContext(ctx, query, args...)
+	if err != nil {
+		return wrapDuplicate(err, context)
+	}
+	if err := expectOne(res, id); err != nil {
+		return err
+	}
+	if err := recordNode(ctx, tx, mnID, at, id); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("store: commit %s: %w", context, err)
+	}
+	return nil
 }
 
 // UVEvents returns the transition log of one node, newest first.
@@ -536,6 +581,12 @@ func expectOne(res sql.Result, id string) error {
 // enrollment. It refuses anything that is not removed: deleting a live node by mistake would take its
 // history with it.
 func (s *Store) ForgetUV(ctx context.Context, id string) error {
+	// The mesh id is read before the transaction opens: the pool holds one connection, so a query on it
+	// while a transaction is open would wait for itself.
+	mnID, err := s.MeshID(ctx)
+	if err != nil {
+		return err
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("store: begin forget: %w", err)
@@ -552,14 +603,20 @@ func (s *Store) ForgetUV(ctx context.Context, id string) error {
 	if state != StateRemoved {
 		return fmt.Errorf("store: node %s is %s, not removed", id, state)
 	}
+	// The transports go with the node: a forgotten node's rows would otherwise outlive it and appear in
+	// every later snapshot of this server.
 	for _, statement := range []string{
 		`DELETE FROM uv_event WHERE uv_id = ?`,
 		`DELETE FROM "check" WHERE uv_id = ?`,
+		`DELETE FROM uv_transport WHERE uv_id = ?`,
 		`DELETE FROM uv WHERE id = ?`,
 	} {
 		if _, err := tx.ExecContext(ctx, statement, id); err != nil {
 			return fmt.Errorf("store: forget node %s: %w", id, err)
 		}
+	}
+	if err := recordNodeRemoved(ctx, tx, mnID, s.now().UTC(), id); err != nil {
+		return err
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("store: commit forget: %w", err)
@@ -573,6 +630,10 @@ func (s *Store) ForgetUV(ctx context.Context, id string) error {
 // nothing this server can serve is stored as no rows: the subscription then renders the TLS profile, which
 // is what a node predating the field served anyway.
 func (s *Store) SetUVTransports(ctx context.Context, uvID string, kinds []string) error {
+	mnID, err := s.MeshID(ctx)
+	if err != nil {
+		return err
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -586,6 +647,9 @@ func (s *Store) SetUVTransports(ctx context.Context, uvID string, kinds []string
 			`INSERT OR IGNORE INTO uv_transport (uv_id, kind) VALUES (?, ?)`, uvID, kind); err != nil {
 			return err
 		}
+	}
+	if err := recordNode(ctx, tx, mnID, s.now().UTC(), uvID); err != nil {
+		return err
 	}
 	return tx.Commit()
 }
