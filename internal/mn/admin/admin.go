@@ -320,6 +320,10 @@ type NodeView struct {
 	CredentialEpoch int        `json:"credential_epoch"`
 	HasAgentKey     bool       `json:"has_agent_key"`
 	HasSubToken     bool       `json:"has_sub_token"`
+	// HomeMN is the server that owns this row, when it is not the one being asked: an operator has to be
+	// able to see that a node lives elsewhere, and since when (HomeTerm counts handoffs and adoptions).
+	HomeMN   string `json:"home_mn,omitempty"`
+	HomeTerm int64  `json:"home_term,omitempty"`
 }
 
 func view(uv store.UV) NodeView {
@@ -330,6 +334,7 @@ func view(uv store.UV) NodeView {
 		LastRequestIP: uv.LastRequestIP, AgentVersion: uv.AgentVersion,
 		FailedCycles: uv.FailedCycles, CredentialEpoch: uv.CredentialEpoch,
 		HasAgentKey: uv.AgentKeyHash != "", HasSubToken: uv.SubTokenHash != "",
+		HomeMN: uv.HomeMN, HomeTerm: uv.HomeTerm,
 	}
 }
 

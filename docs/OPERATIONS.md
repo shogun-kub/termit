@@ -441,30 +441,42 @@ announces the handoff in its own journal, so the old one stops writing the row t
 
 **When the home never comes back.** `home handoff` needs the old home to give the node up, which a dead
 machine cannot do. `termit-mn home adopt --from <peer>` takes over every node that peer homed (or one, with
-`--uv`), and it is the one path that needs no cooperation:
+`--uv`), and it is the one path that needs no cooperation. Work through it in this order — the steps before
+the adoption are the ones that make it safe, and the ones after it are what makes it work at all.
 
-```
-termit-mn home adopt --from mn2
-peer:      mn2 (gone)
-taken:     3 node(s)
-new home:  mn_7f3a…
-  node1.example.com
-  node2.example.com
-  node3.example.com
-```
+1. **Be sure it is dead, not just unreachable from here.** The command can only tell "no answer", which is
+   also what a partition looks like; the host, the provider's console and its power state are the evidence.
+2. **Read how much you are missing.** `termit-mn status` shows the peer as `cursor X of Y`: `Y − X` events of
+   its journal never reached this server, and everything they carried (an enrollment, a block, a transport
+   change) is unknown here. Write those numbers down; they are the change record.
+3. **Make sure this server holds the master key** — `termit-mn status` says `master key: yes`. Without it the
+   adoption leaves nodes whose pair credentials this server cannot derive, which is worse than being down. If
+   it says `no`, install the key file (`0600`, root, `master_key_file`) and restart `termit-mn` first.
+4. **Back up.** `termit-mn backup --out <archive>`: the adoption writes every adopted row, and a restore is
+   the way back (it needs the server stopped).
+5. **Plan the name.** A node has one `mn.url` (decision 9). Move the DNS record or VIP to this server and make
+   sure this server presents a certificate valid for that name, or every agent refuses the connection — if the
+   mesh name is the dead server's own, this server needs `domain:` set to it and a certificate for it.
+6. **Adopt.** `termit-mn home adopt --from <peer>`, or with `--uv <id|domain>` for one node. It refuses while
+   the peer answers ("not gone: use `home handoff`") and whenever something answers with an error, so a
+   refusal is a stop, not a retry.
+7. **Move the name**, then check it from outside: `curl https://<name><prefix>/healthz` must answer, and the
+   certificate must be the one for that name.
+8. **Prove a node.** Its next sync (or `termit-uv sync` on it) answers without `read_only`, the log here says
+   `sync served` rather than `sync served read-only`, and `termit-mn uv show <node>` no longer prints a `home:`
+   line — the node is this server's own now.
+9. **Retire the dead peer.** Remove it from `mesh.peers` and restart `termit-mn`, or every pull keeps failing
+   against it. If it was the only peer, the mesh is a single server again, which is a fine place to be.
+10. **Re-enroll what this server never saw.** A node enrolled on the dead home after cursor `X` fails with
+    `agent key is not valid`: `termit-mn invite create --domain <domain>` here, then
+    `termit-uv enroll --invite <code> --force` on the node (forget a stale row first if the domain is taken).
+11. **If the old home comes back**, do not move the name back. Either wipe it, or start it as a replica — with
+    this server in its `mesh.peers` it pulls the adoption within one interval, sees `home_term + 1` and stops
+    writing the rows (`uv show` there shows `home: mn_… (term N)`). Returning a node to it is a `home handoff`.
 
-The nodes keep their **agent keys** and their pair credentials: the replica's copies were sealed with the
-master key it shares, so nothing has to be installed on any node and nobody leaves the house. Two things are
-left to you: point the mesh's name (DNS or VIP) at this server, because a node has one `mn.url`
-(decision 9), and remove the gone peer from `mesh.peers`, or every pull will keep failing against it. Nodes
-enrolled on the old home after this server's last pull are unknown here — the command prints the cursor —
-and they have to enroll again.
-
-The command refuses while the old home still answers: that is a split brain, not a rescue, and `home handoff`
-is the procedure there. What it cannot tell apart is a dead machine from one this server simply cannot
-reach; if you adopt across a partition, two live homes write the same nodes until the name moves and the
-parted one pulls again (its term loses, so it stops writing the rows). That is why adoption is a command an
-operator runs, never a timeout.
+Adoption does **not** rotate the master key. If the dead home may have fallen into the wrong hands, its copy of
+the key is the entire mesh's credentials: that needs an epoch rotation and re-enrollment of every node, which
+is not gated on quorum yet (the remaining debt of §5.2.1), and should not be attempted while the mesh is apart.
 
 **What a replica does and does not do today.** It holds a copy of every node row and the transports each
 node serves, it refuses any write to a row another server homes, and its scheduler probes only its own

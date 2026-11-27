@@ -564,6 +564,11 @@ func runUVShow(args []string, stdout, stderr io.Writer) int {
 	fmt.Fprintf(stdout, "ip:      %s\n", result.Node.LastRequestIP)
 	fmt.Fprintf(stdout, "agent:   %s\n", result.Node.AgentVersion)
 	fmt.Fprintf(stdout, "epoch:   %d\n", result.Node.CredentialEpoch)
+	if result.Node.HomeMN != "" {
+		// A replica answers with this row but does not own it: which server does, and how many handoffs or
+		// adoptions got it there, is the first thing to check when a node behaves like somebody else's.
+		fmt.Fprintf(stdout, "home:    %s (term %d)\n", result.Node.HomeMN, result.Node.HomeTerm)
+	}
 	fmt.Fprintf(stdout, "failed cycles: %d\n", result.Node.FailedCycles)
 	if len(result.Transports) > 1 {
 		parts := make([]string, 0, len(result.Transports))
