@@ -68,8 +68,8 @@ termit-mn update --apply   # скачать, проверить, заменит�
 
 ```bash
 termit-uv sync            # узнать сборку сервера
-termit-uv upgrade --check # что установил бы прогон
-termit-uv upgrade         # скачать, проверить, заменить, свести
+termit-uv upgrade --check # что будет установлено
+termit-uv upgrade         # скачать, проверить, заменить, свести конфигурацию
 termit-uv sync            # сообщить серверу, что теперь на узле
 ```
 
