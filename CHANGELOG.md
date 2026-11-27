@@ -7,6 +7,12 @@ pre-releases, and whoever installs the release skipped them.
 
 ### Added
 
+- **The server backs its registry up before it updates.** `termit-mn update --apply` writes a `termit-mn
+  backup` archive before it replaces the binary, prints the path, and refuses to go on if it cannot. A
+  schema migration moves the database forward and the previous binary then refuses a file it did not
+  write, so the archive — not `termit-mn.prev` — is what a failed upgrade rolls back to. `mn.sh` does the
+  same on an upgrade.
+
 - **The server can declare the oldest node build it supports.** `min_agent_version: v0.7.0` in the
   server's configuration travels in every sync answer; a node below it prints one line in `termit-uv
   status` and a warning in the `doctor` report, and keeps serving. Nothing is refused: an old build is a

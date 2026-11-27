@@ -35,7 +35,8 @@ func updateServer(t *testing.T, tag, body string) *httptest.Server {
 	return server
 }
 
-// updaterFor points the command at a test server, a temporary binary and a restart it can record.
+// updaterFor points the command at a test server, a temporary binary, a backup beside it and a restart it
+// can record.
 func updaterFor(t *testing.T, server *httptest.Server, exe string, restarted *bool) updater {
 	t.Helper()
 	return updater{
@@ -43,7 +44,10 @@ func updaterFor(t *testing.T, server *httptest.Server, exe string, restarted *bo
 			*restarted = true
 			return nil
 		},
-		exe:       func() (string, error) { return exe, nil },
+		exe: func() (string, error) { return exe, nil },
+		backup: func(context.Context, string) (string, error) {
+			return filepath.Join(filepath.Dir(exe), "backup.tar.gz"), nil
+		},
 		latestURL: server.URL + "/latest",
 		client:    server.Client(),
 	}
@@ -123,6 +127,75 @@ func TestUpdateRollsBackWhenTheRestartFails(t *testing.T) {
 	back, err := os.ReadFile(exe)
 	if err != nil || string(back) != "the old build" {
 		t.Fatalf("after the rollback the binary is %q (%v)", back, err)
+	}
+}
+
+// The registry is captured before the binary is swapped: a migration the old build cannot read is only
+// recoverable from an archive written before it, so the order is the whole point of the test.
+func TestUpdateBacksUpBeforeItSwapsTheBinary(t *testing.T) {
+	t.Parallel()
+	server := updateServer(t, "v9.9.9", "the new build")
+	dir := t.TempDir()
+	exe := filepath.Join(dir, "termit-mn")
+	if err := os.WriteFile(exe, []byte("the old build"), 0o755); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	restarted := false
+	u := updaterFor(t, server, exe, &restarted)
+	archive := filepath.Join(dir, "backup.tar.gz")
+	sawBinary := ""
+	u.backup = func(_ context.Context, configPath string) (string, error) {
+		if configPath != defaultConfigPath {
+			t.Errorf("backup config = %q, want the default path", configPath)
+		}
+		kept, err := os.ReadFile(exe)
+		if err != nil {
+			t.Fatalf("read the binary during the backup: %v", err)
+		}
+		sawBinary = string(kept)
+		return archive, nil
+	}
+	var out, errOut strings.Builder
+	if code := u.run([]string{"--apply", "--release-base", server.URL}, &out, &errOut); code != exitOK {
+		t.Fatalf("exit = %d, stderr = %s", code, errOut.String())
+	}
+	if sawBinary != "the old build" {
+		t.Errorf("the backup ran with %q in place, want the old build", sawBinary)
+	}
+	if !strings.Contains(out.String(), "backup:    "+archive) {
+		t.Errorf("output = %q, want the archive path", out.String())
+	}
+	if !restarted {
+		t.Error("the update did not restart the server")
+	}
+}
+
+// A backup that cannot be written stops the update before anything is replaced: taking it is the only
+// reason a failed migration is recoverable, so without it there is nothing to gain from proceeding.
+func TestUpdateRefusesWithoutABackup(t *testing.T) {
+	t.Parallel()
+	server := updateServer(t, "v9.9.9", "the new build")
+	dir := t.TempDir()
+	exe := filepath.Join(dir, "termit-mn")
+	if err := os.WriteFile(exe, []byte("the old build"), 0o755); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	restarted := false
+	u := updaterFor(t, server, exe, &restarted)
+	u.backup = func(context.Context, string) (string, error) { return "", fmt.Errorf("no space left") }
+	var out, errOut strings.Builder
+	code := u.run([]string{"--apply", "--release-base", server.URL}, &out, &errOut)
+	if code != exitFailure {
+		t.Fatalf("exit = %d, want %d", code, exitFailure)
+	}
+	if restarted {
+		t.Error("the server was restarted without a backup")
+	}
+	if kept, _ := os.ReadFile(exe); string(kept) != "the old build" {
+		t.Error("the binary was replaced without a backup")
+	}
+	if !strings.Contains(errOut.String(), "nothing was changed") {
+		t.Errorf("stderr = %q, want the reassurance", errOut.String())
 	}
 }
 

@@ -25,10 +25,10 @@ termit-mn version
 termit-mn status
 ```
 
-`mn.sh` checks the binary against the release's `SHA256SUMS`, replaces `/usr/bin/termit-mn`, runs `init`
-against the existing configuration and restarts the unit. The database, the master key, the admin token
-and the certificate stay as they are. If this server matters, run `termit-mn backup` first — the archive
-lands in `/var/lib/termit/mn/backups/`.
+`mn.sh` checks the binary against the release's `SHA256SUMS`, backs the registry up, replaces
+`/usr/bin/termit-mn`, runs `init` against the existing configuration and restarts the unit. The database,
+the master key, the admin token and the certificate stay as they are; the archive lands in
+`/var/lib/termit/mn/backups/` and its path is printed before anything is replaced.
 
 ### Each node
 
@@ -88,7 +88,7 @@ Both sides update themselves. The server first:
 
 ```bash
 termit-mn update --check   # is this server behind the newest release?
-termit-mn update --apply   # download, verify, swap, restart
+termit-mn update --apply   # back up, download, verify, swap, restart
 ```
 
 then every node:
@@ -101,9 +101,10 @@ termit-uv sync            # tell the server what the node now runs
 ```
 
 The `AGENT` column of `termit-mn uv list` takes the new build from the node's sync — that is why the block
-ends with one. `--apply` keeps the old binary at `/usr/bin/termit-mn.prev` and restores it if the restart
-fails. `upgrade` does the same with `termit-uv.prev`, then lets the new binary run `init`, because the new
-release knows what it needs. A node on a pre-release build is refused on purpose: name the release
+ends with one. `--apply` backs the registry up first, keeps the old binary at `/usr/bin/termit-mn.prev` and
+restores it if the restart fails; the archive is the way back if the new build migrated the database before
+it failed. `upgrade` does the same with `termit-uv.prev`, then lets the new binary run `init`, because the
+new release knows what it needs. A node on a pre-release build is refused on purpose: name the release
 (`termit-uv upgrade --to v0.7.0`) or run the script again — a node follows releases, never `p<n>` builds.
 
 ## If it goes wrong
@@ -112,6 +113,7 @@ release knows what it needs. A node on a pre-release build is refused on purpose
   `sh uv.sh --version v0.6.0 --no-enroll`. The state schema is 1 in both, and the configuration is read
   the same way, so the older binary loads what the newer one wrote.
 - **The server does not come back after `mn.sh`.** Run `systemctl restart termit-mn` and read the journal.
-  If the database moved forward, restore the backup taken before the update (`termit-mn restore`).
+  If the database moved forward, restore the archive the script printed (`termit-mn restore --from <path>
+  --force`) before starting the previous binary again.
 - **`termit-mn update` or `termit-uv upgrade` is unknown.** That binary is 0.6.0 or older. Use the scripts,
   as above.

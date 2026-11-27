@@ -25,33 +25,10 @@ func runBackup(args []string, stdout, stderr io.Writer) int {
 		return flagExit(err)
 	}
 
-	cfg, err := config.Load(*configPath)
-	if err != nil {
-		fmt.Fprintf(stderr, "termit-mn backup: %v\n", err)
-		return exitFailure
-	}
-	if *out == "" {
-		*out = filepath.Join(cfg.DataDir, "backups",
-			"termit-"+time.Now().UTC().Format("20060102T150405Z")+".tar.gz")
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	// A read-only open is enough for VACUUM INTO and cannot migrate the database by accident.
-	db, err := store.OpenReadOnly(ctx, cfg.DBPath)
-	if err != nil {
-		fmt.Fprintf(stderr, "termit-mn backup: %v\n", err)
-		return exitFailure
-	}
-	defer func() { _ = db.Close() }()
-
-	result, err := backup.Create(ctx, backup.Options{
-		Config:     cfg,
-		Store:      db,
-		ConfigPath: *configPath,
-		Out:        *out,
-	})
+	result, err := writeBackup(ctx, *configPath, *out)
 	if err != nil {
 		fmt.Fprintf(stderr, "termit-mn backup: %v\n", err)
 		return exitFailure
@@ -63,6 +40,33 @@ func runBackup(args []string, stdout, stderr io.Writer) int {
 	fmt.Fprintf(stdout, "entries:  %d\n", len(result.Manifest.Files))
 	fmt.Fprintln(stdout, "the archive holds the master key: treat it like the key itself")
 	return exitOK
+}
+
+// writeBackup captures the registry into one archive. `termit-mn backup` writes one on request, and the
+// update writes one before it swaps the binary: a schema migration moves the database forward and the old
+// binary refuses a file it did not write, so a database taken before it is the only rollback there is.
+func writeBackup(ctx context.Context, configPath, out string) (backup.Result, error) {
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		return backup.Result{}, err
+	}
+	if out == "" {
+		out = filepath.Join(cfg.DataDir, "backups",
+			"termit-"+time.Now().UTC().Format("20060102T150405Z")+".tar.gz")
+	}
+	// A read-only open is enough for VACUUM INTO and cannot migrate the database by accident.
+	db, err := store.OpenReadOnly(ctx, cfg.DBPath)
+	if err != nil {
+		return backup.Result{}, err
+	}
+	defer func() { _ = db.Close() }()
+
+	return backup.Create(ctx, backup.Options{
+		Config:     cfg,
+		Store:      db,
+		ConfigPath: configPath,
+		Out:        out,
+	})
 }
 
 // runRestore rebuilds a server from an archive.

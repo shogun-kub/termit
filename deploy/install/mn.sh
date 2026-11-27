@@ -309,6 +309,15 @@ if [ "$DRY_RUN" = 1 ]; then
 	exit 0
 fi
 
+# An upgrade replaces the binary, and `init` below opens the registry: a schema migration moves the
+# database forward, and the previous binary then refuses a file it did not write. The archive taken here
+# is the way back, so a backup that fails stops the upgrade while nothing has changed yet.
+if [ -x "$INSTALL_DIR/$PROGRAM" ] && [ -f "$CONFIG" ]; then
+	say "backing up the registry before the upgrade"
+	"$INSTALL_DIR/$PROGRAM" backup --config "$CONFIG" ||
+		die "cannot back up the registry; nothing was changed"
+fi
+
 install -m 0755 "$WORK/$ASSET" "$INSTALL_DIR/$PROGRAM"
 say "installed: $INSTALL_DIR/$PROGRAM"
 install -m 0644 "$WORK/$PROGRAM.service" "$UNIT_DIR/$PROGRAM.service"

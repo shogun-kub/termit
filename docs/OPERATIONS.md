@@ -128,7 +128,7 @@ An installed server can also update itself, without the script and without a reb
 
 ```bash
 termit-mn update                  # --check is the default: follow releases/latest, say whether this build is behind
-termit-mn update --apply          # download, verify against SHA256SUMS, swap, restart, roll back if the restart fails
+termit-mn update --apply          # back up the registry, download, verify, swap, restart; roll the binary back if it fails
 ```
 
 `--apply` keeps the previous binary as `/usr/bin/termit-mn.prev` and restores it when `systemctl restart
@@ -984,7 +984,7 @@ Every one of these is audited on the server.
 | tune the schedule | `termit-mn policy set check_interval 12h` | runtime override; `policy show` lists the keys |
 | tune the grace | `termit-mn policy set block_after_failed_cycles 4` | how many consecutive failed checks block a node (1–30, default 2 = one grace check); attempts inside a cycle count once |
 | change the enrollment rule | `termit-mn invite policy --mode invite\|invite+approval\|open` | edits `enrollment.mode` in the YAML, comments intact, validated before the write; the running server keeps the old rule until `systemctl restart termit-mn`. `open` needs `--force` |
-| **update the server** | `termit-mn update --check` then `termit-mn update --apply` | the newest published release, verified, swapped, `termit-mn` restarted; rolls the binary back if the restart fails (§3) |
+| **update the server** | `termit-mn update --check` then `termit-mn update --apply` | backs the registry up first, then the newest published release, verified, swapped, `termit-mn` restarted; rolls the binary back if the restart fails, and the archive is the rollback if the database moved forward (§3) |
 | **update a node** | `termit-uv upgrade` (on the node) | installs the build the server reported (`termit-uv status` prints it as `server:`), verifies it, keeps `termit-uv.prev`, converges with the new binary; `--check` reports only, `--to vX.Y.Z` names a release (§4) |
 | **node blocked itself** | `termit-uv unblock` (on the node) | Scenario B: the server re-verifies DNS and the tunnel before re-admitting |
 | **node moved host** | `termit-uv migrate --relocate --domain new.example.net` | Scenario C |

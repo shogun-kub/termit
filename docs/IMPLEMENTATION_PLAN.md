@@ -2383,6 +2383,12 @@ which sync already carries) — never `latest`, never a `p*` build. The menu's �
 the server's build is a plain release and differs from the node's. Server: `termit-mn update --check/--apply`
 does the same against the newest release on GitHub; neither result appears in `status`.
 
+**Added after `0.7.0`, 2026-11-27: the server backs its registry up before the swap.** A schema migration
+moves the database forward and the previous binary then refuses a file it did not write, so
+`termit-mn.prev` alone is not a rollback — the archive taken before the new binary can open the database is.
+`update --apply` writes it, prints the path, refuses to go on if it cannot, and names the archive in the
+message a failed restart leaves behind; `mn.sh` takes the same step before it replaces the binary.
+
 ### 4.5 The menu tree, the picker and the invite policy
 
 **Two menu items that join §4.3.**

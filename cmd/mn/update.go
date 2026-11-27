@@ -23,11 +23,12 @@ func runUpdate(args []string, stdout, stderr io.Writer) int {
 	return updater{restart: systemdRestart}.run(args, stdout, stderr)
 }
 
-// updater is the command with the seams a test needs: the service action, the executable it replaces and
-// the endpoint it asks. Production leaves them nil.
+// updater is the command with the seams a test needs: the service action, the executable it replaces, the
+// backup it takes first and the endpoint it asks. Production leaves them nil.
 type updater struct {
 	restart   func(context.Context) error
 	exe       func() (string, error)
+	backup    func(context.Context, string) (string, error)
 	latestURL string
 	client    *http.Client
 }
@@ -38,6 +39,7 @@ func (u updater) run(args []string, stdout, stderr io.Writer) int {
 	check := flags.Bool("check", false, "report whether a newer release exists, and install nothing (the default)")
 	apply := flags.Bool("apply", false, "install the newest release and restart the server")
 	base := flags.String("release-base", release.BaseURL, "where releases are published; a private mirror is allowed")
+	configPath := flags.String("config", defaultConfigPath, "path to config.yaml, for the backup taken before the swap")
 	if err := flags.Parse(args); err != nil {
 		return flagExit(err)
 	}
@@ -83,6 +85,17 @@ func (u updater) run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "termit-mn update: find the running binary: %v\n", err)
 		return exitFailure
 	}
+	// The registry is captured before the new binary can open it. A migration moves the database forward
+	// and the old binary then refuses a file it did not write, so without this the "previous binary
+	// restored" rollback would leave a server that cannot start. A backup that fails stops the update:
+	// nothing has changed at this point, which is the state to keep.
+	archive, err := u.takeBackup(ctx, *configPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "termit-mn update: back up the registry first: %v\n", err)
+		fmt.Fprintln(stderr, "termit-mn update: nothing was changed")
+		return exitFailure
+	}
+	fmt.Fprintf(stdout, "backup:    %s\n", archive)
 	body, err := release.Fetch(ctx, client, *base, "termit-mn", target, runtime.GOARCH)
 	if err != nil {
 		fmt.Fprintf(stderr, "termit-mn update: %v\n", err)
@@ -102,10 +115,24 @@ func (u updater) run(args []string, stdout, stderr io.Writer) int {
 			return exitFailure
 		}
 		fmt.Fprintf(stderr, "termit-mn update: the previous binary is back in place; restart the server to run it\n")
+		fmt.Fprintf(stderr, "termit-mn update: if the new build migrated the registry before failing, restore "+
+			"the backup: termit-mn restore --from %s --force\n", archive)
 		return exitFailure
 	}
 	fmt.Fprintln(stdout, "the server is running the new build")
 	return exitOK
+}
+
+// takeBackup captures the registry, through the seam in a test and through the real archive otherwise.
+func (u updater) takeBackup(ctx context.Context, configPath string) (string, error) {
+	if u.backup != nil {
+		return u.backup(ctx, configPath)
+	}
+	result, err := writeBackup(ctx, configPath, "")
+	if err != nil {
+		return "", err
+	}
+	return result.Path, nil
 }
 
 // systemdRestart is the one service action the update takes: the server's own unit, and nothing else.
