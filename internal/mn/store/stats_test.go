@@ -91,3 +91,33 @@ func TestQueueIsEmptyWithoutNodes(t *testing.T) {
 		t.Errorf("stats = %+v, want zero", stats)
 	}
 }
+
+// A replica counts only the nodes it homes. Its scheduler never probes another server's nodes, so a queue
+// that promised that work would be a number an operator cannot act on.
+func TestTheQueueCountsOnlyTheNodesThisServerHomes(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	home, replica := twoStores(t)
+	past := testNow.Add(-time.Hour)
+
+	enrolled(t, home, "uv_foreign", "foreign.example.com")
+	if err := home.ScheduleCheck(ctx, "uv_foreign", past, testNow); err != nil {
+		t.Fatalf("ScheduleCheck: %v", err)
+	}
+	homeID, err := home.MeshID(ctx)
+	if err != nil {
+		t.Fatalf("MeshID: %v", err)
+	}
+	if _, err := replica.ApplyEvents(ctx, journal(t, home, homeID)); err != nil {
+		t.Fatalf("ApplyEvents: %v", err)
+	}
+	schedule(t, replica, "uv_own", "own.example.com", store.StateActive, &past)
+
+	stats, err := replica.Queue(ctx, testNow)
+	if err != nil {
+		t.Fatalf("Queue: %v", err)
+	}
+	if stats.Due != 1 {
+		t.Errorf("the replica's queue says %d due, want 1 — its own", stats.Due)
+	}
+}

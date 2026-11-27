@@ -138,7 +138,15 @@ func describePeer(peer admin.PeerState) string {
 	case peer.LastSeq == 0:
 		return peer.URL + " — up to date (empty journal)"
 	}
-	return fmt.Sprintf("%s — up to date (%d entries)", peer.URL, peer.LastSeq)
+	return fmt.Sprintf("%s — up to date (%s)", peer.URL, entryCount(peer.LastSeq))
+}
+
+// entryCount keeps the one line an operator reads from saying 1 entries.
+func entryCount(n int64) string {
+	if n == 1 {
+		return "1 entry"
+	}
+	return fmt.Sprintf("%d entries", n)
 }
 
 // yesNo is for the one-line mesh header, where a word beats a column.

@@ -31,9 +31,10 @@ func (s *Store) Queue(ctx context.Context, now time.Time) (QueueStats, error) {
 			COUNT(CASE WHEN next_check_at IS NULL OR next_check_at <= ? THEN 1 END),
 			MIN(CASE WHEN next_check_at IS NOT NULL AND next_check_at <= ? THEN next_check_at END),
 			MIN(CASE WHEN next_check_at > ? THEN next_check_at END)
-		FROM uv WHERE state IN (?, ?, ?, ?)`,
+		FROM uv WHERE state IN (?, ?, ?, ?)
+		  AND (home_mn = '' OR home_mn = (SELECT value FROM settings WHERE key = ?))`,
 		formattedNow, formattedNow, formattedNow,
-		scheduleStates[0], scheduleStates[1], scheduleStates[2], scheduleStates[3],
+		scheduleStates[0], scheduleStates[1], scheduleStates[2], scheduleStates[3], meshIDSetting,
 	).Scan(&stats.Due, &oldest, &next)
 	if err != nil {
 		return QueueStats{}, fmt.Errorf("store: read the check queue: %w", err)

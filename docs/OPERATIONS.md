@@ -549,7 +549,7 @@ sh uv.sh \
 | Flag | Effect |
 |---|---|
 | `--version` | the release to install, `v0.4.1` or a `v0.4.1p1` build; **the newest published release by default** — `releases/latest` is followed for the tag, so a pre-release is never picked by accident |
-| `--base-url` | release directory: an `https://` URL, a `file://` URL or a local path (a mirror, or a USB stick); a mirror cannot answer "newest", so there `--version` is required |
+| `--base-url` | release directory: an `https://` URL, a `file://` URL or a local path (a mirror, or a USB stick); a local one needs only `cp`, but it cannot answer "newest", so `--version` is required |
 | `--checksum-file` / `--sha256` | verify against a local `SHA256SUMS` or an explicit digest, for a private build |
 | `--no-warp` / `--warp selected --warp-selected …` | the WARP decision (`all` is the default) |
 | `--mn URL` | the management server, prefix included; written to `mn.url` by `init` and used by `enroll` |

@@ -198,7 +198,7 @@ if [ -z "$DOMAIN" ] && [ -f "$CONFIG" ]; then
 fi
 [ -n "$DOMAIN" ] || die "--domain is required on a first install: it is the name the server answers on"
 
-# A local path is a file:// URL: the same code path, and the same checksum, for a mirror on a USB stick.
+# A local path is a file:// URL: the same checksum, and no downloader at all, for a mirror on a USB stick.
 case "$BASE_URL" in
 /*) BASE_URL="file://$BASE_URL" ;;
 esac
@@ -239,6 +239,14 @@ WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT INT TERM
 
 fetch() { # fetch URL DEST; non-zero on failure, so the caller can say what was being fetched
+	# A local mirror is a file:// URL, and cp is the only reader that always works: GNU wget has no
+	# file:// support at all, so a host without curl could not install from one it was told to use.
+	case "$1" in
+	file://*)
+		cp "${1#file://}" "$2"
+		return $?
+		;;
+	esac
 	if command -v curl >/dev/null 2>&1; then
 		curl -fsSL --retry 3 -o "$2" "$1" || return 1
 	elif command -v wget >/dev/null 2>&1; then
