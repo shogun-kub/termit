@@ -199,6 +199,11 @@ type Warp struct {
 	// wireguard transport honours it: the MASQUE sidecar is dual-stack and takes no family flag, so on
 	// "usque" anything but the default is refused at validation (docs/OPERATIONS.md §6.1 says so).
 	Family string `yaml:"family,omitempty"`
+	// RestartEvery restarts the MASQUE sidecar after this long. Its QUIC connection to Cloudflare
+	// degrades with age: the first request after an idle period can take seconds, and a fresh process is
+	// the cheap cure. Zero (the default) keeps it running. Only the usque transport has a sidecar to
+	// restart; the other transports either live inside the core or in warp-cli.
+	RestartEvery time.Duration `yaml:"restart_every,omitempty"`
 }
 
 // WARP address families.
@@ -486,6 +491,12 @@ func (c *Config) Validate() error {
 	case "", WarpFamilyIPv4, WarpFamilyIPv6:
 	default:
 		problems = append(problems, fmt.Errorf("warp.family %q must be ipv4 or ipv6", c.Warp.Family))
+	}
+	if c.Warp.RestartEvery < 0 {
+		problems = append(problems, errors.New("warp.restart_every must not be negative"))
+	}
+	if c.Warp.RestartEvery > 0 && !c.Warp.UsesUsque() {
+		problems = append(problems, errors.New("warp.restart_every only applies to the usque transport"))
 	}
 	problems = append(problems, c.Security.validate()...)
 	problems = append(problems, c.Paths.validate()...)

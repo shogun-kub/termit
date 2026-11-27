@@ -5,6 +5,7 @@ import (
 	"net"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // UsqueUnitName is the unit that runs the MASQUE sidecar.
@@ -24,7 +25,7 @@ const UsqueUser = "termit-usque"
 // The trade against the in-core WireGuard outbound is measured and recorded in IMPLEMENTATION_PLAN.md
 // §10.1: a userspace stack costs about a third of the throughput, and it is the only way to keep WARP's
 // address for UDP on a host whose WARP client cannot (warp-cli's SOCKS5 has no UDP).
-func Usque(binary, config, socks string) ([]byte, error) {
+func Usque(binary, config, socks string, restartEvery time.Duration) ([]byte, error) {
 	if !filepath.IsAbs(binary) && !strings.HasPrefix(binary, "/") ||
 		!filepath.IsAbs(config) && !strings.HasPrefix(config, "/") {
 		return nil, fmt.Errorf("service: binary %q and config %q must be absolute paths", binary, config)
@@ -39,6 +40,13 @@ func Usque(binary, config, socks string) ([]byte, error) {
 	}
 	var b strings.Builder
 	b.WriteString(unitHeader)
+	// A sidecar that has run for hours carries a MASQUE connection to Cloudflare that has gone stale:
+	// the first request after an idle period pays seconds for it, and a fresh process is the cheaper
+	// cure. RuntimeMaxSec stops it, Restart=always starts the replacement.
+	var maxRun string
+	if restartEvery > 0 {
+		maxRun = "\nRuntimeMaxSec=" + systemdSpan(restartEvery)
+	}
 	fmt.Fprintf(&b, `
 [Unit]
 Description=Termit WARP sidecar (MASQUE)
@@ -54,7 +62,7 @@ User=%s
 Group=%s
 ExecStart=%s socks -b %s -p %s -c %s
 Restart=always
-RestartSec=3s
+RestartSec=3s%s
 LimitNOFILE=65535
 UMask=0077
 # The sidecar emulates a network stack in userspace for every proxied flow. The ceiling makes a leak in
@@ -82,8 +90,20 @@ SystemCallArchitectures=native
 
 [Install]
 WantedBy=multi-user.target
-`, UsqueUser, UsqueUser, binary, host, port, config)
+`, UsqueUser, UsqueUser, binary, host, port, config, maxRun)
 	return []byte(b.String()), nil
+}
+
+// systemdSpan renders a duration in the form a unit file takes, keeping whole hours and minutes readable.
+func systemdSpan(d time.Duration) string {
+	switch {
+	case d%time.Hour == 0:
+		return fmt.Sprintf("%dh", int(d/time.Hour))
+	case d%time.Minute == 0:
+		return fmt.Sprintf("%dmin", int(d/time.Minute))
+	default:
+		return fmt.Sprintf("%ds", int(d/time.Second))
+	}
 }
 
 // UsqueRelay renders the relay's unit. It is the address the core dials: the sidecar refuses a UDP

@@ -3,6 +3,16 @@ What each release changed, written for the people who run Termit. Newest first;
 carries every section back to the last release: the versions in between were handed out only as
 pre-releases, and whoever installs the release skipped them.
 
+## Unreleased
+
+### Added
+
+- **The MASQUE sidecar can restart on a schedule.** `warp.restart_every: 6h` writes `RuntimeMaxSec=` into
+  `termit-usque.service`, so systemd stops the sidecar after that long and `Restart=always` starts the
+  replacement. A sidecar that has run for hours carries an aged MASQUE connection to Cloudflare — the first
+  request after an idle period can take seconds — and a fresh process bounds the damage. Off by default;
+  `usque` only, and refused on the other transports.
+
 ## 0.7.0 — 2026-11-27
 
 ### Added

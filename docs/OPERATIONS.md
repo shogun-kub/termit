@@ -694,6 +694,15 @@ termit-uv init --warp-family ipv6   # exit through Cloudflare's IPv6 instead
 termit-uv warp status               # the address Cloudflare sees has the family in use
 ```
 
+**A sidecar that has run for hours is restarted on a schedule.** `warp.restart_every` (usque only, off by
+default) writes `RuntimeMaxSec=` into `termit-usque.service`: systemd stops the sidecar after that long and
+`Restart=always` starts the replacement. The MASQUE connection ages — after an idle period the first request
+through the tunnel can take seconds — and a fresh process bounds the damage to one restart rather than an
+evening of slow pages. Nothing else restarts: the relay, the core and the certificates keep their state, and
+`fail_open` covers the few seconds the sidecar is down with direct egress. A negative value is refused at
+load time, and so is the key on any transport but `usque` (`warp.restart_every only applies to the usque
+transport`).
+
 **Registration is a warning, not a gate.** Cloudflare's API is unreachable from whole networks — in
 Russia the range is routinely blocked — so a node that cannot register still installs: the step reports
 the reason, the core is written with direct egress, and the run succeeds. `termit-uv warp status` and

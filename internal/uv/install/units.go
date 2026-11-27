@@ -94,7 +94,7 @@ func (s *unitsStep) unitFiles() (map[string][]byte, error) {
 	// The MASQUE sidecar's unit exists only while it is the transport, for the same reason as the QUIC
 	// transport's: a unit for a binary that is not installed is a failed service on every boot.
 	if s.e.cfg.Warp.UsesUsque() {
-		sidecarUnit, err := service.Usque(s.e.cfg.Paths.UsqueBinary(), s.e.cfg.Paths.UsqueConfig, xray.DefaultUsqueSidecar)
+		sidecarUnit, err := service.Usque(s.e.cfg.Paths.UsqueBinary(), s.e.cfg.Paths.UsqueConfig, xray.DefaultUsqueSidecar, s.e.cfg.Warp.RestartEvery)
 		if err != nil {
 			return nil, err
 		}

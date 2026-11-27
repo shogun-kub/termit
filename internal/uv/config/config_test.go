@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/shogun-kub/termit/internal/acme"
 	"github.com/shogun-kub/termit/internal/i18n"
@@ -280,6 +281,41 @@ func TestWarpDefaultsToAll(t *testing.T) {
 	}
 	if !cfg.Warp.UsesWarp() {
 		t.Error("the default configuration does not use WARP")
+	}
+}
+
+// TestWarpRestartEvery: the key is a usque-only schedule, and a file that names it on another transport
+// is refused rather than silently ignored.
+func TestWarpRestartEvery(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		body    string
+		want    time.Duration
+		wantErr string
+	}{
+		{"usque with a schedule", "warp:\n  transport: usque\n  restart_every: 6h\n", 6 * time.Hour, ""},
+		{"usque without one", "warp:\n  transport: usque\n", 0, ""},
+		{"wireguard with a schedule", "warp:\n  transport: wireguard\n  restart_every: 6h\n", 0, "usque"},
+		{"a negative schedule", "warp:\n  transport: usque\n  restart_every: -1h\n", 0, "negative"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cfg, err := config.Parse(strings.NewReader(minimal + tc.body))
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("Parse error = %v, want one naming %q", err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Parse: %v", err)
+			}
+			if cfg.Warp.RestartEvery != tc.want {
+				t.Errorf("restart_every = %v, want %v", cfg.Warp.RestartEvery, tc.want)
+			}
+		})
 	}
 }
 

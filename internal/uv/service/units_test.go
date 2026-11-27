@@ -3,6 +3,7 @@ package service_test
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/shogun-kub/termit/internal/uv/service"
 )
@@ -232,7 +233,7 @@ func TestHysteriaUnit(t *testing.T) {
 // listens on has to be the one the core was told, or every proxied flow hits a closed port.
 func TestUsqueUnit(t *testing.T) {
 	t.Parallel()
-	unit, err := service.Usque("/usr/lib/termit/bin/usque", "/etc/termit/uv/usque.json", "127.0.0.1:40001")
+	unit, err := service.Usque("/usr/lib/termit/bin/usque", "/etc/termit/uv/usque.json", "127.0.0.1:40001", 0)
 	if err != nil {
 		t.Fatalf("Usque: %v", err)
 	}
@@ -257,10 +258,38 @@ func TestUsqueUnit(t *testing.T) {
 	if strings.Contains(text, "ReadWritePaths=") {
 		t.Error("the sidecar unit asks for a writable path; it writes nothing")
 	}
-	if _, err := service.Usque("usque", "/etc/termit/uv/usque.json", ""); err == nil {
+	if _, err := service.Usque("usque", "/etc/termit/uv/usque.json", "", 0); err == nil {
 		t.Error("Usque accepted a relative binary path")
 	}
-	if _, err := service.Usque("/usr/lib/termit/bin/usque", "/etc/termit/uv/usque.json", "nonsense"); err == nil {
+	if _, err := service.Usque("/usr/lib/termit/bin/usque", "/etc/termit/uv/usque.json", "nonsense", 0); err == nil {
 		t.Error("Usque accepted a socks address without a port")
+	}
+}
+
+// TestUsqueUnitRestartsOnSchedule: a sidecar that has run for hours carries a stale MASQUE connection
+// to Cloudflare, and the first request after an idle period pays seconds for it. RuntimeMaxSec stops it
+// and Restart=always starts the replacement; without the key the unit must not carry the limit.
+func TestUsqueUnitRestartsOnSchedule(t *testing.T) {
+	t.Parallel()
+	unit, err := service.Usque("/usr/lib/termit/bin/usque", "/etc/termit/uv/usque.json", "", 6*time.Hour)
+	if err != nil {
+		t.Fatalf("Usque: %v", err)
+	}
+	if !strings.Contains(string(unit), "RuntimeMaxSec=6h") {
+		t.Error("the unit does not restart the sidecar on schedule")
+	}
+	minutes, err := service.Usque("/usr/lib/termit/bin/usque", "/etc/termit/uv/usque.json", "", 90*time.Minute)
+	if err != nil {
+		t.Fatalf("Usque: %v", err)
+	}
+	if !strings.Contains(string(minutes), "RuntimeMaxSec=90min") {
+		t.Error("a minute-granular interval is not rendered in the unit")
+	}
+	plain, err := service.Usque("/usr/lib/termit/bin/usque", "/etc/termit/uv/usque.json", "", 0)
+	if err != nil {
+		t.Fatalf("Usque: %v", err)
+	}
+	if strings.Contains(string(plain), "RuntimeMaxSec=") {
+		t.Error("the unit restarts the sidecar without being asked to")
 	}
 }
