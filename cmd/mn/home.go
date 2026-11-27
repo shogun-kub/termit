@@ -12,7 +12,8 @@ import (
 // runHome is `termit-mn home …`: the operations that move a node between the servers of a mesh.
 func runHome(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "termit-mn home: use `home handoff --uv <id> --to <peer>`")
+		fmt.Fprintln(stderr, "termit-mn home: use `home handoff --uv <id> --to <peer>`"+
+			" or `home adopt --from <peer>`")
 		return exitUsage
 	}
 	switch args[0] {

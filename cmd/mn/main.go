@@ -115,7 +115,7 @@ Admin:
   admin        rotate the admin token (the credential every admin command uses)
   update       replace the binary with the newest release; --check reports, --apply installs and restarts
   sub          rotate the subscription token of one node
-  home         hand a node over to another server in the mesh (home handoff --uv <id> --to <peer>)
+  home         hand a node over to another server, or adopt a gone server's nodes
   status       show server, nodes and the check schedule
 
 Hardening:
