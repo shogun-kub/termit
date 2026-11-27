@@ -271,6 +271,22 @@ Response:
 }
 ```
 
+A server that is a **replica** of the node's home — a second management server in the same mesh, asked
+while the home is away — adds two fields:
+
+```json
+{
+  "read_only": true,
+  "home": "mn_7f3a1c9d4e2b"
+}
+```
+
+`read_only` means: this is the last desired state that replica holds, the node should apply it as it
+would any other answer, and **its report has not been applied** — the replica keeps it and hands it to the
+home, which applies it exactly as if the node had synced there. A node that sees this flag keeps serving
+and says so in its log and in `termit-uv sync`'s output; nothing on the node changes because of it. The
+field is additive: a node that predates it ignores it, and a home never sends it.
+
 Rules the node may rely on:
 
 - **The peer list is complete, not a delta.** A node that missed ten answers converges from this one.

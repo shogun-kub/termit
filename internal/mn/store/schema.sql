@@ -123,3 +123,13 @@ CREATE TABLE IF NOT EXISTS replication_cursor (
     mn_id TEXT PRIMARY KEY,
     seq   INTEGER NOT NULL
 );
+
+-- A node's self-report that arrived at a replica while its home was unreachable: the home applies it when
+-- it is back, so a node talking to the other half of the mesh loses nothing (IMPLEMENTATION_PLAN.md §5.2.1
+-- decision 3). One row per node — a newer report replaces an older one, because the report is a complete
+-- statement of what the node serves, not an increment.
+CREATE TABLE IF NOT EXISTS mesh_report (
+    uv_id   TEXT PRIMARY KEY,
+    at      TEXT NOT NULL,
+    payload BLOB NOT NULL
+);

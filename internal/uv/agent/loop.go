@@ -327,6 +327,13 @@ func (l *Loop) cycle(ctx context.Context) (CycleReport, error) {
 	report.Apply = applied
 	report.Result = "ok"
 
+	// A read-only answer comes from a replica of this node's home: the state is the last one the home
+	// published, and the report waits there for it. Applying it is right; pretending nothing is wrong is
+	// how a mesh outage goes unnoticed, so it is said out loud once per cycle.
+	if answer.ReadOnly {
+		l.logger().Warn("sync served read-only: the home management server did not answer", "home", answer.Home)
+	}
+
 	st.Peers = PeersFrom(answer)
 	if answer.MeshGeneration != "" {
 		// The answer names the mesh it described; remembering it is what keeps the poll from syncing

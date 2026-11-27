@@ -529,6 +529,7 @@ func TestOpenMigratesFromFive(t *testing.T) {
 		"DROP TABLE uv_transport",
 		"DROP TABLE IF EXISTS replication_event",
 		"DROP TABLE IF EXISTS replication_cursor",
+		"DROP TABLE IF EXISTS mesh_report",
 		"ALTER TABLE uv DROP COLUMN home_mn",
 		"PRAGMA user_version = 5",
 	} {

@@ -81,6 +81,12 @@ func (a *application) runSync(args []string) int {
 		return exitFailure
 	}
 
+	if answer.ReadOnly {
+		// A replica answered with the last state the home published: applying it keeps the node serving,
+		// and saying so keeps an operator from reading "in sync" as "the home is fine".
+		fmt.Fprintf(stdout, "read-only: homed by %s, which did not answer; this is its last published state\n",
+			answer.Home)
+	}
 	if *verbose {
 		fmt.Fprintf(stdout, "self: %s (%s) state=%s\n", answer.Self.Domain, answer.Self.ID, answer.Self.State)
 		for _, peer := range answer.Peers {

@@ -136,6 +136,7 @@ func New(opts Options) (*Handler, error) {
 	// so a server whose mesh is not configured yet still answers and can be added later without a restart.
 	h.mux.HandleFunc("GET "+prefix+"/peer/snapshot", h.peerSnapshot)
 	h.mux.HandleFunc("GET "+prefix+"/peer/events", h.peerEvents)
+	h.mux.HandleFunc("POST "+prefix+"/peer/report", h.peerReport)
 	// Metrics stay where a scrape configuration expects them, and are refused off loopback: the path is
 	// not a secret, the access is.
 	h.mux.HandleFunc("GET /metrics", h.metrics)

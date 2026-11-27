@@ -76,4 +76,23 @@ type SyncResponse struct {
 	// It is a declaration, not a gate: the node reports that it is below it and keeps serving, because
 	// a refusal keyed on the server's word can strand a node that is working (docs/DESCRIPTION.md §8).
 	MinAgentVersion string `json:"min_agent_version,omitempty"`
+	// ReadOnly is set when this answer comes from a replica of the node's home: the node gets the last
+	// desired state that replica holds, its report waits there for the home, and nothing on the replica
+	// moves a state. A stale answer, never a wrong one (docs/IMPLEMENTATION_PLAN.md §5.2.1 decision 3).
+	ReadOnly bool `json:"read_only,omitempty"`
+	// Home names the server that owns this node when ReadOnly is set, so the operator knows which box to
+	// look at and the node can say whose outage it is riding out.
+	Home string `json:"home,omitempty"`
+}
+
+// Report is what a replica hands back to a node's home: the self-report the node sent, unchanged, plus
+// where and when it arrived. The home applies it through the same path a direct sync would, so the state
+// machine runs once, on the server whose job it is.
+type Report struct {
+	UV   string      `json:"uv"`
+	At   time.Time   `json:"at"`
+	From string      `json:"from,omitempty"`
+	IP   string      `json:"ip,omitempty"`
+	Cert string      `json:"cert_sha256,omitempty"`
+	Sync SyncRequest `json:"sync"`
 }

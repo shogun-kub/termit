@@ -77,6 +77,7 @@ agent: the server has no API at https://mn.example.com/enroll: does the MN URL i
 | `POST` | `{prefix}/agent/relocate` | a moved node | Announce a new host (`PROTOCOL.md` §3.6) |
 | `GET` | `{prefix}/peer/snapshot` | another MN in the mesh | The whole registry, for a peer with no cursor (§3.5) |
 | `GET` | `{prefix}/peer/events` | another MN in the mesh | The journal after a cursor (§3.5) |
+| `POST` | `{prefix}/peer/report` | another MN in the mesh | A node's self-report taken while its home was away (§3.6) |
 | `GET` | `{prefix}/healthz` | monitoring | Liveness and version |
 | `GET` | `/sub/{token}` | a client | Peer list, base64 VLESS URIs |
 | `GET` | `/sub/{token}/json` | a client | Peer list, sing-box JSON |
@@ -412,8 +413,28 @@ skipping it, so an older server cannot pass a newer peer's change through half-a
 that differs from the peer's is refused the same way — replication stops, serving does not.
 
 The puller asks from its cursor, so a page starting past `cursor+1` means the peer pruned the journal; that
-is the one case where a snapshot is taken mid-flight. Nothing here is authenticated by the source address
-and nothing here writes: the whole of the mesh's write path stays the admin socket.
+is the one case where a snapshot is taken mid-flight. Neither endpoint is authenticated by the source
+address and neither writes: the mesh's only write is the report in §3.6.
+
+### 3.6 `POST {prefix}/peer/report`
+
+The one writing peer endpoint, and the reason a node may sync to a replica at all
+(`IMPLEMENTATION_PLAN.md` §5.2.1 decision 3). The replica answers such a node with `read_only` and keeps the
+report; its puller then hands the report to the home:
+
+```json
+{"uv": "uv_9f3c1a2b4d5e", "at": "2026-11-27T21:04:11Z", "from": "mn_2b8e…",
+ "ip": "203.0.113.7", "cert_sha256": "…",
+ "sync": {"agent_version": "0.7.1", "transports": [{"kind": "hysteria2", "version": 1}],
+          "check": {"ok": true, "latency_ms": 12}}}
+```
+
+`200 OK` with `{"applied": true}` when the home applied it as a sync, `{"applied": false}` when the row has
+seen the node more recently than `at` — a queued report from an outage must not rewind what the home later
+learned directly. `409 conflict` when the receiver does not know the node, or does not home it: the fence is
+`home_mn`, so a replica cannot hand a report to a server that would not own the row. Nothing in the body is
+believed beyond what the node itself said at its sync: the agent key was verified by the replica, the rows
+written are the same ones `POST {prefix}/agent/sync` writes, and the state machine still moves nothing.
 
 ---
 

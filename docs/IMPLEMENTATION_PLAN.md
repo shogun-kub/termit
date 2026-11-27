@@ -2638,12 +2638,20 @@ enforced where it is attempted rather than only in the journal: `SetUVState`, th
 writers, `forget` and the transport report refuse a row another server homes, and the scheduler no longer
 picks such a row at all — a replica copies its peers' nodes and probes only its own.
 
-What the replication slice still owes: the **read-only sync** a replica serves while its home is down
-(decision 3) with the report kept as pending for the home; **handoff and `home_term`** (decisions 5–7),
-which is the fence a returning master needs; the **quorum gate on `credential_epoch`**; `serve` reading
-`TERMIT_MN_MASTER` before the key file (decision 8, today only `init` honours it); journal pruning, without
-which the log grows forever; and the lab pair (`TERMIT_LAB_MN2` alone does not prove a partition — the
-split-brain rules stay unit tests).
+**And the read-only path, after that.** A node whose home is another server now gets a real answer instead
+of a refusal: `sync` branches on `home_mn`, the replica serves the last desired state it holds with
+`read_only` and the home's name, and keeps the report in `mesh_report` (schema 8, one row per node, newest
+wins). The puller posts it to the home (`POST {prefix}/peer/report`, the only writing peer endpoint, fenced
+by `home_mn`), which applies it through the same function a direct sync uses — one `recordReport`, so the
+two paths cannot drift — and ignores a report older than the row's last sighting, because a queue from an
+outage must not rewind what the home learned directly. A report the home will never apply (unknown node,
+another home) is dropped rather than retried.
+
+What the replication slice still owes: **handoff and `home_term`** (decisions 5–7), which is the fence a
+returning master needs; the **quorum gate on `credential_epoch`**; `serve` reading `TERMIT_MN_MASTER` before
+the key file (decision 8, today only `init` honours it); journal pruning, without which the log grows
+forever; and the lab pair (`TERMIT_LAB_MN2` alone does not prove a partition — the split-brain rules stay
+unit tests).
 
 Acceptance: two MNs and two UVs. A node enrolled on A appears on B and in a subscription B renders; a
 block on A reaches B and the peer's next sync; replaying a delivered event changes nothing; a gap is

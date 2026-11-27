@@ -40,6 +40,13 @@ func newPeerFixture(t *testing.T) *peerFixture {
 		t.Fatalf("Open: %v", err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
+	return &peerFixture{handler: newHandler(t, db), db: db, prefix: "/p9x"}
+}
+
+// newHandler wires a server around db with the mesh key both servers share, and nothing else: these tests
+// ask what the replication and sync paths do, not what enrollment does.
+func newHandler(t *testing.T, db *store.Store) http.Handler {
+	t.Helper()
 	service, err := enroll.New(enroll.Options{
 		Store: db, Mode: config.ModeInvite, Resolvers: []enroll.Resolver{staticResolver{}},
 		Prober: okProber{}, Certs: okCerts{}, Master: peerKey,
@@ -53,19 +60,23 @@ func newPeerFixture(t *testing.T) *peerFixture {
 	if err != nil {
 		t.Fatalf("server.New: %v", err)
 	}
-	return &peerFixture{handler: handler, db: db, prefix: "/p9x"}
+	return handler
 }
 
 // node records a node the way enrollment would, so the journal has something to carry.
 func (f *peerFixture) node(t *testing.T, id, domain string) {
 	t.Helper()
-	err := f.db.CreateUV(context.Background(), store.UV{
+	f.nodeWith(t, store.UV{
 		ID: id, Label: "peer node", Domain: domain, SelfUUID: "8f1c2d3e-4a5b-4c6d-8e7f-90a1b2c3d4e5",
 		ProfileJSON: `{"network":"xhttp"}`, State: store.StatePending, CreatedAt: time.Now().UTC(),
 		AgentKeyHash: "argon2id$fake", CredentialEpoch: 1,
 	})
-	if err != nil {
-		t.Fatalf("CreateUV(%s): %v", id, err)
+}
+
+func (f *peerFixture) nodeWith(t *testing.T, node store.UV) {
+	t.Helper()
+	if err := f.db.CreateUV(context.Background(), node); err != nil {
+		t.Fatalf("CreateUV(%s): %v", node.ID, err)
 	}
 }
 

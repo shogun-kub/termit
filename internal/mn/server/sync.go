@@ -1,9 +1,11 @@
 package server
 
 import (
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -41,58 +43,54 @@ func (h *Handler) sync(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := h.opts.Now().UTC()
-	if err := h.opts.Store.TouchUV(r.Context(), node.ID, sourceIP(r), strings.TrimSpace(req.AgentVersion), now); err != nil {
-		h.opts.Logger.Error("sync: touch node", "uv", node.ID, "err", err)
+	own, mnID, err := h.homesNode(r.Context(), node)
+	if err != nil {
+		h.opts.Logger.Error("sync: read this server's identity", "err", err)
+		writeProblem(w, http.StatusInternalServerError, proto.NewProblem(http.StatusInternalServerError,
+			proto.CodeInternal, "Internal Server Error", "the server could not read its identity"))
+		return
 	}
-	// What the node serves decides what the subscription can render for it. A kind this server does not
-	// know is dropped rather than refused: a newer node must still be usable, and a link this server
-	// cannot write correctly is worse than no link.
-	//
-	// The record is written on every sync, including the empty report: "nothing announced" means the TLS
-	// profile alone, and a node that stopped serving the transport must lose its second link. Writing only
-	// a non-empty report would leave the old row in place for ever — the one case where a node retires a
-	// transport and the mesh keeps advertising it.
-	kinds := proto.ServedKinds(req.Transports)
-	if len(kinds) == 0 {
-		kinds = []string{proto.KindVLESS}
-	}
-	if err := h.opts.Store.SetUVTransports(r.Context(), node.ID, kinds); err != nil {
-		h.opts.Logger.Error("sync: record the transports", "uv", node.ID, "err", err)
+	if !own {
+		// The node's home is elsewhere: this server answers from its copy and keeps the report for the
+		// home. It never writes the row — a replica that moved one would be a second authority.
+		response, err := h.replicaAnswer(r.Context(), node, req, sourceIP(r),
+			r.Header.Get(proto.HeaderCertSHA256), now, mnID)
+		if err != nil {
+			h.opts.Logger.Error("sync: build the answer", "uv", node.ID, "err", err)
+			writeProblem(w, http.StatusInternalServerError, proto.NewProblem(http.StatusInternalServerError,
+				proto.CodeInternal, "Internal Server Error", "the server could not build the answer"))
+			return
+		}
+		h.opts.Logger.Info("sync served read-only", "uv", node.ID, "home", node.HomeMN,
+			"peers", len(response.Peers))
+		outcome = metrics.ResultOK
+		writeJSON(w, http.StatusOK, response)
+		return
 	}
 
-	// The node reports the certificate it serves and the prober pins it. A renewal replaces that
-	// leaf; a server still pinning the old one would close every later check on a mismatch, so the pin
-	// follows the report. It is authenticated by the agent key and the fingerprint is public.
-	if pin := normalizePin(r.Header.Get(proto.HeaderCertSHA256)); pin != "" && pin != node.CertSHA256 {
-		if err := h.opts.Store.SetUVCertPin(r.Context(), node.ID, pin); err != nil {
-			h.opts.Logger.Error("sync: record the certificate pin", "uv", node.ID, "err", err)
-		} else {
-			h.opts.Logger.Info("sync: certificate pin updated", "uv", node.ID)
-		}
-	}
-	// The self-report is kept next to the server's own probes. It never moves a node's state — only
-	// the probe does — but it lets an operator tell "the box is broken" from "the path is broken".
-	if req.Check != nil {
-		if err := h.opts.Store.AppendCheck(r.Context(), store.Check{
-			UVID:       node.ID,
-			At:         now,
-			Kind:       "self",
-			OK:         req.Check.OK,
-			LatencyMS:  req.Check.LatencyMS,
-			ErrorClass: req.Check.ErrorClass,
-		}); err != nil {
-			h.opts.Logger.Error("sync: record the self-check", "uv", node.ID, "err", err)
-		}
-	}
+	h.recordReport(r.Context(), node, req, sourceIP(r), r.Header.Get(proto.HeaderCertSHA256), now)
 
-	peers, err := h.opts.Store.ListUVs(r.Context(), store.UVFilter{
+	response, err := h.desiredState(r.Context(), node, now)
+	if err != nil {
+		h.opts.Logger.Error("sync: build the answer", "uv", node.ID, "err", err)
+		writeProblem(w, http.StatusInternalServerError, proto.NewProblem(http.StatusInternalServerError,
+			proto.CodeInternal, "Internal Server Error", "the server could not build the answer"))
+		return
+	}
+	h.opts.Logger.Info("sync served", "uv", node.ID, "peers", len(response.Peers))
+	outcome = metrics.ResultOK
+	writeJSON(w, http.StatusOK, response)
+}
+
+// desiredState builds what a node is told: its own record, the complete peer set and the policy. It reads
+// and derives only, so a replica can answer with it for a row it does not home, and a write added here
+// would silently give a replica authority it must not have.
+func (h *Handler) desiredState(ctx context.Context, node store.UV, now time.Time) (proto.SyncResponse, error) {
+	peers, err := h.opts.Store.ListUVs(ctx, store.UVFilter{
 		States: []store.State{store.StateActive, store.StateUnavailable},
 	})
 	if err != nil {
-		h.opts.Logger.Error("sync: list peers", "err", err)
-		writeProblem(w, http.StatusInternalServerError, proto.NewProblem(http.StatusInternalServerError,
-			proto.CodeInternal, "Internal Server Error", "the server could not read the registry"))
-		return
+		return proto.SyncResponse{}, fmt.Errorf("list peers: %w", err)
 	}
 
 	// The node is told what build it is talking to, so a menu can offer exactly this version as an update
@@ -106,7 +104,7 @@ func (h *Handler) sync(w http.ResponseWriter, r *http.Request) {
 	response.SubscriptionURL = h.subscriptionURLFor(node)
 	// The digest is what this node remembers to notice a change between scheduled syncs; a registry it
 	// cannot read is not a reason to refuse the answer.
-	if mesh, err := h.meshGeneration(r.Context()); err != nil {
+	if mesh, err := h.meshGeneration(ctx); err != nil {
 		h.opts.Logger.Error("sync: mesh generation", "err", err)
 	} else {
 		response.MeshGeneration = mesh
@@ -143,10 +141,7 @@ func (h *Handler) sync(w http.ResponseWriter, r *http.Request) {
 		}
 		pair, err := cred.Pair(h.opts.MasterKey, node.ID, peer.ID, epoch)
 		if err != nil {
-			h.opts.Logger.Error("sync: derive a pair credential", "uv", node.ID, "peer", peer.ID, "err", err)
-			writeProblem(w, http.StatusInternalServerError, proto.NewProblem(http.StatusInternalServerError,
-				proto.CodeInternal, "Internal Server Error", "the server could not derive a credential"))
-			return
+			return proto.SyncResponse{}, fmt.Errorf("derive the credential for %s: %w", peer.ID, err)
 		}
 		response.Peers = append(response.Peers, proto.SyncPeer{
 			ID:       peer.ID,
@@ -159,10 +154,94 @@ func (h *Handler) sync(w http.ResponseWriter, r *http.Request) {
 			Degraded: peer.State == store.StateUnavailable,
 		})
 	}
+	return response, nil
+}
 
-	h.opts.Logger.Info("sync served", "uv", node.ID, "peers", len(response.Peers))
-	outcome = metrics.ResultOK
-	writeJSON(w, http.StatusOK, response)
+// recordReport stores what a node said about itself: that it was seen, what it serves, which certificate it
+// presents and how its own self-check went. It never moves a state — only a probe does.
+func (h *Handler) recordReport(ctx context.Context, node store.UV, req proto.SyncRequest, ip, cert string,
+	now time.Time) {
+	if err := h.opts.Store.TouchUV(ctx, node.ID, ip, strings.TrimSpace(req.AgentVersion), now); err != nil {
+		h.opts.Logger.Error("sync: touch node", "uv", node.ID, "err", err)
+	}
+	// What the node serves decides what the subscription can render for it. A kind this server does not
+	// know is dropped rather than refused: a newer node must still be usable, and a link this server
+	// cannot write correctly is worse than no link.
+	//
+	// The record is written on every sync, including the empty report: "nothing announced" means the TLS
+	// profile alone, and a node that stopped serving the transport must lose its second link. Writing only
+	// a non-empty report would leave the old row in place for ever — the one case where a node retires a
+	// transport and the mesh keeps advertising it.
+	kinds := proto.ServedKinds(req.Transports)
+	if len(kinds) == 0 {
+		kinds = []string{proto.KindVLESS}
+	}
+	if err := h.opts.Store.SetUVTransports(ctx, node.ID, kinds); err != nil {
+		h.opts.Logger.Error("sync: record the transports", "uv", node.ID, "err", err)
+	}
+
+	// The node reports the certificate it serves and the prober pins it. A renewal replaces that
+	// leaf; a server still pinning the old one would close every later check on a mismatch, so the pin
+	// follows the report. It is authenticated by the agent key and the fingerprint is public.
+	if pin := normalizePin(cert); pin != "" && pin != node.CertSHA256 {
+		if err := h.opts.Store.SetUVCertPin(ctx, node.ID, pin); err != nil {
+			h.opts.Logger.Error("sync: record the certificate pin", "uv", node.ID, "err", err)
+		} else {
+			h.opts.Logger.Info("sync: certificate pin updated", "uv", node.ID)
+		}
+	}
+	// The self-report is kept next to the server's own probes. It never moves a node's state — only
+	// the probe does — but it lets an operator tell "the box is broken" from "the path is broken".
+	if req.Check != nil {
+		if err := h.opts.Store.AppendCheck(ctx, store.Check{
+			UVID:       node.ID,
+			At:         now,
+			Kind:       "self",
+			OK:         req.Check.OK,
+			LatencyMS:  req.Check.LatencyMS,
+			ErrorClass: req.Check.ErrorClass,
+		}); err != nil {
+			h.opts.Logger.Error("sync: record the self-check", "uv", node.ID, "err", err)
+		}
+	}
+}
+
+// homesNode reports whether this server is the node's home. A row with an empty home is this server's:
+// every node enrolled here, and every row that existed before a mesh did. The mesh id is read only for a
+// replicated row, so a single-server install pays nothing for the check.
+func (h *Handler) homesNode(ctx context.Context, node store.UV) (bool, string, error) {
+	if node.HomeMN == "" {
+		return true, "", nil
+	}
+	mnID, err := h.opts.Store.MeshID(ctx)
+	if err != nil {
+		return false, "", err
+	}
+	return node.HomeMN == mnID, mnID, nil
+}
+
+// replicaAnswer is the read-only path: keep the report for the home, then answer with the last desired
+// state this copy holds. A node reading the other half of a mesh therefore loses nothing — its report is
+// applied once, by the server whose job it is, when that server is reachable again.
+func (h *Handler) replicaAnswer(ctx context.Context, node store.UV, req proto.SyncRequest, ip, cert string,
+	now time.Time, mnID string) (proto.SyncResponse, error) {
+	report := proto.Report{UV: node.ID, At: now, From: mnID, IP: ip, Cert: normalizePin(cert), Sync: req}
+	payload, err := json.Marshal(report)
+	if err != nil {
+		return proto.SyncResponse{}, fmt.Errorf("build the report: %w", err)
+	}
+	if err := h.opts.Store.QueueReport(ctx, node.ID, now, payload); err != nil {
+		// The node still needs its answer: a lost queue entry costs it one more report at the next sync,
+		// while a refused answer costs it its peers. Log it and serve.
+		h.opts.Logger.Error("sync: queue the report", "uv", node.ID, "err", err)
+	}
+	response, err := h.desiredState(ctx, node, now)
+	if err != nil {
+		return proto.SyncResponse{}, err
+	}
+	response.ReadOnly = true
+	response.Home = node.HomeMN
+	return response, nil
 }
 
 // observeSync records one agent sync, tolerating a handler built without a registry.

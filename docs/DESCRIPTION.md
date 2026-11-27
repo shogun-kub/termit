@@ -905,12 +905,19 @@ settings(key, value)
 audit(id, at, actor, action, target, detail_json)
 replication_event(mn_id, seq, at, kind, payload)   -- the mesh journal, one log per server
 replication_cursor(mn_id, seq)                     -- how far one server applied another's log
+mesh_report(uv_id, at, payload)                    -- a node's report taken while its home was away
 ```
 
 `home_mn` is the server that owns the row; empty means "this one", which is every node of a single-server
 mesh. Every write that changes a replicated field appends one journal entry in the same transaction, and a
-row homed by another server is never announced here — its log is what a third server pulls. What is still
-missing is the transport that hands the log to a peer: `IMPLEMENTATION_PLAN.md` §5.2.1.
+row homed by another server is never announced here — its log is what a third server pulls. A write to a
+row another server homes is refused, and the scheduler does not pick such a row: a replica copies its peers'
+nodes and probes only its own.
+
+A node may sync to a replica while its home is down. The replica answers with the last desired state it
+holds plus `read_only`, and keeps the report in `mesh_report`; its puller posts that report to the home,
+which applies it as if the node had synced there. The transport is direct, HTTPS between the servers, and
+described in `MN-API.md` §3.5–§3.6.
 
 Indexes: `uv(domain)` (unique), `uv(state)`, `uv(last_seen_at)`, `uv(next_check_at)`,
 `uv_event(uv_id, at desc)`, `check(uv_id, at desc)`, `check(at)` for pruning, `invite(code_hash)`

@@ -423,11 +423,12 @@ mesh:     mn_7f3a… (master key: yes)
 ```
 
 **What a replica does and does not do today.** It holds a copy of every node row and the transports each
-node serves, and it refuses any write to a row another server homes, so a stray admin command cannot create
-a second home. It does not yet serve a sync for a node whose home is down (the read-only path is the next
-slice), it cannot take a node over (`home handoff` is not implemented), and a `credential_epoch` bump is not
-gated on quorum — do not rotate credentials while the mesh is apart. This is why the mesh is not announced
-in the guide yet.
+node serves, it refuses any write to a row another server homes, and its scheduler probes only its own
+nodes. A node whose home is away can sync to it: the answer is the last state the home published, marked
+`read_only`, and the node's report is kept there and handed to the home, which applies it as if the node had
+synced directly. It does not yet take a node over (`home handoff` is not implemented), a `credential_epoch`
+bump is not gated on quorum — do not rotate credentials while the mesh is apart — and the journal has no
+pruning yet. This is why the mesh is not announced in the guide yet.
 
 A trusted address that sends no header keeps its own address, so the server can be upgraded before the
 proxy is told to send one, and a proxy that is trusted for one name only still serves the rest.

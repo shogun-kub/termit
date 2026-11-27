@@ -25,7 +25,7 @@ import (
 
 // SchemaVersion is the schema this build understands. A database with a higher version is refused
 // rather than migrated down: an older binary writing a newer schema is how registries get corrupted.
-const SchemaVersion = 7
+const SchemaVersion = 8
 
 //go:embed schema.sql
 var schemaFS embed.FS
@@ -134,6 +134,9 @@ var migrations = map[int][]string{
 		`ALTER TABLE uv ADD COLUMN home_mn TEXT NOT NULL DEFAULT ''`,
 		`CREATE TABLE IF NOT EXISTS replication_event (mn_id TEXT NOT NULL, seq INTEGER NOT NULL, at TEXT NOT NULL, kind TEXT NOT NULL, payload BLOB NOT NULL, PRIMARY KEY (mn_id, seq))`,
 		`CREATE TABLE IF NOT EXISTS replication_cursor (mn_id TEXT PRIMARY KEY, seq INTEGER NOT NULL)`,
+	},
+	8: {
+		`CREATE TABLE IF NOT EXISTS mesh_report (uv_id TEXT PRIMARY KEY, at TEXT NOT NULL, payload BLOB NOT NULL)`,
 	},
 }
 

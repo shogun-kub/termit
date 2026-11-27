@@ -5,6 +5,7 @@
 package mesh
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -114,17 +115,79 @@ type Puller struct {
 	Client *http.Client
 }
 
-// Run pulls every peer once and then on the configured interval until the context ends.
+// Run pulls every peer once and then on the configured interval until the context ends, handing back the
+// reports a node left here while its home was away.
 func (p *Puller) Run(ctx context.Context) {
 	every := p.Mesh.PullEveryInterval()
 	for {
 		p.pullAll(ctx)
+		p.DeliverReports(ctx)
 		select {
 		case <-ctx.Done():
 			return
 		case <-time.After(every):
 		}
 	}
+}
+
+// DeliverReports hands each queued self-report to the server that homes it, so a node that synced here
+// while its home was down loses nothing. A report is dropped once the home applied it, kept while the home
+// is unreachable, and dropped when the home says it will never be applied — the queue is one row per node,
+// so it cannot grow while a home is away.
+func (p *Puller) DeliverReports(ctx context.Context) {
+	reports, err := p.Store.PendingReports(ctx)
+	if err != nil {
+		p.Logger.Warn("mesh: read the queued reports", "err", err)
+		return
+	}
+	if len(reports) == 0 {
+		return
+	}
+	byHome := make(map[string]config.Peer, len(p.Mesh.Peers))
+	for _, peer := range p.Mesh.Peers {
+		if id, ok, err := p.peerID(ctx, peer); err == nil && ok {
+			byHome[id] = peer
+		}
+	}
+	for _, report := range reports {
+		if report.Home == "" {
+			// The node row is gone: nothing to deliver, and nothing will ever own it again.
+			p.dropReport(ctx, report.UV)
+			continue
+		}
+		peer, ok := byHome[report.Home]
+		if !ok {
+			// Its home is not a configured peer (yet): keep the report and try on the next cycle.
+			continue
+		}
+		applied, err := p.postReport(ctx, peer, report.Payload)
+		switch {
+		case errors.Is(err, errReportLoses):
+			p.dropReport(ctx, report.UV)
+		case err != nil:
+			p.Logger.Warn("mesh: report not delivered", "uv", report.UV, "peer", peer.Name, "err", err)
+		default:
+			p.dropReport(ctx, report.UV)
+			p.Logger.Info("mesh: report delivered", "uv", report.UV, "peer", peer.Name, "applied", applied)
+		}
+	}
+}
+
+func (p *Puller) dropReport(ctx context.Context, uvID string) {
+	if err := p.Store.DropReport(ctx, uvID); err != nil {
+		p.Logger.Warn("mesh: drop a queued report", "uv", uvID, "err", err)
+	}
+}
+
+// postReport sends one queued report and reports whether the home applied it.
+func (p *Puller) postReport(ctx context.Context, peer config.Peer, payload []byte) (bool, error) {
+	var answer struct {
+		Applied bool `json:"applied"`
+	}
+	if err := p.post(ctx, peer, "/peer/report", payload, &answer); err != nil {
+		return false, err
+	}
+	return answer.Applied, nil
 }
 
 func (p *Puller) pullAll(ctx context.Context) {
@@ -245,13 +308,9 @@ func (p *Puller) events(ctx context.Context, peer config.Peer, after int64) (Eve
 const maxAnswer = 32 << 20
 
 func (p *Puller) get(ctx context.Context, peer config.Peer, path string, query url.Values, into any) error {
-	client := p.Client
-	if client == nil {
-		built, err := ClientFor(peer, DefaultRequestTimeout)
-		if err != nil {
-			return err
-		}
-		client = built
+	client, err := p.clientFor(peer)
+	if err != nil {
+		return err
 	}
 	target := strings.TrimRight(peer.URL, "/") + path
 	if len(query) > 0 {
@@ -276,6 +335,45 @@ func (p *Puller) get(ctx context.Context, peer config.Peer, path string, query u
 	return nil
 }
 
+// post sends one queued report. It is the only write this package makes, and the home fences it: a report
+// for a row the receiver does not home is refused, not redirected.
+func (p *Puller) post(ctx context.Context, peer config.Peer, path string, body []byte, into any) error {
+	client, err := p.clientFor(peer)
+	if err != nil {
+		return err
+	}
+	target := strings.TrimRight(peer.URL, "/") + path
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("mesh: %s: %w", peer.Name, err)
+	}
+	request.Header.Set("Authorization", "Bearer "+PullToken(p.MasterKey))
+	request.Header.Set("Content-Type", "application/json")
+	response, err := client.Do(request)
+	if err != nil {
+		return fmt.Errorf("mesh: %s: %w", peer.Name, err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode != http.StatusOK {
+		return p.refusal(peer, response)
+	}
+	if err := json.NewDecoder(io.LimitReader(response.Body, maxAnswer)).Decode(into); err != nil {
+		return fmt.Errorf("mesh: %s: read %s: %w", peer.Name, path, err)
+	}
+	return nil
+}
+
+func (p *Puller) clientFor(peer config.Peer) (*http.Client, error) {
+	if p.Client != nil {
+		return p.Client, nil
+	}
+	return ClientFor(peer, DefaultRequestTimeout)
+}
+
+// errReportLoses marks an answer that says the report will never be applied: the node is unknown there, or
+// it is homed by somebody else. Retrying it would keep a dead entry in the queue for ever.
+var errReportLoses = errors.New("mesh: the report will not be applied")
+
 // refusal turns a peer's answer into something an operator can act on: the two mistakes this protocol has
 // are a wrong key and a URL that does not carry the prefix, and both deserve to be named.
 func (p *Puller) refusal(peer config.Peer, response *http.Response) error {
@@ -285,6 +383,9 @@ func (p *Puller) refusal(peer config.Peer, response *http.Response) error {
 		return fmt.Errorf("mesh: %s refused the mesh credential: the two servers do not share a master key", peer.Name)
 	case http.StatusNotFound:
 		return fmt.Errorf("mesh: %s has no replication endpoint: the url must carry the peer's API prefix", peer.Name)
+	case http.StatusConflict, http.StatusBadRequest:
+		return fmt.Errorf("%w: %s answered %s: %s", errReportLoses, peer.Name, response.Status,
+			strings.TrimSpace(string(detail)))
 	}
 	return fmt.Errorf("mesh: %s answered %s: %s", peer.Name, response.Status, strings.TrimSpace(string(detail)))
 }

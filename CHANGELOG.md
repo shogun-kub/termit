@@ -7,6 +7,13 @@ pre-releases, and whoever installs the release skipped them.
 
 ### Added
 
+- **A node whose home server is down keeps working through a replica.** A second management server in the
+  mesh answers such a node with the last desired state it holds, marked `read_only` in the response and in
+  `termit-uv sync`'s output, and keeps the node's report. Its puller posts that report to the home, which
+  applies it exactly as if the node had synced there — and ignores a report older than what it already
+  knows, so a queue from an outage cannot rewind a row. The report is refused for a node the receiver does
+  not home. Schema 8 adds `mesh_report`.
+
 - **A second management server can hold a copy of the registry.** `mesh:` in `config.yaml` names the peers;
   each pulls the other's journal over HTTPS (a snapshot first, the journal after, a snapshot again across a
   pruned gap) and applies it in one transaction, so a node enrolled on one server is in the other's
