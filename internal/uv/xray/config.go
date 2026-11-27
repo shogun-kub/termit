@@ -201,13 +201,27 @@ const (
 	// WarpBalancerTag names the fail-open balancer.
 	WarpBalancerTag = "warp-egress"
 	// WarpProbeURL is what the observatory fetches through WARP. It is a plain, cheap endpoint that
-	// answers only when the tunnel actually works.
-	WarpProbeURL = "https://www.cloudflare.com/cdn-cgi/trace"
+	// answers only when the tunnel actually works, and its trace names the address Cloudflare saw. An
+	// address literal, not a name: the tunnel carries one family, and a dual-stack name resolves to
+	// whichever family the resolver prefers — IPv6 almost everywhere.
+	WarpProbeURL = "https://1.1.1.1/cdn-cgi/trace"
+	// warpProbeURLv6 is the same trace over IPv6, for a tunnel that carries only that family.
+	warpProbeURLv6 = "https://[2606:4700:4700::1111]/cdn-cgi/trace"
 	// WarpProbeInterval is how often the observatory checks the sidecar. It is short on purpose: the
 	// interval is also the worst-case window during which a tunnel that died mid-life still takes new
 	// connections, and a half-minute of retries is a far better failure mode than five minutes of them.
 	WarpProbeInterval = "30s"
 )
+
+// WarpProbeURLFor is the probe URL in the family the tunnel carries. A name would be resolved to the
+// other family on most hosts, the probe would fail, and the balancer would read that as "WARP is down"
+// and send every proxied flow direct.
+func WarpProbeURLFor(family string) string {
+	if family == WarpFamilyIPv6 {
+		return warpProbeURLv6
+	}
+	return WarpProbeURL
+}
 
 // DefaultSpec returns a spec with the ports and log level filled in.
 func DefaultSpec() Spec {
@@ -424,7 +438,7 @@ func Generate(spec Spec) ([]byte, error) {
 		if spec.Warp.FailOpen {
 			config.Observatory = &observatory{
 				SubjectSelector:   []string{WarpTag},
-				ProbeURL:          WarpProbeURL,
+				ProbeURL:          WarpProbeURLFor(spec.Warp.Family),
 				ProbeInterval:     WarpProbeInterval,
 				EnableConcurrency: true,
 			}

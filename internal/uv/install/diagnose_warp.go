@@ -96,7 +96,7 @@ func diagnoseWireGuardWarp(ctx context.Context, cfg *config.Config, st *state.St
 		ProxyAddr:  net.JoinHostPort(xray.DefaultListen, strconv.Itoa(xray.DefaultPort)),
 		Path:       "/" + st.Identity.XHTTPPath + "/",
 		UUID:       st.Identity.SelfUUID,
-		TargetURL:  WarpProbeURLForDiagnosis(),
+		TargetURL:  WarpProbeURLForDiagnosis(cfg.Warp.FamilyOrDefault()),
 	})
 	took := time.Since(started)
 	if err != nil {
@@ -155,4 +155,4 @@ func warpEgressCheck(prefix string, trace warp.Trace, took time.Duration) Check 
 
 // WarpProbeURLForDiagnosis is the URL the probe fetches. It is a variable so a test can point the probe
 // at a local server instead of Cloudflare.
-var WarpProbeURLForDiagnosis = func() string { return xray.WarpProbeURL }
+var WarpProbeURLForDiagnosis = func(family string) string { return xray.WarpProbeURLFor(family) }

@@ -675,7 +675,9 @@ exists to hide. A client sees a connection that fails and can report it; what it
 it did not ask for. The cost is named: a service reachable only over the untaken family does not work
 through the node, which with the default family means IPv6-only services. IPv4 is the default because
 Cloudflare's IPv6 egress is what large services tend to mark as unsafe, and because a provider's own IPv6
-is not something the node can fix.
+is not something the node can fix. The health probe fetches an address of that family for the same
+reason: a dual-stack name resolves to IPv6 on most hosts, and a tunnel that carries only IPv4 would fail
+every probe and fall back to direct.
 
 **`warp.family` is a `wireguard` setting.** The MASQUE sidecar is dual-stack and takes no family flag: a v6
 destination goes through the tunnel over IPv6 and exits at Cloudflare's v6 address. That is not the node's

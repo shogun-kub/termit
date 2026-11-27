@@ -13,6 +13,14 @@ pre-releases, and whoever installs the release skipped them.
   that has run for hours ages: the first request after an idle period can take seconds, and a fresh
   process bounds the damage. Off by default; refused on `proxy`.
 
+### Fixed
+
+- **The WARP health probe speaks the tunnel's family.** It fetched a dual-stack name, which resolves to
+  IPv6 on most hosts; a tunnel that carries only IPv4 could not carry it, the probe failed, and the
+  balancer read that as "WARP is down" and sent every proxied flow direct — the node looked up while
+  revealing its own address. The probe now fetches the family's address literal (`1.1.1.1` or its IPv6
+  twin), and `warp status` and `doctor` fetch the same one.
+
 ## 0.7.0 — 2026-11-27
 
 ### Added

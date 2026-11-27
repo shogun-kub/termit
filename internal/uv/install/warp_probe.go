@@ -101,7 +101,7 @@ func probeWarpEgress(ctx context.Context, cfg *config.Config, st *state.State) (
 		ProxyAddr:  net.JoinHostPort(xray.DefaultListen, strconv.Itoa(xray.DefaultPort)),
 		Path:       "/" + st.Identity.XHTTPPath + "/",
 		UUID:       st.Identity.SelfUUID,
-		TargetURL:  xray.WarpProbeURL,
+		TargetURL:  xray.WarpProbeURLFor(cfg.Warp.FamilyOrDefault()),
 	})
 	if err != nil {
 		return warp.Trace{}, err

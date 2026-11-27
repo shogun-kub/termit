@@ -8,6 +8,25 @@ import (
 	"github.com/shogun-kub/termit/internal/uv/xray"
 )
 
+// TestWarpProbeURLFollowsTheFamily: the observatory must fetch an address of the family the tunnel
+// carries. A name resolves to IPv6 on most hosts, the IPv4-only tunnel cannot carry it, the probe fails
+// and the balancer sends every proxied flow direct.
+func TestWarpProbeURLFollowsTheFamily(t *testing.T) {
+	t.Parallel()
+	if got := xray.WarpProbeURLFor(""); got != xray.WarpProbeURL {
+		t.Errorf("the default probe URL = %q, want the ipv4 one", got)
+	}
+	if got := xray.WarpProbeURLFor("ipv4"); got != xray.WarpProbeURL {
+		t.Errorf("ipv4 probe URL = %q, want %q", got, xray.WarpProbeURL)
+	}
+	if got := xray.WarpProbeURLFor("ipv6"); got != "https://[2606:4700:4700::1111]/cdn-cgi/trace" {
+		t.Errorf("ipv6 probe URL = %q", got)
+	}
+	if strings.Contains(xray.WarpProbeURL, "www.") {
+		t.Error("the probe URL is a name; a dual-stack name breaks a single-family tunnel")
+	}
+}
+
 // warpDoc is the part of the generated document the WARP tests look at.
 type warpDoc struct {
 	Outbounds []struct {

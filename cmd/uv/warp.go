@@ -377,7 +377,7 @@ func tunnelExit(ctx context.Context, cfg *config.Config) (warp.Status, error) {
 		ProxyAddr:  fmt.Sprintf("%s:%d", xray.DefaultListen, xray.DefaultPort),
 		Path:       "/" + node.Identity.XHTTPPath + "/",
 		UUID:       node.Identity.SelfUUID,
-		TargetURL:  xray.WarpProbeURL,
+		TargetURL:  xray.WarpProbeURLFor(cfg.Warp.FamilyOrDefault()),
 	})
 	if err != nil {
 		return warp.Status{}, fmt.Errorf("the probe through the tunnel failed: %w", err)
