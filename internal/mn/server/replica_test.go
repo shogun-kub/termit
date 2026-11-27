@@ -71,6 +71,15 @@ func TestAReplicaServesTheLastStateAndQueuesTheReport(t *testing.T) {
 	if _, err := puller.Pull(ctx, peerConfig); err != nil {
 		t.Fatalf("the replica did not take the snapshot: %v", err)
 	}
+	// The snapshot's position is the peer's journal tail, so `status` can say "up to date (1 entry)" instead
+	// of "empty journal" — the peer's log lives there, and this server never keeps a copy of it.
+	position, err := replicaDB.GetSetting(ctx, mesh.PeerSeqKey(peerConfig.Name))
+	if err != nil {
+		t.Fatalf("GetSetting(%s): %v", mesh.PeerSeqKey(peerConfig.Name), err)
+	}
+	if position == "0" || position == "" {
+		t.Errorf("the snapshot recorded position %q, want the peer's journal tail", position)
+	}
 
 	body := `{"agent_version":"v0.7.1","transports":[{"kind":"hysteria2"}],"check":{"ok":true}}`
 	answer := syncing(t, newHandler(t, replicaDB), home.prefix, replicaAgentKey, body)

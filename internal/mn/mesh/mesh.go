@@ -287,6 +287,11 @@ func (p *Puller) takeSnapshot(ctx context.Context, peer config.Peer) (int, error
 	if err := p.Store.SetSetting(ctx, PeerIDKey(peer.Name), snap.MNID); err != nil {
 		return 0, fmt.Errorf("mesh: remember %s: %w", peer.Name, err)
 	}
+	// The snapshot's position is also the peer's journal tail as of this read: without it status would call a
+	// freshly-synced peer "empty journal" and never show how far behind it is.
+	if err := p.Store.SetSetting(ctx, PeerSeqKey(peer.Name), strconv.FormatInt(snap.Seq, 10)); err != nil {
+		return 0, fmt.Errorf("mesh: record the position of %s: %w", peer.Name, err)
+	}
 	return len(snap.Nodes), nil
 }
 
