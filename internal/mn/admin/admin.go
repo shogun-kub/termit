@@ -142,6 +142,8 @@ func (s *Service) Handle(ctx context.Context, req Request) (any, *Error) {
 		return s.handoff(ctx, req.Args)
 	case "home.adopt":
 		return s.adopt(ctx, req.Args)
+	case "epoch.rotate":
+		return s.rotateEpoch(ctx)
 	default:
 		return nil, &Error{Code: CodeBadRequest, Detail: fmt.Sprintf("unknown operation %q", req.Op)}
 	}

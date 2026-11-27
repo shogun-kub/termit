@@ -701,6 +701,7 @@ var everyCommand = map[string]struct {
 	"update":   {menu: i18n.MnEntryUpdateLabel, why: "--check has its own entry"},
 	"sub":      {menu: i18n.MnEntrySubLabel, why: "rotate is the only sub verb this build has"},
 	"home":     {menu: i18n.MnNodesHandoffLabel, why: "handoff is the only home verb this build has"},
+	"epoch":    {menu: i18n.MnEntryEpochLabel, why: "rotate is the only epoch verb this build has"},
 	"status":   {menu: i18n.MnEntryStatusLabel},
 	"firewall": {menu: i18n.MnEntryFirewallLabel, why: "rollback belongs to the rollback timer"},
 	"bans":     {menu: i18n.MnEntryBansLabel},
@@ -795,7 +796,7 @@ func TestTheServerMenuTreeFitsOnOneScreen(t *testing.T) {
 	walk(top)
 	// 15 commands, with the node verb menu and the two hardening tables turned into levels of their own,
 	// plus the check-only update, the handoff and the adoption the CLI always had.
-	if leaves != 38 {
-		t.Errorf("the tree has %d leaves, want 38", leaves)
+	if leaves != 39 {
+		t.Errorf("the tree has %d leaves, want 39", leaves)
 	}
 }

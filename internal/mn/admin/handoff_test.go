@@ -23,6 +23,8 @@ import (
 // "I have applied none of you", the worst case.
 type fakePeer struct {
 	refuse bool
+	// epoch is what it reports as the mesh's credential epoch. Zero is a peer older than epochs existed.
+	epoch int
 	// took records the node ids it was asked for, so a test can tell "refused" from "never asked".
 	took []string
 }
@@ -35,7 +37,9 @@ func (f *fakePeer) handler(t *testing.T) http.Handler {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"mn_id": "mn_peer", "applied": map[string]int64{}})
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"mn_id": "mn_peer", "epoch": f.epoch, "applied": map[string]int64{},
+		})
 	})
 	mux.HandleFunc("POST /p9x/peer/handoff", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {

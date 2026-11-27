@@ -171,6 +171,8 @@ Seven choices; `0` goes back up.
   prints the node's new agent key once (the node cannot sync until it is installed)
 - `home adopt` — take over the nodes of a server that is gone for good; asks which peer, and refuses while
   it still answers (that is a handoff, not a rescue)
+- `epoch rotate` — re-key every pair credential in the mesh; asks first, and needs every peer to answer (a
+  rotation on half a mesh is worse than none)
 
 **Help** — every command and flag.
 ## What the menu does not offer

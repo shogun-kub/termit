@@ -91,7 +91,8 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 	// single-server status never depends on an operation it has no use for.
 	var meshState admin.MeshState
 	if len(cfg.Mesh.Peers) > 0 && client.Call(callCtx, "mesh.state", nil, &meshState) == nil {
-		fmt.Fprintf(stdout, "mesh:     %s (master key: %s)\n", meshState.MNID, yesNo(meshState.HasMasterKey))
+		fmt.Fprintf(stdout, "mesh:     %s (master key: %s, epoch %d)\n", meshState.MNID,
+			yesNo(meshState.HasMasterKey), meshState.Epoch)
 		for _, peer := range meshState.Peers {
 			fmt.Fprintf(stdout, "  peer %-8s %s\n", peer.Name, describePeer(peer))
 		}

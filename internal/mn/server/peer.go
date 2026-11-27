@@ -171,7 +171,14 @@ func (h *Handler) peerState(w http.ResponseWriter, r *http.Request) {
 			proto.CodeInternal, "Internal Server Error", "the server could not read its progress"))
 		return
 	}
-	writeJSON(w, http.StatusOK, mesh.State{MNID: mnID, Applied: applied})
+	epoch, err := h.opts.Store.Epoch(r.Context())
+	if err != nil {
+		h.opts.Logger.Error("peer state: epoch", "err", err)
+		writeProblem(w, http.StatusInternalServerError, proto.NewProblem(http.StatusInternalServerError,
+			proto.CodeInternal, "Internal Server Error", "the server could not read the epoch"))
+		return
+	}
+	writeJSON(w, http.StatusOK, mesh.State{MNID: mnID, Epoch: epoch, Applied: applied})
 }
 
 // peerHandoff makes this server the home of a node handed over by the server that homes it now. The node gets

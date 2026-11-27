@@ -421,10 +421,10 @@ node still has exactly one home, and only that home decides (`IMPLEMENTATION_PLA
    again rather than patched over.
 
 `termit-mn status` grows a `mesh:` block — this server's id in the shared journal, whether it holds a
-master key, and per peer whether it was reached and how many entries behind it is:
+master key, the epoch it is at, and per peer whether it was reached and how many entries behind it is:
 
 ```
-mesh:     mn_7f3a… (master key: yes)
+mesh:     mn_7f3a… (master key: yes, epoch 1)
   peer mn2      https://mn2.example.com/34xpus3fnghw — up to date (412 entries)
   peer mn3      https://mn3.example.com/34xpus3fnghw — 12 behind (cursor 400 of 412)
 ```
@@ -485,15 +485,39 @@ Adoption does **not** rotate the master key. If the dead home may have fallen in
 the key is the entire mesh's credentials: that needs an epoch rotation and re-enrollment of every node, which
 is not gated on quorum yet (the remaining debt of §5.2.1), and should not be attempted while the mesh is apart.
 
+**Rotating the pair credentials.** `termit-mn epoch rotate` moves every pair credential in the mesh to the
+next epoch (`credential_epoch` + 1 on every node). Do it when the master key or a node's credentials may have
+leaked: every pair is derived from the master key, the two node ids and the epoch, so a bump re-keys every
+relationship at once without touching a node's own identity or its agent key.
+
+```
+termit-mn epoch rotate
+epoch:     1 → 2
+re-keyed:  3 node(s)
+journal:   entry 412
+peers:     [mn2 answered before the rotation]
+```
+
+The command is gated on the mesh being whole: it asks every configured peer what epoch it is at, and refuses
+with nothing changed if one does not answer or is already ahead. A bump on half the mesh is the worst state
+this system can be in — nodes derive different pair values and every check still passes — so the gate is the
+whole point, and there is no `--force`: bring the peer back, or rotate where the newer epoch already is.
+
+Then the window: **every node has to sync before its pairs work again.** A node applies the new UUIDs only
+from a sync answer, so until both ends of a pair have synced, that pair carries nothing. The mesh poll
+notices the change within one cycle (the digest now includes the epoch), but do not wait for it — run
+`termit-uv sync` on every node right after the rotation, then check `termit-mn status` on each server: both
+must show the same `epoch` in the `mesh:` line. They will disagree until the peer's journal entry lands,
+which is at most one `pull_every`.
+
 **What a replica does and does not do today.** It holds a copy of every node row and the transports each
 node serves, it refuses any write to a row another server homes, and its scheduler probes only its own
 nodes. A node whose home is away can sync to it: the answer is the last state the home published, marked
 `read_only`, and the node's report is kept there and handed to the home, which applies it as if the node had
 synced directly. A node can be moved to it by an explicit handoff, and the nodes of a home that is gone for
 good can be adopted by it. It does not take a node over on its own (no automatic failover — a split brain
-between two live homes is worse than a day of stale peers), a `credential_epoch` bump is not gated on quorum
-— do not rotate credentials while the mesh is apart — and this is why the mesh is not announced in the guide
-yet. The journal keeps the newest 1000 entries of this server's own log (the daily retention pass prunes the
+between two live homes is worse than a day of stale peers), and this is why the mesh is not announced in the
+guide yet. The journal keeps the newest 1000 entries of this server's own log (the daily retention pass prunes the
 rest; a peer further behind than that takes a snapshot instead), and a replica never keeps a copy of a peer's
 log at all — it keeps the cursor.
 

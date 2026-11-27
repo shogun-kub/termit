@@ -410,8 +410,10 @@ ended when the page was read:
 
 `limit` defaults to and is capped at 1000. `after` is a sequence number; a non-numeric or negative value
 is `400` with an empty `code`, a page shape the peer protocol alone reads. `kind` is a closed set
-(`node`, `node_removed`): a build that meets a kind it does not know refuses the batch instead of
-skipping it, so an older server cannot pass a newer peer's change through half-applied. A `schema_version`
+(`node`, `node_removed`, `epoch`): a build that meets a kind it does not know refuses the batch instead of
+skipping it, so an older server cannot pass a newer peer's change through half-applied. An `epoch` entry
+carries `{"epoch": 2}` and moves every row on the receiving server to that number in one statement — it is
+only ever written by a server that had every configured peer answer, and a replay of it changes nothing. A `schema_version`
 that differs from the peer's is refused the same way — replication stops, serving does not.
 
 The puller asks from its cursor, so a page starting past `cursor+1` means the peer pruned the journal; that
@@ -443,14 +445,15 @@ written are the same ones `POST {prefix}/agent/sync` writes, and the state machi
 The two calls behind `termit-mn home handoff` (decisions 5–7 of `IMPLEMENTATION_PLAN.md` §5.2.1). Moving a
 node is a decision only its home makes; the target is asked, not told.
 
-`peer/state` answers with the identity the caller compares itself against and how far the receiver has
-applied every log it follows:
+`peer/state` answers with the identity the caller compares itself against, the epoch it is at, and how far
+the receiver has applied every log it follows:
 
 ```json
-{"mn_id": "mn_2b8e…", "applied": {"mn_7f3a…": 412}}
+{"mn_id": "mn_2b8e…", "epoch": 2, "applied": {"mn_7f3a…": 412}}
 ```
 
-The caller checks `last_seq - applied[me] ≤ mesh.lag_max`. A target further behind may still take the node
+The epoch is what `epoch rotate` gates on: every configured peer has to answer, and none may be ahead. The
+caller then checks `last_seq - applied[me] ≤ mesh.lag_max`. A target further behind may still take the node
 with a forced handoff, at the cost the operator accepted: a node enrolled after that cursor was never taught
 to it, so that node has to enroll again.
 

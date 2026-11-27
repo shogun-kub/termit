@@ -15,8 +15,11 @@ type MeshState struct {
 	MNID string `json:"mn_id"`
 	// HasMasterKey is whether the process holds a key at all. A replica that is not expected to take over
 	// runs without one, a standby keeps it, and this line is how an operator tells which one they have.
-	HasMasterKey bool        `json:"has_master_key"`
-	Peers        []PeerState `json:"peers"`
+	HasMasterKey bool `json:"has_master_key"`
+	// Epoch is the pair-credential epoch this server is at. Two servers disagreeing here is the split a
+	// rotation is gated against, and the first thing to look at when pairs stop matching.
+	Epoch int         `json:"epoch"`
+	Peers []PeerState `json:"peers"`
 }
 
 // PeerState is one peer as of the last pull. Known is false until a snapshot has named the peer's mesh id;
@@ -38,7 +41,11 @@ func (s *Service) meshState(ctx context.Context) (any, *Error) {
 	if err != nil {
 		return nil, &Error{Code: CodeInternal, Detail: err.Error()}
 	}
-	state := MeshState{MNID: mnID, HasMasterKey: len(s.Master) > 0}
+	epoch, err := s.Store.Epoch(ctx)
+	if err != nil {
+		return nil, &Error{Code: CodeInternal, Detail: err.Error()}
+	}
+	state := MeshState{MNID: mnID, HasMasterKey: len(s.Master) > 0, Epoch: epoch}
 	for _, peer := range s.Mesh.Peers {
 		entry := PeerState{Name: peer.Name, URL: peer.URL}
 		id, err := s.Store.GetSetting(ctx, mesh.PeerIDKey(peer.Name))

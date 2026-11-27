@@ -289,6 +289,7 @@ func (m *menu) entries() []menuEntry {
 				// which is the same shape as rotating the admin token — the two sit together for that reason.
 				{labelKey: i18n.MnNodesHandoffLabel, hintKey: i18n.MnNodesHandoffHint, plan: m.planHandoff},
 				{labelKey: i18n.MnNodesAdoptLabel, hintKey: i18n.MnNodesAdoptHint, plan: m.planAdopt},
+				{labelKey: i18n.MnEntryEpochLabel, hintKey: i18n.MnEntryEpochHint, plan: m.planEpoch},
 			}
 		}},
 		{labelKey: i18n.MnEntryHelpLabel, hintKey: i18n.MnEntryHelpHint, plan: fixedMn("help"), local: true},
@@ -606,6 +607,16 @@ func (m *menu) planAdopt(ui *termui.UI) ([][]string, error) {
 		return nil, err
 	}
 	return [][]string{{"home", "adopt", "--from", peer}}, nil
+}
+
+// planEpoch rotates the pair credentials of the whole mesh. It asks once and names what breaks: until both
+// ends of a pair have synced, that pair carries nothing.
+func (m *menu) planEpoch(ui *termui.UI) ([][]string, error) {
+	sure, err := ui.Confirm(m.translator().T(i18n.MnPromptEpoch), false)
+	if err != nil || !sure {
+		return nil, err
+	}
+	return [][]string{{"epoch", "rotate"}}, nil
 }
 
 func (m *menu) planUpdate(ui *termui.UI) ([][]string, error) {

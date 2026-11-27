@@ -25,6 +25,10 @@ const (
 	EventNode = "node"
 	// EventNodeRemoved carries nodeRemoved: the node left the mesh.
 	EventNodeRemoved = "node_removed"
+	// EventEpoch carries epochEvent: every pair credential in the mesh moves to a new epoch. It is only
+	// written after every configured peer has acknowledged the number (§5.2.1), because a bump during a
+	// partition re-keys half the mesh into a state no node can detect from the inside.
+	EventEpoch = "epoch"
 )
 
 // Journal errors. The caller decides what to do with each: a gap means "take a snapshot", a conflict is
@@ -82,6 +86,12 @@ type nodeEvent struct {
 // nodeRemoved is the payload of EventNodeRemoved.
 type nodeRemoved struct {
 	ID string `json:"id"`
+}
+
+// epochEvent is the payload of EventEpoch: the pair-credential epoch the whole mesh moves to. It is one
+// entry rather than one per node, because a rotation is one decision — and applying it is one statement.
+type epochEvent struct {
+	Epoch int `json:"epoch"`
 }
 
 // Snapshot is everything a peer needs to start from nothing: the origin's nodes as of one journal
@@ -368,6 +378,62 @@ func (s *Store) AdoptUV(ctx context.Context, id, from string, now time.Time) (UV
 	return node, nil
 }
 
+// Epoch reports the epoch the mesh is at here: the highest any row carries. Zero means nothing has ever been
+// enrolled on this server.
+func (s *Store) Epoch(ctx context.Context) (int, error) {
+	var epoch int
+	if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(MAX(credential_epoch), 0) FROM uv`).Scan(&epoch); err != nil {
+		return 0, fmt.Errorf("store: read the epoch: %w", err)
+	}
+	return epoch, nil
+}
+
+// RotateEpoch moves every row to epoch and announces it in this server's journal, inside one transaction: the
+// rows and the entry cannot disagree, and one entry carries the decision for the whole mesh. It refuses an
+// epoch that does not move the mesh forward, because a rotation is an increment and a stale number would look
+// like it re-keyed something while changing nothing.
+func (s *Store) RotateEpoch(ctx context.Context, epoch int, now time.Time) (int64, error) {
+	mnID, err := s.MeshID(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if epoch < 1 {
+		return 0, fmt.Errorf("store: %d is not an epoch", epoch)
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("store: begin the rotation: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var current int
+	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(credential_epoch), 0) FROM uv`).Scan(&current); err != nil {
+		return 0, fmt.Errorf("store: read the current epoch: %w", err)
+	}
+	if epoch <= current {
+		return 0, fmt.Errorf("store: the mesh is at epoch %d, so %d is not a rotation", current, epoch)
+	}
+	res, err := tx.ExecContext(ctx, `UPDATE uv SET credential_epoch = ?`, epoch)
+	if err != nil {
+		return 0, fmt.Errorf("store: rotate to epoch %d: %w", epoch, err)
+	}
+	changed, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("store: count the rotated rows: %w", err)
+	}
+	body, err := json.Marshal(epochEvent{Epoch: epoch})
+	if err != nil {
+		return 0, fmt.Errorf("store: encode the rotation: %w", err)
+	}
+	if _, err := appendEventTx(ctx, tx, now, mnID, EventEpoch, body); err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("store: commit the rotation: %w", err)
+	}
+	return changed, nil
+}
+
 // UVsHomedBy lists the rows one server homes, by domain: what `home adopt` takes over and what an operator
 // sees before deciding to take it.
 func (s *Store) UVsHomedBy(ctx context.Context, mnID string) ([]UV, error) {
@@ -652,9 +718,34 @@ func applyEvent(ctx context.Context, tx *sql.Tx, event ReplicationEvent) error {
 			return fmt.Errorf("decode the removal: %w", err)
 		}
 		return removeReplicatedNode(ctx, tx, body.ID, event.MNID)
+	case EventEpoch:
+		var body epochEvent
+		if err := json.Unmarshal(event.Payload, &body); err != nil {
+			return fmt.Errorf("decode the epoch: %w", err)
+		}
+		return applyEpoch(ctx, tx, body.Epoch)
 	default:
 		return fmt.Errorf("%w: %q", ErrUnknownEvent, event.Kind)
 	}
+}
+
+// applyEpoch moves every row to the epoch the mesh agreed on. Epochs only ever grow, so an event that names
+// one this server is already at is a replay and changes nothing.
+func applyEpoch(ctx context.Context, tx *sql.Tx, epoch int) error {
+	if epoch < 1 {
+		return fmt.Errorf("an epoch event named %d", epoch)
+	}
+	var current int
+	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(credential_epoch), 0) FROM uv`).Scan(&current); err != nil {
+		return fmt.Errorf("store: read the current epoch: %w", err)
+	}
+	if epoch <= current {
+		return nil
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE uv SET credential_epoch = ?`, epoch); err != nil {
+		return fmt.Errorf("store: apply the epoch %d: %w", epoch, err)
+	}
+	return nil
 }
 
 // putReplicatedNode writes a row the peer homes. The guard runs before the upsert, because the upsert
@@ -855,7 +946,7 @@ func setCursor(ctx context.Context, tx *sql.Tx, mnID string, seq int64) error {
 
 func knownKind(kind string) bool {
 	switch kind {
-	case EventNode, EventNodeRemoved:
+	case EventNode, EventNodeRemoved, EventEpoch:
 		return true
 	}
 	return false

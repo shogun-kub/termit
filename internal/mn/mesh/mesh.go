@@ -343,9 +343,13 @@ func NewPeer(cfg config.Peer, masterKey []byte, timeout time.Duration) (Peer, er
 	return Peer{Config: cfg, MasterKey: masterKey, HTTP: client}, nil
 }
 
-// State is what a peer answers about itself: its identity and how far it applied every log it follows.
+// State is what a peer answers about itself: its identity, the pair-credential epoch it is at, and how far it
+// applied every log it follows.
 type State struct {
-	MNID    string           `json:"mn_id"`
+	MNID string `json:"mn_id"`
+	// Epoch is the mesh's credential epoch here. A rotation compares it with every configured peer's before it
+	// moves anything: one server ahead of the others is the split the gate exists to prevent.
+	Epoch   int              `json:"epoch"`
 	Applied map[string]int64 `json:"applied"`
 }
 

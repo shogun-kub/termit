@@ -2683,12 +2683,19 @@ of this server's own log stay, the rest go, and a peer further behind than that 
 already exists. A replica keeps the cursor, not the peer's log, which is why the table only ever holds one
 log.
 
-What the replication slice still owes: **rotation of `credential_epoch`** — there is no command that moves it
-in this build (it is 1 at enrollment, and a handoff or an adoption keeps it because the ids and the master key
-survive both), so the quorum gate the decision asks for is a gate on a door that is not built yet. When it is,
-the bump has to wait for every configured MN's acknowledgement before it takes effect, and this paragraph is
-where that starts. And the lab pair: `TERMIT_LAB_MN2` alone does not prove a partition, so the split-brain
-rules stay unit tests.
+**And the rotation.** `termit-mn epoch rotate` moves the whole mesh to `credential_epoch + 1`: one new journal
+kind (`epoch`, payload `{"epoch": N}`) that every server applies with a single `UPDATE`, so the decision is one
+entry and a peer re-keys nothing of its own. It is gated exactly as decision 6 asked: every configured peer is
+asked `GET {prefix}/peer/state` first, and a peer that does not answer — or one already ahead — stops it with
+nothing changed. There is no `--force`; a bump on half the mesh is the state where pairs mismatch and every
+check still passes. Two things make it usable rather than theoretical: the mesh digest now includes the epoch,
+so a node's poll triggers its sync within one cycle instead of waiting a day, and the derivation takes the
+lower of the two nodes' epochs, so pairs across servers keep their old value until the entry lands on both.
+`status` prints the epoch, which is how two servers that disagree are found.
+
+What the replication slice still owes: the lab pair — `TERMIT_LAB_MN2` is wired in the harness but the
+scenario is unwritten, and a single-server lab cannot prove a partition, so the split-brain rules stay unit
+tests.
 
 Acceptance: two MNs and two UVs. A node enrolled on A appears on B and in a subscription B renders; a
 block on A reaches B and the peer's next sync; replaying a delivered event changes nothing; a gap is

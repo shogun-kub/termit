@@ -11,15 +11,15 @@ import (
 )
 
 // meshShape is the digest of who is in the mesh and in what shape it is. Anything that changes what a
-// peer receives must enter it — a join, a block, a removal, a move to another domain — and nothing else
-// may, or every node would reconcile on every poll.
+// peer receives must enter it — a join, a block, a removal, a move to another domain, a new credential
+// epoch — and nothing else may, or every node would reconcile on every poll.
 func meshShape(nodes []store.UV) string {
 	sorted := make([]store.UV, len(nodes))
 	copy(sorted, nodes)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].ID < sorted[j].ID })
 	digest := sha256.New()
 	for _, n := range sorted {
-		fmt.Fprintf(digest, "%s|%s|%s|%s\n", n.ID, n.Domain, n.State, n.ProfileJSON)
+		fmt.Fprintf(digest, "%s|%s|%s|%s|%d\n", n.ID, n.Domain, n.State, n.ProfileJSON, n.CredentialEpoch)
 	}
 	return hex.EncodeToString(digest.Sum(nil))[:16]
 }

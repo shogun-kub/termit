@@ -76,6 +76,22 @@ func TestTheMeshDigestChangesWhenTheMeshDoes(t *testing.T) {
 	}
 }
 
+// A rotation re-keys every pair, so the digest has to move: that is what makes the next mesh poll pull a
+// sync, and without it a node would keep the old pair values until its daily sync — a day of a broken mesh.
+func TestTheMeshDigestNoticesANewEpoch(t *testing.T) {
+	t.Parallel()
+	fx := newFixture(t)
+	ctx := context.Background()
+
+	before := fx.meshGeneration(t)
+	if _, err := fx.store.RotateEpoch(ctx, 2, testNow); err != nil {
+		t.Fatalf("RotateEpoch: %v", err)
+	}
+	if after := fx.meshGeneration(t); after == before {
+		t.Error("an epoch change left the digest unchanged; the nodes would not resync")
+	}
+}
+
 func TestThePolicyCarriesTheMeshPollInterval(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {

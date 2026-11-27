@@ -28,6 +28,8 @@ const (
 	MnEntryBackupHint       Key = "mn.entry.backup.hint"
 	MnEntryUpdateLabel      Key = "mn.entry.update.label"
 	MnEntryUpdateHint       Key = "mn.entry.update.hint"
+	MnEntryEpochLabel       Key = "mn.entry.epoch.label"
+	MnEntryEpochHint        Key = "mn.entry.epoch.hint"
 	MnEntryUpdateCheckLabel Key = "mn.entry.updatecheck.label"
 	MnEntryUpdateCheckHint  Key = "mn.entry.updatecheck.hint"
 	MnPromptUpdate          Key = "mn.prompt.update"
@@ -108,6 +110,7 @@ const (
 	MnPromptHandoff         Key = "mn.prompt.handoff"
 	MnPromptAdoptPeer       Key = "mn.prompt.adoptpeer"
 	MnPromptAdopt           Key = "mn.prompt.adopt"
+	MnPromptEpoch           Key = "mn.prompt.epoch"
 	MnPromptNote            Key = "mn.prompt.note"
 	MnPromptInviteCode      Key = "mn.prompt.invite_code"
 	MnPromptCheckAll        Key = "mn.prompt.check_all"
@@ -182,10 +185,13 @@ var messagesMNRU = map[Key]string{
 	MnNodesHandoffHint:   "узел переедет в меше; новый агентский ключ будет показан",
 	MnNodesAdoptLabel:    "принять узлы погибшего сервера",
 	MnNodesAdoptHint:     "если home не вернётся: узлы продолжат работать без визита",
+	MnEntryEpochLabel:    "сменить эпоху парных ключей",
+	MnEntryEpochHint:     "перевыпускает все пары сразу; узлы подхватят при следующей синхронизации",
 	MnPromptHandoffPeer:  "Имя пира из mesh.peers:",
 	MnPromptHandoff:      "Передать узел? Он не сможет синхронизироваться, пока вы не установите новый ключ.",
 	MnPromptAdoptPeer:    "Имя погибшего пира из mesh.peers:",
 	MnPromptAdopt:        "Принять его узлы? Если он ещё отвечает, это раскол, и нужна передача.",
+	MnPromptEpoch:        "Перевыпустить все парные креды? Пока оба узла пары не синхронизируются, трафик между ними встанет.",
 
 	MnInvitesHead:           "приглашения",
 	MnInvitesListLabel:      "список",
@@ -301,10 +307,13 @@ var messagesMNEN = map[Key]string{
 	MnNodesHandoffHint:   "hands the node over inside the mesh; prints its new agent key",
 	MnNodesAdoptLabel:    "take over a gone server's nodes",
 	MnNodesAdoptHint:     "when the home is gone for good: the nodes keep working without a visit",
+	MnEntryEpochLabel:    "rotate the pair credentials",
+	MnEntryEpochHint:     "re-keys every pair at once; nodes pick it up at their next sync",
 	MnPromptHandoffPeer:  "Peer name from mesh.peers:",
 	MnPromptHandoff:      "Hand the node over? It cannot sync until you install the new key.",
 	MnPromptAdoptPeer:    "Gone peer's name in mesh.peers:",
 	MnPromptAdopt:        "Take its nodes over? If it still answers, that is a split brain — use a handoff.",
+	MnPromptEpoch:        "Rotate every pair credential? Traffic between two nodes stops until both have synced.",
 
 	MnInvitesHead:           "invites",
 	MnInvitesListLabel:      "list",
