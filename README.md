@@ -47,6 +47,7 @@ is a Russian version beside every page.
 | [The interactive menu](docs/guide/menu.md) | [Интерактивное меню](docs/guide/ru/menu.md) | doing all of it from a numbered menu instead of flags |
 | [Hardening a node](docs/guide/hardening.md) | [Защита узла](docs/guide/ru/hardening.md) | the host firewall, the ban engine and the blocklist, and the way back |
 | [When something goes wrong](docs/guide/troubleshooting.md) | [Если что-то пошло не так](docs/guide/ru/troubleshooting.md) | the failures you are likely to meet, and what to do |
+| [Updating a mesh](docs/guide/updating.md) | [Обновление меша](docs/guide/ru/updating.md) | from 0.6.0 to 0.7.0, and how both sides update themselves after it |
 
 The reference documents go deeper, and assume you are comfortable with TLS, ACME and systemd:
 

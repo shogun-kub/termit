@@ -47,6 +47,7 @@ WARP, а собственный трафик машины — никогда. О
 | [Интерактивное меню](docs/guide/ru/menu.md) | [The interactive menu](docs/guide/menu.md) | всё то же самое из нумерованного меню, без флагов |
 | [Защита узла](docs/guide/ru/hardening.md) | [Hardening a node](docs/guide/hardening.md) | фаервол на хосте, движок банов, блок-лист и путь назад |
 | [Если что-то пошло не так](docs/guide/ru/troubleshooting.md) | [When something goes wrong](docs/guide/troubleshooting.md) | вероятные сбои и что с ними делать |
+| [Обновление меша](docs/guide/ru/updating.md) | [Updating a mesh](docs/guide/updating.md) | с 0.6.0 на 0.7.0 и как обе стороны обновляются сами после |
 
 Справочные документы идут глубже и предполагают, что вы свободно обращаетесь с TLS, ACME и systemd:
 

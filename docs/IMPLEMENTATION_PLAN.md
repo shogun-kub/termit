@@ -2474,6 +2474,21 @@ it: it never upgrades the server underneath a node and then asks the node what i
 after it touch this document, the changelogs and the READMEs. The previous binaries and the config
 snapshots stay until `0.7.0` is promoted and the next release starts.
 
+### 4.8 Promotion, 2026-11-27
+
+`v0.7.0` was published, and the command it added was used to hand it to production: `termit-mn update
+--apply` moved the server from `v0.7.0p5` to `v0.7.0` (the previous binary kept as `termit-mn.prev` and
+removed once the new one answered), and on each node `termit-uv sync` then `termit-uv upgrade` replaced the
+build (`would install v0.7.0 over v0.7.0p5`) and let it converge. `termit-mn uv list` then read
+`termit-uv v0.7.0 (3daebc6)` for both nodes, `warp status` still egressed through Cloudflare, the decoy
+answered `200`, and `doctor` said `ok`.
+
+The instruction for the jump from `0.6.0` (`docs/guide/updating.md`) was proved on the lab first: the four
+machines were put back on `v0.6.0` and moved with `mn.sh`/`uv.sh --version v0.7.0`; the identities, the
+certificates, the keys and the client links stayed, `doctor` ended `ok`, and the mesh view read v0.7.0
+after the nodes synced. That run also settled the shape of the page: 0.6.0 has no `update`/`upgrade`, so
+the jump to 0.7.0 is the scripts', and the commands the release adds are what a 0.7.0 mesh uses after it.
+
 ## 5. Not implemented yet
 
 Everything after `0.6.0` is postponed: understood and wanted, and nothing shipped depends on it. Each item
