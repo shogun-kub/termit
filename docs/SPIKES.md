@@ -3,9 +3,10 @@
 Recorded decisions from throwaway experiments. Each entry states the question, what was observed
 (with the evidence that decides it), and what changed in the design as a result.
 
-Environment for all entries: `termit-uv1` (Debian 13, 1 vCPU, 1 GB, unprivileged LXC), Xray 26.11.9,
-self-signed certificate for `termit-uv1.lan`, Python `http.server` as a stand-in decoy, clients and
-servers on the same host. Scripts are throwaway and live outside the repository.
+Environment for the entries below unless the entry says otherwise: `termit-uv1` (Debian 13, 1 vCPU, 1 GB,
+unprivileged LXC), Xray 26.11.9, self-signed certificate for `termit-uv1.lan`, Python `http.server` as a
+stand-in decoy, clients and servers on the same host. Scripts are throwaway and live outside the
+repository.
 
 ---
 
@@ -108,16 +109,15 @@ Consequences recorded in `DESCRIPTION.md`:
 - §5.2: request paths go through nginx.
 - §13.1: memory budget includes nginx and no longer includes an in-agent decoy server.
 - Profile `v1`: XHTTP `mode: packet-up` over an HTTP/1.1 hop from nginx, ALPN `h2,http/1.1` at the edge
-  (to be re-verified once the real nginx config and the real client exist; `mode: auto` is retried
-  then).
+  at the time of the spike — corrected by the re-test below, which removed `alpn` from the client URI.
 - Re-verified with the real nginx config and a real Xray client (2026-11): the stream-shaped modes fail
   at the hop, `packet-up` works; `auto` was not measured through the hop, and is not shipped because it
   leaves the client's mode to whichever HTTP version it negotiates. The client URI therefore carries no
   `alpn`, and its uTLS fingerprint is `firefox` — see `QUESTIONS.md` Q4.1, "Revisions".
 
-Remaining unknown for M1: whether `mode: auto` behaves under nginx's HTTP/1.1 upstream proxy (the
-reference used `auto` in that position, but it is unverified here); `packet-up` is the fallback that
-is known to work.
+The question left open for M1 was whether `mode: auto` behaves under nginx's HTTP/1.1 upstream proxy (the
+reference used `auto` in that position, and it was never measured here); `packet-up` was the fallback that
+is known to work, and it is what ships.
 
 ---
 
@@ -398,7 +398,7 @@ root is wrong. It does not use the second certificate in the file as an intermed
 does. One more way to misread a certificate problem as a trust problem.
 ## S16 (0.5.0) — what a QUIC transport looks like on the wire, and what it costs
 
-Hysteria2 was evaluated on 2026-11-20/21 as the second transport (§10.3): one production node (1 vCPU,
+Hysteria2 was evaluated on 2026-11-20/21 as the second transport (§3.6.2): one production node (1 vCPU,
 KVM), hysteria 2.14.0 (its `hysteria-linux-amd64` checksum is the one in the upstream release's
 `hashes.txt`, `apernet/hysteria` tag `app/v2.14.0`), the node's Let's Encrypt leaf, BBR, no obfuscation.
 

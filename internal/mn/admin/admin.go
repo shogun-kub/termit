@@ -340,6 +340,10 @@ type uvShowResult struct {
 	Events    []store.Event `json:"events"`
 	Check     *store.Check  `json:"check,omitempty"`
 	SelfCheck *store.Check  `json:"self_check,omitempty"`
+	// Transports is what the node declared it serves; ProbedTransport is the leg the last probe took.
+	// A node that declares two and is probed on one shows the gap instead of hiding it behind "ok".
+	Transports      []string `json:"transports,omitempty"`
+	ProbedTransport string   `json:"probed_transport,omitempty"`
 	// Checks is the node's recent history, newest first: both the server's probes and the node's own
 	// self-reports, because "the box is broken" and "the path to it is broken" look the same in a
 	// single row and different in a series.
@@ -373,7 +377,26 @@ func (s *Service) showUV(ctx context.Context, raw json.RawMessage) (any, *Error)
 	if checks, err := s.Store.Checks(ctx, node.ID, historyLimit); err == nil {
 		result.Checks = checks
 	}
+	if transports, err := s.Store.UVTransports(ctx); err == nil {
+		result.Transports = transports[node.ID]
+	}
+	if result.Check != nil {
+		result.ProbedTransport = checkTransport(result.Check.DetailJSON)
+	}
 	return result, nil
+}
+
+// checkTransport reads the transport a probe row was about. Rows written before the field existed carry
+// a plain message or an empty object; an empty answer means "the row does not say", which the caller
+// prints instead of guessing.
+func checkTransport(detail string) string {
+	var payload struct {
+		Transport string `json:"transport"`
+	}
+	if json.Unmarshal([]byte(detail), &payload) != nil {
+		return ""
+	}
+	return payload.Transport
 }
 
 // resolveUV accepts either a node id or a domain, because an operator reads domains and copies ids.

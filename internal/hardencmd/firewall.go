@@ -62,7 +62,11 @@ type jsonFirewall struct {
 	Confirmed   bool     `json:"confirmed"`
 	DefaultDeny bool     `json:"default_deny"`
 	Ports       []int    `json:"ports,omitempty"`
+	UDPPorts    []int    `json:"udp_ports,omitempty"`
 	SSHFrom     []string `json:"ssh_from,omitempty"`
+	// Drift names the fields where the configuration disagrees with the record the last `on` wrote:
+	// an empty list is a table that still answers for the node as it is configured.
+	Drift       []string `json:"drift,omitempty"`
 	Bans        int      `json:"bans"`
 	Blocked     int      `json:"blocked"`
 	Scans       int      `json:"scans"`
@@ -325,7 +329,7 @@ func firewallStatus(env *Env, args []string) int {
 		fmt.Fprintf(env.Stderr, "%s firewall: %v\n", name, err)
 		return ExitFailure
 	}
-	tableName, _ := env.table()
+	tableName, ports := env.table()
 	applied, err := firewall.LoadApplied(component.Paths.Firewall)
 	if err != nil {
 		fmt.Fprintf(env.Stderr, "%s firewall: %v\n", name, err)
@@ -358,6 +362,12 @@ func firewallStatus(env *Env, args []string) int {
 	}
 	if present && applied != nil {
 		report.DefaultDeny = applied.DefaultDeny
+		report.UDPPorts = applied.UDPPorts
+		// What the configuration would render now: a field that differs is a table the operator
+		// confirmed no longer answering for the node as it is configured.
+		if want, err := component.Security.Table(tableName, ports); err == nil {
+			report.Drift = firewall.Drift(applied, want)
+		}
 	}
 	report.Confirmed = applied.Confirmed()
 	if applied.Pending(now) && now.Before(applied.Deadline) {
@@ -380,8 +390,9 @@ func firewallStatus(env *Env, args []string) int {
 	case !present && component.Security.Firewall.Enabled:
 		notes = append(notes, "the configuration asks for the firewall, but no table is applied: run `"+name+" firewall on`")
 	}
-	if present && applied != nil && applied.DefaultDeny != component.Security.Firewall.DenyOthers() {
-		notes = append(notes, "default_deny differs from the configuration; `firewall on` applies what the configuration says")
+	if len(report.Drift) > 0 {
+		notes = append(notes, fmt.Sprintf("the configuration changed after this table was applied (%s differ); "+
+			"`%s firewall on` applies what the configuration says", strings.Join(report.Drift, ", "), name))
 	}
 	report.Note = strings.Join(notes, "; ")
 
@@ -399,6 +410,7 @@ func firewallStatus(env *Env, args []string) int {
 			deny = "other inbound allowed"
 		}
 		fmt.Fprintf(env.Stdout, "table:      inet %s, %s, ports %s\n", tableName, deny, portsWords(report.Ports))
+		fmt.Fprintf(env.Stdout, "udp:        %s\n", portsWords(report.UDPPorts))
 		if len(report.SSHFrom) > 0 {
 			fmt.Fprintf(env.Stdout, "ssh:        port %d from %s\n", firewall.SSHPort, strings.Join(report.SSHFrom, ", "))
 		} else {

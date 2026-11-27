@@ -9,15 +9,15 @@ look in.
 ## First three commands
 
 ```bash
-termit-uv doctor                  # on the node: host and node health, one line per check
+termit-uv doctor                  # on the node: host, node and tunnel, in three groups and one verdict
 termit-uv status                  # identity, certificate, peers, last sync, WARP
 termit-mn status                  # on the server: prober, queue, certificate, node table
 ```
 
-`termit-uv doctor` prints a hint next to every failing check, and `termit-mn uv show <node>` on the server has the
-last probe and the last self-check together — which is how you tell "the box is broken" from "the
-path to it is broken". For anything else: `journalctl -u termit-uv-agent` on the node,
-`journalctl -u termit-mn` on the server.
+`termit-uv doctor` prints a hint next to every failing check and closes with one verdict line, and
+`termit-mn uv show <node>` on the server has the last probe and the last self-check together — which is
+how you tell "the box is broken" from "the path to it is broken". For anything else:
+`journalctl -u termit-uv-agent` on the node, `journalctl -u termit-mn` on the server.
 
 ## Read this before you panic
 
@@ -56,7 +56,7 @@ path to it is broken". For anything else: `journalctl -u termit-uv-agent` on the
 | Symptom | Likely cause | What to do |
 |---|---|---|
 | `termit-uv init` stops at `ports` | something already listens on 80/443 | stop it, re-run `termit-uv init` |
-| `termit-uv init` stops at `dns` | the record does not resolve here yet | fix DNS; the install itself does not need it, enrolment does |
+| `termit-uv init` stops at `dns` | the record does not point at this box yet | fix DNS: the certificate is refused until the name reaches this server, so `init` stops before it spends an attempt. A proxy or NAT in front declares itself with `acme.allow_remote_ip: true` |
 | `termit-uv init` stops at `certificate` | port 80 unreachable from the internet, or DNS is wrong | check both from outside; `termit-uv init --only certificate` re-runs just this step |
 | `termit-uv enroll` → `dns_mismatch` | the domain resolves elsewhere, or the request came through a proxy | fix the A/AAAA record and retry; the server compares the record with the address your request came from |
 | `termit-uv enroll` → `invalid_invite` | code mistyped, revoked, expired or used up | `termit-mn invite list` on the server, create a new one |
@@ -102,7 +102,7 @@ path to it is broken". For anything else: `journalctl -u termit-uv-agent` on the
 |---|---|---|
 | subscription returns `404` | the token was rotated or mistyped | `termit-uv status` shows the current URL; `termit-mn sub rotate` issues a new one |
 | client shows old peers | it has not refreshed | force a refresh in the client; the URL carries an `ETag`, so a cached client costs one `304` |
-| client connects but no traffic | the peer's credential was rotated, or the node is `blocked` | `termit-mn uv show <node>`; a blocked node is out of every peer set |
+| client connects but no traffic | the peer's credential was rotated (a reinstall or a move reissues it), or the node is `blocked` | `termit-mn uv show <node>`; a blocked node is out of every peer set |
 | client error `unknown version: 72`, and every connection fails | its core has no XHTTP and fell back to plain VLESS; the node answered `HTTP/1.1 400`, whose `H` (72) it read as a VLESS version | use a client on Xray (Happ, v2rayNG, v2rayN, NekoRay) or `podkop-engine`; stock sing-box, Hiddify and Streisand cannot speak this transport |
 | voice in Discord fails with «Не установлен маршрут» ("No Route") while its text and the browser work | the client is in system-proxy mode: voice is UDP, and a system proxy reaches only apps that honour it — Throne's own docs name Discord as one that does not | switch the client to TUN mode (Throne: *Tun mode*, needs administrator rights); the TLS profile carries UDP through it, so the `hy2` link is not required |
 | the client's own "URL test" fails but browsing works | the test URL is `cp.cloudflare.com`, which resets plain-HTTP `HEAD` requests | point the test at `https://www.gstatic.com/generate_204` |

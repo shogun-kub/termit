@@ -3,6 +3,7 @@ package hardencmd
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/shogun-kub/termit/internal/firewall"
 )
@@ -43,11 +44,21 @@ unit runs; running it by hand is the way to check what a reboot would do.`)
 		return ExitOK
 	}
 
-	tableName, _ := env.table()
+	tableName, ports := env.table()
 	if applied.Table != "" && applied.Table != tableName {
 		fmt.Fprintf(env.Stderr, "%s firewall restore: the record is for table inet %s, this is %s; nothing restored\n",
 			name, applied.Table, tableName)
 		return ExitOK
+	}
+	// The record is restored as it was, because that is what the operator confirmed. A configuration that
+	// changed since then is said out loud here: the boot journal is the only place an operator who never
+	// runs `firewall on` again would see it.
+	if want, err := component.Security.Table(tableName, ports); err == nil {
+		if drift := firewall.Drift(applied, want); len(drift) > 0 {
+			fmt.Fprintf(env.Stderr, "%s firewall restore: the configuration changed after this table was confirmed (%s differ); "+
+				"the confirmed table is restored as it was — run `%s firewall on` to apply the configuration\n",
+				name, strings.Join(drift, ", "), name)
+		}
 	}
 	prefixes, err := firewall.Prefixes(applied.SSHFrom)
 	if err != nil {

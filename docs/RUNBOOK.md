@@ -11,7 +11,7 @@ matches what you see.
 | Symptom | Likely cause | What to do |
 |---|---|---|
 | `termit-uv init` stops at `preflight` with `ports` failed | something already listens on 80/443 | `ss -H -ltnp`, stop it, re-run `termit-uv init` |
-| `dns` warn at preflight | the record does not resolve here yet | point the A/AAAA record at the box; the install does not need it, enrollment does |
+| `dns` failed at preflight | the record does not point at this box yet | point the A/AAAA record at this server: the certificate is refused until it does. A verified proxy or NAT in front declares itself with `acme.allow_remote_ip: true` |
 | `termit-uv enroll` → `dns_mismatch` | the domain resolves elsewhere, or the request came through a proxy | fix DNS; the check compares against the TCP peer |
 | `termit-uv enroll` → `rate_limited` | ten failed attempts in fifteen minutes from one address | wait, then retry; the window is per address |
 | `termit-uv enroll` → `domain_taken` | a record with that domain exists | `termit-mn uv show <domain>`; remove or relocate it first |
@@ -31,6 +31,9 @@ matches what you see.
 | `termit-mn serve` refuses: `cannot read the master key` | the key file is missing or unreadable | restore it from a backup; without it the registry is useless |
 | SQLite `database is locked` | the database is on a slow or network filesystem, or a second process opened it | keep it on local disk; admin commands go through the server, never direct |
 | subscription `404` | the token was rotated or mistyped | `termit-uv status` shows the current URL; `termit-mn sub rotate` issues a new one |
+| `termit-uv upgrade` → `the server has not reported its version yet` | the node has not synced since this build learned to remember it | `termit-uv sync`, then `termit-uv upgrade`; or name the release with `--to vX.Y.Z` |
+| `termit-uv upgrade` → `did not converge the node` | the new binary could not converge this host | the previous binary is back in place and nothing else changed; fix what the step printed, then run it again |
+| `termit-mn update --apply` → `the previous binary is back in place; restart the server to run it` | the new build did not survive the restart | `systemctl restart termit-mn`, read the journal, then `termit-mn status` |
 
 When nothing obvious is wrong, the order is `termit-uv doctor` on the node, `termit-mn uv show` on the
 server, then both journals. A check that says `unknown` is a failure of the observer, not of the node — say
@@ -170,20 +173,36 @@ timer removes the table without needing SSH. If you are still in, `termit-uv fir
 Nodes and the server are separate binaries with separate records: upgrade the server first, then the
 nodes. Within `api_version: 1` the wire protocol is additive, so a mixed fleet keeps working.
 
-On the MN:
+On the MN, the binary can replace itself. `--check` is the default and installs nothing:
 
 ```bash
-systemctl stop termit-mn
-install -m 0755 termit-mn.new /usr/bin/termit-mn
-systemctl start termit-mn
+termit-mn update --check      # follow releases/latest and say whether this build is behind
+termit-mn update --apply      # download, verify against SHA256SUMS, swap, restart
 journalctl -u termit-mn -n 20 --no-pager
 termit-mn status
 ```
 
-The database migrates on start, forward only. **Take a backup before an upgrade**, and keep the previous
-binary beside the new one: it will not read a newer schema.
+`--apply` keeps the running binary as `/usr/bin/termit-mn.prev` and puts it back if
+`systemctl restart termit-mn` fails, so a failed update leaves the previous binary in place; the database
+migrates on start, forward only, and the previous binary will not read a newer schema. **Take a backup
+before an upgrade** (§3.5.1) — that is the only way back if the new build is wrong rather than broken.
+Re-running `mn.sh` is still the way to move the probe worker or the unit, which `termit-mn update` does
+not touch.
 
-On a node the bootstrap script is the short path — it replaces the binary and converges:
+On a node the short path follows the server rather than the release feed:
+
+```bash
+termit-uv upgrade --check    # what a run would install: the server's version, nothing downloaded
+termit-uv upgrade            # install it, keep termit-uv.prev, converge with the new binary
+termit-uv doctor
+```
+
+`termit-uv upgrade` installs the version the management server reported at the last sync — never
+`latest` — verifies it, writes it beside the running binary and lets **it** run `init`, because the new
+release is the one that knows what it needs. A converge that fails restores the previous binary by
+itself. If it says the server has not reported its version, run `termit-uv sync` first (or name the
+release: `--to v0.7.0`). The bootstrap script is the other short path — it installs the newest release,
+or the one `--version` names, and runs the same `init`:
 
 ```bash
 sh uv.sh --no-enroll                     # the newest release
@@ -337,3 +356,24 @@ works. Work through these in order; each one removes a class of causes.
    suspect the network: some paths drop or throttle UDP/443. `tcpdump -ni any 'udp port 443'` on the node
    shows whether the client's packets arrive at all; none arriving is a path or firewall problem, not a
    Termit one.
+8. **Has a client been banned for its own QUIC?** With the table on and no `udp dport 443` accept in it, a
+   participant's QUIC probes land in the scan meter, and the guard bans the source — the ban then drops
+   everything from that address, VLESS included. `termit-uv bans list` names it as `scan`; `termit-uv bans
+   unban <ip>` lifts it, and `termit-uv firewall on` + `confirm` removes the cause. An address banned this
+   way is not a scanner, it is a client the table did not let in.
+
+## 13. A reboot restored an older firewall table
+
+`termit-uv firewall restore` — the boot unit — puts back the record the last confirmed `on` wrote, and that
+record does not follow the configuration. A port added afterwards (`security.firewall.udp_ports: [443]`,
+when Hysteria2 was turned on, for instance) is missing from the kernel until the next `firewall on`; and a
+missing UDP port is not merely closed: its packets reach the scan meter.
+
+The drift is said out loud now: `termit-uv firewall status` prints the applied UDP ports and names the fields
+that moved (`udp_ports`, `ports`, `ssh_from`, `default_deny`), `termit-uv doctor` warns about the same, and
+`termit-uv firewall restore` writes it to the boot journal. The table is still applied only by `firewall on`:
+
+    termit-uv firewall on
+    termit-uv firewall confirm
+
+The record that `on` writes is what the next reboot restores, so the warning goes away with it.

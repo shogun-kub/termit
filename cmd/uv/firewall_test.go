@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/shogun-kub/termit/internal/firewall"
 	"github.com/shogun-kub/termit/internal/uv/config"
@@ -407,6 +408,83 @@ func TestFirewallStatusJSON(t *testing.T) {
 	}
 	if _, ok := report["confirm_by"].(string); !ok {
 		t.Errorf("confirm_by = %v, want a timestamp", report["confirm_by"])
+	}
+}
+
+// TestFirewallStatusNotesConfigurationDrift: the record is what the boot unit restores, so a port added
+// to the configuration after the last `on` has to surface here — nothing else re-reads the file.
+func TestFirewallStatusNotesConfigurationDrift(t *testing.T) {
+	t.Parallel()
+	f := newFirewallFixture(t, true, true)
+	if got := f.run("firewall", "on"); got != exitOK {
+		t.Fatalf("on = %d: %s", got, f.stderr.String())
+	}
+	cfg, err := f.app.loadConfig(f.configPath)
+	if err != nil {
+		t.Fatalf("loadConfig: %v", err)
+	}
+	cfg.Security.Firewall.UDPPorts = []int{443}
+	if err := cfg.Save(f.configPath); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	f.stdout.Reset()
+	if got := f.run("firewall", "status"); got != exitOK {
+		t.Fatalf("status = %d: %s", got, f.stderr.String())
+	}
+	out := f.stdout.String()
+	for _, want := range []string{"udp:", "udp_ports differ"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output %q does not contain %q", out, want)
+		}
+	}
+
+	f.stdout.Reset()
+	if got := f.run("firewall", "status", "--json"); got != exitOK {
+		t.Fatalf("status --json = %d: %s", got, f.stderr.String())
+	}
+	var report struct {
+		UDPPorts []int    `json:"udp_ports"`
+		Drift    []string `json:"drift"`
+	}
+	if err := json.Unmarshal(f.stdout.Bytes(), &report); err != nil {
+		t.Fatalf("the report is not JSON: %v", err)
+	}
+	if len(report.Drift) != 1 || report.Drift[0] != "udp_ports" {
+		t.Errorf("drift = %v, want [udp_ports]", report.Drift)
+	}
+	if len(report.UDPPorts) != 0 {
+		t.Errorf("the applied udp_ports = %v, want none", report.UDPPorts)
+	}
+}
+
+// TestFirewallRestoreWarnsWhenTheConfigurationMoved: the boot unit restores the confirmed table — that is
+// its contract — but the journal has to say when the file now asks for something else, or the next reboot
+// repeats the same silent gap.
+func TestFirewallRestoreWarnsWhenTheConfigurationMoved(t *testing.T) {
+	t.Parallel()
+	f := newFirewallFixture(t, true, true)
+	cfg, err := f.app.loadConfig(f.configPath)
+	if err != nil {
+		t.Fatalf("loadConfig: %v", err)
+	}
+	cfg.Security.Firewall.UDPPorts = []int{443}
+	if err := cfg.Save(f.configPath); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	now := f.app.now()
+	writeApplied(t, cfg.Paths.FirewallPath(), firewall.Applied{
+		Table: firewall.NodeTable, Ports: []int{22, 80, 443}, DefaultDeny: true,
+		AppliedAt: now.Add(-time.Hour).UTC(), ConfirmedAt: now.Add(-59 * time.Minute).UTC(),
+	})
+	if got := f.run("firewall", "restore"); got != exitOK {
+		t.Fatalf("restore = %d: %s", got, f.stderr.String())
+	}
+	errOut := f.stderr.String()
+	for _, want := range []string{"the configuration changed after this table was confirmed", "udp_ports"} {
+		if !strings.Contains(errOut, want) {
+			t.Errorf("stderr %q does not contain %q", errOut, want)
+		}
 	}
 }
 

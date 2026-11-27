@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"io"
 	"os"
 	"strings"
 	"testing"
 
 	"github.com/shogun-kub/termit/internal/i18n"
+	"github.com/shogun-kub/termit/internal/mn/admin"
 	"github.com/shogun-kub/termit/internal/termui"
 )
 
@@ -27,17 +30,57 @@ func newMenu(answers string) (*menu, *[]string, *strings.Builder) {
 	return m, &ran, out
 }
 
+// planOf runs the plan of the leaf named by label, wherever it lives in the tree.
 func planOf(t *testing.T, m *menu, label, answers string) ([][]string, error) {
 	t.Helper()
-	for _, entry := range m.entries() {
-		if entry.labelOf(m.translator()) != label {
-			continue
+	return runEntry(t, m, findEntry(t, m, label), answers)
+}
+
+// runEntry gives the entry a fresh UI carrying the answers and returns what it planned.
+func runEntry(t *testing.T, m *menu, entry menuEntry, answers string) ([][]string, error) {
+	t.Helper()
+	m.ui = termui.New(strings.NewReader(answers), &strings.Builder{}, termui.Style{})
+	return entry.plan(m.ui)
+}
+
+// findEntry finds an entry anywhere in the tree, so a test names the command it means.
+func findEntry(t *testing.T, m *menu, label string) menuEntry {
+	t.Helper()
+	var find func(entries []menuEntry) (menuEntry, bool)
+	find = func(entries []menuEntry) (menuEntry, bool) {
+		for _, entry := range entries {
+			if entry.labelOf(m.translator()) == label {
+				return entry, true
+			}
+			if entry.children != nil {
+				if found, ok := find(entry.children()); ok {
+					return found, true
+				}
+			}
 		}
-		m.ui = termui.New(strings.NewReader(answers), &strings.Builder{}, termui.Style{})
-		return entry.plan(m.ui)
+		return menuEntry{}, false
+	}
+	if entry, ok := find(m.entries()); ok {
+		return entry
 	}
 	t.Fatalf("the menu has no %q entry", label)
-	return nil, nil
+	return menuEntry{}
+}
+
+// childOf is the entry named label inside the group named group.
+func childOf(t *testing.T, m *menu, group, label string) menuEntry {
+	t.Helper()
+	parent := findEntry(t, m, group)
+	if parent.children == nil {
+		t.Fatalf("%q is not a group", group)
+	}
+	for _, entry := range parent.children() {
+		if entry.labelOf(m.translator()) == label {
+			return entry
+		}
+	}
+	t.Fatalf("%q has no %q entry", group, label)
+	return menuEntry{}
 }
 
 func TestServerMenuEntriesMapToCommands(t *testing.T) {
@@ -50,19 +93,14 @@ func TestServerMenuEntriesMapToCommands(t *testing.T) {
 		"help":   "help",
 	}
 	seen := map[string]bool{}
-	for _, entry := range m.entries() {
-		label := entry.labelOf(m.translator())
-		expected, ok := want[label]
-		if !ok {
-			continue
-		}
+	for _, label := range []string{"status", "backup", "guard", "help"} {
 		seen[label] = true
 		plan, err := planOf(t, m, label, "")
 		if err != nil {
 			t.Fatalf("%s: %v", label, err)
 		}
-		if got := strings.Join(plan[0], " "); got != expected {
-			t.Errorf("%s runs %q, want %q", label, got, expected)
+		if got := strings.Join(plan[0], " "); got != want[label] {
+			t.Errorf("%s runs %q, want %q", label, got, want[label])
 		}
 	}
 	for label := range want {
@@ -75,37 +113,48 @@ func TestServerMenuEntriesMapToCommands(t *testing.T) {
 func TestNodeMenuAsksForTheNodeItActsOn(t *testing.T) {
 	t.Parallel()
 	cases := map[string]struct {
+		verb    string
 		answers string
 		want    string
 	}{
-		"list needs no node": {"1\n", "uv list"},
-		"show":               {"2\nnode1.example.com\n", "uv show node1.example.com"},
-		"approve":            {"3\nnode1.example.com\n", "uv approve node1.example.com"},
-		"block records a reason": {"5\nnode1.example.com\ncertificate is broken\n",
-			"uv block node1.example.com --reason certificate is broken"},
-		"remove records a reason": {"7\nnode1.example.com\nhardware gone\n",
-			"uv rm node1.example.com --reason hardware gone"},
-		"reissue":   {"8\nnode1.example.com\ny\n", "uv reissue node1.example.com"},
-		"agent key": {"9\nnode1.example.com\n", "uv agentkey node1.example.com"},
-		"forget":    {"10\nnode1.example.com\ny\n", "uv forget node1.example.com"},
+		"list needs no node":      {"list", "", "uv list"},
+		"show":                    {"show", "node1.example.com\n", "uv show node1.example.com"},
+		"approve":                 {"approve", "node1.example.com\n", "uv approve node1.example.com"},
+		"block records a reason":  {"block", "node1.example.com\ncertificate is broken\n", "uv block node1.example.com --reason certificate is broken"},
+		"remove records a reason": {"remove", "node1.example.com\nhardware gone\n", "uv rm node1.example.com --reason hardware gone"},
+		"reissue":                 {"reissue", "node1.example.com\ny\n", "uv reissue node1.example.com"},
+		"agent key":               {"agent key", "node1.example.com\n", "uv agentkey node1.example.com"},
+		"forget":                  {"forget", "node1.example.com\ny\n", "uv forget node1.example.com"},
 	}
 	for name, tc := range cases {
-		m, _, _ := newMenu("")
-		plan, err := planOf(t, m, "nodes", tc.answers)
-		if err != nil {
-			t.Fatalf("%s: %v", name, err)
-		}
-		if got := strings.Join(plan[0], " "); got != tc.want {
-			t.Errorf("%s: runs %q, want %q", name, got, tc.want)
-		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			m, _, _ := newMenu("")
+			plan, err := runEntry(t, m, childOf(t, m, "nodes", tc.verb), tc.answers)
+			if err != nil {
+				t.Fatalf("plan: %v", err)
+			}
+			if got := strings.Join(plan[0], " "); got != tc.want {
+				t.Errorf("runs %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 
-// A node is the value the whole sub-menu acts on, so an empty answer asks again rather than giving up.
-func TestNodeMenuAsksAgainForAnEmptyNode(t *testing.T) {
+// A node is the value the whole sub-menu acts on. The picker lists the mesh when the server answers;
+// without one, the question takes a typed domain, and an empty answer cancels the action — the operator
+// changed their mind, and asking again would not let them out.
+func TestNodeMenuCancelsOnAnEmptyNode(t *testing.T) {
 	t.Parallel()
 	m, _, _ := newMenu("")
-	plan, err := planOf(t, m, "nodes", "2\n\nnode1.example.com\n")
+	plan, err := runEntry(t, m, childOf(t, m, "nodes", "show"), "\n")
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if plan != nil {
+		t.Errorf("plan = %v, want a cancel", plan)
+	}
+	plan, err = runEntry(t, m, childOf(t, m, "nodes", "show"), "node1.example.com\n")
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
@@ -118,12 +167,12 @@ func TestNodeMenuAsksAgainForAnEmptyNode(t *testing.T) {
 func TestReissueAndForgetAskFirst(t *testing.T) {
 	t.Parallel()
 	cases := map[string]string{
-		"reissue": "8\nnode1.example.com\nn\n",
-		"forget":  "10\nnode1.example.com\nn\n",
+		"reissue": "node1.example.com\nn\n",
+		"forget":  "node1.example.com\nn\n",
 	}
 	for name, answers := range cases {
 		m, _, _ := newMenu("")
-		plan, err := planOf(t, m, "nodes", answers)
+		plan, err := runEntry(t, m, childOf(t, m, "nodes", name), answers)
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
@@ -173,13 +222,18 @@ func TestHardeningEntriesTakeNoAdminFlags(t *testing.T) {
 		"nodes":                   false,
 	}
 	seen := map[string]bool{}
-	for _, entry := range m.entries() {
-		label := entry.labelOf(m.translator())
-		expected, ok := want[label]
-		if !ok {
+	for label, expected := range want {
+		seen[label] = true
+		entry := findEntry(t, m, label)
+		if entry.children != nil {
+			// A group is never run; its leaves are, and they are the ones that must agree.
+			for _, child := range entry.children() {
+				if child.local != expected {
+					t.Errorf("%s/%s: local = %v, want %v", label, child.labelOf(m.translator()), child.local, expected)
+				}
+			}
 			continue
 		}
-		seen[label] = true
 		if entry.local != expected {
 			t.Errorf("%s: local = %v, want %v", label, entry.local, expected)
 		}
@@ -196,17 +250,18 @@ func TestHardeningEntriesTakeNoAdminFlags(t *testing.T) {
 func TestServerMenuDrawsTheHardeningSubMenus(t *testing.T) {
 	t.Parallel()
 	cases := map[string]struct {
+		group   string
 		entry   string
 		answers string
 		want    string
 	}{
-		"firewall on":      {"firewall", "2\n", "firewall on"},
-		"bans list":        {"bans", "1\n", "bans list"},
-		"bans unblock one": {"bans", "5\n203.0.113.7\n", "bans unblock 203.0.113.7"},
+		"firewall on":      {"firewall", "on", "", "firewall on"},
+		"bans list":        {"bans", "list", "", "bans list"},
+		"bans unblock one": {"bans", "unblock", "203.0.113.7\n", "bans unblock 203.0.113.7"},
 	}
 	for name, tc := range cases {
 		m, _, _ := newMenu("")
-		plan, err := planOf(t, m, tc.entry, tc.answers)
+		plan, err := runEntry(t, m, childOf(t, m, tc.group, tc.entry), tc.answers)
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
@@ -219,17 +274,18 @@ func TestServerMenuDrawsTheHardeningSubMenus(t *testing.T) {
 func TestInviteMenu(t *testing.T) {
 	t.Parallel()
 	cases := map[string]struct {
+		entry   string
 		answers string
 		want    string
 	}{
-		"list":                  {"1\n", "invite list"},
-		"create with a note":    {"2\nfor the second node\n", "invite create --note for the second node"},
-		"create without a note": {"2\n\n", "invite create"},
-		"revoke":                {"3\nABCD-EFGH\n", "invite revoke ABCD-EFGH"},
+		"list":                  {"list", "", "invite list"},
+		"create with a note":    {"create", "for the second node\n", "invite create --note for the second node"},
+		"create without a note": {"create", "\n", "invite create"},
+		"revoke":                {"revoke", "ABCD-EFGH\n", "invite revoke ABCD-EFGH"},
 	}
 	for name, tc := range cases {
 		m, _, _ := newMenu("")
-		plan, err := planOf(t, m, "invites", tc.answers)
+		plan, err := runEntry(t, m, childOf(t, m, "invites", tc.entry), tc.answers)
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
@@ -284,7 +340,7 @@ func TestPolicyMenu(t *testing.T) {
 func TestSubscriptionMenuRotates(t *testing.T) {
 	t.Parallel()
 	m, _, _ := newMenu("")
-	plan, err := planOf(t, m, "subscription", "1\nnode1.example.com\n\n")
+	plan, err := planOf(t, m, "subscription", "node1.example.com\n\n")
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
@@ -293,7 +349,7 @@ func TestSubscriptionMenuRotates(t *testing.T) {
 	}
 
 	withDomain, _, _ := newMenu("")
-	plan, err = planOf(t, withDomain, "subscription", "1\nnode1.example.com\nmn.example.com\n")
+	plan, err = planOf(t, withDomain, "subscription", "node1.example.com\nmn.example.com\n")
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
@@ -305,7 +361,7 @@ func TestSubscriptionMenuRotates(t *testing.T) {
 func TestServerMenuRunsTheChosenCommand(t *testing.T) {
 	t.Parallel()
 	// Choosing status runs `status` and nothing else; quitting then leaves.
-	m, ran, out := newMenu("1\n\nq\n")
+	m, ran, out := newMenu("1\n1\n\nq\n")
 	if code := m.loop(); code != exitOK {
 		t.Fatalf("loop = %d, want 0", code)
 	}
@@ -321,7 +377,7 @@ func TestServerMenuStopsAtAFailingStep(t *testing.T) {
 	t.Parallel()
 	out := &strings.Builder{}
 	m := &menu{
-		ui:  termui.New(strings.NewReader("1\n\nq\n"), out, termui.Style{}),
+		ui:  termui.New(strings.NewReader("1\n1\n\nq\n"), out, termui.Style{}),
 		run: func([]string) int { return exitFailure },
 		// Pinned like newMenu's: a bare menu takes its language from the console, and CI's console is
 		// UTF-8, so without this the assertion below reads Russian output on Linux and English here.
@@ -513,5 +569,141 @@ func TestServerMenuSpeaksTheConfiguredLanguage(t *testing.T) {
 				t.Errorf("the menu does not say %q:\n%s", tc.want, out.String())
 			}
 		})
+	}
+}
+
+// pickNode is the answer to "which node?": a list of domains, a number, a typed domain, a unique part of
+// one, or nothing at all.
+func TestPickNodeChoosesANumber(t *testing.T) {
+	t.Parallel()
+	m, _, _ := newMenu("2\n")
+	m.nodes = func(context.Context) ([]admin.NodeView, error) {
+		return []admin.NodeView{
+			{ID: "a", Domain: "node-a.example.com", State: "active"},
+			{ID: "b", Domain: "then5.bookinet.ru", State: "active"},
+		}, nil
+	}
+	got, err := m.pickNode(m.ui)
+	if err != nil {
+		t.Fatalf("pickNode: %v", err)
+	}
+	if got != "then5.bookinet.ru" {
+		t.Errorf("picked %q, want then5.bookinet.ru", got)
+	}
+}
+
+func TestPickNodeAcceptsAPartOfADomain(t *testing.T) {
+	t.Parallel()
+	m, _, _ := newMenu("then\n")
+	m.nodes = func(context.Context) ([]admin.NodeView, error) {
+		return []admin.NodeView{
+			{ID: "a", Domain: "node-a.example.com"},
+			{ID: "b", Domain: "then5.bookinet.ru"},
+		}, nil
+	}
+	got, err := m.pickNode(m.ui)
+	if err != nil {
+		t.Fatalf("pickNode: %v", err)
+	}
+	if got != "then5.bookinet.ru" {
+		t.Errorf("picked %q, want then5.bookinet.ru", got)
+	}
+}
+
+func TestPickNodeCancelsOnZero(t *testing.T) {
+	t.Parallel()
+	m, _, _ := newMenu("0\n")
+	m.nodes = func(context.Context) ([]admin.NodeView, error) {
+		return []admin.NodeView{{ID: "a", Domain: "node-a.example.com"}}, nil
+	}
+	got, err := m.pickNode(m.ui)
+	if err != nil {
+		t.Fatalf("pickNode: %v", err)
+	}
+	if got != "" {
+		t.Errorf("picked %q, want a cancel", got)
+	}
+}
+
+// The list needs the server; the action does not. When the socket is unreachable the picker says so and
+// takes what the operator types, still cancelling on an empty answer.
+func TestPickNodeFallsBackToTyping(t *testing.T) {
+	t.Parallel()
+	m, _, out := newMenu("node-a.example.com\n")
+	m.nodes = func(context.Context) ([]admin.NodeView, error) { return nil, errors.New("no socket") }
+	got, err := m.pickNode(m.ui)
+	if err != nil {
+		t.Fatalf("pickNode: %v", err)
+	}
+	if got != "node-a.example.com" {
+		t.Errorf("picked %q, want the typed domain", got)
+	}
+	if !strings.Contains(out.String(), "did not answer") {
+		t.Errorf("the picker did not say why the list is missing:\n%s", out.String())
+	}
+
+	m.ui = termui.New(strings.NewReader("\n"), &strings.Builder{}, termui.Style{})
+	if got, _ := m.pickNode(m.ui); got != "" {
+		t.Errorf("an empty answer picked %q, want a cancel", got)
+	}
+}
+
+func TestPickNodeAsksAgainOnAMiss(t *testing.T) {
+	t.Parallel()
+	m, _, _ := newMenu("zzz\n1\n")
+	m.nodes = func(context.Context) ([]admin.NodeView, error) {
+		return []admin.NodeView{{ID: "a", Domain: "node-a.example.com"}}, nil
+	}
+	got, err := m.pickNode(m.ui)
+	if err != nil {
+		t.Fatalf("pickNode: %v", err)
+	}
+	if got != "node-a.example.com" {
+		t.Errorf("picked %q, want node-a.example.com", got)
+	}
+}
+
+func TestMatchNodesNeverGuesses(t *testing.T) {
+	t.Parallel()
+	nodes := []admin.NodeView{
+		{ID: "AbC", Domain: "node-a.example.com"},
+		{ID: "b", Domain: "node-b.example.com"},
+		{ID: "c", Domain: "then5.bookinet.ru"},
+	}
+	cases := map[string]int{"abc": 1, "Node-A.Example.com": 1, "then": 1, "node": 2, "elsewhere": 0, "": 0}
+	for typed, want := range cases {
+		if got := len(matchNodes(nodes, typed)); got != want {
+			t.Errorf("%q matched %d nodes, want %d", typed, got, want)
+		}
+	}
+}
+
+// The tree has to fit on one screen per level, and every command the flat menu offered has to still be
+// reachable: the move regrouped them, it dropped none.
+func TestTheServerMenuTreeFitsOnOneScreen(t *testing.T) {
+	t.Parallel()
+	m, _, _ := newMenu("")
+	top := m.entries()
+	if len(top) != 7 {
+		t.Errorf("the top level has %d entries, want 7", len(top))
+	}
+	leaves := 0
+	var walk func(entries []menuEntry)
+	walk = func(entries []menuEntry) {
+		if len(entries) > 10 {
+			t.Errorf("a level has %d entries, want at most 10", len(entries))
+		}
+		for _, entry := range entries {
+			if entry.children != nil {
+				walk(entry.children())
+				continue
+			}
+			leaves++
+		}
+	}
+	walk(top)
+	// 15 commands, with the node verb menu and the two hardening tables turned into levels of their own.
+	if leaves != 35 {
+		t.Errorf("the tree has %d leaves, want 35", leaves)
 	}
 }

@@ -66,7 +66,7 @@ Useful variations:
 | your own build, not a release | install the binary yourself and run `termit-uv init` |
 | opt out of WARP | `--no-warp`, later `termit-uv warp mode off` |
 | change how WARP carries traffic | `termit-uv init --warp-transport wireguard` (inside the core, TCP and UDP), `usque` (the MASQUE sidecar, TCP and UDP, for a box whose `warp-cli` cannot carry UDP) or `proxy` (the `warp-cli` sidecar, TCP only) |
-| choose which family leaves through WARP | `termit-uv init --warp-family ipv4` (the default; destinations of the other family are refused) or `ipv6` |
+| choose which family leaves through WARP | `termit-uv init --warp-family ipv4` (the default; destinations of the other family are refused) or `ipv6` — the core's own WireGuard transport only; on the MASQUE sidecar a non-default family is refused |
 
 The script refuses to install bytes it cannot verify. If it stops, the message names the file and the
 expected digest.
@@ -82,10 +82,11 @@ termit-uv init --domain node1.example.com --email you@example.com
 
 ## What `termit-uv init` does
 
-Fourteen steps, each idempotent: a step whose effect is already there does nothing, so re-running
-is the way to repair a partial install. With the QUIC transport enabled two more appear —
-`hysteria-binary` and `hysteria-config` — and without it `hysteria-off`, which does nothing on a node that
-never had it.
+Each step is idempotent: a step whose effect is already there does nothing, so re-running is the way to
+repair a partial install. With the QUIC transport enabled two more appear — `hysteria-binary` and
+`hysteria-config` — and without it `hysteria-off`, which does nothing on a node that never had it. The
+MASQUE transport (`--warp-transport usque`) adds `usque-binary` and `usque-register` the same way, and
+`usque-off` removes it from a node that no longer uses it.
 
 | Step | What it does |
 |---|---|
@@ -138,17 +139,25 @@ devices and the mesh, and it re-renders itself when a device is added or removed
 agent's daily cycle included, so a peer that joins or leaves the mesh reaches the page without a command.
 Every link it shows carries both dialects of the fragmentation switch — Happ's `fragment=…` and
 `sb.tls.fragment=1`/`sb.tls.record_fragment=1`, which `podkop-engine` and the patched sing-box builds read
-from the URI — so the same link works in either client without being edited by hand. That is not universal:
-**Throne** and the Nekoray family it comes from parse neither, because they keep TLS fragmentation in their
-own settings — in Throne for Android it is *Edit profile → “TLS Client Hello fragment”* (a tri-state, default
-“Keep default”, beside “TLS record fragment”), or, once for everything, *Settings → Presets → “TLS Client
-Hello fragment”* with its implementation and size; on the desktop build the same three live in the profile
-under “TLS Camouflage Settings”. The JSON form of the subscription carries it as `"fragment": true` and
-`"record_fragment": true`, so a client that imports the profile instead of the link gets it without a click. Each row also opens a
-QR code under the copy button: point the phone's camera at it and the client imports the link, which is the
-one gesture a phone has and the reason the page exists. The code is drawn by the node itself — the page
-references no external host — and it is the same secret as the text, so a screenshot of it is as much of a
-leak as a copied link.
+from the URI — so the same link works in either client without being edited by hand.
+
+That is not universal: **Throne** and the Nekoray family it comes from parse neither, because they keep
+TLS fragmentation in their own settings — in Throne for Android it is *Edit profile → “TLS Client Hello
+fragment”* (a tri-state, default “Keep default”, beside “TLS record fragment”), or, once for everything,
+*Settings → Presets → “TLS Client Hello fragment”* with its implementation and size; on the desktop build
+the same three live in the profile under “TLS Camouflage Settings”. The JSON form of the subscription
+carries it as `"fragment": true` and `"record_fragment": true`, so a client that imports the profile
+instead of the link gets it without a click.
+
+Each row also opens a QR code under the copy button: point the phone's camera at it and the client imports
+the link, which is the one gesture a phone has and the reason the page exists. The code is drawn by the
+node itself — the page references no external host — and it is the same secret as the text, so a
+screenshot of it is as much of a leak as a copied link.
+
+The page also answers "what does this node do" without a second command: the header carries its egress
+(`egress: all via wireguard`, `off (direct)`, …), and a link from the second transport is marked
+`(QUIC)` with the note that it is the one to pick for voice and video — that is the transport a call
+uses, and the page is where an owner is when they need to know it.
 
 ```bash
 termit-uv status
@@ -172,7 +181,7 @@ networks. Voice calls and video feel the difference first; ordinary browsing doe
 is installed until you ask.
 
 ```bash
-termit-uv init --hysteria      # install and serve it; the menu has "QUIC transport"
+termit-uv init --hysteria      # install and serve it; the menu has Network → QUIC transport
 ```
 
 The flag writes the block the transport needs (`hysteria: {}`) and adds `443` to
@@ -210,7 +219,7 @@ drops the second link from the subscription.
 
 ```bash
 termit-uv status               # identity, certificate, peers, last sync, WARP state
-termit-uv doctor               # host and node health, with a hint per failing check
+termit-uv doctor               # host, node and tunnel checks in three groups, with a hint per failing check
 termit-uv doctor --json        # the same, machine-readable
 termit-uv net                  # sample the TCP counters: is the node dropping, or the path?
 termit-uv sync                 # reconcile the core with the server's peer set now
@@ -219,7 +228,7 @@ termit-uv agent --once         # one full cycle in the foreground, for a drill
 termit-uv unblock              # ask the server to re-verify this node and lift a block
 ```
 
-`termit-uv status` in full, so you know what you are looking at:
+`termit-uv status`, so you know what you are looking at:
 
 ```
 domain:       node1.example.com
@@ -231,6 +240,7 @@ certificate:  expires 2027-02-08T12:06:44Z (in 89 days)
 management:   enrolled 2026-11-10T06:16:10Z
 subscribe:    https://mn.example.com/sub/AbCdEf...
 peers:        2 (node2.example.com, node3.example.com)
+server:       v0.7.0
 last sync:    ok 2026-11-10T14:51:11Z
 next sync:    2026-11-11T14:55:13Z
 warp:         on (via 104.28.1.1 (AMS))
@@ -249,9 +259,9 @@ interval. You do not need a timer of your own; the systemd units are installed b
 | Command | What it does | Main flags |
 |---|---|---|
 | `termit-uv init` | install or converge this node | `--domain`, `--email`, `--locale ru\|en`, `--happ-fragment VALUE`, `--no-warp`, `--warp MODE`, `--warp-selected LIST`, `--dry-run`, `--only`, `--skip`, `--acme-ca`, `--xray-version`, `--xray-download-base`, `--relocate`, `--agent-key-file` |
-| `termit-uv doctor` | diagnose the host and the node, change nothing | `--json` |
+| `termit-uv doctor` | diagnose the host, the node and the tunnel in three groups, and close with one verdict; changes nothing | `--json` |
 | `termit-uv net` | tell a lossy path from a broken node, by sampling the TCP counters | `--seconds 60`, `--json` |
-| `termit-uv status` | identity, certificate, peers, sync, WARP | `--json` |
+| `termit-uv status` | identity, certificate, peers, the server's build, sync, WARP | `--json` |
 | `termit-uv enroll` | register with the server | `--invite`, `--mn`, `--force`, `--no-sync` |
 | `termit-uv sync` | reconcile peers now | `--check`, `--dry-run`, `-v` (print the peer set) |
 | `termit-uv agent` | run the daily loop in the foreground | `--once` |
@@ -261,18 +271,21 @@ interval. You do not need a timer of your own; the systemd units are installed b
 | `termit-uv wizard` | walk through a first installation, remembering the answers; asks for the language first | `--fresh` |
 | `termit-uv warp` / `termit-uv warp status` | report egress | `--json` |
 | `termit-uv warp mode` | change egress | `off`, `all`, `selected --selected a.example,b.example` |
+| `termit-uv warp rotate` | register a new WARP device | |
 | `termit-uv unblock` | ask the server to re-verify and unblock | `--domain`, `--vless-url`, `--no-sync` |
+| `termit-uv upgrade` | replace this node's binary with a published release | `--to vX.Y.Z` (default: the server's version), `--check`, `--release-base URL` |
 | `termit-uv migrate` | move this node to its new domain | `--relocate`, `--domain`, `--no-sync` |
 | `termit-uv renew-cert` | renew the certificate now | `--force` (reissue even if not due) |
 | `termit-uv renew-site` | regenerate the decoy site | `--template product\|portal`, `--seed`, `--dry-run` |
 | `termit-uv uninstall` | remove what Termit created | `--purge` (also config, state, certificates, user), `--dry-run` |
-| `termit-uv firewall` | the host firewall: `status`, `on`, `off`, `confirm`, `refresh` | `--ssh-from`, `--default-deny`, `--dry-run` |
+| `termit-uv firewall` | the host firewall: `status`, `on`, `off`, `confirm`, `refresh`, `restore` | `--ssh-from`, `--default-deny`, `--dry-run` |
 | `termit-uv bans` | what the ban engine decided: `list`, `offenders`, `block IP`, `unban IP`, `unblock IP` | |
 | `termit-uv guard` | the ban engine: `status`, `run --once` | |
 | `termit-uv version` | build and protocol version | |
 
-Every command accepts `--config <path>` and `-v`/`--verbose`. The hardening half — `firewall`, `bans`
-and `guard` — stays off until you ask: [Hardening a node](hardening.md) is their page.
+Commands that read the configuration accept `--config <path>`, and most take `-v`/`--verbose`. The hardening
+half — `firewall`, `bans` and `guard` — stays off until you ask: [Hardening a node](hardening.md) is their
+page.
 
 ## Recipes
 

@@ -57,6 +57,9 @@ The reference documents go deeper, and assume you are comfortable with TLS, ACME
 | [`docs/OPERATIONS.md`](docs/OPERATIONS.md) | the reference: what runs where, sizing, WARP, certificates, clients, monitoring |
 | [`docs/PROTOCOL.md`](docs/PROTOCOL.md) | the wire contract: endpoints, payloads, problem codes, subscription formats |
 | [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) | adversaries, mitigations, residual risk, and what is deliberately not defended |
+| [`docs/RELEASE.md`](docs/RELEASE.md) | the release process and the checklist that runs before every tag |
+| [`docs/QUESTIONS.md`](docs/QUESTIONS.md) | decisions made, and the ones still open |
+| [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) | milestones, acceptance criteria, risks; why the releases look the way they do |
 | [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) | milestones, acceptance criteria, risks |
 | [`docs/QUESTIONS.md`](docs/QUESTIONS.md) | decisions taken and questions still open |
 | [`CHANGELOG.md`](CHANGELOG.md) | what each release changed — [`CHANGELOG.ru.md`](CHANGELOG.ru.md) is the same in Russian |
@@ -71,7 +74,7 @@ server has its own page in [Running the server](docs/guide/using-mn.md).
 ```bash
 # on the server (Debian 13, ports 80/443 free, DNS pointing at it)
 wget -q https://github.com/shogun-kub/termit/releases/latest/download/mn.sh
-sh mn.sh --domain mn.example.com --email you@example.com   # --version v0.4.2 pins a release
+sh mn.sh --domain mn.example.com --email you@example.com   # --version v0.7.0 pins a release
 termit-mn invite create --note "node-a"                    # prints the code once
 
 # on the node (Debian 13, ports 80/443 free, DNS pointing at it)
@@ -111,16 +114,19 @@ Deliberate design choices worth knowing before you deploy it:
 
 ## Status
 
-`v0.4.2` is the newest release. M1–M5 are implemented and verified on a three-machine acceptance lab
+`v0.7.0` is the newest release. M1–M5 are implemented and verified on a three-machine acceptance lab
 (Debian 13 in unprivileged containers), and the release pipeline builds verified artifacts for
 linux/amd64 and linux/arm64. Since `0.4.0` the WARP tunnel runs inside the proxy core instead of a
-sidecar, so it needs no `/dev/net/tun`, and `warp.family` decides which address family leaves through it.
-The passes behind the releases are recorded in [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md)
-(M5-8 for `0.3.2`, §11.9–§11.11 for `0.4.0`–`0.4.2`): three production hosts — a management server in a container and two
+sidecar, so it needs no `/dev/net/tun`, and `warp.family` decides which address family leaves through it;
+`0.5.0` added the second transport, Hysteria2, and `0.6.0` the MASQUE sidecar, the WARP transport that
+carries UDP; `0.7.0` put the daily work behind a menu, added `termit-uv upgrade` and `termit-mn update`,
+and gave `doctor` a verdict. The passes behind the releases are recorded in
+[`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) (§3.4.11 for `0.3.2`, §3.5.11–§3.5.15 for
+`0.4.0`–`0.4.2`, §3.8.2 for `0.6.0`, §4.7 for `0.7.0`): three production hosts — a management server in a container and two
 nodes behind real domains — with the host firewall confirmed and surviving a reboot, the ban engine and
 the blocklist active, WARP egress verified through Cloudflare's own trace, the owner's page reachable over
 TLS, and a phone app passing traffic through both nodes. `v0.3.2` and its predecessors carry their own
-sections of the same changelog. See [what is not here yet](#what-is-not-here-yet).
+sections of the same changelog. See [what is planned](#what-is-planned).
 
 ## Requirements
 
@@ -141,7 +147,7 @@ go test ./cmd/... ./internal/...                  # unit tests
 go vet ./cmd/... ./internal/...
 gofmt -l cmd internal deploy test                 # must print nothing
 
-go run ./deploy/release --version v0.4.2 --out dist   # the release directory, as CI builds it
+go run ./deploy/release --version v0.7.0 --out dist   # the release directory, as CI builds it
 ```
 
 Package patterns are explicit on purpose: `references/` holds third-party Go source inside this
@@ -151,7 +157,7 @@ Acceptance runs against real machines over SSH — three Debian boxes (one serve
 a fourth for the mesh test:
 
 ```bash
-export TERMIT_LAB_MN=root@mn.example.lan          # and the rest of AGENTS.md §4.3
+export TERMIT_LAB_MN=root@mn.example.lan          # and the rest of docs/LAB.md
 go test -tags=lab ./test/lab -v -timeout 30m
 ```
 
@@ -159,12 +165,35 @@ Without those variables the lab suite skips: it is a manual gate, not part of `g
 ./internal/...`. CI runs format, vet, lint, the unit suite with `-race`, a cross-build, the release
 tool's tests and `govulncheck`.
 
-## What is not here yet
+## What is planned
 
-- **WARP through the `proxy` transport**: the lab has no `/dev/net/tun`, so the suite covers the default
-  `wireguard` transport, which needs no device; installing and connecting the `warp-cli` sidecar needs a
-  KVM VM or a privileged container.
-- **A Docker Compose harness** for development without lab hardware.
+No dates: the order is the order it will be attempted, and a release takes an item only once the previous
+one is proved on production. The constraints behind each are in
+[`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) §5.
+
+**Next — 0.8.0**
+
+- **Several management servers in one mesh.** Today one server is the mesh's authority. Replication inside
+  one cooperative group: every node keeps one home server, and the others carry the registry, the verdicts
+  and the subscriptions.
+- **A traffic limit per node.** A provider suspends a node that crosses its plan without warning. A cap the
+  node enforces itself takes it out of rotation with headroom left for SSH, ACME and the agent, and brings
+  it back when the period resets.
+- **The server and a node on one machine.** Two boxes are the expensive part of a small mesh. One box must
+  keep exactly one listener per port, one certificate per name, and two separate units that still never
+  proxy each other's traffic.
+- **A second vantage for checks.** A node co-located with its server can only be checked from that server,
+  which is not evidence of external reachability. A second server, on another network, observes and hands
+  the verdict back.
+- **Shell completion** for both binaries, generated from the same flag definitions the parser uses.
+- **A second rendering of the profile**, VLESS over WebSocket behind nginx, for clients that cannot read the
+  XHTTP profile.
+
+**Later**
+
+- Other protocol kinds (MTProto), a web admin interface, a Telegram bot, traffic accounting, federation
+  between independent meshes, node reputation, IPv6-only nodes, non-Debian distributions, and reloading a
+  certificate without a restart.
 
 ## Licence
 

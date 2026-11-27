@@ -17,6 +17,24 @@ const (
 	MenuStepFailed   Key = "menu.step_failed"
 	MenuNoConfig     Key = "menu.no_config"
 
+	// The groups: the menu's own level, one line per group.
+	MenuGroupStateLabel   Key = "menu.group.state.label"
+	MenuGroupStateHint    Key = "menu.group.state.hint"
+	MenuGroupNetworkLabel Key = "menu.group.network.label"
+	MenuGroupNetworkHint  Key = "menu.group.network.hint"
+	MenuGroupClientsLabel Key = "menu.group.clients.label"
+	MenuGroupClientsHint  Key = "menu.group.clients.hint"
+	MenuGroupMeshLabel    Key = "menu.group.mesh.label"
+	MenuGroupMeshHint     Key = "menu.group.mesh.hint"
+	MenuGroupDefenceLabel Key = "menu.group.defence.label"
+	MenuGroupDefenceHint  Key = "menu.group.defence.hint"
+	MenuGroupSiteLabel    Key = "menu.group.site.label"
+	MenuGroupSiteHint     Key = "menu.group.site.hint"
+	MenuGroupNodeLabel    Key = "menu.group.node.label"
+	MenuGroupNodeHint     Key = "menu.group.node.hint"
+	MenuBackLabel         Key = "menu.back.label"
+	MenuBackHint          Key = "menu.back.hint"
+
 	// The menu entries: a label and a hint each.
 	MenuStatusLabel      Key = "menu.status.label"
 	MenuStatusHint       Key = "menu.status.hint"
@@ -54,16 +72,21 @@ const (
 	MenuHelpHint         Key = "menu.help.hint"
 
 	// The recovery and hardening entries: a blocked node, a moved node, and the host's own defences.
-	MenuUnblockLabel  Key = "menu.unblock.label"
-	MenuUnblockHint   Key = "menu.unblock.hint"
-	MenuMigrateLabel  Key = "menu.migrate.label"
-	MenuMigrateHint   Key = "menu.migrate.hint"
-	MenuFirewallLabel Key = "menu.firewall.label"
-	MenuFirewallHint  Key = "menu.firewall.hint"
-	MenuBansLabel     Key = "menu.bans.label"
-	MenuBansHint      Key = "menu.bans.hint"
-	MenuGuardLabel    Key = "menu.guard.label"
-	MenuGuardHint     Key = "menu.guard.hint"
+	MenuUpgradeLabel   Key = "menu.upgrade.label"
+	MenuUpgradeHint    Key = "menu.upgrade.hint"
+	MenuUpgradeNoOffer Key = "menu.upgrade.no_offer"
+	MenuUpgradeSame    Key = "menu.upgrade.same"
+	PromptUpgrade      Key = "prompt.upgrade"
+	MenuUnblockLabel   Key = "menu.unblock.label"
+	MenuUnblockHint    Key = "menu.unblock.hint"
+	MenuMigrateLabel   Key = "menu.migrate.label"
+	MenuMigrateHint    Key = "menu.migrate.hint"
+	MenuFirewallLabel  Key = "menu.firewall.label"
+	MenuFirewallHint   Key = "menu.firewall.hint"
+	MenuBansLabel      Key = "menu.bans.label"
+	MenuBansHint       Key = "menu.bans.hint"
+	MenuGuardLabel     Key = "menu.guard.label"
+	MenuGuardHint      Key = "menu.guard.hint"
 
 	// The sub-menus: the device list, the egress switch, and the two groups both binaries share.
 	SubDevicesListLabel   Key = "sub.devices.list.label"
@@ -172,6 +195,8 @@ const (
 	WizardHardenIntro    Key = "wizard.harden_intro"
 	WizardHarden         Key = "wizard.harden"
 	WizardHardenHint     Key = "wizard.harden_hint"
+	WizardTransport      Key = "wizard.transport"
+	WizardTransportIntro Key = "wizard.transport_intro"
 	WizardDoneDetail     Key = "wizard.done_detail"
 	WizardInstalled      Key = "wizard.installed"
 	WizardOutdated       Key = "wizard.outdated"
@@ -203,6 +228,8 @@ const (
 	PageCopied       Key = "page.copied"
 	PageCopyFailed   Key = "page.copy_failed"
 	PageFooter       Key = "page.footer"
+	PageQuicNote     Key = "page.quic_note"
+	PageEgress       Key = "page.egress"
 	PageDegraded     Key = "page.degraded"
 )
 
@@ -220,51 +247,72 @@ var messagesUVRU = map[Key]string{
 	MenuStepFailed:   "этот шаг завершился со статусом %d",
 	MenuNoConfig:     "На этой машине ещё нет конфигурации узла.",
 
-	MenuStatusLabel:      "состояние",
-	MenuStatusHint:       "идентичность, сертификат, соседи, синхронизация, WARP",
-	MenuDoctorLabel:      "диагностика",
-	MenuDoctorHint:       "проверить машину и узел, ничего не меняя",
-	MenuNetLabel:         "диагностика соединений",
-	MenuNetHint:          "снять счётчики TCP: теряет узел или путь?",
-	MenuInstallLabel:     "установить или доустановить",
-	MenuInstallHint:      "первый запуск спросит домен; последующие только перепроверяют",
-	MenuWizardLabel:      "мастер установки",
-	MenuWizardHint:       "пошаговая первая установка, ответы запоминаются",
-	MenuOptionsLabel:     "ссылки для клиентов",
-	MenuOptionsHint:      "закрытая страница со всеми ссылками и её адрес",
-	MenuEnrollLabel:      "вступить в mesh",
-	MenuEnrollHint:       "регистрация по коду приглашения от оператора сервера",
-	MenuSyncLabel:        "синхронизировать сейчас",
-	MenuSyncHint:         "забрать список соседей сразу, не ожидая суток",
-	MenuDriftLabel:       "проверить расхождение",
-	MenuDriftHint:        "код 4 означает, что ядро отличается от сервера",
-	MenuDevicesLabel:     "устройства",
-	MenuDevicesHint:      "телефоны и ноутбуки, которые пользуются только этим узлом",
-	MenuURILabel:         "напечатать vless-ссылку",
-	MenuURIHint:          "ссылка собственного устройства этого узла",
-	MenuWarpLabel:        "выход (WARP)",
-	MenuWarpHint:         "откуда уходит проксируемый трафик",
-	MenuTransportLabel:   "QUIC-транспорт",
-	MenuTransportHint:    "Hysteria2 на UDP/443 рядом с TLS-профилем: включить или выключить",
-	MenuCertificateLabel: "сертификат",
-	MenuCertificateHint:  "обновить TLS-сертификат сейчас",
-	MenuDecoyLabel:       "сайт-приманка",
-	MenuDecoyHint:        "перегенерировать сайт, который видят посторонние",
-	MenuUninstallLabel:   "удалить",
-	MenuUninstallHint:    "убрать то, что создал Termit, при желании вместе с секретами",
-	MenuHelpLabel:        "справка",
-	MenuHelpHint:         "все команды и флаги",
+	MenuGroupStateLabel:   "Состояние",
+	MenuGroupStateHint:    "что это за узел и всё ли с ним в порядке",
+	MenuGroupNetworkLabel: "Сеть",
+	MenuGroupNetworkHint:  "счётчики, WARP, второй транспорт",
+	MenuGroupClientsLabel: "Клиенты",
+	MenuGroupClientsHint:  "ссылки, страница клиента, устройства",
+	MenuGroupMeshLabel:    "Меш",
+	MenuGroupMeshHint:     "синхронизация, вступление, снятие блокировки",
+	MenuGroupDefenceLabel: "Защита",
+	MenuGroupDefenceHint:  "межсетевой экран, баны, страж",
+	MenuGroupSiteLabel:    "Сайт",
+	MenuGroupSiteHint:     "сертификат и сайт-приманка",
+	MenuGroupNodeLabel:    "Узел",
+	MenuGroupNodeHint:     "установка, переезд, удаление",
+	MenuBackLabel:         "← назад",
+	MenuBackHint:          "вернуться на уровень выше",
+	MenuStatusLabel:       "состояние",
+	MenuStatusHint:        "идентичность, сертификат, соседи, синхронизация, WARP",
+	MenuDoctorLabel:       "диагностика",
+	MenuDoctorHint:        "проверить машину и узел, ничего не меняя",
+	MenuNetLabel:          "диагностика соединений",
+	MenuNetHint:           "снять счётчики TCP: теряет узел или путь?",
+	MenuInstallLabel:      "установить или доустановить",
+	MenuInstallHint:       "первый запуск спросит домен; последующие только перепроверяют",
+	MenuWizardLabel:       "мастер установки",
+	MenuWizardHint:        "пошаговая первая установка, ответы запоминаются",
+	MenuOptionsLabel:      "ссылки для клиентов",
+	MenuOptionsHint:       "закрытая страница со всеми ссылками и её адрес",
+	MenuEnrollLabel:       "вступить в mesh",
+	MenuEnrollHint:        "регистрация по коду приглашения от оператора сервера",
+	MenuSyncLabel:         "синхронизировать сейчас",
+	MenuSyncHint:          "забрать список соседей сразу, не ожидая суток",
+	MenuDriftLabel:        "проверить расхождение",
+	MenuDriftHint:         "код 4 означает, что ядро отличается от сервера",
+	MenuDevicesLabel:      "устройства",
+	MenuDevicesHint:       "телефоны и ноутбуки, которые пользуются только этим узлом",
+	MenuURILabel:          "напечатать vless-ссылку",
+	MenuURIHint:           "ссылка собственного устройства этого узла",
+	MenuWarpLabel:         "выход (WARP)",
+	MenuWarpHint:          "откуда уходит проксируемый трафик",
+	MenuTransportLabel:    "QUIC-транспорт",
+	MenuTransportHint:     "Hysteria2 на UDP/443 рядом с TLS-профилем: включить или выключить",
+	MenuCertificateLabel:  "сертификат",
+	MenuCertificateHint:   "обновить TLS-сертификат сейчас",
+	MenuDecoyLabel:        "сайт-приманка",
+	MenuDecoyHint:         "перегенерировать сайт, который видят посторонние",
+	MenuUninstallLabel:    "удалить",
+	MenuUninstallHint:     "убрать то, что создал Termit, при желании вместе с секретами",
+	MenuHelpLabel:         "справка",
+	MenuHelpHint:          "все команды и флаги",
 
-	MenuUnblockLabel:  "снять блокировку",
-	MenuUnblockHint:   "попросить сервер проверить узел и вернуть его в строй",
-	MenuMigrateLabel:  "переехать на другой домен",
-	MenuMigrateHint:   "перенести узел на новый домен (сценарий C)",
-	MenuFirewallLabel: "межсетевой экран",
-	MenuFirewallHint:  "таблица хоста: состояние, включить, выключить, подтвердить",
-	MenuBansLabel:     "блокировки",
-	MenuBansHint:      "кого заблокировал страж и что заблокировали вы",
-	MenuGuardLabel:    "движок блокировок",
-	MenuGuardHint:     "работает ли страж и сколько он заблокировал",
+	MenuUnblockLabel:   "снять блокировку",
+	MenuUnblockHint:    "попросить сервер проверить узел и вернуть его в строй",
+	MenuUpgradeLabel:   "обновить узел",
+	MenuUpgradeHint:    "взять релиз, который называет сервер; прошлый бинарник остаётся рядом",
+	MenuUpgradeNoOffer: "Обновлять нечего: сервер ещё не назвал свой релиз (синхронизация) или назвал не релиз.",
+	MenuUpgradeSame:    "Узел уже на %s, как и сервер.",
+	PromptUpgrade:      "Поставить %s и дать новому бинарнику сойтись?",
+	MenuMigrateLabel:   "переехать на другой домен",
+	MenuMigrateHint:    "перенести узел на новый домен (сценарий C)",
+	MenuFirewallLabel:  "межсетевой экран",
+	MenuFirewallHint:   "таблица хоста: состояние, включить, выключить, подтвердить",
+	MenuBansLabel:      "блокировки",
+	MenuBansHint:       "кого заблокировал страж и что заблокировали вы",
+	MenuGuardLabel:     "движок блокировок",
+	MenuGuardHint:      "работает ли страж и сколько он заблокировал",
 
 	SubDevicesListLabel:   "список",
 	SubDevicesListHint:    "имена и префиксы UUID",
@@ -306,12 +354,12 @@ var messagesUVRU = map[Key]string{
 	SubBansUnblockLabel:     "снять свою блокировку",
 	SubBansUnblockHint:      "снять постоянную блокировку, поставленную командой block",
 
-	PromptDomain:       "Домен (имя в DNS, указывающее на эту машину)",
-	PromptEmail:        "Адрес для центра сертификации",
+	PromptDomain:       "Домен (имя в DNS, указывающее на эту машину) — целиком: поддомен вместе с доменом",
+	PromptEmail:        "Адрес для центра сертификации (почта для писем об истечении сертификата)",
 	PromptWarp:         "Отправлять проксируемый трафик через Cloudflare WARP?",
 	PromptTransport:    "Отдавать второй транспорт по QUIC (Hysteria2 на UDP/443)?",
 	PromptMN:           "Адрес сервера управления",
-	PromptInvite:       "Код приглашения от оператора сервера",
+	PromptInvite:       "Код приглашения от оператора сервера (пусто — отмена)",
 	PromptDeviceLabel:  "Имя нового устройства",
 	PromptDeviceRemove: "Имя устройства, которое удалить",
 	PromptWarpDomains:  "Домены, которые ходят через WARP, через запятую",
@@ -333,12 +381,12 @@ var messagesUVRU = map[Key]string{
 	WizardLang:           "Язык / Language: ru (русский) или en (english)",
 	WizardLangInvalid:    "ответьте ru или en",
 	WizardConsoleNote:    "консоль не в UTF-8, поэтому дальше будет по-английски; страница останется на выбранном языке",
-	WizardDomain:         "Домен (имя в DNS, указывающее на эту машину)",
+	WizardDomain:         "Домен (имя в DNS, указывающее на эту машину) — целиком: поддомен вместе с доменом",
 	WizardDomainNeeded:   "узлу нужен домен: на него выпускается сертификат",
 	WizardDomainShape:    "домен — это имя без пробелов и слэшей, например node.example.com",
-	WizardEmail:          "Адрес для центра сертификации (необязательно)",
+	WizardEmail:          "Адрес для центра сертификации (почта для уведомлений об истечении; необязательно)",
 	WizardACMEIntro:      "Сертификат выпускает ACME-каталог. Обычно это публичный: %s. Оставьте следующий ответ пустым, чтобы использовать его; назовите другой каталог для частного центра — тестового стенда или корпоративного CA.",
-	WizardACME:           "Каталог ACME (пусто — публичный)",
+	WizardACME:           "Каталог ACME (пусто — публичный; если не знаете, просто нажмите Enter)",
 	WizardACMEShape:      "каталог ACME — это URL http(s)",
 	WizardACMESkip:       "Не проверять сертификат ACME-сервера? Только для частного CA, которому эта машина не доверяет",
 	WizardTemplate:       "Сайт-приманка",
@@ -368,6 +416,8 @@ var messagesUVRU = map[Key]string{
 	WizardHardenIntro:    "Узел может закрыть себя: таблица nftables с SSH, портами 80 и 443 и остальным входящим трафиком закрытым, плюс движок банов. Она не включается сама — вы включите её одной командой, когда убедитесь, что доступ не потерян.",
 	WizardHarden:         "Закрыть узел (да/нет)",
 	WizardHardenHint:     "Да настроит firewalls и движок банов; таблица применится командой termit-uv firewall on",
+	WizardTransport:      "Нести ещё и Hysteria2 на UDP/443 рядом с TLS-профилем (да/нет)",
+	WizardTransportIntro: "QUIC проходит там, где TLS душат, и это транспорт, на котором лучше всего работают голос и видео. Ему нужен открытый UDP/443; в ссылках тогда будут оба профиля.",
 	WizardDoneDetail:     "узел установлен",
 	WizardInstalled:      "Этот узел уже установлен; спрашивать нечего.",
 	WizardOutdated:       "Узел установлен, но эта сборка изменила бы его конфигурацию: %s.",
@@ -383,7 +433,7 @@ var messagesUVRU = map[Key]string{
 	PageLocalNote:    "Это устройство работает, даже если сервер управления недоступен.",
 	PageDevices:      "Устройства (%d)",
 	PageDevicesNote:  "Ваши собственные устройства. Они есть только на этом узле и в mesh не уходят.",
-	PageMesh:         "Mesh (%d)",
+	PageMesh:         "Меш (%d)",
 	PageNoPeers:      "Соседей нет: узел не зарегистрирован на сервере управления.",
 	PageWarning:      "Список соседей сейчас не удалось получить с сервера управления; на странице только устройство этого узла. Попробуйте `termit-uv sync` и пересоберите страницу.",
 	PageSubscription: "Подписка",
@@ -398,6 +448,8 @@ var messagesUVRU = map[Key]string{
 	PageCopied:       "скопировано",
 	PageCopyFailed:   "не удалось",
 	PageFooter:       "Страница секретная: любой, кто знает её адрес, видит эти же ссылки. Не оставляйте её на скриншотах, которые уходят из ваших рук.",
+	PageQuicNote:     "голос и видео",
+	PageEgress:       "выход: ",
 	PageDegraded:     "замедлен",
 }
 
@@ -414,51 +466,72 @@ var messagesUVEN = map[Key]string{
 	MenuStepFailed:   "that step exited with status %d",
 	MenuNoConfig:     "This machine has no node configuration yet.",
 
-	MenuStatusLabel:      "status",
-	MenuStatusHint:       "identity, certificate, peers, sync, WARP",
-	MenuDoctorLabel:      "doctor",
-	MenuDoctorHint:       "check the host and the node, change nothing",
-	MenuNetLabel:         "connection diagnostics",
-	MenuNetHint:          "sample the TCP counters: is the node dropping, or is the path?",
-	MenuInstallLabel:     "install or converge",
-	MenuInstallHint:      "first run asks for the domain; later runs only re-check",
-	MenuWizardLabel:      "setup wizard",
-	MenuWizardHint:       "step by step through a first installation, remembering the answers",
-	MenuOptionsLabel:     "client options",
-	MenuOptionsHint:      "the private page with every client link, and its address",
-	MenuEnrollLabel:      "join the mesh",
-	MenuEnrollHint:       "enroll with an invite code from the server operator",
-	MenuSyncLabel:        "sync now",
-	MenuSyncHint:         "fetch the peer set immediately instead of waiting a day",
-	MenuDriftLabel:       "check drift",
-	MenuDriftHint:        "exit 4 tells you the core differs from the server",
-	MenuDevicesLabel:     "devices",
-	MenuDevicesHint:      "phones and laptops that use this node only",
-	MenuURILabel:         "print vless URI",
-	MenuURIHint:          "the URI of this node's own device",
-	MenuWarpLabel:        "egress (WARP)",
-	MenuWarpHint:         "where proxied traffic leaves",
-	MenuTransportLabel:   "QUIC transport",
-	MenuTransportHint:    "Hysteria2 on UDP/443 beside the TLS profile: turn it on or off",
-	MenuCertificateLabel: "certificate",
-	MenuCertificateHint:  "renew the TLS certificate now",
-	MenuDecoyLabel:       "decoy site",
-	MenuDecoyHint:        "regenerate the site the node serves to strangers",
-	MenuUninstallLabel:   "uninstall",
-	MenuUninstallHint:    "remove what Termit created, optionally with its secrets",
-	MenuHelpLabel:        "help",
-	MenuHelpHint:         "every command and flag",
+	MenuGroupStateLabel:   "State",
+	MenuGroupStateHint:    "what this node is, and whether it is healthy",
+	MenuGroupNetworkLabel: "Network",
+	MenuGroupNetworkHint:  "counters, WARP, the second transport",
+	MenuGroupClientsLabel: "Clients",
+	MenuGroupClientsHint:  "links, the client page, devices",
+	MenuGroupMeshLabel:    "Mesh",
+	MenuGroupMeshHint:     "sync, enrollment, lifting a block",
+	MenuGroupDefenceLabel: "Defence",
+	MenuGroupDefenceHint:  "firewall, bans, the guard",
+	MenuGroupSiteLabel:    "Site",
+	MenuGroupSiteHint:     "certificate and the masking site",
+	MenuGroupNodeLabel:    "Node",
+	MenuGroupNodeHint:     "install, relocate, uninstall",
+	MenuBackLabel:         "← back",
+	MenuBackHint:          "up one level",
+	MenuStatusLabel:       "status",
+	MenuStatusHint:        "identity, certificate, peers, sync, WARP",
+	MenuDoctorLabel:       "doctor",
+	MenuDoctorHint:        "check the host and the node, change nothing",
+	MenuNetLabel:          "connection diagnostics",
+	MenuNetHint:           "sample the TCP counters: is the node dropping, or is the path?",
+	MenuInstallLabel:      "install or converge",
+	MenuInstallHint:       "first run asks for the domain; later runs only re-check",
+	MenuWizardLabel:       "setup wizard",
+	MenuWizardHint:        "step by step through a first installation, remembering the answers",
+	MenuOptionsLabel:      "client options",
+	MenuOptionsHint:       "the private page with every client link, and its address",
+	MenuEnrollLabel:       "join the mesh",
+	MenuEnrollHint:        "enroll with an invite code from the server operator",
+	MenuSyncLabel:         "sync now",
+	MenuSyncHint:          "fetch the peer set immediately instead of waiting a day",
+	MenuDriftLabel:        "check drift",
+	MenuDriftHint:         "exit 4 tells you the core differs from the server",
+	MenuDevicesLabel:      "devices",
+	MenuDevicesHint:       "phones and laptops that use this node only",
+	MenuURILabel:          "print vless URI",
+	MenuURIHint:           "the URI of this node's own device",
+	MenuWarpLabel:         "egress (WARP)",
+	MenuWarpHint:          "where proxied traffic leaves",
+	MenuTransportLabel:    "QUIC transport",
+	MenuTransportHint:     "Hysteria2 on UDP/443 beside the TLS profile: turn it on or off",
+	MenuCertificateLabel:  "certificate",
+	MenuCertificateHint:   "renew the TLS certificate now",
+	MenuDecoyLabel:        "decoy site",
+	MenuDecoyHint:         "regenerate the site the node serves to strangers",
+	MenuUninstallLabel:    "uninstall",
+	MenuUninstallHint:     "remove what Termit created, optionally with its secrets",
+	MenuHelpLabel:         "help",
+	MenuHelpHint:          "every command and flag",
 
-	MenuUnblockLabel:  "lift a block",
-	MenuUnblockHint:   "ask the server to verify this node and let it back in",
-	MenuMigrateLabel:  "move to another domain",
-	MenuMigrateHint:   "relocate this node to a new domain (Scenario C)",
-	MenuFirewallLabel: "firewall",
-	MenuFirewallHint:  "the host table: status, on, off, confirm",
-	MenuBansLabel:     "bans",
-	MenuBansHint:      "what the guard banned, and what you blocked yourself",
-	MenuGuardLabel:    "guard",
-	MenuGuardHint:     "whether the ban engine runs, and how much it banned",
+	MenuUnblockLabel:   "lift a block",
+	MenuUnblockHint:    "ask the server to verify this node and let it back in",
+	MenuUpgradeLabel:   "upgrade this node",
+	MenuUpgradeHint:    "take the release the server names; the previous binary stays beside it",
+	MenuUpgradeNoOffer: "Nothing to upgrade to: the server has not named its release yet (sync), or named something that is not one.",
+	MenuUpgradeSame:    "This node is already on %s, the same as the server.",
+	PromptUpgrade:      "Install %s and let the new binary converge the node?",
+	MenuMigrateLabel:   "move to another domain",
+	MenuMigrateHint:    "relocate this node to a new domain (Scenario C)",
+	MenuFirewallLabel:  "firewall",
+	MenuFirewallHint:   "the host table: status, on, off, confirm",
+	MenuBansLabel:      "bans",
+	MenuBansHint:       "what the guard banned, and what you blocked yourself",
+	MenuGuardLabel:     "guard",
+	MenuGuardHint:      "whether the ban engine runs, and how much it banned",
 
 	SubDevicesListLabel:   "list",
 	SubDevicesListHint:    "labels and UUID prefixes",
@@ -500,12 +573,12 @@ var messagesUVEN = map[Key]string{
 	SubBansUnblockLabel:     "unblock",
 	SubBansUnblockHint:      "lift the permanent block your own `block` put there",
 
-	PromptDomain:       "Domain (a DNS name that points at this machine)",
-	PromptEmail:        "Email for the certificate authority",
+	PromptDomain:       "Domain (a DNS name that points at this machine) — the whole name: subdomain and domain together",
+	PromptEmail:        "Email for the certificate authority (it receives expiry notices)",
 	PromptWarp:         "Send proxied traffic through Cloudflare WARP?",
 	PromptTransport:    "Serve the second transport over QUIC (Hysteria2 on UDP/443)?",
 	PromptMN:           "Management server URL",
-	PromptInvite:       "Invite code from the server operator",
+	PromptInvite:       "Invite code from the server operator (empty cancels)",
 	PromptDeviceLabel:  "Label for the new device",
 	PromptDeviceRemove: "Label of the device to remove",
 	PromptWarpDomains:  "Domains that use WARP, comma separated",
@@ -527,12 +600,12 @@ var messagesUVEN = map[Key]string{
 	WizardLang:           "Language / Язык: ru (russian) or en (english)",
 	WizardLangInvalid:    "answer ru or en",
 	WizardConsoleNote:    "the console is not UTF-8, so the rest is in English; the page stays in the chosen language",
-	WizardDomain:         "Domain (a DNS name that points at this machine)",
+	WizardDomain:         "Domain (a DNS name that points at this machine) — the whole name: subdomain and domain together",
 	WizardDomainNeeded:   "this node needs a domain: it is what the certificate is issued for",
 	WizardDomainShape:    "a domain is a bare name such as node.example.com",
-	WizardEmail:          "Contact address for the certificate authority (optional)",
+	WizardEmail:          "Contact address for the certificate authority (it receives expiry notices; optional)",
 	WizardACMEIntro:      "The certificate comes from an ACME directory. Most installations use the public one: %s. Leave the next answer empty for it, or name another directory for a private authority — a test lab or a company CA.",
-	WizardACME:           "ACME directory (empty = the public one)",
+	WizardACME:           "ACME directory (empty = the public one; if unsure, just press Enter)",
 	WizardACMEShape:      "an ACME directory is an http(s) URL",
 	WizardACMESkip:       "Do not verify the ACME server's certificate? Only for a private CA this host does not trust",
 	WizardTemplate:       "Masking site",
@@ -562,6 +635,8 @@ var messagesUVEN = map[Key]string{
 	WizardHardenIntro:    "The node can close itself: an nftables table that keeps SSH, ports 80 and 443 and drops the rest of the inbound traffic, plus the ban engine. It is not switched on from here — that is one command, run when you know your access survives.",
 	WizardHarden:         "Harden this node (yes/no)",
 	WizardHardenHint:     "Yes configures the firewall and the ban engine; the table itself is applied by termit-uv firewall on",
+	WizardTransport:      "Also serve Hysteria2 on UDP/443 beside the TLS profile (yes/no)",
+	WizardTransportIntro: "QUIC gets through where TLS is throttled, and it is the transport voice and video work best on. It needs UDP/443 open; the links then carry both profiles.",
 	WizardDoneDetail:     "this node is installed",
 	WizardInstalled:      "This node is already installed; nothing to ask.",
 	WizardOutdated:       "This node is installed, but this build would change its configuration: %s.",
@@ -592,6 +667,8 @@ var messagesUVEN = map[Key]string{
 	PageCopied:       "copied",
 	PageCopyFailed:   "copy failed",
 	PageFooter:       "This page is secret: anyone with its address sees the same links. Keep it out of screenshots that leave your hands.",
+	PageQuicNote:     "voice and video",
+	PageEgress:       "egress: ",
 	PageDegraded:     "degraded",
 }
 

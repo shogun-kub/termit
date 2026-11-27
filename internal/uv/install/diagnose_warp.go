@@ -2,8 +2,10 @@ package install
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"strconv"
+	"time"
 
 	"github.com/shogun-kub/termit/internal/uv/config"
 	"github.com/shogun-kub/termit/internal/uv/state"
@@ -11,6 +13,12 @@ import (
 	"github.com/shogun-kub/termit/internal/uv/warp"
 	"github.com/shogun-kub/termit/internal/uv/xray"
 )
+
+// warpSlow is where a tunnel that says it is on stops being usable: the trace through it takes seconds
+// while the same request from the node takes tens of milliseconds. Production set the number — a
+// wireguard egress answered "on" with 7–12 s handshakes for ten minutes, and every client felt it while
+// every status line was green.
+const warpSlow = 2 * time.Second
 
 // diagnoseWarp is the one check that leaves the host: it fetches Cloudflare's trace through the
 // tunnel, which is the only way to know whether the egress is really WARP and not merely a listener
@@ -82,6 +90,7 @@ func diagnoseWireGuardWarp(ctx context.Context, cfg *config.Config, st *state.St
 		check.Detail = "the node has no identity to probe with yet"
 		return check
 	}
+	started := time.Now()
 	body, err := tunnelprobe.Fetch(ctx, tunnelprobe.Options{
 		XrayBinary: cfg.Paths.XrayBinary(),
 		ProxyAddr:  net.JoinHostPort(xray.DefaultListen, strconv.Itoa(xray.DefaultPort)),
@@ -89,6 +98,7 @@ func diagnoseWireGuardWarp(ctx context.Context, cfg *config.Config, st *state.St
 		UUID:       st.Identity.SelfUUID,
 		TargetURL:  WarpProbeURLForDiagnosis(),
 	})
+	took := time.Since(started)
 	if err != nil {
 		check.Status = StatusSkip
 		check.Detail = errorText(err)
@@ -97,9 +107,7 @@ func diagnoseWireGuardWarp(ctx context.Context, cfg *config.Config, st *state.St
 	}
 	trace := warp.ParseTrace(body)
 	if trace.ThroughWarp() {
-		check.Status = StatusOK
-		check.Detail = "wireguard, via " + trace.IP
-		return check
+		return warpEgressCheck("wireguard", trace, took)
 	}
 	check.Status = StatusFail
 	check.Detail = "the tunnel exits at " + trace.IP + " without WARP"
@@ -113,7 +121,9 @@ func diagnoseWireGuardWarp(ctx context.Context, cfg *config.Config, st *state.St
 // puts the node's own address on the wire.
 func diagnoseUsqueWarp(ctx context.Context) Check {
 	check := Check{Name: "warp"}
+	started := time.Now()
 	trace, err := warp.Client{Socks: xray.DefaultUsqueSocks}.Trace(ctx)
+	took := time.Since(started)
 	if err != nil {
 		check.Status = StatusFail
 		check.Detail = "the MASQUE sidecar is not answering on " + xray.DefaultUsqueSocks + ": " + errorText(err)
@@ -121,13 +131,25 @@ func diagnoseUsqueWarp(ctx context.Context) Check {
 		return check
 	}
 	if trace.ThroughWarp() {
-		check.Status = StatusOK
-		check.Detail = "usque (MASQUE), via " + trace.IP
-		return check
+		return warpEgressCheck("usque (MASQUE)", trace, took)
 	}
 	check.Status = StatusFail
 	check.Detail = "the sidecar exits at " + trace.IP + " without WARP"
 	check.Hint = "the sidecar is up but the tunnel is not; check `termit-uv warp status`"
+	return check
+}
+
+// warpEgressCheck is the check both transports share once the trace says WARP carried the request: the
+// address Cloudflare saw, and how long the request took. A tunnel that answers in seconds is reported as
+// a warning, because "on" and "usable" stopped being the same statement the day this was measured.
+func warpEgressCheck(prefix string, trace warp.Trace, took time.Duration) Check {
+	check := Check{Name: "warp", Status: StatusOK,
+		Detail: fmt.Sprintf("%s, via %s in %s", prefix, trace.IP, took.Round(time.Millisecond))}
+	if took > warpSlow {
+		check.Status = StatusWarn
+		check.Detail = fmt.Sprintf("%s, via %s, but the request took %s", prefix, trace.IP, took.Round(time.Millisecond))
+		check.Hint = "the tunnel is up and too slow to use; check the node's uplink and `termit-uv warp status`"
+	}
 	return check
 }
 

@@ -157,6 +157,17 @@ type Item struct {
 //
 // Invalid input redraws instead of failing: a menu that exits on a typo is a menu nobody trusts.
 func (u *UI) Menu(items []Item) (string, error) {
+	return u.menu(items, false)
+}
+
+// MenuFree is Menu for a question whose list is a convenience rather than the whole answer: a picker that
+// also accepts a typed value. An answer that matches no item comes back as it was typed, and the caller
+// decides what it means. Quitting and an empty line behave as in Menu.
+func (u *UI) MenuFree(items []Item) (string, error) {
+	return u.menu(items, true)
+}
+
+func (u *UI) menu(items []Item, free bool) (string, error) {
 	if len(items) == 0 {
 		return "", fmt.Errorf("termui: a menu needs at least one item")
 	}
@@ -212,6 +223,9 @@ func (u *UI) Menu(items []Item) (string, error) {
 			if strings.EqualFold(answer, item.Label) {
 				return item.Key, nil
 			}
+		}
+		if free {
+			return answer, nil
 		}
 		u.State("warn", fmt.Sprintf("%q is not one of the choices", answer))
 	}

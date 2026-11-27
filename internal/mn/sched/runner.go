@@ -2,6 +2,7 @@ package sched
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -171,7 +172,7 @@ func (r *Runner) runCycle(ctx context.Context, node store.UV, retries RetryPolic
 				}
 			}
 		}
-		if err := r.record(ctx, node.ID, last); err != nil {
+		if err := r.record(ctx, node.ID, target.Transport, last); err != nil {
 			return cycle, err
 		}
 		if okSeen {
@@ -272,14 +273,25 @@ func (r *Runner) probeOne(ctx context.Context, target probe.Target) (probe.Resul
 	return results[0], nil
 }
 
-func (r *Runner) record(ctx context.Context, uvID string, result probe.Result) error {
+func (r *Runner) record(ctx context.Context, uvID, transport string, result probe.Result) error {
 	if r.Store == nil {
 		return nil
 	}
+	// The transport belongs in the row: a node may declare two while the server probes one, so a green
+	// check has to say which leg it was about, or "it works" quietly covers a dead transport. The
+	// message is data, not an error: no stack, and no credential — the prober guarantees the latter.
 	detail := ""
-	if result.Err != nil {
-		// The message, not the error: a check row is data, and a wrapped error would drag a stack
-		// around. It must not contain a credential, which the prober guarantees by construction.
+	if transport != "" {
+		payload := map[string]string{"transport": transport}
+		if result.Err != nil {
+			payload["error"] = result.Err.Error()
+		}
+		body, err := json.Marshal(payload)
+		if err != nil {
+			return err
+		}
+		detail = string(body)
+	} else if result.Err != nil {
 		detail = result.Err.Error()
 	}
 	return r.Store.AppendCheck(ctx, store.Check{

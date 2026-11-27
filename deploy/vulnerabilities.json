@@ -1,11 +1,11 @@
 {
-  "note": "Advisories this build carries on purpose. Each entry names the release that must not see it: the vulnerability gate allows the id, and `go run ./deploy/release` refuses to cut a version at or past `must_be_gone_by` while the entry is still here. Clearing an entry means upgrading the module that carries the advisory, never extending the deadline.",
+  "note": "Advisories this build carries on purpose. Each entry names the release that must not see it: the vulnerability gate allows the id, and `go run ./deploy/release` refuses to cut a version at or past `must_be_gone_by` while the entry is still here. An entry is cleared by upgrading the module that carries the advisory; moving the deadline is a deliberate act with its reason in the commit, never the way to quiet a real finding.",
   "exclusions": [
     {
       "id": "GO-2026-5288",
       "module": "github.com/apernet/hysteria/core/v2",
-      "must_be_gone_by": "0.7.0",
-      "reason": "The record is stale, not the code. The advisory it derives from, GHSA-9fw6-xgg2-mq9q (CVE-2026-134457), lists 2.8.1 as the last affected release and was fixed in 2.8.2 in May 2026; this build pins 2.14.0, six minor releases past it. The vuln.go.dev record is UNREVIEWED, says 'all versions, no known fixed' and was never updated with the fix, so govulncheck keeps reporting the module and the gate keeps needing this entry. The vulnerable path is the transport's sniffing, which the node never enables: the generated hysteria.yaml has no sniff block, and the advisory's PoC requires one.",
+      "must_be_gone_by": "0.8.0",
+      "reason": "The record is stale, not the code. The advisory it derives from, GHSA-9fw6-xgg2-mq9q (CVE-2026-134457), lists 2.8.1 as the last affected release and was fixed in 2.8.2 in May 2026; this build pins 2.14.0, six minor releases past it. The vuln.go.dev record is UNREVIEWED, says 'all versions, no known fixed' and was never updated with the fix, so govulncheck keeps reporting the module and the gate keeps needing this entry. The vulnerable path is the transport's sniffing, which the node never enables: the generated hysteria.yaml has no sniff block, and the advisory's PoC requires one. The deadline was moved from `0.7.0` to `0.8.0` on 2026-11-24, after the gate still reported the record on a tree that was ready to tag: deleting the entry would turn the gate red for a finding the code cannot fix, and the record is what has to change.",
       "action": "Nothing to upgrade — 2.14.0 is already past the fix, and a bump would not clear the record. Watch pkg.go.dev/vuln/GO-2026-5288 for it to gain a fixed version (the page carries a 'Suggest an edit' link) and delete this entry the day govulncheck stops reporting it. The deadline tracks that data correction, not the code."
     }
   ]

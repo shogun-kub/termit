@@ -68,6 +68,10 @@ type stepEnv struct {
 	// probeWarp verifies that the tunnel carries traffic. It is a seam because the real one starts the
 	// core; tests answer with a trace.
 	probeWarp func(context.Context, *config.Config, *state.State) (warp.Trace, error)
+	// readyWait bounds how long the egress probe waits for the MASQUE relay to listen. The start step
+	// enabled it a moment earlier, and a probe before it listens goes through the balancer's fallback,
+	// which reports the node's own address as the exit. Zero means a single attempt.
+	readyWait time.Duration
 	// forced is true while a step that the run explicitly forced is executing. A step whose Run is
 	// not idempotent (renewing a certificate) needs to know the difference between "converge" and
 	// "do it again".

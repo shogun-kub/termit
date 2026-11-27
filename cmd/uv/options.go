@@ -86,13 +86,9 @@ one and makes the old address answer 404.`)
 	}
 
 	dir := filepath.Join(cfg.Paths.SiteDir, token)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		fmt.Fprintf(a.stderr, "termit-uv options: create %s: %v\n", dir, err)
-		return exitFailure
-	}
-	pagePath := filepath.Join(dir, "index.html")
-	if err := state.WriteFileAtomic(pagePath, page, 0o644); err != nil {
-		fmt.Fprintf(a.stderr, "termit-uv options: write %s: %v\n", pagePath, err)
+	pagePath, err := writePage(dir, page)
+	if err != nil {
+		fmt.Fprintf(a.stderr, "termit-uv options: %v\n", err)
 		return exitFailure
 	}
 
@@ -130,6 +126,7 @@ func (a *application) optionsData(ctx context.Context, cfg *config.Config, node 
 		Token:   token,
 		Lang:    cfg.Lang(),
 		PageURL: options.PageURL(cfg.Domain, token),
+		Egress:  egressLine(cfg),
 		Local: []options.Link{{
 			Label: cfg.Domain,
 			URI:   localURI(cfg, node),
@@ -223,34 +220,55 @@ func localURI(cfg *config.Config, node *state.State) string {
 	return uri
 }
 
-// refreshOptions re-renders an existing page and never creates one: a node whose owner never asked for
-// it should not grow one because a sync ran. Callers treat a failure as a warning — the page is a
-// convenience, and a certificate renewal must not fail because a page could not be written.
+// refreshOptions re-renders the owner's page, and mints its address the first time: a node should not
+// need a command typed by hand before its links have a page, and `init` and `sync` already run at the
+// moment the links are known. Callers treat a failure as a warning — the page is a convenience, and a
+// certificate renewal must not fail because a page could not be written.
 func (a *application) refreshOptions(cfg *config.Config) error {
 	node, err := state.LoadInstalled(cfg.Paths.StatePath())
 	if err != nil {
 		return err
 	}
-	if !options.ValidToken(node.Options.Token) || node.Identity.SelfUUID == "" {
+	if node.Identity.SelfUUID == "" || node.Identity.XHTTPPath == "" {
 		return nil
+	}
+	token := node.Options.Token
+	if !options.ValidToken(token) {
+		if token, err = options.NewToken(); err != nil {
+			return err
+		}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
-	page, err := options.Render(a.optionsData(ctx, cfg, node, node.Options.Token))
+	page, err := options.Render(a.optionsData(ctx, cfg, node, token))
 	if err != nil {
 		return err
 	}
-	dir := filepath.Join(cfg.Paths.SiteDir, node.Options.Token)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	dir := filepath.Join(cfg.Paths.SiteDir, token)
+	if _, err := writePage(dir, page); err != nil {
 		return err
 	}
-	pagePath := filepath.Join(dir, "index.html")
-	if err := state.WriteFileAtomic(pagePath, page, 0o644); err != nil {
-		return err
-	}
-	node.Options.RenderedAt = a.now().UTC()
+	node.Options = state.Options{Token: token, RenderedAt: a.now().UTC()}
 	node.AddPath(dir, state.KindDir, "options", a.now())
-	node.AddPath(pagePath, state.KindFile, "options", a.now())
+	node.AddPath(filepath.Join(dir, "index.html"), state.KindFile, "options", a.now())
 	node.Touch()
 	return node.Save(cfg.Paths.StatePath())
+}
+
+// writePage puts the page into the decoy tree and makes sure nginx can read it: the tree is public, so
+// the directory has to be 0755 and the file 0644 whatever umask the caller runs under. It is set
+// explicitly because a page minted by a process with a restrictive umask answered 403 — the mode is
+// part of the effect, not a side effect of who wrote it.
+func writePage(dir string, page []byte) (string, error) {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", fmt.Errorf("create %s: %w", dir, err)
+	}
+	if err := os.Chmod(dir, 0o755); err != nil {
+		return "", fmt.Errorf("chmod %s: %w", dir, err)
+	}
+	path := filepath.Join(dir, "index.html")
+	if err := state.WriteFileAtomic(path, page, 0o644); err != nil {
+		return "", fmt.Errorf("write %s: %w", path, err)
+	}
+	return path, nil
 }

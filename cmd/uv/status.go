@@ -407,14 +407,28 @@ func (a *application) describeFirewallLine(cfg *config.Config) string {
 	return "off (it was applied once and the kernel has no table: `termit-uv firewall on` puts it back)"
 }
 
-// humanAge renders an age the way a person reads it.
+// humanAge renders an age the way a person reads it: 40s, 12m, 2h, 2h30m.
 func humanAge(now, then time.Time) string {
-	delta := now.Sub(then).Round(time.Second)
+	delta := now.Sub(then)
 	if delta < 0 {
-		return "in " + (-delta).String()
+		return "in " + ageSpan(-delta)
 	}
+	return ageSpan(delta) + " ago"
+}
+
+// ageSpan is the age without "ago". A trailing zero minute is dropped, because "2h0m" reads like a
+// timestamp rather than a duration.
+func ageSpan(delta time.Duration) string {
 	if delta < time.Minute {
-		return delta.String() + " ago"
+		return delta.Round(time.Second).String()
 	}
-	return delta.Round(time.Minute).String() + " ago"
+	delta = delta.Round(time.Minute)
+	hours, minutes := int(delta/time.Hour), int(delta%time.Hour/time.Minute)
+	switch {
+	case hours == 0:
+		return fmt.Sprintf("%dm", minutes)
+	case minutes == 0:
+		return fmt.Sprintf("%dh", hours)
+	}
+	return fmt.Sprintf("%dh%dm", hours, minutes)
 }

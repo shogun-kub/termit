@@ -26,7 +26,7 @@ func menuApp(t *testing.T, answers string, terminal bool) (*application, *string
 func TestBareBinaryOpensTheMenuOnATerminal(t *testing.T) {
 	t.Parallel()
 	// One action that fails fast (nothing is installed at the temporary path), then quit.
-	app, out := menuApp(t, "1\n\nq\n", true)
+	app, out := menuApp(t, "1\n1\n\nq\n", true)
 	if code := app.run(nil); code != exitOK {
 		t.Fatalf("exit = %d, want 0", code)
 	}
@@ -124,28 +124,66 @@ func TestMenuEntriesRunTheCommandsTheyName(t *testing.T) {
 		"help":            "help",
 	}
 	seen := map[string]bool{}
-	for _, entry := range app.menuEntries() {
-		label := entry.labelOf(app.translator())
-		wantArgv, ok := want[label]
-		if !ok {
-			continue
-		}
-		seen[label] = true
-		plan, err := entry.plan(termui.New(strings.NewReader(""), &strings.Builder{}, termui.Style{}))
-		if err != nil {
-			t.Fatalf("%s: %v", label, err)
-		}
-		if len(plan) != 1 {
-			t.Fatalf("%s: %d commands, want 1", label, len(plan))
-		}
-		if got := strings.Join(plan[0], " "); got != wantArgv {
-			t.Errorf("%s runs %q, want %q", label, got, wantArgv)
+	var walk func(entries []menuEntry)
+	walk = func(entries []menuEntry) {
+		for _, entry := range entries {
+			if entry.children != nil {
+				walk(entry.children())
+				continue
+			}
+			label := entry.labelOf(app.translator())
+			wantArgv, ok := want[label]
+			if !ok || seen[label] {
+				continue
+			}
+			seen[label] = true
+			plan, err := entry.plan(termui.New(strings.NewReader(""), &strings.Builder{}, termui.Style{}))
+			if err != nil {
+				t.Fatalf("%s: %v", label, err)
+			}
+			if len(plan) != 1 {
+				t.Fatalf("%s: %d commands, want 1", label, len(plan))
+			}
+			if got := strings.Join(plan[0], " "); got != wantArgv {
+				t.Errorf("%s runs %q, want %q", label, got, wantArgv)
+			}
 		}
 	}
+	walk(app.menuEntries())
 	for label := range want {
 		if !seen[label] {
 			t.Errorf("the menu has no %q entry", label)
 		}
+	}
+}
+
+// The menu is a tree: a level that does not fit on one screen is a screen nobody reads, and every
+// command the flat menu offered has to still be reachable — the move regrouped them, it dropped none.
+func TestTheMenuTreeFitsOnOneScreen(t *testing.T) {
+	t.Parallel()
+	app, _ := menuApp(t, "", false)
+	top := app.menuEntries()
+	if len(top) != 8 {
+		t.Errorf("the top level has %d entries, want 8", len(top))
+	}
+	leaves := 0
+	var walk func(entries []menuEntry)
+	walk = func(entries []menuEntry) {
+		if len(entries) > 10 {
+			t.Errorf("a level has %d entries, want at most 10", len(entries))
+		}
+		for _, entry := range entries {
+			if entry.children != nil {
+				walk(entry.children())
+				continue
+			}
+			leaves++
+		}
+	}
+	walk(top)
+	// 23 commands, four of which were their own menu and are now groups of 5, 3, 6 and 5 leaves.
+	if leaves != 38 {
+		t.Errorf("the tree has %d leaves, want 38", leaves)
 	}
 }
 
@@ -219,17 +257,17 @@ func TestInstallConvergesAnInstalledNodeWithoutQuestions(t *testing.T) {
 	}
 }
 
-// The invite is the one value enroll cannot do without, so an empty answer asks again instead of ending
-// the entry.
-func TestEnrollAsksAgainForAnEmptyInvite(t *testing.T) {
+// The invite names a code the operator may not have at hand: an empty answer cancels the entry, and the
+// label says so, instead of asking for the code until the session ends.
+func TestEnrollCancelsOnAnEmptyInvite(t *testing.T) {
 	t.Parallel()
-	app, _ := menuApp(t, "\n\nABCD-EFGH-IJKL\n", false)
+	app, _ := menuApp(t, "\n\n", false)
 	plan, err := entryNamed(t, app, "join the mesh").plan(termui.New(app.in, &strings.Builder{}, termui.Style{}))
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
-	if got := strings.Join(plan[0], " "); got != "enroll --invite ABCD-EFGH-IJKL --mn https://mn.example.com" {
-		t.Errorf("plan = %q", got)
+	if plan != nil {
+		t.Errorf("plan = %v, want a cancel", plan)
 	}
 }
 
@@ -248,8 +286,8 @@ func TestEnrollBuildsTheCommand(t *testing.T) {
 
 func TestDevicesAddAsksForALabel(t *testing.T) {
 	t.Parallel()
-	app, _ := menuApp(t, "2\nlaptop\n", false)
-	plan, err := entryNamed(t, app, "devices").plan(termui.New(app.in, &strings.Builder{}, termui.Style{}))
+	app, _ := menuApp(t, "laptop\n", false)
+	plan, err := childNamed(t, app, "devices", "add").plan(termui.New(app.in, &strings.Builder{}, termui.Style{}))
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
@@ -260,8 +298,8 @@ func TestDevicesAddAsksForALabel(t *testing.T) {
 
 func TestDevicesRemovePassesTheLabel(t *testing.T) {
 	t.Parallel()
-	app, _ := menuApp(t, "3\nold-phone\n", false)
-	plan, err := entryNamed(t, app, "devices").plan(termui.New(app.in, &strings.Builder{}, termui.Style{}))
+	app, _ := menuApp(t, "old-phone\n", false)
+	plan, err := childNamed(t, app, "devices", "remove").plan(termui.New(app.in, &strings.Builder{}, termui.Style{}))
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
@@ -317,8 +355,8 @@ func TestMigrateAsksAgainForAnEmptyDomain(t *testing.T) {
 // A new Cloudflare device stops the old one, so the menu asks first and a "no" runs nothing.
 func TestWarpRotateAsksBeforeReplacingTheDevice(t *testing.T) {
 	t.Parallel()
-	app, _ := menuApp(t, "5\ny\n", false)
-	plan, err := entryNamed(t, app, "egress (WARP)").plan(termui.New(app.in, &strings.Builder{}, termui.Style{}))
+	app, _ := menuApp(t, "y\n", false)
+	plan, err := childNamed(t, app, "egress (WARP)", "rotate").plan(termui.New(app.in, &strings.Builder{}, termui.Style{}))
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
@@ -326,8 +364,8 @@ func TestWarpRotateAsksBeforeReplacingTheDevice(t *testing.T) {
 		t.Errorf("plan = %q", got)
 	}
 
-	declined, _ := menuApp(t, "5\nn\n", false)
-	plan, err = entryNamed(t, declined, "egress (WARP)").plan(
+	declined, _ := menuApp(t, "n\n", false)
+	plan, err = childNamed(t, declined, "egress (WARP)", "rotate").plan(
 		termui.New(declined.in, &strings.Builder{}, termui.Style{}))
 	if err != nil {
 		t.Fatalf("plan: %v", err)
@@ -337,23 +375,25 @@ func TestWarpRotateAsksBeforeReplacingTheDevice(t *testing.T) {
 	}
 }
 
-// The host table and the ban list are sub-menus; each answer has to reach its command unchanged.
+// The host table and the ban list are levels of their own; each answer has to reach its command
+// unchanged, and an option that declares a question asks it when chosen.
 func TestSecurityEntriesDrawTheirSubMenus(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
+		group  string
 		entry  string
 		answer string
 		want   string
 	}{
-		{entry: "firewall", answer: "2\n", want: "firewall on"},
-		{entry: "bans", answer: "1\n", want: "bans list"},
-		{entry: "bans", answer: "3\n203.0.113.7\n", want: "bans block 203.0.113.7"},
+		{group: "firewall", entry: "on", want: "firewall on"},
+		{group: "bans", entry: "list", want: "bans list"},
+		{group: "bans", entry: "block", answer: "203.0.113.7\n", want: "bans block 203.0.113.7"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.want, func(t *testing.T) {
 			t.Parallel()
 			app, _ := menuApp(t, tc.answer, false)
-			plan, err := entryNamed(t, app, tc.entry).plan(termui.New(app.in, &strings.Builder{}, termui.Style{}))
+			plan, err := childNamed(t, app, tc.group, tc.entry).plan(termui.New(app.in, &strings.Builder{}, termui.Style{}))
 			if err != nil {
 				t.Fatalf("plan: %v", err)
 			}
@@ -366,20 +406,23 @@ func TestSecurityEntriesDrawTheirSubMenus(t *testing.T) {
 
 func TestWarpModes(t *testing.T) {
 	t.Parallel()
-	cases := map[string]string{
-		"1\n":    "warp status",
-		"2\n":    "warp mode all",
-		"3\n":    "warp mode off",
-		"4\nx\n": "warp mode selected --selected x",
+	cases := map[string]struct {
+		answers string
+		want    string
+	}{
+		"show":     {"", "warp status"},
+		"all":      {"", "warp mode all"},
+		"off":      {"", "warp mode off"},
+		"selected": {"x\n", "warp mode selected --selected x"},
 	}
-	for answers, want := range cases {
-		app, _ := menuApp(t, answers, false)
-		plan, err := entryNamed(t, app, "egress (WARP)").plan(termui.New(app.in, &strings.Builder{}, termui.Style{}))
+	for label, tc := range cases {
+		app, _ := menuApp(t, tc.answers, false)
+		plan, err := childNamed(t, app, "egress (WARP)", label).plan(termui.New(app.in, &strings.Builder{}, termui.Style{}))
 		if err != nil {
-			t.Fatalf("%q: plan: %v", answers, err)
+			t.Fatalf("%s: plan: %v", label, err)
 		}
-		if got := strings.Join(plan[0], " "); got != want {
-			t.Errorf("%q: plan = %q, want %q", answers, got, want)
+		if got := strings.Join(plan[0], " "); got != tc.want {
+			t.Errorf("%s: plan = %q, want %q", label, got, tc.want)
 		}
 	}
 }
@@ -424,12 +467,43 @@ func TestDecoyTemplateIsValidated(t *testing.T) {
 }
 
 // entryNamed finds a menu entry by label, so a test does not depend on its position.
-func entryNamed(t *testing.T, app *application, label string) menuEntry {
+// childNamed finds one entry of a group, so a test can name "on" without caring that several groups have
+// an "on" of their own.
+func childNamed(t *testing.T, app *application, group, label string) menuEntry {
 	t.Helper()
-	for _, entry := range app.menuEntries() {
+	parent := entryNamed(t, app, group)
+	if parent.children == nil {
+		t.Fatalf("%q is not a group", group)
+	}
+	for _, entry := range parent.children() {
 		if entry.labelOf(app.translator()) == label {
 			return entry
 		}
+	}
+	t.Fatalf("%q has no %q entry", group, label)
+	return menuEntry{}
+}
+
+// entryNamed finds an entry anywhere in the tree, so a test names the command it means and not the group
+// it happens to live in.
+func entryNamed(t *testing.T, app *application, label string) menuEntry {
+	t.Helper()
+	var find func(entries []menuEntry) (menuEntry, bool)
+	find = func(entries []menuEntry) (menuEntry, bool) {
+		for _, entry := range entries {
+			if entry.labelOf(app.translator()) == label {
+				return entry, true
+			}
+			if entry.children != nil {
+				if found, ok := find(entry.children()); ok {
+					return found, true
+				}
+			}
+		}
+		return menuEntry{}, false
+	}
+	if entry, ok := find(app.menuEntries()); ok {
+		return entry
 	}
 	t.Fatalf("the menu has no %q entry", label)
 	return menuEntry{}
@@ -503,7 +577,7 @@ func TestMenuSpeaksTheConfiguredLanguage(t *testing.T) {
 		if !strings.Contains(rendered, "Termit — узел") {
 			t.Errorf("the menu title is not Russian:\n%s", rendered)
 		}
-		if !strings.Contains(rendered, "состояние") {
+		if !strings.Contains(rendered, "Состояние") {
 			t.Errorf("the menu entries are not Russian:\n%s", rendered)
 		}
 	})

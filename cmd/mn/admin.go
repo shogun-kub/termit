@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -85,7 +86,7 @@ func resolveAdminTokenSource(token, tokenFile string) (string, string, error) {
 // runInvite dispatches `termit-mn invite …`.
 func runInvite(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "termit-mn invite: one of create, list, revoke is required")
+		fmt.Fprintln(stderr, "termit-mn invite: one of create, list, revoke, policy is required")
 		return exitUsage
 	}
 	switch args[0] {
@@ -95,6 +96,8 @@ func runInvite(args []string, stdout, stderr io.Writer) int {
 		return runInviteList(args[1:], stdout, stderr)
 	case "revoke":
 		return runInviteRevoke(args[1:], stdout, stderr)
+	case "policy":
+		return runInvitePolicy(args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "termit-mn invite: unknown subcommand %q\n", args[0])
 		return exitUsage
@@ -145,8 +148,26 @@ func runInviteCreate(args []string, stdout, stderr io.Writer) int {
 	if *expires > 0 {
 		fmt.Fprintf(stdout, "expires: %s\n", time.Now().Add(time.Duration(*expires)*time.Hour).UTC().Format(time.RFC3339))
 	}
+	if cfg, err := config.Load(*configPath); err == nil && cfg.Domain != "" {
+		fmt.Fprint(stdout, inviteBlock(cfg.Domain, cfg.APIPrefix, result.Code, *note))
+	}
 	fmt.Fprintln(stdout, "the code is shown once: it is stored only as a digest")
 	return exitOK
+}
+
+// inviteBlock is what the operator sends to the other person: one command with the server's URL and its
+// prefix already filled in. Assembling that line by hand out of three commands was the first-day papercut
+// of the whole mesh.
+func inviteBlock(domain, prefix, code, note string) string {
+	var b strings.Builder
+	b.WriteString("\nsend this to them (the wizard asks for their own domain; these are the other two answers):\n\n")
+	b.WriteString("  sh uv.sh --wizard\n")
+	fmt.Fprintf(&b, "  server: https://%s%s\n", domain, prefix)
+	fmt.Fprintf(&b, "  invite: %s\n", code)
+	if note != "" {
+		fmt.Fprintf(&b, "\nfor: %s\n", note)
+	}
+	return b.String()
 }
 
 func runInviteList(args []string, stdout, stderr io.Writer) int {
@@ -286,6 +307,29 @@ func runUVState(verb string, args []string, stdout, stderr io.Writer) int {
 	}
 	fmt.Fprintf(stdout, "node %s is now %s\n", result.Node.ID, result.Node.State)
 	return exitOK
+}
+
+// probeDetail says what the last probe actually did: which leg answered and how fast, or which failure
+// class it stopped on. A bare "failed" leaves the operator guessing between a DNS problem and a dead
+// worker.
+func probeDetail(ok bool, class, kind string, latencyMS int) string {
+	parts := make([]string, 0, 3)
+	if ok {
+		parts = append(parts, "ok")
+	} else {
+		detail := "failed"
+		if class != "" {
+			detail += " (" + class + ")"
+		}
+		parts = append(parts, detail)
+	}
+	if kind != "" {
+		parts = append(parts, kind)
+	}
+	if latencyMS > 0 {
+		parts = append(parts, fmt.Sprintf("%d ms", latencyMS))
+	}
+	return strings.Join(parts, ", ")
 }
 
 // runUVForget erases a removed node, which is what frees its domain for a new enrollment.
@@ -498,6 +542,8 @@ func runUVShow(args []string, stdout, stderr io.Writer) int {
 			LatencyMS  int       `json:"latency_ms"`
 			ErrorClass string    `json:"error_class"`
 		} `json:"checks"`
+		Transports      []string `json:"transports"`
+		ProbedTransport string   `json:"probed_transport"`
 	}
 	callCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -519,6 +565,17 @@ func runUVShow(args []string, stdout, stderr io.Writer) int {
 	fmt.Fprintf(stdout, "agent:   %s\n", result.Node.AgentVersion)
 	fmt.Fprintf(stdout, "epoch:   %d\n", result.Node.CredentialEpoch)
 	fmt.Fprintf(stdout, "failed cycles: %d\n", result.Node.FailedCycles)
+	if len(result.Transports) > 1 {
+		parts := make([]string, 0, len(result.Transports))
+		for _, kind := range result.Transports {
+			if kind == result.ProbedTransport {
+				parts = append(parts, kind+" (probed)")
+				continue
+			}
+			parts = append(parts, kind+" (not probed)")
+		}
+		fmt.Fprintf(stdout, "transports: %s\n", strings.Join(parts, ", "))
+	}
 	if result.Check != nil {
 		state := "failed (" + result.Check.ErrorClass + ")"
 		if result.Check.OK {
@@ -532,6 +589,24 @@ func runUVShow(args []string, stdout, stderr io.Writer) int {
 			state = "ok"
 		}
 		fmt.Fprintf(stdout, "last self-check: %s %s\n", result.SelfCheck.At.UTC().Format(time.RFC3339), state)
+	}
+	if len(result.Checks) > 0 {
+		last := result.Checks[0]
+		for _, check := range result.Checks[1:] {
+			if check.At.After(last.At) {
+				last = check
+			}
+		}
+		fmt.Fprintf(stdout, "probe detail: %s %s\n", last.At.UTC().Format(time.RFC3339),
+			probeDetail(last.OK, last.ErrorClass, last.Kind, last.LatencyMS))
+	}
+	if result.Node.NextCheckAt != nil {
+		fmt.Fprintf(stdout, "next check:   %s (in %s)\n", result.Node.NextCheckAt.UTC().Format(time.RFC3339),
+			time.Until(*result.Node.NextCheckAt).Round(time.Minute))
+	}
+	if result.Node.HasSubToken {
+		fmt.Fprintln(stdout, "subscription: a token is set; `termit-mn sub rotate <node>` issues a new link "+
+			"(the server keeps only its digest)")
 	}
 	if len(result.Events) > 0 {
 		fmt.Fprintln(stdout, "events:")

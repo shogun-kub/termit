@@ -2,7 +2,9 @@ package install
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net"
 	"path/filepath"
 	"strings"
 	"time"
@@ -103,6 +105,16 @@ func (s *certificateStep) Check(context.Context) (CheckResult, error) {
 }
 
 func (s *certificateStep) Run(ctx context.Context) error {
+	// Refuse before spending an ACME attempt: the check is the same one preflight reports, and it runs
+	// here too because `renew-cert` selects this step alone — the operator retrying by hand is exactly
+	// the one who would burn the name's hourly allowance.
+	if check := checkDomain(ctx, s.e.cfg, net.DefaultResolver.LookupHost); check.Status == StatusFail {
+		message := "refusing to issue a certificate: " + check.Detail
+		if check.Hint != "" {
+			message += " (" + check.Hint + ")"
+		}
+		return errors.New(message)
+	}
 	manager, err := s.manager()
 	if err != nil {
 		return err

@@ -16,55 +16,42 @@ func ui(answers ...string) (*termui.UI, *bytes.Buffer) {
 	return termui.New(strings.NewReader(strings.Join(answers, "\n")+"\n"), out, termui.Style{}), out
 }
 
-// A number is the answer the menu prints, and it has to reach the command that number showed.
-func TestChooseRunsTheOptionThatWasPicked(t *testing.T) {
+// The option the operator picked is the command that runs, and the value it asked for is the last word of
+// the command line.
+func TestRunBuildsTheCommandTheOptionNames(t *testing.T) {
 	t.Parallel()
-	screen, _ := ui("3")
-	plan, err := menuplan.Choose(screen, i18n.New(i18n.EN), menuplan.Firewall())
-	if err != nil {
-		t.Fatalf("Choose: %v", err)
-	}
-	if len(plan) != 1 || strings.Join(plan[0], " ") != "firewall off" {
-		t.Fatalf("plan = %q, want one `firewall off`", plan)
-	}
-}
+	tr := i18n.New(i18n.EN)
 
-// The ban list's three verbs name the address they act on; the value the operator types is the last word
-// of the command line.
-func TestChooseAppendsTheValueItAskedFor(t *testing.T) {
-	t.Parallel()
-	screen, _ := ui("4", "203.0.113.7")
-	plan, err := menuplan.Choose(screen, i18n.New(i18n.EN), menuplan.Bans())
+	screen, _ := ui("")
+	plan, err := menuplan.Firewall()[2].Run(screen, tr)
 	if err != nil {
-		t.Fatalf("Choose: %v", err)
+		t.Fatalf("Run: %v", err)
 	}
-	if len(plan) != 1 || strings.Join(plan[0], " ") != "bans unban 203.0.113.7" {
+	if strings.Join(plan[0], " ") != "firewall off" {
+		t.Fatalf("plan = %q, want `firewall off`", plan)
+	}
+
+	screen, _ = ui("203.0.113.7")
+	plan, err = menuplan.Bans()[3].Run(screen, tr)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if strings.Join(plan[0], " ") != "bans unban 203.0.113.7" {
 		t.Fatalf("plan = %q, want `bans unban 203.0.113.7`", plan)
 	}
 }
 
-// An address is what the command acts on, so an empty answer asks again instead of running a command
-// with nothing to act on.
-func TestChooseAsksAgainForAnEmptyAddress(t *testing.T) {
+// An address is what the command acts on, so an empty answer asks again instead of running a command with
+// nothing to act on.
+func TestRunAsksAgainForAnEmptyValue(t *testing.T) {
 	t.Parallel()
-	screen, _ := ui("3", "", "203.0.113.7")
-	plan, err := menuplan.Choose(screen, i18n.New(i18n.EN), menuplan.Bans())
+	screen, _ := ui("", "203.0.113.7")
+	plan, err := menuplan.Bans()[2].Run(screen, i18n.New(i18n.EN))
 	if err != nil {
-		t.Fatalf("Choose: %v", err)
+		t.Fatalf("Run: %v", err)
 	}
-	if len(plan) != 1 || strings.Join(plan[0], " ") != "bans block 203.0.113.7" {
+	if strings.Join(plan[0], " ") != "bans block 203.0.113.7" {
 		t.Fatalf("plan = %q, want `bans block 203.0.113.7`", plan)
-	}
-}
-
-// "q" is how every menu says no; a sub-menu that ignored it would trap the operator. An empty plan means
-// the caller reports the cancellation.
-func TestChooseCancelsOnQuit(t *testing.T) {
-	t.Parallel()
-	screen, _ := ui("q")
-	plan, err := menuplan.Choose(screen, i18n.New(i18n.EN), menuplan.Firewall())
-	if err != nil || plan != nil {
-		t.Fatalf("plan = %q, err = %v, want nothing", plan, err)
 	}
 }
 

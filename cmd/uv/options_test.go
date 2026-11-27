@@ -6,12 +6,14 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/shogun-kub/termit/internal/proto"
 	"github.com/shogun-kub/termit/internal/uv/config"
+	"github.com/shogun-kub/termit/internal/uv/options"
 	"github.com/shogun-kub/termit/internal/uv/state"
 )
 
@@ -389,5 +391,83 @@ func TestOptionsHandsOutTheQUICLink(t *testing.T) {
 	want := "hy2://" + proto.HysteriaUser(device) + ":" + proto.HysteriaPassword(device) + "@" + cfg.Domain + ":443"
 	if !strings.Contains(html, want) {
 		t.Errorf("the page has no QUIC link for the device (%s):\n%s", want, html)
+	}
+}
+
+// TestTheFirstSyncMintsThePage: the owner should not have to remember a command before the node has one
+// address for its links. init and sync mint it, and a second run must not move it out from under a
+// bookmarked URL.
+func TestTheFirstSyncMintsThePage(t *testing.T) {
+	t.Parallel()
+	app, cfg, _ := optionsFixture(t, "")
+
+	if err := app.refreshOptions(cfg); err != nil {
+		t.Fatalf("refreshOptions: %v", err)
+	}
+	node, err := state.LoadInstalled(cfg.Paths.StatePath())
+	if err != nil {
+		t.Fatalf("load state: %v", err)
+	}
+	if !options.ValidToken(node.Options.Token) {
+		t.Fatalf("the sync minted no token: %q", node.Options.Token)
+	}
+	page, err := os.ReadFile(filepath.Join(cfg.Paths.SiteDir, node.Options.Token, "index.html"))
+	if err != nil {
+		t.Fatalf("the page was not written: %v", err)
+	}
+	if !strings.Contains(string(page), cfg.Domain) {
+		t.Error("the minted page does not name the node")
+	}
+
+	if err := app.refreshOptions(cfg); err != nil {
+		t.Fatalf("second refreshOptions: %v", err)
+	}
+	again, err := state.LoadInstalled(cfg.Paths.StatePath())
+	if err != nil {
+		t.Fatalf("load state: %v", err)
+	}
+	if again.Options.Token != node.Options.Token {
+		t.Errorf("the address moved on a re-render: %q → %q", node.Options.Token, again.Options.Token)
+	}
+}
+
+// TestTheMintedPageIsReadableByNginx: the page lives in the tree nginx serves as www-data, so its
+// directory has to be public whatever umask the writing process had. A page minted at 0700 answered
+// 403 on the lab.
+func TestTheMintedPageIsReadableByNginx(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows carries no POSIX permission bits to assert")
+	}
+	app, cfg, _ := optionsFixture(t, "")
+	if err := app.refreshOptions(cfg); err != nil {
+		t.Fatalf("refreshOptions: %v", err)
+	}
+	node, err := state.LoadInstalled(cfg.Paths.StatePath())
+	if err != nil {
+		t.Fatalf("load state: %v", err)
+	}
+	dir := filepath.Join(cfg.Paths.SiteDir, node.Options.Token)
+	// Exactly what a process with a restrictive umask leaves behind.
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+
+	if err := app.refreshOptions(cfg); err != nil {
+		t.Fatalf("second refreshOptions: %v", err)
+	}
+	dirInfo, err := os.Stat(dir)
+	if err != nil {
+		t.Fatalf("stat the page directory: %v", err)
+	}
+	if got := dirInfo.Mode().Perm(); got != 0o755 {
+		t.Errorf("the page directory is %04o, want 0755", got)
+	}
+	pageInfo, err := os.Stat(filepath.Join(dir, "index.html"))
+	if err != nil {
+		t.Fatalf("stat the page: %v", err)
+	}
+	if got := pageInfo.Mode().Perm(); got != 0o644 {
+		t.Errorf("the page is %04o, want 0644", got)
 	}
 }

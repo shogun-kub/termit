@@ -63,9 +63,12 @@ unauthenticated caller must not be able to make the server parse anything.
 
 **The source address is the TCP peer.** `X-Forwarded-For` and friends are ignored on purpose: the DNS
 consistency check (§3.3) exists to prove that the domain resolves to the machine that sent the
-request, and a header any client can set would defeat it. Do not put the server behind a reverse
-proxy or a CDN that rewrites the peer address; the enrollment check would then compare against the
-proxy's address and refuse every node.
+request, and a header any client can set would defeat it. A reverse proxy in front of the server is
+supported through one mechanism only — a PROXY protocol header, honoured when the peer address is listed
+in `trusted_proxies` ([`OPERATIONS.md`](OPERATIONS.md) §3.3) — because that header comes from the
+connecting host rather than from the request. A proxy that rewrites the address some other way, or one the
+server does not trust, makes the enrollment check compare against the proxy's address and refuse every
+node.
 
 ## 3. Endpoints
 
@@ -77,14 +80,18 @@ Liveness plus enough identity to answer "which server is this". Never touches a 
 {
   "status": "ok",
   "api_version": "1",
-  "build": "0.1.0",
-  "schema_version": 5,
-  "domain": "mn.example.com"
+  "build": "v0.6.0",
+  "schema_version": 6,
+  "domain": "mn.example.com",
+  "mesh_generation": "9f3c1a2b4d5e7788"
 }
 ```
 
 `schema_version` is the **database** schema this build understands, not the configuration's
 `schema_version: 1`: it moves when a migration lands. `build` is the binary's version string.
+`mesh_generation` is the digest of the mesh's shape that the nodes poll between their scheduled syncs
+(§3.4); it changes when a node joins, leaves, is blocked or moves, and names nothing — an id, a domain and
+a state enter the digest and only the digest leaves.
 
 `200` when the database answers. When `Ping` fails the body gains `"status": "degraded"` and
 `"database": "unavailable"`, and the status code is `503`.
@@ -201,18 +208,27 @@ Headers: `Authorization: Bearer <agent_key>`, and optionally
 X-Territ-Cert-SHA256: <64 lowercase hex>
 ```
 
-Request body — both fields optional, and an empty body is valid:
+Request body — every field optional, and an empty body is valid:
 
 ```json
 {
   "agent_version": "0.1.0",
-  "check": {"ok": true, "error_class": "", "latency_ms": 12, "at": "2026-11-10T04:15:00Z"}
+  "check": {"ok": true, "error_class": "", "latency_ms": 12, "at": "2026-11-10T04:15:00Z"},
+  "transports": [{"kind": "vless", "version": 1}, {"kind": "hysteria2", "version": 1}]
 }
 ```
 
 `check` is the node's own self-check summary. It is stored as a `self` row beside the server's probe
 results so an operator can tell "the box is broken" from "the path to it is broken", but **it never
 moves the node's state** — only the prober does that.
+
+`transports` is what the node serves: `kind` names a client-facing transport (`vless` for the TLS
+profile, `hysteria2` for the QUIC one) and `version` the shape of that kind's parameters. It decides
+which links the subscription renders for this node. A node that predates the field sends nothing, which
+is read as the TLS profile alone; a kind or a version this server does not know is **dropped, not
+refused**, so a newer node stays usable. The record is the node's latest answer — a node that stops
+serving a kind loses that link at its next sync, and a sync with no `transports` retires every kind but
+`vless`.
 
 The certificate header is how the server follows a renewal: the prober pins the leaf, and a node that
 renewed would otherwise fail every later check on a mismatch. A valid header replaces the stored pin;
@@ -245,9 +261,12 @@ Response:
   "policy": {
     "check_interval_seconds": 86400,
     "sync_interval_seconds": 86400,
-    "min_sync_delay_seconds": 7200
+    "min_sync_delay_seconds": 7200,
+    "mesh_poll_seconds": 900
   },
-  "next_sync_after": "2026-11-11T04:15:00Z"
+  "next_sync_after": "2026-11-11T04:15:00Z",
+  "mesh_generation": "9f3c1a2b4d5e7788",
+  "server_version": "v0.6.0"
 }
 ```
 
@@ -264,12 +283,22 @@ Rules the node may rely on:
   or `removed` node is not in anyone's set.
 - `policy` is the server's timing decision. The node schedules its own next cycle from
   `next_sync_after` plus a stable per-node jitter, and never earlier than
-  `min_sync_delay_seconds` after enrollment.
+  `min_sync_delay_seconds` after enrollment. `mesh_poll_seconds` is how often it may compare
+  `mesh_generation` against `{prefix}/healthz` between cycles; `0` turns the poll off and the node then
+  makes no request between cycles.
+- `mesh_generation` is the digest of the mesh this answer describes. The node keeps it so a change it
+  already applied does not trigger another sync on the next poll.
+- `server_version` is the build the server runs. The node keeps it and `termit-uv upgrade` installs
+  exactly that release (§4 of [`OPERATIONS.md`](OPERATIONS.md)), never `latest`. An older server omits it and an
+  older node ignores it, so the mesh can mix builds.
 - `subscription_url` is empty when the server cannot open the sealed token (a broken or rotated
   master key); the node then keeps the URL it already had.
 
 A blocked or removed node cannot sync: `403 node_inactive`. A wrong or unknown key is `401
-unauthorized` — the same answer, so a guesser learns nothing from the difference.
+unauthorized` — the same answer, so a guesser learns nothing from the difference. A `pending` node may
+sync — it needs the credentials it was issued — and it stays absent from every other node's set until an
+operator approves it (the state table in [`DESCRIPTION.md`](DESCRIPTION.md) §7.1); its own answer carries
+the peer set, whose pair credentials no peer will accept until then.
 
 ### 3.5 `POST {prefix}/agent/unblock`
 
@@ -358,6 +387,15 @@ VLESS outbound per peer, a `proxy` selector over them, a `direct` outbound, priv
 `.local`/`.lan` forced direct, and a `termit_subscription_url` field pointing back at the plain form.
 The profile routes the mesh's traffic through the tunnel and leaves the local network alone.
 
+**A node that also serves the QUIC transport appears twice**, in both forms: beside its `vless://` line
+the plain list carries `hy2://<user>:<password>@<domain>:443?sni=<domain>#<label>`, whose fragment ends in
+`%20(QUIC)` (percent-encoded, as any URI fragment is), and the JSON
+carries a `hysteria2` outbound with the same tag. The user name and password are derived from the
+credential that `vless://` line already carries (`proto.HysteriaUser`, `proto.HysteriaPassword`), so
+nothing extra is stored and the two links are two ways into one node, not two accounts. Which nodes have
+a second link is what each node reported in `transports` (§3.4); a kind this server does not know is
+dropped, not refused.
+
 Both forms:
 
 - contain the owner's own node with its **self credential**, and every other node with the pair
@@ -431,8 +469,8 @@ because a prober or a resolver failed.
 | scheduler probe | `active → unavailable → blocked`, `unavailable → active` |
 | admin CLI | `pending → active` (approve), `pending → removed` (reject), any → `blocked`, `unavailable/blocked → active` (unblock), any → `removed` |
 
-The full table, including every path that changes nothing, is in [`DESCRIPTION.md`](DESCRIPTION.md)
-`DESCRIPTION.md` §7.2 and is covered by tests in `internal/mn/sched`.
+The full table, including every path that changes nothing, is in
+[`DESCRIPTION.md`](DESCRIPTION.md) §7.2 and is covered by tests in `internal/mn/sched`.
 
 ## 6. Versioning
 

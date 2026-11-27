@@ -26,6 +26,9 @@ write the finding in English, explain it back in Russian.
 | [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) | Milestones, and the task you are probably implementing |
 | [`docs/QUESTIONS.md`](docs/QUESTIONS.md) | Decisions made and still open. Do not silently re-decide them |
 | [`docs/MN-API.md`](docs/MN-API.md) | The server's API: paths (and the configurable prefix), shapes, problem codes, admin operations |
+| [`docs/RELEASE.md`](docs/RELEASE.md) | before cutting a release: branches, the tag, what must be proved, the checklist |
+| [`docs/LAB.md`](docs/LAB.md) | the acceptance lab: what the tests read, the budget, the rules |
+| [`docs/MAINTENANCE.md`](docs/MAINTENANCE.md) | this checkout: pushing, `deploy/clean`, the caches, the scanner |
 
 If a task contradicts these documents, stop and ask — do not "fix" the document to match the code.
 
@@ -53,21 +56,18 @@ build tags.
 
 From `docs/DESCRIPTION.md` §11, restated because they are the easiest thing to break:
 
-1. **Never mutate host routing or firewall state.** No `ip route`, `ip rule`, iptables, nftables. WARP
-   only as the core's own userspace WireGuard outbound or as the `warp-cli` loopback SOCKS5 sidecar,
-   never as a host tunnel.
-2. **`unknown` is not `failed`.** A check that could not be performed (prober down, DNS error, missing
-   binary, timeout) is `unknown` and changes **no state**. Only a genuine negative result may move a node
-   to `unavailable` or `blocked`.
-3. **Validate before applying.** Every generated Xray config is written atomically, checked with
-   `xray -test`, only then activated: hot update (Xray API) first, validated restart second, rollback on
-   any failure.
-4. **Idempotency.** Re-running `termit-uv init`, a sync or an install step converges and never
-   regenerates issued credentials, XHTTP paths or certificates.
-5. **No secrets in logs, metrics, error text, config examples or tests.** Agent keys, subscription
-   tokens, VLESS UUIDs, private keys, ACME account keys — log identifiers and public metadata only.
-6. **Direct traffic stays direct.** SSH, the decoy, ACME and everything else keeps working through every
-   code path. If a change could capture host traffic, it is wrong.
+1. **Never mutate host routing or firewall state.** No `ip route`, `ip rule`, iptables, nftables: WARP only
+   as the core's userspace WireGuard outbound or a loopback SOCKS5 sidecar, never as a host tunnel.
+2. **`unknown` is not `failed`.** A check that could not run (prober down, DNS error, missing binary,
+   timeout) changes **no state**; only a genuine negative result moves a node.
+3. **Validate before applying.** Atomic write, `xray -test`, then activate: hot update first, validated
+   restart second, rollback on any failure.
+4. **Idempotency.** A re-run converges and never regenerates issued credentials, XHTTP paths or
+   certificates.
+5. **No secrets** in logs, metrics, error text, config examples or tests — agent keys, tokens, UUIDs,
+   private keys, ACME account keys.
+6. **Direct traffic stays direct.** SSH, the decoy, ACME keep working through every code path; a change
+   that could capture host traffic is wrong.
 
 ### 2.3 Autonomous actions are narrow
 
@@ -118,21 +118,20 @@ $env:GOPATH = "$(Get-Location)\.spike-out\gopath"
 ```
 
 The cache overrides are required: the file sandbox denies writes to `%LOCALAPPDATA%`, and a build then
-fails with a permission error rather than a compile error.
+fails with a permission error rather than a compile error. The same confinement breaks Windows' own TLS
+stack — `curl.exe`, `git`'s default backend and .NET fail with `SEC_E_NO_CREDENTIALS` while `node`,
+`git -c http.sslBackend=openssl` and every Go client work. Before blaming the network, read
+[`docs/MAINTENANCE.md`](docs/MAINTENANCE.md) §4.
 
-Build `golangci-lint` from source with the module's own toolchain — a prebuilt binary carries the Go
-version it was compiled with and refuses a newer module (`v1.64` cannot read this go 1.27 module at
-all). `.golangci.yml` explains why `fmt.Fprint*` is excluded from `errcheck`. `puttygen` here rejects
-`-O`, so PPK conversion does not work — see §4.3. Go is pinned by the `go` directive in `go.mod`,
-patch level included (`go 1.27.4`, not `go 1.27.0`): stdlib security fixes land in patch releases and
-`govulncheck` gates on the toolchain that built the binary. Do not add a `toolchain` line requiring
-more than CI uses. **CGO is off** (`CGO_ENABLED=0`, pure-Go SQLite); never add a cgo dependency.
+Build `golangci-lint` from source with this toolchain: a prebuilt binary refuses a newer module. Go is
+pinned by the `go` directive, patch included (`go 1.27.4`), because `govulncheck` gates on the toolchain
+that built the binary — do not add a `toolchain` line above CI's. **CGO is off** (`CGO_ENABLED=0`, pure-Go
+SQLite): never add a cgo dependency. `.golangci.yml` says why `fmt.Fprint*` is outside `errcheck`.
 
 ### 4.2 Common commands
 
 ```bash
-# Package patterns are explicit on purpose: `references/` holds third-party Go source inside this
-# module's tree and `./...` would compile and lint it.
+# Patterns are explicit: `references/` holds third-party Go source inside this module's tree.
 go build ./cmd/... ./internal/...     # compile everything we own
 go test ./cmd/... ./internal/...      # unit tests
 go test -race ./internal/...          # race detector on library code
@@ -147,13 +146,7 @@ gofmt -l cmd internal deploy test     # must print nothing
 goimports -l cmd internal deploy      # must print nothing
 go run ./deploy/release --version v0.4.1 --out dist   # the release directory, as CI builds it
 go run ./deploy/clean                 # drop the artifacts and the scratch; --dry-run lists them first
-go run ./deploy/clean --build-cache   # and the compiled output: the next build recompiles, nothing is
-                                      # downloaded (the module cache is --module-cache, which is)
-# SonarQube Server: self-hosted and LAN-only, so CI cannot reach it. The scan runs on the lab MN —
-# /root/sonar/analyse.sh pulls `dev`, runs the coverage step below and the scanner (coordinates in
-# .spike-out/lab.md). The same two commands work anywhere with Go and a JRE.
-go test -coverprofile=coverage.out ./cmd/... ./internal/...
-SONAR_TOKEN=… sonar-scanner -Dsonar.host.url=<server>
+                                      # cache flags, the scanner and the push setup: docs/MAINTENANCE.md
 ```
 
 Windows: PowerShell equivalents or WSL; no `make`-only workflow. A `Makefile` may exist, but every
@@ -165,53 +158,12 @@ and `internal` into `.spike-out/tidy`, run `go mod tidy` there, copy `go.mod`/`g
 
 ### 4.3 Acceptance lab
 
-Three Debian machines over SSH (one MN, two UVs), optionally a fourth UV for the mesh tests. Their
-coordinates never go into the repository — they are environment input:
-
-```bash
-export TERMIT_LAB_MN=root@…   TERMIT_LAB_UV1=root@…   TERMIT_LAB_UV2=root@…   TERMIT_LAB_UV3=root@…
-export TERMIT_LAB_SSH_KEY=<path to the lab private key>       # never committed
-export TERMIT_LAB_HOSTKEYS='host1=SHA256:…,host2=SHA256:…'    # pin every machine
-export TERMIT_LAB_MN_ADMIN_TOKEN=<admin token>                 # never committed
-export TERMIT_LAB_DNS_SUFFIX=lan
-export TERMIT_LAB_ACME=https://…/dir                           # a test ACME directory
-export TERMIT_LAB_PLINK='C:\Program Files\PuTTY\plink.exe'     # only when not on PATH
-export TERMIT_LAB_PSCP='C:\Program Files\PuTTY\pscp.exe'
-go test -tags=lab ./test/lab -v -timeout 30m
-```
-
-Run it with `-count=1`. `go test` caches a passing result and keys it on the package files and the
-environment the test reads — both unchanged between two runs of a gate — so a cached run prints the
-previous pass in seconds and proves nothing about the build in front of you.
-
-Concrete coordinates for this machine live in the gitignored `.spike-out/lab.md`; the variables above
-are what the tests read. The key is a PuTTY `.ppk` that OpenSSH cannot read, so the harness calls
-`plink`/`pscp` (M0.5) and pins each machine by fingerprint. A missing variable skips the suite rather
-than failing it: the lab is a manual gate, not part of `go test ./cmd/... ./internal/...`.
-
-Credentials for this host live beside it, also gitignored: `.spike-out/github-token` (a fine-grained
-token for `shogun-kub/termit` with Actions read/write and Contents read, which `node .spike-out/gh.js`
-uses to start `release.yaml` on a `release/<version>` branch and read the run back),
-`.spike-out/mn-admin.token` (the lab server's admin token) and `.spike-out/sonar-token` (the scanner's).
-`lab.md` lists them with what each opens. None of them may appear in the repository, a document, a commit
-message or a log line — the repository is public and the documents are read by everyone.
-
-Acceptance budget: UV = 1 vCPU / 1 GB RAM / 10 GB disk, MN = 2 vCPU / 2 GB. The containers are
-unprivileged LXC with **no `/dev/net/tun`**, and a lab's egress may block the WARP API — the very block
-this project exists to route around. A node must still install, serve and say why: `wireguard` needs no
-device but may fail to register, and the opt-in `proxy` transport cannot run at all. WARP egress is
-therefore proved in a production pass (AGENTS §9), not in the lab; the lab proves the degradation —
-traffic keeps flowing and the reason is reported. Everything else — TLS, ACME against a local directory,
-the mesh scenarios, resource usage — is testable.
-
-Rules: tests are re-runnable and tolerate a previous failed run; never leave a machine needing manual
-repair (on failure dump the logs and a `termit-uv doctor` report into the output); never put lab
-addresses, keys, domains or ACME URLs in the repository; destructive actions (uninstall, reboot) only in
-tests explicitly tagged for them. **A red test is repeated once, three minutes later, before it is
-investigated.** The lab's egress and GitHub's release CDN hand out TLS and read timeouts that do not
-reproduce — a probe whose worker listened but whose SOCKS handshake timed out is the usual shape — and a
-single re-run tells that apart from a defect for the price of three minutes. Only a failure that repeats
-is a bug; quote both runs when it does.
+Three Debian machines over SSH (one MN, two UVs), optionally a fourth UV for the mesh tests. The lab is a
+manual gate, not part of `go test ./cmd/... ./internal/...`. What the tests read, where the coordinates
+live, the budget, what the lab cannot prove and the rules of engagement are in
+[`docs/LAB.md`](docs/LAB.md). The short version: `go test -tags=lab -count=1 ./test/lab`, coordinates in
+the gitignored `.spike-out/lab.md`, never in the repository, and a red test is repeated once before it is
+investigated.
 
 ## 5. Coding conventions
 
@@ -278,12 +230,10 @@ is a bug; quote both runs when it does.
 
 ## 7. What a change must include
 
-Unit tests for new logic, including failure and `unknown` branches. A golden-file update **only** when
-the generated config genuinely changed, with the reason in the commit. Documentation when behaviour,
-config keys or CLI flags change (`docs/DESCRIPTION.md`, `docs/OPERATIONS.md`, `docs/RUNBOOK.md`,
-`docs/MN-API.md`, `--help`). For anything touching install, ACME, WARP or the Xray lifecycle: which lab scenario was run
-and what it observed. Do not add a test needing the public internet or the lab to the default `go test`
-run.
+See §10 for the list, and the checklist in `docs/RELEASE.md` §6 when the change goes into a release.
+Two rules it does not repeat: a golden-file update **only** when the generated config genuinely changed,
+with the reason in the commit; and no test that needs the public internet or the lab in the default
+`go test` run.
 
 ## 8. Dependencies
 
@@ -310,101 +260,28 @@ already passed CI and the lab.
 | `release/<version>` | stabilisation for one release, cut from `dev` | build + tests; the only branch a pre-release can be built from |
 
 - **No direct commits to `main`.** Work lands on `dev` and reaches `main` by merging `release/<version>`.
-- **`release/<version>`** is created from `dev` when a release is planned; the branch name **is** the
-  version (`release/v0.2.0`). Cherry-picks from `dev` and small fixes committed on the branch are
-  allowed. There is no version file to edit — `deploy/release --version v<version>` stamps the binaries,
-  so the branch name, the tag and `--version` must agree.
-- **Pre-release** is started by hand: `workflow_dispatch` of `.github/workflows/release.yaml` on a
-  `release/<version>` branch with `publish_prerelease` set. It builds both binaries, `uv.sh`, the units
-  and `SHA256SUMS`, and may publish them as a pre-release named **`v<version>p<n>`** — `v0.3.2p1` is the
-  first build of `0.3.2` from its release branch, `v0.3.2p2` the second, and `n` never resets for a
-  version: the existing tags are the counter. Nothing is published from `dev` or `main`. The artifacts
-  carry the pre-release version itself, so `uv.sh --version v0.3.2p1` installs exactly that build, and
-  the changelog section of `0.3.2` supplies its notes.
-- **Final release:** merge `release/<version>` into `dev` and into `main`, delete the branch, then create
-  an annotated tag `v<version>` on `main`. Pushing the tag runs the final build and publishes the GitHub
-  Release. The release stays marked pre-release until that release's own production pass is recorded in
-  `docs/IMPLEMENTATION_PLAN.md` (M4.3 for `0.2.1`, M5-8 for `0.3.2`); flipping the flag is a deliberate,
-  recorded act. **Flipping `prerelease` does not move the "latest" pointer.** A release published as a
-  pre-release keeps `make_latest` on the previous one, so `releases/latest` — and therefore `uv.sh` and
-  `mn.sh` without `--version` — go on offering the old build. Patch the release with `make_latest: "true"`
-  after the flip; the API answers immediately and the `github.com/.../releases/latest` redirect lags
-  minutes behind it while its cache expires.
-- **The release body is the changelog, from that version back to the last release** — `go run
-  ./deploy/release --version v<version> --notes` prints the section, and for a release (never for a
-  `v<version>p<n>` build) the extra `--since <last released version>` makes it print every section down
-  to, but not including, that version: the releases in between only ever existed as pre-releases, and
-  whoever installs this one skipped them. Write `CHANGELOG.md` (and `CHANGELOG.ru.md`, which stays in
-  step) with a real date before tagging: the tool refuses a missing section and one that still says
-  `unreleased`, so a release cannot publish a placeholder.
-- **A release that touches the network is proved on production before it is tagged.** Routing, the
-  transport, the firewall, the core's document and everything else under `internal/uv/xray`,
-  `internal/uv/warp` and the network half of `internal/uv/install` depend on networks we do not control,
-  and those networks change under us. For such a change a pre-release (`v<version>p<n>`) goes onto the
-  production nodes first, and what is observed there is the egress the node really uses — `warp status`,
-  the tunnel's exit, what a client sees — not the one the code intends. Only then does the final tag
-  exist. Purely local code (the decoy generator, the terminal interface, the docs) may ship on CI and the
-  lab alone.
-- **An accepted advisory is a debt with a due date.** `govulncheck` has no exclusion flag, so
-  `deploy/vulngate` is the gate: it fails on any finding that is not named in
-  `deploy/vulnerabilities.json`, and prints the action for every entry that is. Each entry also carries
-  `must_be_gone_by` — the first release that must not see it — and `go run ./deploy/release` refuses that
-  version while the entry is still there. **Before every release: update the module that carries an
-  accepted advisory and delete its entry.** Moving the deadline is a deliberate act that needs a reason in
-  the commit, not a way to make the reminder stop.
-- **A tag points at a commit that has already been tested.** Retagging is allowed only while the release
-  is unpublished; `v0.1.0` is published and stays where it is. Never retag a released commit — a version
-  that means two different trees is worse than a wrong one.
+- **The version is written in four places and they must agree**: the branch name, the tag,
+  `deploy/release --version` and the changelog heading. There is no version file to edit.
 - **`push --force` is forbidden on `main` and `dev`.** Do not amend someone else's commit.
+
+The rest — pre-releases, the counter, the final tag, the "latest" pointer, what must be proved on
+production, the advisory gate and the checklist we run before every tag — is
+[`docs/RELEASE.md`](docs/RELEASE.md). Read it before cutting a `release/<version>`.
 
 Commit hygiene: Conventional Commits (`feat(uv): …`, `fix(mn/probe): …`, `docs: …`), one logical change
 per commit. Never commit `references/`, build output, `.dev/`, lab credentials, `*.pem`, `*.key`, SQLite
 files or logs.
 
-**After pushing, clean up**: `git push && go run ./deploy/clean`, or `make push` (on this machine with the
-push setting below in place). The artifacts of a
-release are spent once they are on the server, and the scratch directory grows by hundreds of megabytes
-per cycle. `deploy/clean` removes the build output, the lab logs and everything in `.spike-out/` that is
-not on its keep list — the Go toolchain, the caches, the notes (`lab.md`, `prod.md`), the credentials
-beside them (`mn-admin.token`, `github-token`, `sonar-token`, `gh.js`) and the two directories holding
-input — and refuses to touch a directory that contains its own `.git`. `--dry-run` shows the list and the
-freed bytes.
-
-**Pushing from this checkout**: the maintainer's Windows box sets `GIT_SSH` to TortoiseGit's
-`TortoiseGitPlink.exe` (TortoiseGit needs it there), and this clone carries a `remote.origin.puttykeyfile`
-for an unrelated project, so a plain `git push` stops at
-`fatal: Could not read from remote repository` — with no `Permission denied`, because plink never gets as
-far as authenticating. Git's own client can get through, with the system OpenSSH and `~/.ssh/id_rsa`.
-Point this clone at it once; `core.sshCommand` overrides `GIT_SSH` for git only, so TortoiseGit keeps its
-plink and the environment is not touched:
-
-```powershell
-git config --local core.sshCommand 'C:/Windows/System32/OpenSSH/ssh.exe'
-```
-
-Without that setting — another clone, a fresh machine — name it per command:
-
-```powershell
-git -c core.sshCommand='C:/Windows/System32/OpenSSH/ssh.exe' push origin dev
-```
-
-Both do the same thing; on Linux and macOS a plain `git push` needs neither.
-
-The caches are split by what losing them costs, because that is the only distinction that matters when
-the disk is full: `--build-cache` drops the compiled output (2.7 GB after a release cycle; the next build
-recompiles in seconds and downloads nothing), `--module-cache` drops the downloaded modules (a build away
-from a download, so it is a separate decision), `--all` both, `--toolchain` the Go toolchain itself. When
-the build cache is the target, build the command outside it first — `go build -o /tmp/clean ./deploy/clean`
-— because `go run` executes the command from inside the very directory being deleted; it notices, says so
-and leaves its own binary behind.
+Machine settings and habits — pushing, `deploy/clean`, the caches, the LAN-only scanner — live in
+[`docs/MAINTENANCE.md`](docs/MAINTENANCE.md). After every push: `git push && go run ./deploy/clean`.
 
 ## 10. Definition of done
 
-1. `gofmt`/`goimports` clean, `go vet` clean, `golangci-lint` clean.
-2. `go test ./cmd/... ./internal/...` passes; new logic has tests; `-race` passes for touched packages.
-3. The relevant lab or Compose scenario passes, or the task says which scenario is deferred and why.
-4. Docs and `--help` reflect the change.
-5. No secret, lab address or reference copy in the diff.
+1. `gofmt`/`goimports`/`go vet`/`golangci-lint` clean; `go test ./cmd/... ./internal/...` passes (`-race`
+   for touched packages) and new logic has tests for its failure and `unknown` branches.
+2. The relevant lab or Compose scenario passes, or the task names the one deferred and why.
+3. Docs and `--help` reflect the change; `docs/RELEASE.md` §6 is the release-wide sweep.
+4. No secret, lab address or reference copy in the diff.
 
 ## 11. Stop and ask
 
@@ -421,9 +298,6 @@ change it.
 - Regenerating credentials or keys on re-run. Generate once, persist, reuse.
 - `systemctl restart xray` as the answer to every change. Hot path first, restart as fallback.
 - Treating "the port is listening" as "the proxy works". Probe end to end.
-- Blocking a node because *our* prober failed.
-- One shared UUID/credential for all clients, or a subscription token that doubles as a password.
-- World-readable private keys, tokens in URLs that end up in proxy logs, secrets in error strings.
-- Hardcoded domains, ports, paths and `Debian`-only assumptions scattered through the code. One config
-  struct, validated at startup.
-- Host firewall or `ip rule` surgery to make WARP work. If it needs routing changes, it is wrong.
+- One shared UUID for all clients, or a subscription token that doubles as a password. Secrets in URLs
+  that end up in proxy logs, in error strings or in world-readable keys.
+- Hardcoded domains, ports, paths and `Debian`-only assumptions. One config struct, validated at startup.

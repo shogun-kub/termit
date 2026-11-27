@@ -457,3 +457,35 @@ func TestRotateNeedsAuthentication(t *testing.T) {
 		t.Fatalf("Call = %v, want an unauthorized refusal", err)
 	}
 }
+
+// TestUVShowSaysWhichTransportWasProbed: a node that declares both transports is probed on one, so the
+// view has to name that leg — "ok" about the TLS profile says nothing about the QUIC one.
+func TestUVShowSaysWhichTransportWasProbed(t *testing.T) {
+	t.Parallel()
+	client, db := start(t)
+	ctx := context.Background()
+	if err := db.CreateUV(ctx, store.UV{ID: "uv_1", Domain: "one.example.com", SelfUUID: "u1",
+		State: store.StateActive, CreatedAt: testNow, CredentialEpoch: 1}); err != nil {
+		t.Fatalf("CreateUV: %v", err)
+	}
+	if err := db.SetUVTransports(ctx, "uv_1", []string{"vless", "hysteria2"}); err != nil {
+		t.Fatalf("SetUVTransports: %v", err)
+	}
+	if err := db.AppendCheck(ctx, store.Check{UVID: "uv_1", At: testNow, Kind: "probe", OK: true,
+		LatencyMS: 240, DetailJSON: `{"transport":"vless"}`}); err != nil {
+		t.Fatalf("AppendCheck: %v", err)
+	}
+	var shown struct {
+		Transports      []string `json:"transports"`
+		ProbedTransport string   `json:"probed_transport"`
+	}
+	if err := call(ctx, client, "uv.show", map[string]string{"id": "uv_1"}, &shown); err != nil {
+		t.Fatalf("uv.show: %v", err)
+	}
+	if len(shown.Transports) != 2 {
+		t.Fatalf("transports = %v, want both declared", shown.Transports)
+	}
+	if shown.ProbedTransport != "vless" {
+		t.Errorf("probed transport = %q, want vless", shown.ProbedTransport)
+	}
+}

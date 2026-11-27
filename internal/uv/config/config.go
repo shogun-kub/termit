@@ -139,6 +139,11 @@ type ACME struct {
 	SkipTLSVerify bool `yaml:"skip_tls_verify,omitempty"`
 	// RenewBeforeDays renews the certificate this many days before it expires.
 	RenewBeforeDays int `yaml:"renew_before_days"`
+	// AllowRemoteIP lets issuance proceed when the domain does not resolve to an address of this host.
+	// A proxy or a NAT port-forward in front of the node is a setup the operator has verified by hand,
+	// so it is declared here instead of guessed: without it the node refuses to spend an ACME attempt
+	// the CA can never complete, and five failures block the name for an hour.
+	AllowRemoteIP bool `yaml:"allow_remote_ip,omitempty"`
 }
 
 // Xray pins the proxy core.
@@ -190,7 +195,9 @@ type Warp struct {
 	Transport string `yaml:"transport,omitempty"`
 	// Family is the address family the tunnel carries: "ipv4" or "ipv6". Empty means ipv4, which is
 	// what a fresh configuration writes. Destinations of the other family go direct: Cloudflare's IPv6
-	// egress is what large services tend to block, and a provider's own IPv6 is often worse.
+	// egress is what large services tend to block, and a provider's own IPv6 is often worse. Only the
+	// wireguard transport honours it: the MASQUE sidecar is dual-stack and takes no family flag, so on
+	// "usque" anything but the default is refused at validation (docs/OPERATIONS.md §6.1 says so).
 	Family string `yaml:"family,omitempty"`
 }
 

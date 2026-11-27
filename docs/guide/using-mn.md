@@ -37,6 +37,18 @@ passed through to `init`:
 | `invite+approval` (default) | the node waits as `pending` until you run `termit-mn uv approve` |
 | `open` | no invite needed — only sensible on a private network |
 
+Changing the mode later is `termit-mn invite policy --mode <mode>`, which edits the one value in
+`config.yaml`, keeps your comments, and refuses `open` without `--force`. The mode is read at startup, so
+the command ends by saying so: the running server keeps the old rule until `systemctl restart termit-mn`.
+`termit-mn invite policy` without `--mode` prints the rule in force.
+
+Upgrading the server itself is `termit-mn update`: without a flag it asks GitHub for the newest published
+release and says whether this build is behind. `--apply` downloads it, checks the digest against the
+release's `SHA256SUMS`, keeps the previous binary as `termit-mn.prev`, restarts the unit and puts the old
+binary back if that restart fails. It is deliberately absent from `status` — the server answers questions
+about the mesh, and a check that reached GitHub on every status call would be its only network dependency
+besides its own nodes. `--release-base` points it at a mirror.
+
 `termit-mn init` creates the configuration, the database, the master key and the first admin token, and
 prints the secrets **once** (`--admin-token-out` sends the token to a file instead of printing it):
 
@@ -189,6 +201,19 @@ termit-mn invite revoke ABCD-EFGH-IJKL
 An invite code is a secret with a limited number of uses; pass it over a channel you trust, and
 revoke it if it leaks. Each use consumes one slot.
 
+`invite create` prints what to forward — the command that starts the wizard, and the two answers the
+person on the other side will be asked for besides their own node's domain:
+
+```
+send this to them (the wizard asks for their own domain; these are the other two answers):
+
+  sh uv.sh --wizard
+  server: https://mn.example.com/6rfjdqfn5nno
+  invite: ABCD-EFGH-IJKL
+
+for: node-a for Anna
+```
+
 ## Watch and manage nodes
 
 | Goal | Command |
@@ -289,7 +314,7 @@ journalctl -u termit-mn -f
 |---|---|
 | `termit-mn init` | create config, database, master key, admin token and the first invite; `--admin-token-out FILE` writes the token to a file instead of printing it; `--locale ru\|en` picks the menu language |
 | `termit-mn serve` | run the server (`--http` for development only, never on a public address) |
-| `termit-mn invite create\|list\|revoke` | manage invite codes |
+| `termit-mn invite create\|list\|revoke\|policy` | manage invite codes, and the enrollment rule a new node meets |
 | `termit-mn uv list\|show\|approve\|reject\|block\|unblock\|rm\|forget\|reissue\|agentkey` | manage nodes |
 | `termit-mn check now <node>\|--all` | run health checks immediately |
 | `termit-mn policy show\|set` | read or change scheduler thresholds |
@@ -297,7 +322,8 @@ journalctl -u termit-mn -f
 | `termit-mn admin rotate` | replace the admin token you authenticated with; `--token-out FILE` writes it |
 | `termit-mn status` | server, nodes and schedule |
 | `termit-mn backup`, `termit-mn restore` | snapshot and restore |
-| `termit-mn firewall` | the server's own table: `status`, `on`, `off`, `confirm`, `refresh` |
+| `termit-mn update` | install the newest published release; `--check` (the default) reports, `--apply` replaces the binary and restarts the unit |
+| `termit-mn firewall` | the server's own table: `status`, `on`, `off`, `confirm`, `refresh`, `restore` |
 | `termit-mn bans`, `termit-mn guard` | the ban engine on the server |
 | `termit-mn version` | build and protocol version |
 

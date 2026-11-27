@@ -94,6 +94,9 @@ type application struct {
 	// getenv reads the environment for the locale check; nil means os.Getenv. Tests set it, so the
 	// language of a menu never depends on the machine that runs the suite.
 	getenv func(string) string
+	// convergeFn runs the freshly installed binary after an upgrade; nil means `exe init`. Tests set it,
+	// so an upgrade test never starts a second process.
+	convergeFn func(context.Context, string, []string) error
 }
 
 // translator is the language of the current session. A command that never resolves one gets the
@@ -149,6 +152,8 @@ func (a *application) run(args []string) int {
 		return a.runAgent(rest)
 	case "unblock":
 		return a.runUnblock(rest)
+	case "upgrade":
+		return a.runUpgrade(rest)
 	case "migrate":
 		return a.runMigrate(rest)
 	case "uri":
@@ -204,6 +209,7 @@ Commands:
   sync         reconcile the core with the server's peer set; --check reports drift
   agent        run the long-running node loop (the systemd service); --once runs one cycle
   unblock      ask the server to verify this node and lift a block
+  upgrade      replace this node's binary with a published release and converge
   migrate      move this node to a new domain (--relocate)
   warp         show the egress, or change its mode (all, selected, off)
   warp-relay   the loopback relay in front of the MASQUE sidecar (its systemd unit runs this)

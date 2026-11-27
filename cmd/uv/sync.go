@@ -142,6 +142,11 @@ func (a *application) runSync(args []string) int {
 	if answer.MeshGeneration != "" {
 		st.MeshGeneration = answer.MeshGeneration
 	}
+	if answer.ServerVersion != "" {
+		// The menu's update offer and `upgrade` read this without touching the network; the agent's
+		// cycle keeps the same field, and the command must not leave it a day behind.
+		st.ServerVersion = answer.ServerVersion
+	}
 	poll := answer.Policy.MeshPollSeconds
 	st.MeshPollSeconds = &poll
 	agent.RememberSubscription(st, answer)
