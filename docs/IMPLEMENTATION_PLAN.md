@@ -2440,6 +2440,40 @@ with three other advisories `in the module graph, not called`), and `deploy/rele
 while the entry named it. Deleting the entry would turn the gate red for a finding the code cannot fix; the
 record is what has to change, and `0.8.0` inherits the re-check.
 
+### 4.7 The production pass, 0.7.0, 2026-11-27
+
+The pass ran on the management server and both production nodes, all three on `v0.6.0 (6d1cee8)` before it
+began. §4.4 required it: the upgrade path is the release's one network-facing piece, and the rest — menus,
+cards, reports — touches nothing a network sees. The builds handed to production were `v0.7.0p4` (`b2d303e`)
+and, after the fix below, `v0.7.0p5` (`f2391ce`); neither is a release, and both are builds of `0.7.0`.
+
+**What was installed.** `mn.sh --version v0.7.0p4` and later `v0.7.0p5` on `termit.bookinet.ru` (schema 6
+kept, prober ready, six nodes, five active), and `uv.sh --version … --no-enroll` on then4 and then5. Each
+host keeps its previous binary, `/etc/termit` and `/var/lib/termit` under `/root/termit-pre-070p4-<stamp>`:
+`20261127-111207` on the server, `-111214` on then4, `-111229` on then5.
+
+**What production proved, on `v0.7.0p5`.** `warp status` on both nodes: `mode: all`, `egress: on` through
+Cloudflare (`2a09:bac1:5ba0:40::420:45` on then4, `2a09:bac1:2520::48e:5e` on then5), `latency: 76 ms` and
+`69 ms`, `udp: through warp (the MASQUE sidecar)`. `doctor` names the tunnel `warp ok usque (MASQUE), via …
+in 27ms` and `90ms` and ends `ok`; the decoy answers `200` over TLS on both names; all six units — core,
+Hysteria2, sidecar, relay, nginx, agent — are `active`. The server's view names the transport: `agent:
+termit-uv v0.7.0p5 (f2391ce)` and `transports: hysteria2 (not probed), vless (probed)` for both nodes, and
+`termit-mn check now` put a fresh probe on each (`active`, `checks passed`). `termit-uv upgrade --check`
+refuses the pre-release target — `"v0.7.0p5" is not a release; a node follows vX.Y.Z, never a pre-release
+or a branch` — which is what §4.4 promised.
+
+**The pass found a defect the lab could not.** After the server was upgraded, `termit-uv sync` on a node
+reported `already in sync` and left `server: v0.6.0` in the state, so `upgrade --check` offered `v0.6.0 over
+v0.7.0p4`. The agent's daily cycle wrote `server_version`; the command did not — `upgrade` and the menu's
+offer would name the server's previous build for up to a day after a server upgrade. The fix is `f2391ce`:
+the command writes the field the cycle writes, both changelogs say so, `v0.7.0p5` was cut and put on all
+three hosts, and the same sequence then reported `server: v0.7.0p5` on both nodes. The lab run could not see
+it: it never upgrades the server underneath a node and then asks the node what it will install.
+
+**Left in service.** All three production hosts stay on `v0.7.0p5`, the code the tag carries; the commits
+after it touch this document, the changelogs and the READMEs. The previous binaries and the config
+snapshots stay until `0.7.0` is promoted and the next release starts.
+
 ## 5. Not implemented yet
 
 Everything after `0.6.0` is postponed: understood and wanted, and nothing shipped depends on it. Each item

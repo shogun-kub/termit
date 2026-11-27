@@ -74,7 +74,7 @@ server has its own page in [Running the server](docs/guide/using-mn.md).
 ```bash
 # on the server (Debian 13, ports 80/443 free, DNS pointing at it)
 wget -q https://github.com/shogun-kub/termit/releases/latest/download/mn.sh
-sh mn.sh --domain mn.example.com --email you@example.com   # --version v0.6.0 pins a release
+sh mn.sh --domain mn.example.com --email you@example.com   # --version v0.7.0 pins a release
 termit-mn invite create --note "node-a"                    # prints the code once
 
 # on the node (Debian 13, ports 80/443 free, DNS pointing at it)
@@ -114,14 +114,15 @@ Deliberate design choices worth knowing before you deploy it:
 
 ## Status
 
-`v0.6.0` is the newest release. M1–M5 are implemented and verified on a three-machine acceptance lab
+`v0.7.0` is the newest release. M1–M5 are implemented and verified on a three-machine acceptance lab
 (Debian 13 in unprivileged containers), and the release pipeline builds verified artifacts for
 linux/amd64 and linux/arm64. Since `0.4.0` the WARP tunnel runs inside the proxy core instead of a
 sidecar, so it needs no `/dev/net/tun`, and `warp.family` decides which address family leaves through it;
 `0.5.0` added the second transport, Hysteria2, and `0.6.0` the MASQUE sidecar, the WARP transport that
-carries UDP. The passes behind the releases are recorded in
+carries UDP; `0.7.0` put the daily work behind a menu, added `termit-uv upgrade` and `termit-mn update`,
+and gave `doctor` a verdict. The passes behind the releases are recorded in
 [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) (§3.4.11 for `0.3.2`, §3.5.11–§3.5.15 for
-`0.4.0`–`0.4.2`, §3.8.2 for `0.6.0`): three production hosts — a management server in a container and two
+`0.4.0`–`0.4.2`, §3.8.2 for `0.6.0`, §4.7 for `0.7.0`): three production hosts — a management server in a container and two
 nodes behind real domains — with the host firewall confirmed and surviving a reboot, the ban engine and
 the blocklist active, WARP egress verified through Cloudflare's own trace, the owner's page reachable over
 TLS, and a phone app passing traffic through both nodes. `v0.3.2` and its predecessors carry their own
@@ -146,7 +147,7 @@ go test ./cmd/... ./internal/...                  # unit tests
 go vet ./cmd/... ./internal/...
 gofmt -l cmd internal deploy test                 # must print nothing
 
-go run ./deploy/release --version v0.6.0 --out dist   # the release directory, as CI builds it
+go run ./deploy/release --version v0.7.0 --out dist   # the release directory, as CI builds it
 ```
 
 Package patterns are explicit on purpose: `references/` holds third-party Go source inside this
