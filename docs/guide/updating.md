@@ -72,7 +72,9 @@ termit-uv bans list            # a "scan" ban is a client the table did not let 
 termit-uv bans unban <ip>
 ```
 
-The full procedure is in [the runbook](../RUNBOOK.md) §12 step 8 and §13.
+The full procedure is in [the runbook](../RUNBOOK.md) §12 step 8 and §13. The menu does the same: run
+`termit-uv` with no arguments, then Defence → firewall → on, then confirm; and Defence → bans → unban for
+a ban that is already in place.
 
 ### Check the mesh
 
