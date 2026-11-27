@@ -7,6 +7,12 @@ pre-releases, and whoever installs the release skipped them.
 
 ### Added
 
+- **The server can declare the oldest node build it supports.** `min_agent_version: v0.7.0` in the
+  server's configuration travels in every sync answer; a node below it prints one line in `termit-uv
+  status` and a warning in the `doctor` report, and keeps serving. Nothing is refused: an old build is a
+  node to upgrade, not a node to drop, and a refusal keyed on the server's word can strand a healthy box.
+  The value is read at startup, like the enrollment rule, and a server that names no floor sends nothing.
+
 - **The WARP tunnel can restart on a schedule.** `warp.restart_every: 6h` writes `RuntimeMaxSec=` into
   the unit that carries the tunnel — the core's on `wireguard`, where a restart re-establishes the
   WireGuard handshake and every proxied connection reconnects; the MASQUE sidecar's on `usque`. A tunnel

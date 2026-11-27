@@ -72,4 +72,8 @@ type SyncResponse struct {
 	// version the mesh was proved against — never "latest", never a prerelease. Older servers omit it and
 	// older nodes ignore it: the field is additive in both directions.
 	ServerVersion string `json:"server_version,omitempty"`
+	// MinAgentVersion is the oldest node build the server still supports, when its operator named one.
+	// It is a declaration, not a gate: the node reports that it is below it and keeps serving, because
+	// a refusal keyed on the server's word can strand a node that is working (docs/DESCRIPTION.md §8).
+	MinAgentVersion string `json:"min_agent_version,omitempty"`
 }

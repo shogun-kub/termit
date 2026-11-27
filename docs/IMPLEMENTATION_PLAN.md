@@ -2523,17 +2523,21 @@ rule the core can apply without being told.
 #### 5.1.3 The minimum agent version
 
 `DESCRIPTION.md` §8 promised that MN declares `min_agent_version` and UV refuses to run below it. Nothing
-carries it: the sync answer has `api_version` and `server_version`, no key names a minimum, and neither side
-reads the other's protocol version. The release sweep caught the claim while checking §8 against the wire.
+carried it: the sync answer had `api_version` and `server_version`, no key named a minimum, and neither
+side read the other's protocol version. The release sweep caught the claim while checking §8 against the
+wire.
 
-The constraint is the shape of the promise, not the field: `agent/sync` is called by every node and its body
-is decoded with unknown fields refused, so a new *request* field is the breaking kind and arrives only with
-an `api_version` change. And "UV refuses to run" is a refusal keyed on the server's word, which can strand a
-node that is otherwise healthy — the case `doctor` reports, not one it should enforce. Mixed builds already
-work because an unknown value inside a known field is dropped rather than refused.
+**Built on `dev`, 2026-11-27 — with the promise corrected instead of the field refused.** The server's
+configuration may name the oldest node build it supports (`min_agent_version`, a plain release such as
+`v0.7.0`, refused by the loader in any other shape), every sync answer declares it, and a node below it
+prints one line in `termit-uv status` and a warning in the `doctor` report. The field is in the *answer*,
+which is the side the protocol says may grow freely, so no `api_version` change was needed: an older node
+ignores it and an older server sends nothing, and both directions are tested. An answer without the field
+clears the node's stored floor, because the rule belongs to the server that answers.
 
-It returns with the first change that genuinely needs a gate between builds; until then §8 states what the
-wire does.
+What was dropped, and why it stays dropped: "UV refuses to run" is a refusal keyed on the server's word,
+and it can strand a node that is otherwise healthy — the case `doctor` reports, not one it should enforce.
+A node below the floor is a node to upgrade, and the mesh keeps working meanwhile.
 
 ### 5.2 0.8.0
 

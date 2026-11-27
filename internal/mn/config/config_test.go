@@ -121,6 +121,35 @@ func TestValidateCollectsProblems(t *testing.T) {
 	}
 }
 
+// The floor is declared, never enforced, and a value nothing can be ordered against is refused where it
+// is written: every node would otherwise read "cannot compare" and the operator would believe a rule is
+// in force.
+func TestMinAgentVersionMustBeARelease(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		value string
+		want  string
+	}{
+		{value: "", want: ""},
+		{value: "v0.7.0", want: ""},
+		{value: "v0.7.0p4", want: "not a release"},
+		{value: "0.7.0", want: "not a release"},
+		{value: "latest", want: "not a release"},
+	}
+	for _, tc := range cases {
+		cfg := config.Default()
+		cfg.Domain = "mn.example.com"
+		cfg.MinAgentVersion = tc.value
+		err := cfg.Validate()
+		switch {
+		case tc.want == "" && err != nil:
+			t.Errorf("%q was refused: %v", tc.value, err)
+		case tc.want != "" && (err == nil || !strings.Contains(err.Error(), tc.want)):
+			t.Errorf("%q = %v, want an error mentioning %q", tc.value, err, tc.want)
+		}
+	}
+}
+
 func TestTrustedProxies(t *testing.T) {
 	t.Parallel()
 	cases := []struct {

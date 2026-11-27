@@ -12,8 +12,8 @@ func TestCheckGroupSplitsTheReport(t *testing.T) {
 	t.Parallel()
 	cases := map[string]string{
 		"root": groupHost, "os": groupHost, "systemd": groupHost, "disk": groupHost, "apt": groupHost,
-		"config": groupNode, "state": groupNode, "services": groupNode, "certificate": groupNode,
-		"decoy": groupNode, "proxy config": groupNode,
+		"config": groupNode, "state": groupNode, "support": groupNode, "services": groupNode,
+		"certificate": groupNode, "decoy": groupNode, "proxy config": groupNode,
 		"transport": groupTunnel, "warp": groupTunnel, "warp-egress": groupTunnel,
 	}
 	for name, want := range cases {

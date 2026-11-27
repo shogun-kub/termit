@@ -266,7 +266,8 @@ Response:
   },
   "next_sync_after": "2026-11-11T04:15:00Z",
   "mesh_generation": "9f3c1a2b4d5e7788",
-  "server_version": "v0.6.0"
+  "server_version": "v0.6.0",
+  "min_agent_version": "v0.7.0"
 }
 ```
 
@@ -291,6 +292,11 @@ Rules the node may rely on:
 - `server_version` is the build the server runs. The node keeps it and `termit-uv upgrade` installs
   exactly that release (§4 of [`OPERATIONS.md`](OPERATIONS.md)), never `latest`. An older server omits it and an
   older node ignores it, so the mesh can mix builds.
+- `min_agent_version` is the oldest node build the server declares it supports, sent only when its
+  operator named one. A node below it reports that in `termit-uv status` and in `doctor` and keeps
+  serving: the field is a declaration, not a gate, because a refusal keyed on the server's word can
+  strand a node that works. An answer without it clears the floor the node stored — the rule belongs to
+  the server that answers, and a warning from a floor its operator removed must not outlive it.
 - `subscription_url` is empty when the server cannot open the sealed token (a broken or rotated
   master key); the node then keeps the URL it already had.
 

@@ -213,6 +213,9 @@ type State struct {
 	// ServerVersion is the build the management server reported with the last sync. It is what an update
 	// offer compares against, so nothing has to ask the network at the moment the menu opens.
 	ServerVersion string `json:"server_version,omitempty"`
+	// MinAgentVersion is the oldest build the management server says it supports, when it says. It is
+	// a warning, not a gate: the node reports that it is below it and keeps serving.
+	MinAgentVersion string `json:"min_agent_version,omitempty"`
 	// MeshPollSeconds is how often the server asked this node to poll for that digest; nil means it
 	// never said, and 0 means it asked for no poll at all.
 	MeshPollSeconds *int `json:"mesh_poll_seconds,omitempty"`

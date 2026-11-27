@@ -604,6 +604,26 @@ func RememberProbe(st *state.State, answer proto.SyncResponse) bool {
 	return true
 }
 
+// RememberServer stores what the server said about itself: the build it runs, and the oldest node build
+// it declares it supports. Both are read later without the network — an update offer, a `status` line, a
+// `doctor` check — so both the cycle and the command write them here.
+//
+// The floor is the answering server's rule, so an answer without it clears the stored one: a server that
+// declares no minimum, and an older one that never knew the field, both mean "nothing is declared", and a
+// warning left over from a floor its operator removed would otherwise never go away.
+func RememberServer(st *state.State, answer proto.SyncResponse) bool {
+	changed := false
+	if answer.ServerVersion != "" && st.ServerVersion != answer.ServerVersion {
+		st.ServerVersion = answer.ServerVersion
+		changed = true
+	}
+	if st.MinAgentVersion != answer.MinAgentVersion {
+		st.MinAgentVersion = answer.MinAgentVersion
+		changed = true
+	}
+	return changed
+}
+
 // emailsOf names the clients an add request carries. Emails are the core's own identifiers and are
 // safe to show; the UUID beside each is not.
 func emailsOf(clients []xray.Client) []string {

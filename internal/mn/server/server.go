@@ -51,6 +51,9 @@ type Options struct {
 	SyncInterval  time.Duration
 	// MinSyncDelay is how long a fresh node waits before its first own cycle.
 	MinSyncDelay time.Duration
+	// MinAgentVersion is the oldest node build the server declares it supports, sent in every sync
+	// answer. Empty means it declares none. Read at startup, so a change needs a restart.
+	MinAgentVersion string
 	// MeshPoll is how often a node may ask /healthz whether the mesh changed. Zero turns the poll off
 	// and every node learns a join at its next scheduled sync.
 	MeshPoll time.Duration

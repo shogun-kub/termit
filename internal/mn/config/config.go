@@ -27,6 +27,7 @@ import (
 	"github.com/shogun-kub/termit/internal/harden"
 	"github.com/shogun-kub/termit/internal/i18n"
 	"github.com/shogun-kub/termit/internal/proto"
+	"github.com/shogun-kub/termit/internal/version"
 )
 
 // DefaultHappFragment is what a fresh server writes into subscription.happ_fragment.
@@ -69,6 +70,10 @@ type Config struct {
 	DataDir       string `yaml:"data_dir"`
 	DBPath        string `yaml:"db_path"`
 	MasterKeyFile string `yaml:"master_key_file"`
+	// MinAgentVersion is the oldest node build this mesh still supports, such as v0.7.0; empty means no
+	// floor. It is handed to every node in its sync answer, which reports that it is below it. Nothing
+	// is refused: a refusal keyed on the server's word can strand a node that is working.
+	MinAgentVersion string `yaml:"min_agent_version,omitempty"`
 	// TrustedProxies are the addresses (an IP, or a CIDR block) of reverse proxies in front of this
 	// server. A connection from one of them has its version-1 PROXY protocol header read and removed,
 	// so the recorded client address — and with it the enrollment DNS proof and the rate-limit key —
@@ -306,6 +311,12 @@ func (c *Config) Validate() error {
 	}
 	if _, _, err := net.SplitHostPort(c.ACME.ChallengeListen); err != nil {
 		problems = append(problems, fmt.Errorf("acme.challenge_listen %q is not host:port: %w", c.ACME.ChallengeListen, err))
+	}
+	if c.MinAgentVersion != "" && !version.Release.MatchString(c.MinAgentVersion) {
+		// A floor nobody can order against is worse than none: every node would read "cannot compare"
+		// and the operator would believe a rule is in force.
+		problems = append(problems, fmt.Errorf("min_agent_version %q is not a release; name one as vX.Y.Z",
+			c.MinAgentVersion))
 	}
 	switch c.Enrollment.Mode {
 	case ModeInvite, ModeInviteApproval, ModeOpen:

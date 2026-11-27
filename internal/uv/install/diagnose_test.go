@@ -10,8 +10,39 @@ import (
 
 	"github.com/shogun-kub/termit/internal/firewall"
 	"github.com/shogun-kub/termit/internal/uv/config"
+	"github.com/shogun-kub/termit/internal/uv/state"
 	"github.com/shogun-kub/termit/internal/uv/warp"
 )
+
+// The declared floor is read here and nowhere else: it warns, it never fails, and a state whose server
+// named no floor draws no check at all.
+func TestDiagnoseSupportWarnsAndNeverFails(t *testing.T) {
+	t.Parallel()
+	if _, ok := diagnoseSupport("v0.6.0", &state.State{}); ok {
+		t.Error("a state whose server named no floor drew a check")
+	}
+	for _, tc := range []struct {
+		build string
+		want  CheckStatus
+	}{
+		{"v0.6.0", StatusWarn},
+		{"v0.7.0", StatusOK},
+		{"v0.7.1", StatusOK},
+		// A development build cannot be ordered against a release; it says so instead of guessing.
+		{"dev", StatusSkip},
+	} {
+		check, ok := diagnoseSupport(tc.build, &state.State{MinAgentVersion: "v0.7.0"})
+		if !ok {
+			t.Fatalf("%s drew no check", tc.build)
+		}
+		if check.Name != "support" || check.Status != tc.want {
+			t.Errorf("%s = %s/%s, want support/%s", tc.build, check.Name, check.Status, tc.want)
+		}
+		if tc.want == StatusWarn && check.Hint == "" {
+			t.Errorf("%s warns without telling the operator what to do", tc.build)
+		}
+	}
+}
 
 // checkStatuses turns a check list into a name → status map, which is what these tests assert on.
 func checkStatuses(checks []Check) map[string]CheckStatus {

@@ -97,7 +97,8 @@ func (h *Handler) sync(w http.ResponseWriter, r *http.Request) {
 
 	// The node is told what build it is talking to, so a menu can offer exactly this version as an update
 	// target. It is the only authority in the mesh: there is nothing above it for the node to follow.
-	response := proto.SyncResponse{APIVersion: proto.APIVersion, ServerVersion: version.Version}
+	response := proto.SyncResponse{APIVersion: proto.APIVersion, ServerVersion: version.Version,
+		MinAgentVersion: h.opts.MinAgentVersion}
 	response.Self.ID = node.ID
 	response.Self.Domain = node.Domain
 	response.Self.State = string(node.State)

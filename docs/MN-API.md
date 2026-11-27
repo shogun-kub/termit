@@ -291,7 +291,8 @@ Response `200 OK`:
              "mesh_poll_seconds": 900},
   "next_sync_after": "2026-11-11T18:16:11Z",
   "mesh_generation": "9f3c1a2b4d5e7788",
-  "server_version": "v0.6.0"
+  "server_version": "v0.6.0",
+  "min_agent_version": "v0.7.0"
 }
 ```
 
@@ -306,6 +307,10 @@ Two invariants matter more than the fields:
 `next_sync_after` is a hint, not an instruction: a node that syncs early is welcome, a node that syncs
 late is not a crisis. `state` is the *peer's* state; `degraded` is set when a peer is still usable but
 currently failing its checks.
+
+`min_agent_version` is declared, never enforced: the operator names the oldest node build the mesh supports
+(`min_agent_version` in `config.yaml`, a plain release), a node below it prints one line in `termit-uv
+status` and a warning in `doctor`, and it keeps serving. The field is absent when no floor is configured.
 
 `mesh_generation` is a digest of who is in the mesh and in what shape — it changes when a node joins,
 leaves, is blocked or moves, and not when a node merely syncs. The node stores it and compares it with

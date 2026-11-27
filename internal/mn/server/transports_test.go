@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"slices"
+	"strings"
 	"testing"
 
+	"github.com/shogun-kub/termit/internal/mn/server"
 	"github.com/shogun-kub/termit/internal/proto"
 	"github.com/shogun-kub/termit/internal/version"
 )
@@ -80,5 +82,29 @@ func TestSyncTellsTheNodeWhichBuildTheServerRuns(t *testing.T) {
 	}
 	if answer.ServerVersion != version.Version {
 		t.Errorf("server_version = %q, want %q", answer.ServerVersion, version.Version)
+	}
+}
+
+// The floor is declared to every node so it can report itself below it, and a server that names none says
+// nothing at all: the field is omitted from the JSON, not sent empty.
+func TestSyncDeclaresTheMinimumAgentVersion(t *testing.T) {
+	t.Parallel()
+	f := newFixtureWith(t, okProber{}, func(opts *server.Options) { opts.MinAgentVersion = "v0.7.0" })
+	response := f.sync(t, f.agentKey, `{"agent_version":"v0.6.0"}`)
+	if response.Code != 200 {
+		t.Fatalf("sync: %d %s", response.Code, response.Body.String())
+	}
+	var answer proto.SyncResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &answer); err != nil {
+		t.Fatalf("the answer is not JSON: %v", err)
+	}
+	if answer.MinAgentVersion != "v0.7.0" {
+		t.Errorf("min_agent_version = %q, want v0.7.0", answer.MinAgentVersion)
+	}
+
+	plain := newFixture(t)
+	body := plain.sync(t, plain.agentKey, `{"agent_version":"v0.6.0"}`).Body.String()
+	if strings.Contains(body, "min_agent_version") {
+		t.Errorf("a server that names no floor still sent the field: %s", body)
 	}
 }

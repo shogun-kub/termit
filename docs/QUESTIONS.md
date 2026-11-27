@@ -382,11 +382,12 @@ unit tests alone.
 **Q9.7** Version compatibility: MN declares a minimum UV agent version, and UV refuses to run against
 an MN whose API version is too new?
 **Rec** Both: `api_version` + `min_agent_version`, surfaced in `termit-uv doctor`.
-**Decided by the build: `api_version` only.** Every response carries the protocol version and no side acts
-on it; `min_agent_version` is not implemented (`IMPLEMENTATION_PLAN.md` §5.1.3). A refusal keyed on the
-server's word can strand a healthy node, and mixed builds work because a new request field is the only
-breaking kind (`DESCRIPTION.md` §8). `doctor` is where a mismatch would be reported if one ever needs
-handling.
+**Decided by the build: `api_version` on the wire, and a `min_agent_version` floor that never refuses.**
+Every response carries the protocol version and no side acts on it. The floor arrived later
+(`IMPLEMENTATION_PLAN.md` §5.1.3): the operator names the oldest node build the mesh supports, every sync
+answer declares it, and a node below it only reports that — in `status` and in `doctor` — because a
+refusal keyed on the server's word can strand a healthy node, and mixed builds already work while a new
+*request* field remains the only breaking kind (`DESCRIPTION.md` §8).
 
 **Q9.8** How detectable is an installed MN from the outside, and should the API move?
 **Rec** Yes: `api_prefix`, a path segment chosen at install time (random by default), with the node API

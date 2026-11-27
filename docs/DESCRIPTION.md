@@ -454,12 +454,19 @@ Invite codes: random 32-byte codes, stored hashed, with `max_uses`, `expires_at`
 ## 8. MN ↔ UV protocol
 
 HTTP/1.1 + JSON over TLS 1.3, `Authorization: Bearer <agent_key>` for agent endpoints.
-`api_version` is part of every response, so a build can name the protocol it was answered in; v1 has no
-compatibility gate — no `min_agent_version`, and no side refuses an answer whose version it does not
-recognise (`IMPLEMENTATION_PLAN.md` §5.1.3). What keeps mixed builds usable is the field discipline: a new
-*request* field is the breaking kind and arrives only with an `api_version` change, while an unknown value
-inside a known field is dropped, not refused. Errors are RFC 9457-style problem objects with a stable
-`code` (`invite_invalid`, `pending_approval`, `check_failed`, `dns_mismatch`, `rate_limited`, …).
+`api_version` is part of every response, so a build can name the protocol it was answered in; no side
+refuses an answer whose version it does not recognise. What keeps mixed builds usable is the field
+discipline: a new *request* field is the breaking kind and arrives only with an `api_version` change, while
+an unknown value inside a known field is dropped, not refused. Errors are RFC 9457-style problem objects
+with a stable `code` (`invite_invalid`, `pending_approval`, `check_failed`, `dns_mismatch`,
+`rate_limited`, …).
+
+The compatibility floor is declared, never enforced. The operator may name the oldest node build the mesh
+supports — `min_agent_version` in the server's configuration, a plain release such as `v0.7.0` — and every
+sync answer then carries it. A node below the floor says so in `termit-uv status` and in the `doctor`
+report, and keeps serving: a refusal keyed on the server's word can strand a box that works, and the node
+is the side that can tell an old build from a broken one. The value is read at startup, like
+`enrollment.mode`, so a change needs a restart.
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
@@ -506,7 +513,8 @@ Sync response shape (abridged; the whole set is in `internal/proto/sync.go`):
              "min_sync_delay_seconds": 300, "mesh_poll_seconds": 900},
   "next_sync_after": "2026-11-10T07:31:00Z",
   "mesh_generation": "9f3c1a2b4d5e7788",
-  "server_version": "v0.6.0"
+  "server_version": "v0.6.0",
+  "min_agent_version": "v0.7.0"
 }
 ```
 

@@ -17,9 +17,10 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
+
+	"github.com/shogun-kub/termit/internal/version"
 )
 
 // BaseURL is where the project publishes its releases. A caller may replace it with a mirror.
@@ -35,7 +36,8 @@ const LatestURL = "https://github.com/shogun-kub/termit/releases/latest"
 const MaxBytes = 64 << 20
 
 // Version matches a published release and nothing else: not a pre-release (v0.7.0p1), not a branch tag.
-var Version = regexp.MustCompile(`^v\d+\.\d+\.\d+$`)
+// The grammar lives in internal/version, so the binaries and this package agree on it.
+var Version = version.Release
 
 // Asset is the file name one component publishes for a version and architecture.
 func Asset(component, version, arch string) string {

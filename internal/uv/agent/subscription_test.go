@@ -57,3 +57,38 @@ func TestRememberProbe(t *testing.T) {
 		t.Error("RememberProbe changed a state without credentials")
 	}
 }
+
+func TestRememberServer(t *testing.T) {
+	t.Parallel()
+	// Both fields an update offer and a `support` line read: the build the server runs and the oldest
+	// build it says it supports.
+	st := &state.State{}
+	answer := proto.SyncResponse{ServerVersion: "v0.7.0", MinAgentVersion: "v0.7.0"}
+	if !agent.RememberServer(st, answer) {
+		t.Fatal("RememberServer reported no change for an empty state")
+	}
+	if st.ServerVersion != answer.ServerVersion || st.MinAgentVersion != answer.MinAgentVersion {
+		t.Errorf("stored %q / %q, want %q / %q",
+			st.ServerVersion, st.MinAgentVersion, answer.ServerVersion, answer.MinAgentVersion)
+	}
+	if agent.RememberServer(st, answer) {
+		t.Error("RememberServer reported a change for the same answer")
+	}
+
+	// The floor is the answering server's rule, so an answer without it clears the stored one: a server
+	// that declares no minimum says so by sending nothing, and a warning from a floor its operator
+	// removed must not outlive the rule.
+	cleared := proto.SyncResponse{ServerVersion: "v0.7.1"}
+	if !agent.RememberServer(st, cleared) {
+		t.Fatal("RememberServer ignored an answer that dropped the floor")
+	}
+	if st.MinAgentVersion != "" {
+		t.Errorf("min_agent_version = %q, a server that declares no floor left one behind", st.MinAgentVersion)
+	}
+	if st.ServerVersion != "v0.7.1" {
+		t.Errorf("server_version = %q, want the version the answer carried", st.ServerVersion)
+	}
+	if agent.RememberServer(st, cleared) {
+		t.Error("RememberServer reported a change for the same answer")
+	}
+}

@@ -14,6 +14,7 @@ import (
 	"github.com/shogun-kub/termit/internal/uv/config"
 	"github.com/shogun-kub/termit/internal/uv/state"
 	"github.com/shogun-kub/termit/internal/uv/warp"
+	"github.com/shogun-kub/termit/internal/version"
 )
 
 // jsonStatus is the machine-readable half of `termit-uv status`. It carries fingerprints, never secrets.
@@ -37,15 +38,18 @@ type jsonStatus struct {
 	EnrolledAt   *time.Time `json:"enrolled_at,omitempty"`
 	Subscription string     `json:"subscription_url,omitempty"`
 	// OptionsPage is the owner's private page of client links, when one has been rendered.
-	OptionsPage   string         `json:"options_page,omitempty"`
-	Peers         []jsonPeer     `json:"peers,omitempty"`
-	LastSyncAt    *time.Time     `json:"last_sync_at,omitempty"`
-	NextSyncAt    *time.Time     `json:"next_sync_at,omitempty"`
-	LastSyncState string         `json:"last_sync_result,omitempty"`
-	ServerVersion string         `json:"server_version,omitempty"`
-	SyncFailures  int            `json:"sync_failures,omitempty"`
-	SelfCheck     *jsonSelfCheck `json:"self_check,omitempty"`
-	Warp          jsonWarpStatus `json:"warp"`
+	OptionsPage   string     `json:"options_page,omitempty"`
+	Peers         []jsonPeer `json:"peers,omitempty"`
+	LastSyncAt    *time.Time `json:"last_sync_at,omitempty"`
+	NextSyncAt    *time.Time `json:"next_sync_at,omitempty"`
+	LastSyncState string     `json:"last_sync_result,omitempty"`
+	ServerVersion string     `json:"server_version,omitempty"`
+	// MinAgentVersion is the oldest build the server declared it supports. The text output says whether
+	// this build is below it; the JSON gives the number and leaves the comparison to the reader.
+	MinAgentVersion string         `json:"min_agent_version,omitempty"`
+	SyncFailures    int            `json:"sync_failures,omitempty"`
+	SelfCheck       *jsonSelfCheck `json:"self_check,omitempty"`
+	Warp            jsonWarpStatus `json:"warp"`
 }
 
 // jsonWarpStatus is the egress as the last self-check saw it. It is a report, not a live probe:
@@ -156,6 +160,7 @@ the last install run. Secrets are shown as sha256 prefixes only.`)
 	if node.ServerVersion != "" {
 		out.ServerVersion = node.ServerVersion
 	}
+	out.MinAgentVersion = node.MinAgentVersion
 	if !node.Schedule.LastSyncAt.IsZero() {
 		last := node.Schedule.LastSyncAt
 		out.LastSyncAt = &last
@@ -250,6 +255,9 @@ the last install run. Secrets are shown as sha256 prefixes only.`)
 	}
 	if out.ServerVersion != "" {
 		fmt.Fprintf(a.stdout, "server:       %s\n", out.ServerVersion)
+	}
+	if out.MinAgentVersion != "" {
+		fmt.Fprintf(a.stdout, "support:      %s\n", describeSupport(version.Version, out.MinAgentVersion))
 	}
 	if out.LastSyncAt != nil {
 		fmt.Fprintf(a.stdout, "last sync:    %s %s\n", orDefault(out.LastSyncState, "unknown"),
@@ -351,6 +359,19 @@ func describeCertificate(notAfter, now time.Time) string {
 		return fmt.Sprintf("%s (in %d days)", state, days)
 	}
 	return fmt.Sprintf("%s (expired %d days ago)", state, -days)
+}
+
+// describeSupport answers the one question the floor raises: is this node older than its server still
+// supports? A build that cannot be ordered against a release (a development build) says so instead.
+func describeSupport(build, minimum string) string {
+	below, comparable := version.Below(build, minimum)
+	switch {
+	case !comparable:
+		return minimum + " (this build cannot be compared with a release)"
+	case below:
+		return "below the server's minimum " + minimum + " — run `termit-uv upgrade`"
+	}
+	return "meets the server's minimum " + minimum
 }
 
 func describeDecoy(decoy state.Decoy) string {

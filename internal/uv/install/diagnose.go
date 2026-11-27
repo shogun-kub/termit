@@ -17,6 +17,7 @@ import (
 	"github.com/shogun-kub/termit/internal/uv/service"
 	"github.com/shogun-kub/termit/internal/uv/state"
 	"github.com/shogun-kub/termit/internal/uv/warp"
+	"github.com/shogun-kub/termit/internal/version"
 )
 
 // DiagnoseOptions configure the health half of `termit-uv doctor`.
@@ -59,6 +60,9 @@ func Diagnose(ctx context.Context, opts DiagnoseOptions) []Check {
 		Status: StatusOK,
 		Detail: fmt.Sprintf("%s, node identity %s", cfg.Paths.StatePath(), state.Fingerprint(st.Identity.SelfUUID)),
 	}}
+	if check, ok := diagnoseSupport(version.Version, st); ok {
+		checks = append(checks, check)
+	}
 	checks = append(checks, diagnoseServices(ctx, opts.Exec))
 	checks = append(checks, diagnoseCertificate(cfg, st, opts.Now()))
 	checks = append(checks, diagnoseDecoy(cfg, st))
@@ -76,6 +80,28 @@ func Diagnose(ctx context.Context, opts DiagnoseOptions) []Check {
 	}
 	checks = append(checks, diagnoseWarp(ctx, cfg, st, warpClient))
 	return checks
+}
+
+// diagnoseSupport compares this build against the floor the server declared in its sync answer. It warns
+// and never fails: a node below the floor still serves, and taking it out of the mesh over a build number
+// would break the thing the floor exists to protect (docs/DESCRIPTION.md §8). No floor, or a build that
+// cannot be ordered against one, draws no check at all.
+func diagnoseSupport(build string, st *state.State) (Check, bool) {
+	if st.MinAgentVersion == "" {
+		return Check{}, false
+	}
+	below, comparable := version.Below(build, st.MinAgentVersion)
+	switch {
+	case !comparable:
+		return Check{Name: "support", Status: StatusSkip,
+			Detail: fmt.Sprintf("this build %q cannot be ordered against the server's minimum %s",
+				build, st.MinAgentVersion)}, true
+	case below:
+		return Check{Name: "support", Status: StatusWarn,
+			Detail: fmt.Sprintf("this build %s is below the server's minimum %s", build, st.MinAgentVersion),
+			Hint:   "run `termit-uv upgrade`"}, true
+	}
+	return Check{Name: "support", Status: StatusOK, Detail: "meets the server's minimum " + st.MinAgentVersion}, true
 }
 
 func diagnoseServices(ctx context.Context, exec Executor) Check {
