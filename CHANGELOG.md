@@ -7,6 +7,16 @@ pre-releases, and whoever installs the release skipped them.
 
 ### Added
 
+- **A second management server can hold a copy of the registry.** `mesh:` in `config.yaml` names the peers;
+  each pulls the other's journal over HTTPS (a snapshot first, the journal after, a snapshot again across a
+  pruned gap) and applies it in one transaction, so a node enrolled on one server is in the other's
+  subscriptions within `pull_every`. The credential is an HMAC of the master key, derived rather than
+  stored, and the two replication endpoints are read-only. `termit-mn status` shows each peer, how far
+  behind it is, and whether this server holds the key. A replica refuses any write to a row another server
+  homes, and its scheduler no longer probes those rows. Not yet: a node syncing to a replica while its home
+  is down, `home handoff`, and the quorum gate on a credential epoch — see
+  [`docs/OPERATIONS.md`](docs/OPERATIONS.md) §3.4 and [`docs/MN-API.md`](docs/MN-API.md) §3.5.
+
 - **The menu reaches two commands it could not before.** `termit-mn` gains "check for an update"
   (`update --check`): asking whether a newer release exists no longer means agreeing to install it.
   `termit-uv` gains "run one agent cycle" (`agent --once`): a self-check and a sync without waiting for

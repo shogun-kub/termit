@@ -385,6 +385,50 @@ Two things that are easy to get wrong, and both are silent:
   proxy_protocol;` in `http{}`. Without it every site behind the hop logs the loopback address and
   forwards it upstream.
 
+### 3.4 A second management server
+
+Two servers can share one registry so that either answers a node's sync and renders a subscription while
+the other is down. It is replication inside one mesh, not a load balancer and not automatic failover: every
+node still has exactly one home, and only that home decides (`IMPLEMENTATION_PLAN.md` §5.2.1).
+
+1. **Give both servers the same master key**, once, out of band: the key file of the first copied to the
+   second. The key travels no other way, and a peer never sees it: the replication credential is an HMAC of
+   it, derived on each side (`MN-API.md` §2.4). A host that holds the key can derive every node's
+   credentials — that is what makes it a home — so a second copy belongs on a host you would let take over.
+2. **List the other server on each side** in `config.yaml`:
+
+   ```yaml
+   mesh:
+     peers:
+       # The name labels the peer in status and logs. The url is its base address, API prefix included.
+       - name: mn2
+         url: https://mn2.example.com/34xpus3fnghw
+         # Optional: pin its leaf certificate, so a wrong host behind the name cannot answer.
+         leaf_sha256: "3f:0a:5c:…"
+     pull_every: 5m
+     lag_max: 500
+   ```
+
+3. **Restart both.** Each pulls the other every `pull_every`: the first pull takes a snapshot of the whole
+   registry, later ones read the journal from the cursor. A peer that prunes past the cursor is snapped
+   again rather than patched over.
+
+`termit-mn status` grows a `mesh:` block — this server's id in the shared journal, whether it holds a
+master key, and per peer whether it was reached and how many entries behind it is:
+
+```
+mesh:     mn_7f3a… (master key: yes)
+  peer mn2      https://mn2.example.com/34xpus3fnghw — up to date (412 entries)
+  peer mn3      https://mn3.example.com/34xpus3fnghw — 12 behind (cursor 400 of 412)
+```
+
+**What a replica does and does not do today.** It holds a copy of every node row and the transports each
+node serves, and it refuses any write to a row another server homes, so a stray admin command cannot create
+a second home. It does not yet serve a sync for a node whose home is down (the read-only path is the next
+slice), it cannot take a node over (`home handoff` is not implemented), and a `credential_epoch` bump is not
+gated on quorum — do not rotate credentials while the mesh is apart. This is why the mesh is not announced
+in the guide yet.
+
 A trusted address that sends no header keeps its own address, so the server can be upgraded before the
 proxy is told to send one, and a proxy that is trusted for one name only still serves the rest.
 

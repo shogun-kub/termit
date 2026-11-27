@@ -11,17 +11,20 @@ import (
 var scheduleStates = []string{"pending", "active", "unavailable", "blocked"}
 
 // DueUVs returns the nodes whose next check is due, oldest first. A node that has never been scheduled
-// counts as due: it was enrolled and nobody has looked at it yet.
+// counts as due: it was enrolled and nobody has looked at it yet. A node another server homes is excluded:
+// a replica copies that row and must never probe it, or the two servers would race each other's checks.
 func (s *Store) DueUVs(ctx context.Context, now time.Time, limit int) ([]UV, error) {
 	if limit <= 0 {
 		limit = 50
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT `+uvColumns+` FROM uv
 		WHERE state IN (?, ?, ?, ?)
+		  AND (home_mn = '' OR home_mn = (SELECT value FROM settings WHERE key = ?))
 		  AND (next_check_at IS NULL OR next_check_at <= ?)
 		ORDER BY COALESCE(next_check_at, ''), id
 		LIMIT ?`,
-		scheduleStates[0], scheduleStates[1], scheduleStates[2], scheduleStates[3], formatTime(now), limit)
+		scheduleStates[0], scheduleStates[1], scheduleStates[2], scheduleStates[3], meshIDSetting,
+		formatTime(now), limit)
 	if err != nil {
 		return nil, fmt.Errorf("store: due nodes: %w", err)
 	}

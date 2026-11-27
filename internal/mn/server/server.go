@@ -130,6 +130,12 @@ func New(opts Options) (*Handler, error) {
 	h.mux.HandleFunc("POST "+prefix+"/agent/sync", h.sync)
 	h.mux.HandleFunc("POST "+prefix+"/agent/unblock", h.unblock)
 	h.mux.HandleFunc("POST "+prefix+"/agent/relocate", h.relocate)
+
+	// The replication endpoints a peer reads to keep its copy of this registry in step. They live under
+	// the prefix like everything else, and the mesh credential — not the configuration — is the boundary,
+	// so a server whose mesh is not configured yet still answers and can be added later without a restart.
+	h.mux.HandleFunc("GET "+prefix+"/peer/snapshot", h.peerSnapshot)
+	h.mux.HandleFunc("GET "+prefix+"/peer/events", h.peerEvents)
 	// Metrics stay where a scrape configuration expects them, and are refused off loopback: the path is
 	// not a secret, the access is.
 	h.mux.HandleFunc("GET /metrics", h.metrics)

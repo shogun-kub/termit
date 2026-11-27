@@ -82,6 +82,15 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 				server.Certificate.NotAfter.UTC().Format(time.RFC3339), server.Certificate.DaysUntil)
 		}
 	}
+	// Replication is only worth a line when this server has peers; best effort like the server block, so a
+	// single-server status never depends on an operation it has no use for.
+	var meshState admin.MeshState
+	if len(cfg.Mesh.Peers) > 0 && client.Call(callCtx, "mesh.state", nil, &meshState) == nil {
+		fmt.Fprintf(stdout, "mesh:     %s (master key: %s)\n", meshState.MNID, yesNo(meshState.HasMasterKey))
+		for _, peer := range meshState.Peers {
+			fmt.Fprintf(stdout, "  peer %-8s %s\n", peer.Name, describePeer(peer))
+		}
+	}
 	fmt.Fprintf(stdout, "nodes:    %d (%s)\n", len(nodes), summarizeStates(nodes))
 	fmt.Fprintf(stdout, "check:    every %s, times below are UTC%s\n", humanInterval(interval), note)
 	fmt.Fprintln(stdout)
@@ -98,6 +107,28 @@ func runStatus(args []string, stdout, stderr io.Writer) int {
 		return exitFailure
 	}
 	return exitOK
+}
+
+// describePeer is one replication line: an unreached peer says so, a lagging one names the gap, and an
+// up-to-date one names the entry it reached.
+func describePeer(peer admin.PeerState) string {
+	switch {
+	case !peer.Known:
+		return peer.URL + " — not reached yet"
+	case peer.Behind > 0:
+		return fmt.Sprintf("%s — %d behind (cursor %d of %d)", peer.URL, peer.Behind, peer.Cursor, peer.LastSeq)
+	case peer.LastSeq == 0:
+		return peer.URL + " — up to date (empty journal)"
+	}
+	return fmt.Sprintf("%s — up to date (%d entries)", peer.URL, peer.LastSeq)
+}
+
+// yesNo is for the one-line mesh header, where a word beats a column.
+func yesNo(ok bool) string {
+	if ok {
+		return "yes"
+	}
+	return "no"
 }
 
 // summarizeStates is the one-line mesh summary: only the states that occur, in lifecycle order.

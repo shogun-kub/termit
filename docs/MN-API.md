@@ -75,6 +75,8 @@ agent: the server has no API at https://mn.example.com/enroll: does the MN URL i
 | `POST` | `{prefix}/agent/sync` | a node, daily | Fetch the complete desired peer set |
 | `POST` | `{prefix}/agent/unblock` | a blocked node | Ask to be let back in (`PROTOCOL.md` §3.5) |
 | `POST` | `{prefix}/agent/relocate` | a moved node | Announce a new host (`PROTOCOL.md` §3.6) |
+| `GET` | `{prefix}/peer/snapshot` | another MN in the mesh | The whole registry, for a peer with no cursor (§3.5) |
+| `GET` | `{prefix}/peer/events` | another MN in the mesh | The journal after a cursor (§3.5) |
 | `GET` | `{prefix}/healthz` | monitoring | Liveness and version |
 | `GET` | `/sub/{token}` | a client | Peer list, base64 VLESS URIs |
 | `GET` | `/sub/{token}/json` | a client | Peer list, sing-box JSON |
@@ -160,6 +162,7 @@ A `503` means *try again*: DNS was unreachable or the prober was down. The clien
 | Caller | Proof | Where |
 |---|---|---|
 | A node, after enrollment | agent key: 32 random bytes, base64url | `Authorization: Bearer <agent key>` |
+| Another MN in the mesh | mesh credential: `HMAC-SHA256(master_key, "termit/mn/mesh/pull/v1")` | `Authorization: Bearer <credential>` |
 | A client fetching a subscription | subscription token | in the path |
 | An operator | admin token, over the unix socket only | §6 |
 | An enrollment | invite code | in the request body |
@@ -167,6 +170,11 @@ A `503` means *try again*: DNS was unreachable or the prober was down. The clien
 Agent keys and subscription tokens are stored as SHA-256 digests; the plaintext exists in the node's
 config, in the operator's records, and in one response at issuance. Nothing is ever authenticated by
 the node id or the domain: both are public, and the id appears in every subscription.
+
+The mesh credential is not stored anywhere. It is derived from the master key, so a server that holds the
+key can read a peer's journal and a server that does not cannot — the same boundary the shared-key model
+draws for credentials (`DESCRIPTION.md` §6.2). It cannot do anything else: the two `peer/…` endpoints are
+read-only.
 
 ### 2.5 Rate limits and size limits
 
@@ -372,6 +380,40 @@ the move; `dns_mismatch` and `check_failed` from the verification the request mu
 
 The verify step is the point: a request is not believed because it carries a key. The box must resolve
 from the address that sent it, serve the decoy, and answer as a proxy.
+
+### 3.5 `GET {prefix}/peer/snapshot` and `GET {prefix}/peer/events`
+
+Replication between two management servers in one mesh (`IMPLEMENTATION_PLAN.md` §5.2.1). A peer reads
+these and writes nothing here; both need the mesh credential (§2.4) and answer `401 unauthorized`
+without it.
+
+`peer/snapshot` returns the registry as this server homes it, with the journal position the snapshot was
+taken at:
+
+```json
+{"mn_id": "mn_7f3a…", "seq": 412, "schema_version": 7,
+ "nodes": [{"id": "uv_…", "domain": "…", "home_mn": "mn_7f3a…", "…": "…"}],
+ "transports": {"uv_…": ["xhttp"]}}
+```
+
+`peer/events?after=<seq>&limit=<n>` returns the journal after a cursor, oldest first, plus where the log
+ended when the page was read:
+
+```json
+{"mn_id": "mn_7f3a…", "last_seq": 412,
+ "events": [{"mn_id": "mn_7f3a…", "seq": 411, "at": "2026-11-27T21:04:11Z",
+             "kind": "node", "payload": {"…": "…"}}]}
+```
+
+`limit` defaults to and is capped at 1000. `after` is a sequence number; a non-numeric or negative value
+is `400` with an empty `code`, a page shape the peer protocol alone reads. `kind` is a closed set
+(`node`, `node_removed`): a build that meets a kind it does not know refuses the batch instead of
+skipping it, so an older server cannot pass a newer peer's change through half-applied. A `schema_version`
+that differs from the peer's is refused the same way — replication stops, serving does not.
+
+The puller asks from its cursor, so a page starting past `cursor+1` means the peer pruned the journal; that
+is the one case where a snapshot is taken mid-flight. Nothing here is authenticated by the source address
+and nothing here writes: the whole of the mesh's write path stays the admin socket.
 
 ---
 

@@ -395,6 +395,9 @@ func (s *Store) SetUVState(ctx context.Context, id string, to State, reason, act
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	if err := ownedHere(ctx, tx, id, mnID); err != nil {
+		return Event{}, err
+	}
 	var from State
 	if err := tx.QueryRowContext(ctx, `SELECT state FROM uv WHERE id = ?`, id).Scan(&from); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -508,6 +511,9 @@ func (s *Store) updateNodeAt(ctx context.Context, id string, at time.Time, conte
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	if err := ownedHere(ctx, tx, id, mnID); err != nil {
+		return err
+	}
 	res, err := tx.ExecContext(ctx, query, args...)
 	if err != nil {
 		return wrapDuplicate(err, context)
@@ -593,6 +599,9 @@ func (s *Store) ForgetUV(ctx context.Context, id string) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	if err := ownedHere(ctx, tx, id, mnID); err != nil {
+		return err
+	}
 	var state State
 	if err := tx.QueryRowContext(ctx, `SELECT state FROM uv WHERE id = ?`, id).Scan(&state); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -639,6 +648,9 @@ func (s *Store) SetUVTransports(ctx context.Context, uvID string, kinds []string
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	if err := ownedHere(ctx, tx, uvID, mnID); err != nil {
+		return err
+	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM uv_transport WHERE uv_id = ?`, uvID); err != nil {
 		return err
 	}

@@ -22,6 +22,7 @@ import (
 	"github.com/shogun-kub/termit/internal/mn/config"
 	"github.com/shogun-kub/termit/internal/mn/dns"
 	"github.com/shogun-kub/termit/internal/mn/enroll"
+	"github.com/shogun-kub/termit/internal/mn/mesh"
 	"github.com/shogun-kub/termit/internal/mn/metrics"
 	"github.com/shogun-kub/termit/internal/mn/sched"
 	"github.com/shogun-kub/termit/internal/mn/server"
@@ -118,6 +119,7 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 		if err == nil {
 			adminService.Master = mustMasterKey(cfg, logger)
 			adminService.Runner = scheduler
+			adminService.Mesh = cfg.Mesh
 			// The dashboard's server block: what this process is, and whether its checks can run.
 			adminService.Server = admin.ServerInfo{
 				Domain:        cfg.Domain,
@@ -140,6 +142,19 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 				logger.Error("admin socket stopped", "err", err)
 			}
 		}()
+	}
+
+	// Replication with the peer management servers, if the configuration names any. A single-server
+	// install has no peers and pays nothing but this check.
+	if len(cfg.Mesh.Peers) > 0 {
+		puller := &mesh.Puller{
+			Store:     db,
+			Mesh:      cfg.Mesh,
+			MasterKey: mustMasterKey(cfg, logger),
+			Logger:    logger,
+		}
+		logger.Info("mesh: pulling", "peers", len(cfg.Mesh.Peers), "every", cfg.Mesh.PullEveryInterval())
+		go puller.Run(ctx)
 	}
 
 	// Retention runs in the server because nothing else is running: probe results are telemetry and age

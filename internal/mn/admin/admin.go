@@ -17,6 +17,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/shogun-kub/termit/internal/mn/config"
 	"github.com/shogun-kub/termit/internal/mn/sched"
 	"github.com/shogun-kub/termit/internal/mn/secret"
 	"github.com/shogun-kub/termit/internal/mn/store"
@@ -77,6 +78,9 @@ type Service struct {
 	// Server is what the process knows about itself: version, uptime, whether checks can run. It is
 	// filled by `termit-mn serve`; a zero value is reported as unknown rather than as a healthy server.
 	Server ServerInfo
+	// Mesh is the configured peer set, so `mesh.state` can report each peer by the name the operator gave
+	// it. Empty is a single-server mesh, and the operation then answers with no peers.
+	Mesh config.Mesh
 }
 
 // New validates the wiring.
@@ -132,6 +136,8 @@ func (s *Service) Handle(ctx context.Context, req Request) (any, *Error) {
 		return s.rotateSubToken(ctx, req.Args)
 	case "server.state":
 		return s.serverState(ctx)
+	case "mesh.state":
+		return s.meshState(ctx)
 	default:
 		return nil, &Error{Code: CodeBadRequest, Detail: fmt.Sprintf("unknown operation %q", req.Op)}
 	}

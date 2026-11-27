@@ -44,6 +44,23 @@ var (
 // meshIDSetting is the settings key holding this server's identity in the journal.
 const meshIDSetting = "mn_id"
 
+// ownedHere refuses a write to a row another server homes. Two homes for one id is exactly the split brain
+// the journal exists to prevent, and the losing side's write would be overwritten at the next pull anyway,
+// so it is refused where it is attempted rather than discovered later.
+func ownedHere(ctx context.Context, tx *sql.Tx, id, mnID string) error {
+	var home string
+	switch err := tx.QueryRowContext(ctx, `SELECT home_mn FROM uv WHERE id = ?`, id).Scan(&home); {
+	case errors.Is(err, sql.ErrNoRows):
+		// Not this guard's answer to give: the caller's own "not found" says more.
+		return nil
+	case err != nil:
+		return fmt.Errorf("store: read the home of %s: %w", id, err)
+	case home != "" && home != mnID:
+		return fmt.Errorf("%w: %s is homed by %s, not by %s", ErrReplicationConflict, id, home, mnID)
+	}
+	return nil
+}
+
 // maxReplicationBatch bounds one read, so a peer with a long log cannot pull it in one response.
 const maxReplicationBatch = 500
 
@@ -201,6 +218,21 @@ func (s *Store) EventsSince(ctx context.Context, mnID string, after int64, limit
 // Cursor reports how far this server has applied another server's log. A peer never seen before is 0.
 func (s *Store) Cursor(ctx context.Context, mnID string) (int64, error) {
 	return cursorIn(ctx, s.db, mnID)
+}
+
+// LastSeq reports the newest entry in one server's log — this one's or a peer's — so a caller can tell how
+// many entries it is behind. An empty log is 0.
+func (s *Store) LastSeq(ctx context.Context, mnID string) (int64, error) {
+	if mnID == "" {
+		return 0, errors.New("store: the journal belongs to a server")
+	}
+	var seq int64
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COALESCE(MAX(seq), 0) FROM replication_event WHERE mn_id = ?`, mnID).Scan(&seq)
+	if err != nil {
+		return 0, fmt.Errorf("store: read the last entry of %s: %w", mnID, err)
+	}
+	return seq, nil
 }
 
 // ApplyEvents applies one peer's events in order. An entry already applied is skipped, so a retry is

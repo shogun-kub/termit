@@ -121,6 +121,59 @@ func TestValidateCollectsProblems(t *testing.T) {
 	}
 }
 
+// A mesh block is what an operator writes by hand while the mesh is new, so each mistake is refused where
+// it is written: a name a log line cannot use, a URL the puller would have to guess about, a pin that is
+// not a hash, and two peers under one name (their learned mesh ids would share one cursor).
+func TestMeshPeersAreValidated(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		peer config.Peer
+		want string
+	}{
+		{name: "good", peer: config.Peer{Name: "mn2", URL: "https://mn2.example.com/p9x"}},
+		{name: "loopback", peer: config.Peer{Name: "mn2", URL: "http://127.0.0.1:8080/p9x"}},
+		{name: "pinned",
+			peer: config.Peer{Name: "mn2", URL: "https://mn2.example.com/p9x", LeafSHA256: "sha256:00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"}},
+		{name: "no name", peer: config.Peer{URL: "https://mn2.example.com/p9x"}, want: "name is empty"},
+		{name: "no url", peer: config.Peer{Name: "mn2"}, want: "url is empty"},
+		{name: "shorthand", peer: config.Peer{Name: "mn2", URL: "mn2.example.com/p9x"}, want: "https://"},
+		{name: "query", peer: config.Peer{Name: "mn2", URL: "https://mn2.example.com/p9x?x=1"}, want: "query"},
+		{name: "bad pin", peer: config.Peer{Name: "mn2", URL: "https://mn2.example.com/p9x", LeafSHA256: "zz"}, want: "not hex"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := config.Default()
+			cfg.Domain = "mn.example.com"
+			cfg.Mesh.Peers = []config.Peer{tc.peer}
+			err := cfg.Validate()
+			switch {
+			case tc.want == "" && err != nil:
+				t.Fatalf("Validate refused a sound peer: %v", err)
+			case tc.want != "" && err == nil:
+				t.Fatalf("Validate accepted %+v, want %q", tc.peer, tc.want)
+			case tc.want != "" && !strings.Contains(err.Error(), tc.want):
+				t.Fatalf("Validate said %q, want it to mention %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestTwoPeersCannotShareAName(t *testing.T) {
+	t.Parallel()
+	cfg := config.Default()
+	cfg.Domain = "mn.example.com"
+	cfg.Mesh.Peers = []config.Peer{
+		{Name: "mn2", URL: "https://mn2.example.com/p9x"},
+		{Name: "mn2", URL: "https://mn3.example.com/p9x"},
+	}
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "used twice") {
+		t.Fatalf("Validate = %v, want it to refuse the repeated name", err)
+	}
+}
+
 // The floor is declared, never enforced, and a value nothing can be ordered against is refused where it
 // is written: every node would otherwise read "cannot compare" and the operator would believe a rule is
 // in force.

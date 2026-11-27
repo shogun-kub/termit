@@ -236,7 +236,7 @@ func TestReplicaRefusesAGapAndBadPayloads(t *testing.T) {
 }
 
 // A replica's own log is what a third server would pull, so it must not announce a change to a row it
-// does not home: the entry would claim a decision this server never made.
+// does not home — and now that the write is refused outright, the log cannot even be tempted.
 func TestReplicaDoesNotJournalARowItDoesNotHome(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -250,8 +250,16 @@ func TestReplicaDoesNotJournalARowItDoesNotHome(t *testing.T) {
 	if _, err := replica.ApplyEvents(ctx, journal(t, home, mnID)); err != nil {
 		t.Fatalf("ApplyEvents: %v", err)
 	}
-	if _, err := replica.SetUVState(ctx, "uv_one", store.StateBlocked, "someone edited it", "admin", testNow); err != nil {
-		t.Fatalf("SetUVState on the replica: %v", err)
+	_, err = replica.SetUVState(ctx, "uv_one", store.StateBlocked, "someone edited it", "admin", testNow)
+	if !errors.Is(err, store.ErrReplicationConflict) {
+		t.Fatalf("SetUVState on the replica = %v, want ErrReplicationConflict", err)
+	}
+	got, err := replica.UVByID(ctx, "uv_one")
+	if err != nil {
+		t.Fatalf("UVByID: %v", err)
+	}
+	if got.State != store.StatePending {
+		t.Errorf("the replica's copy is %s, want the home's pending state", got.State)
 	}
 	ownID, err := replica.MeshID(ctx)
 	if err != nil {

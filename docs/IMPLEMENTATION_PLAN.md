@@ -2624,10 +2624,26 @@ its own mesh id; every write that changes a replicated field — enrollment, a s
 report, an approval, a relocation, a key or token rotation, a removal — appends one entry inside its own
 transaction, and a row homed by another server is never announced here. Applying a peer's log skips a
 replay and refuses a gap, a conflict over a node this server homes, and an unknown kind, all before
-anything is written; a snapshot is taken and applied, with a stale one refused. What is missing is the
-wire — `mesh.peers` in the configuration and the direct HTTPS pull — and the read-only sync a replica
-serves while its home is down. Until then the whole mechanism is tested on two databases in one process,
-which is what lets every rule above be pinned without the lab.
+anything is written; a snapshot is taken and applied, with a stale one refused. Until the lab runs, the
+whole mechanism is tested on two databases in one process, which is what lets every rule above be pinned
+without the lab.
+
+**And the wire, later the same day.** `mesh:` in the server configuration (`peers` with a name, a base URL
+that carries the peer's API prefix and an optional leaf pin, plus `pull_every` and `lag_max`), the two
+`{prefix}/peer/…` endpoints behind a credential derived from the master key rather than stored, and a puller
+in `serve` that takes a snapshot when it has no cursor and the journal after it, snapping again across a
+pruned gap (`internal/mn/mesh`). Status answers decision 4: `mesh.state` on the admin socket, printed by
+`termit-mn status` as the peers, their lag and whether this process holds the master key. Fencing is now
+enforced where it is attempted rather than only in the journal: `SetUVState`, the six single-statement
+writers, `forget` and the transport report refuse a row another server homes, and the scheduler no longer
+picks such a row at all — a replica copies its peers' nodes and probes only its own.
+
+What the replication slice still owes: the **read-only sync** a replica serves while its home is down
+(decision 3) with the report kept as pending for the home; **handoff and `home_term`** (decisions 5–7),
+which is the fence a returning master needs; the **quorum gate on `credential_epoch`**; `serve` reading
+`TERMIT_MN_MASTER` before the key file (decision 8, today only `init` honours it); journal pruning, without
+which the log grows forever; and the lab pair (`TERMIT_LAB_MN2` alone does not prove a partition — the
+split-brain rules stay unit tests).
 
 Acceptance: two MNs and two UVs. A node enrolled on A appears on B and in a subscription B renders; a
 block on A reaches B and the peer's next sync; replaying a delivered event changes nothing; a gap is

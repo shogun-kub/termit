@@ -7,6 +7,8 @@ package config
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -92,6 +94,123 @@ type Config struct {
 	// Security is the opt-in host table, the ban engine and the blocklist: the same block a node has,
 	// minus the options that are about a proxy core. The server has its own table name and ports.
 	Security harden.Config `yaml:"security"`
+	// Mesh is this server's place in a mesh of management servers: the peers it replicates with. Empty
+	// is a single-server mesh, which is every install until an operator adds a peer.
+	Mesh Mesh `yaml:"mesh"`
+}
+
+// Mesh is replication with other management servers (docs/IMPLEMENTATION_PLAN.md §5.2.1).
+type Mesh struct {
+	// Peers are the servers this one pulls from. A peer's url carries its API prefix, the same way a
+	// node's mn.url does, because the replication endpoints live under it.
+	Peers []Peer `yaml:"peers,omitempty"`
+	// PullEvery is how often a peer's journal is read. Nil means DefaultMeshPull.
+	PullEvery *PollInterval `yaml:"pull_every"`
+	// LagMax is how many journal entries a replica may be behind and still take a handoff of a node;
+	// beyond it the operator has to say --force. Zero means DefaultMeshLagMax.
+	LagMax int `yaml:"lag_max"`
+}
+
+// Peer is one other management server in the mesh.
+type Peer struct {
+	// Name labels the peer in logs and status. It is the operator's, not the protocol's: the journal is
+	// keyed by the peer's mesh id, which the first answered call teaches this server.
+	Name string `yaml:"name"`
+	// URL is the peer's base address including its API prefix, e.g. https://mn2.example.com/34xpus3fnghw.
+	URL string `yaml:"url"`
+	// LeafSHA256 pins the peer's TLS leaf certificate (hex, colons allowed). Empty means the system's
+	// roots decide, which is what a mesh behind a real CA wants.
+	LeafSHA256 string `yaml:"leaf_sha256,omitempty"`
+}
+
+// Replication defaults: a journal read every five minutes is fast enough for a state change to reach the
+// other half of a mesh within one polling period, and 500 events is a comfortable handoff margin for a
+// registry of this size.
+const (
+	DefaultMeshPull   = 5 * time.Minute
+	DefaultMeshLagMax = 500
+)
+
+// PullEveryInterval is how often a peer's journal is read, with the default applied.
+func (m Mesh) PullEveryInterval() time.Duration {
+	if m.PullEvery == nil || time.Duration(*m.PullEvery) <= 0 {
+		return DefaultMeshPull
+	}
+	return time.Duration(*m.PullEvery)
+}
+
+// LagLimit is how far behind a replica may be and still take a handoff, with the default applied.
+func (m Mesh) LagLimit() int {
+	if m.LagMax <= 0 {
+		return DefaultMeshLagMax
+	}
+	return m.LagMax
+}
+
+// validate checks the mesh block: a peer needs a name a log line can use, a URL the puller can append to,
+// and a pin that is hex if it is there at all. A repeated name is refused because the peer's learned mesh
+// id is stored under it — two peers under one name would overwrite each other's cursor.
+func (m Mesh) validate() []error {
+	var problems []error
+	seen := map[string]bool{}
+	for i, peer := range m.Peers {
+		where := fmt.Sprintf("mesh.peers[%d]", i)
+		switch {
+		case peer.Name == "":
+			problems = append(problems, fmt.Errorf("%s: name is empty", where))
+		case seen[peer.Name]:
+			problems = append(problems, fmt.Errorf("%s: name %q is used twice", where, peer.Name))
+		}
+		seen[peer.Name] = true
+		if err := validatePeerURL(peer.URL); err != nil {
+			problems = append(problems, fmt.Errorf("%s: %w", where, err))
+		}
+		if peer.LeafSHA256 != "" {
+			if _, err := ParsePin(peer.LeafSHA256); err != nil {
+				problems = append(problems, fmt.Errorf("%s: %w", where, err))
+			}
+		}
+	}
+	if m.LagMax < 0 {
+		problems = append(problems, errors.New("mesh.lag_max cannot be negative"))
+	}
+	return problems
+}
+
+// ParsePin reads a leaf fingerprint the way an operator copies it: "sha256:01:23:…", bare hex, or any mix
+// of the two spellings openssl prints.
+func ParsePin(raw string) ([]byte, error) {
+	clean := strings.TrimPrefix(strings.ReplaceAll(raw, ":", ""), "sha256")
+	pin, err := hex.DecodeString(clean)
+	if err != nil {
+		return nil, fmt.Errorf("leaf_sha256 %q is not hex: %w", raw, err)
+	}
+	if len(pin) != sha256.Size {
+		return nil, fmt.Errorf("leaf_sha256 %q is %d bytes, want %d", raw, len(pin), sha256.Size)
+	}
+	return pin, nil
+}
+
+// validatePeerURL keeps the puller away from an address it would have to guess about: no scheme, a query
+// or a fragment means the operator meant something other than "the peer's base address".
+func validatePeerURL(raw string) error {
+	if raw == "" {
+		return errors.New("url is empty")
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("url %q: %w", raw, err)
+	}
+	if u.Scheme != "https" && u.Scheme != "http" {
+		return fmt.Errorf("url %q must start with https:// (http:// is for a lab only)", raw)
+	}
+	if u.Host == "" {
+		return fmt.Errorf("url %q has no host", raw)
+	}
+	if u.RawQuery != "" || u.Fragment != "" {
+		return fmt.Errorf("url %q must not carry a query or a fragment", raw)
+	}
+	return nil
 }
 
 // Subscription is what the sing-box profile at /sub/<token>/json asks of the client beyond the peer
@@ -339,6 +458,7 @@ func (c *Config) Validate() error {
 	if c.Policy.MeshPoll != nil && time.Duration(*c.Policy.MeshPoll) < 0 {
 		problems = append(problems, errors.New("policy.mesh_poll cannot be negative; 0 turns the poll off"))
 	}
+	problems = append(problems, c.Mesh.validate()...)
 	if c.Enrollment.Attempts < 1 {
 		problems = append(problems, errors.New("enrollment.attempts must be at least 1"))
 	}
