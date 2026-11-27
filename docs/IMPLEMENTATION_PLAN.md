@@ -2577,17 +2577,49 @@ gapped peer takes a schema-versioned snapshot and resumes. SQLite stays single-w
 file and do not add a replication service. Byte-level tools (Litestream, rqlite) solve single-writer
 failover and bring a dependency plus merge semantics the state machine does not have.
 
-Decide before implementing: whether replicas may enroll (no — invites and approval stay at the home);
-whether a UV may sync to a replica while its home is down (read-only desired state, checks written to
-the home only — a stale subscription beats a wrong one); how the admin CLI names "the mesh" when the
-local MN is a replica; and what a node does with two reachable homes (there is no split brain because
-there is one home, but the failover story must be written down).
+**Decided 2026-11-27**, before any code, because the key model is the one choice that cannot be undone
+without a credential migration:
+
+1. **One shared `master_key`**, carried to a new MN once, out of band. The threshold (2-of-N) model above
+   stays a separate decision: it changes `DESCRIPTION.md` §6.2 and every pair, so it is a migration, not a
+   switch.
+2. **Replicas never enroll, approve, unblock, relocate or change policy.** Invites and approval stay at the
+   home; a replica applies events and writes only rows it homes. The node row carries its home
+   (`home_mn`), set at enrollment; an empty home means "this MN", which is every row that exists today.
+3. **A node may sync to a replica while its home is down**: it gets the last desired state the replica
+   holds, and its self-report is stored there as *pending for the home*. A replica never moves a state, so
+   the report is replayed to the home when it returns. A stale subscription beats a wrong one.
+4. **"The mesh" in the admin CLI is the local MN plus its configured peers**; `termit-mn status` prints
+   each peer, its lag and whether this MN holds the master key.
+5. **Failover is explicit**: `termit-mn home handoff --uv … --to <mn>` moves one node — a new agent key,
+   the same id and pair credentials, the epoch checked. No automatic takeover.
+6. **`home_term` on every node** — a monotonic counter, incremented by a handoff. Every write carries it,
+   and an MN refuses a write whose term is older than the row's. This is what stops a returning master
+   from writing after it lost its home role: the id and the pairs survive, the term is what fences.
+7. **A handoff checks freshness first**: the target must be within a configured number of events of the
+   home, or the operator passes `--force` and reads what it costs (a node enrolled after the replica's
+   cursor has to re-enroll, because the replica never learned its agent key).
+8. **The master key copy is per host.** A designated standby keeps it on disk (`0600`, or supplied by
+   `systemd-creds`), because it must take over after a reboot with nobody there; a replica that is not
+   expected to take over runs without the file — `serve` reads `TERMIT_MN_MASTER` first and the file
+   second — and `termit-mn status` says which. A copy that lives only in RAM cannot leak from the disk,
+   and cannot survive a restart.
+9. **Known limit: a node has one `mn.url`** (`internal/uv/config`). A handoff therefore needs the name to
+   follow the new home (DNS or a VIP), or the operator visits every node. A list of MN addresses in the
+   node's configuration is its own item, not this one.
+
+Deliberately not decided here, because each is a feature: automatic failover (a split brain between two
+live homes is worse than a day of stale peers), replicating check history and the audit log wholesale (the
+verdict rides the node row, the history stays home), and federation between independent meshes (§6).
 
 Acceptance: two MNs and two UVs. A node enrolled on A appears on B and in a subscription B renders; a
-block on A reaches B and the peer's next sync; replaying a delivered event changes nothing. A partition
-admits no replica enrollment and no epoch bump; a schema mismatch refuses replication but keeps serving
-the last good snapshot. The lab needs a second MN machine — the spare fourth container is a UV — so the
-suite grows before this ships.
+block on A reaches B and the peer's next sync; replaying a delivered event changes nothing; a gap is
+refused rather than papered over; a payload that does not decode is refused without advancing the cursor;
+snapshot-then-events converges to the same rows as the home. A partition admits no replica enrollment and
+no epoch bump; a schema mismatch refuses replication but keeps serving the last good snapshot. A write
+carrying a stale `home_term` is refused. The lab's second MN (`termit-mn2`, `TERMIT_LAB_MN2`) exists since
+2026-11-27; the suite grows with the code. Two MNs on one bridge prove the happy path, not a partition —
+the split-brain rules are unit tests, not lab ones.
 
 #### 5.2.2 Traffic limits per node
 
