@@ -113,6 +113,11 @@ pre-releases, and whoever installs the release skipped them.
   passed. The table is still applied only by `firewall on`: a host firewall that re-renders itself at boot
   is a change of exposure nobody confirmed.
 
+- **`termit-uv sync` records the server's build.** The command reconciled the peers, the subscription
+  and the probe schedule but left `server_version` where the agent's last cycle put it, so `upgrade` and
+  the menu's update offer named the old release for up to a day after the server was upgraded. The
+  production pass found it; the command now writes the field the agent writes.
+
 ## 0.6.0 — 2026-11-22
 
 ### Added
