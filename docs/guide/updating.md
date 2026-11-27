@@ -45,9 +45,31 @@ core config, decoy — and never regenerates the identity, the certificate, the 
 links, so the phones keep working. `termit-uv sync` then tells the server which build the node runs; the
 mesh view reads it from the sync.
 
-If `uv.sh` warns that the applied firewall table was rendered before UDP/443, the table is older than the
-configuration. `termit-uv firewall status` names the fields that moved; `termit-uv firewall on` renders
-the table again.
+### If the firewall table is missing UDP/443
+
+`uv.sh` warns about this when `init` renders a table that the applied one does not match: the table in
+force was rendered before Hysteria2 was turned on, and a reboot restored it from an older record. A
+missing `udp dport 443` is not just a closed port: the QUIC packets of every client land in the scan
+meter, the guard bans the client, and even the TLS profile stops working.
+
+Fix it on the node:
+
+```bash
+termit-uv firewall status      # what is in force, and which fields moved
+termit-uv firewall on          # render the table from the configuration
+termit-uv firewall confirm     # keep it — without this it rolls back in five minutes
+```
+
+`on` applies the table for five minutes and prints a reminder to check that SSH and 443 still answer;
+`confirm` keeps it. A confirmed table is also what the next reboot restores, so the warning goes away with
+it. If a client is already banned, lift the ban by address:
+
+```bash
+termit-uv bans list            # a "scan" ban is a client the table did not let in
+termit-uv bans unban <ip>
+```
+
+The full procedure is in [the runbook](../RUNBOOK.md) §12 step 8 and §13.
 
 ### Check the mesh
 
