@@ -356,3 +356,24 @@ works. Work through these in order; each one removes a class of causes.
    suspect the network: some paths drop or throttle UDP/443. `tcpdump -ni any 'udp port 443'` on the node
    shows whether the client's packets arrive at all; none arriving is a path or firewall problem, not a
    Termit one.
+8. **Has a client been banned for its own QUIC?** With the table on and no `udp dport 443` accept in it, a
+   participant's QUIC probes land in the scan meter, and the guard bans the source — the ban then drops
+   everything from that address, VLESS included. `termit-uv bans list` names it as `scan`; `termit-uv bans
+   unban <ip>` lifts it, and `termit-uv firewall on` + `confirm` removes the cause. An address banned this
+   way is not a scanner, it is a client the table did not let in.
+
+## 13. A reboot restored an older firewall table
+
+`termit-uv firewall restore` — the boot unit — puts back the record the last confirmed `on` wrote, and that
+record does not follow the configuration. A port added afterwards (`security.firewall.udp_ports: [443]`,
+when Hysteria2 was turned on, for instance) is missing from the kernel until the next `firewall on`; and a
+missing UDP port is not merely closed: its packets reach the scan meter.
+
+The drift is said out loud now: `termit-uv firewall status` prints the applied UDP ports and names the fields
+that moved (`udp_ports`, `ports`, `ssh_from`, `default_deny`), `termit-uv doctor` warns about the same, and
+`termit-uv firewall restore` writes it to the boot journal. The table is still applied only by `firewall on`:
+
+    termit-uv firewall on
+    termit-uv firewall confirm
+
+The record that `on` writes is what the next reboot restores, so the warning goes away with it.

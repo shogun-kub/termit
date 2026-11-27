@@ -56,6 +56,7 @@ var scratchKeep = map[string]bool{
 	"mn-admin.token":   true, // the lab's admin credential
 	"github-token":     true, // a personal access token for the GitHub API, for the logs of a failed release
 	"gh.js":            true, // the small API client the notes above tell you to run
+	"release-run.js":   true, // dispatches a pre-release and waits for it; OpenSSL TLS, see MAINTENANCE §4
 	"sonar-token":      true, // the SonarQube token, for a scan by hand
 	"ssh":              true, // the lab's public key
 	"shotgen":          true, // a source file, not output

@@ -86,13 +86,9 @@ one and makes the old address answer 404.`)
 	}
 
 	dir := filepath.Join(cfg.Paths.SiteDir, token)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		fmt.Fprintf(a.stderr, "termit-uv options: create %s: %v\n", dir, err)
-		return exitFailure
-	}
-	pagePath := filepath.Join(dir, "index.html")
-	if err := state.WriteFileAtomic(pagePath, page, 0o644); err != nil {
-		fmt.Fprintf(a.stderr, "termit-uv options: write %s: %v\n", pagePath, err)
+	pagePath, err := writePage(dir, page)
+	if err != nil {
+		fmt.Fprintf(a.stderr, "termit-uv options: %v\n", err)
 		return exitFailure
 	}
 
@@ -249,16 +245,30 @@ func (a *application) refreshOptions(cfg *config.Config) error {
 		return err
 	}
 	dir := filepath.Join(cfg.Paths.SiteDir, token)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
-	pagePath := filepath.Join(dir, "index.html")
-	if err := state.WriteFileAtomic(pagePath, page, 0o644); err != nil {
+	if _, err := writePage(dir, page); err != nil {
 		return err
 	}
 	node.Options = state.Options{Token: token, RenderedAt: a.now().UTC()}
 	node.AddPath(dir, state.KindDir, "options", a.now())
-	node.AddPath(pagePath, state.KindFile, "options", a.now())
+	node.AddPath(filepath.Join(dir, "index.html"), state.KindFile, "options", a.now())
 	node.Touch()
 	return node.Save(cfg.Paths.StatePath())
+}
+
+// writePage puts the page into the decoy tree and makes sure nginx can read it: the tree is public, so
+// the directory has to be 0755 and the file 0644 whatever umask the caller runs under. It is set
+// explicitly because a page minted by a process with a restrictive umask answered 403 — the mode is
+// part of the effect, not a side effect of who wrote it.
+func writePage(dir string, page []byte) (string, error) {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", fmt.Errorf("create %s: %w", dir, err)
+	}
+	if err := os.Chmod(dir, 0o755); err != nil {
+		return "", fmt.Errorf("chmod %s: %w", dir, err)
+	}
+	path := filepath.Join(dir, "index.html")
+	if err := state.WriteFileAtomic(path, page, 0o644); err != nil {
+		return "", fmt.Errorf("write %s: %w", path, err)
+	}
+	return path, nil
 }

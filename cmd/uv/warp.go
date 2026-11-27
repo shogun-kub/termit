@@ -8,6 +8,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/shogun-kub/termit/internal/uv/config"
 	"github.com/shogun-kub/termit/internal/uv/install"
@@ -28,6 +29,9 @@ type jsonWarp struct {
 	Socks     string      `json:"socks,omitempty"`
 	Selected  []string    `json:"selected,omitempty"`
 	Trace     *warp.Trace `json:"trace,omitempty"`
+	// LatencyMS is how long the trace took through the tunnel. "On" and "usable" are different
+	// statements: a WARP path that answers in seconds passes every other check.
+	LatencyMS int `json:"latency_ms,omitempty"`
 	// DeviceID and Peer describe the wireguard identity. The key material is never in this report.
 	DeviceID string `json:"device_id,omitempty"`
 	Peer     string `json:"peer,omitempty"`
@@ -53,7 +57,7 @@ func (a *application) runWarp(args []string) int {
 // this machine could run it: the whole point of the check is the address Cloudflare sees.
 func (a *application) runWarpStatus(args []string) int {
 	flags := a.newFlagSet("warp [status]", `Reports the egress: the configured mode, what warp-cli says, and what a fetch
-through the tunnel says Cloudflare sees. WARP is on by default; `+"`termit-uv warp mode off`"+` exits directly.`)
+through the tunnel says Cloudflare sees — and how long that fetch took. WARP is on by default; `+"`termit-uv warp mode off`"+` exits directly.`)
 	configFlag := flags.String("config", configPathDefault(), "path to config.yaml")
 	jsonOut := flags.Bool("json", false, "print the report as JSON")
 	if err := flags.Parse(args); err != nil {
@@ -71,8 +75,12 @@ through the tunnel says Cloudflare sees. WARP is on by default; `+"`termit-uv wa
 	}
 	report := jsonWarp{Mode: cfg.Warp.Mode, Transport: cfg.Warp.TransportOrDefault(), Socks: warp.SocksAddress, Selected: cfg.Warp.Selected}
 	if cfg.Warp.UsesWireGuard() {
+		started := time.Now()
 		if code := a.wireGuardStatus(cfg, &report); code != exitOK {
 			return code
+		}
+		if report.State == "on" {
+			report.LatencyMS = millis(time.Since(started))
 		}
 	} else if cfg.Warp.UsesUsque() {
 		report.Socks = xray.DefaultUsqueSocks
@@ -83,7 +91,9 @@ through the tunnel says Cloudflare sees. WARP is on by default; `+"`termit-uv wa
 		default:
 			// The sidecar has no status command of its own; the honest check is the one the node's
 			// traffic makes, a trace fetched through its SOCKS5 listener.
+			started := time.Now()
 			trace, err := warp.Client{Socks: xray.DefaultUsqueSocks}.Trace(context.Background())
+			took := time.Since(started)
 			switch {
 			case err != nil:
 				report.State = "unavailable"
@@ -92,6 +102,7 @@ through the tunnel says Cloudflare sees. WARP is on by default; `+"`termit-uv wa
 				report.State = "on"
 				report.Detail = "via " + trace.IP
 				report.Trace = &trace
+				report.LatencyMS = millis(took)
 			default:
 				report.State = "direct"
 				report.Detail = "the probe says warp=off at " + trace.IP
@@ -112,7 +123,9 @@ through the tunnel says Cloudflare sees. WARP is on by default; `+"`termit-uv wa
 			report.State = "unavailable"
 			report.Detail = hostErr.Error()
 		default:
+			started := time.Now()
 			status, err := client.Status(context.Background())
+			took := time.Since(started)
 			if err != nil {
 				fmt.Fprintf(a.stderr, "termit-uv warp: %v\n", err)
 				return exitFailure
@@ -122,6 +135,7 @@ through the tunnel says Cloudflare sees. WARP is on by default; `+"`termit-uv wa
 			switch {
 			case status.Healthy():
 				report.State = "on"
+				report.LatencyMS = millis(took)
 			case status.State == "missing":
 				report.State = "not-installed"
 			default:
@@ -157,6 +171,9 @@ through the tunnel says Cloudflare sees. WARP is on by default; `+"`termit-uv wa
 	fmt.Fprintf(a.stdout, "egress:  %s\n", report.State)
 	if report.Detail != "" {
 		fmt.Fprintf(a.stdout, "detail:  %s\n", report.Detail)
+	}
+	if report.LatencyMS > 0 {
+		fmt.Fprintf(a.stdout, "latency: %d ms\n", report.LatencyMS)
 	}
 	if report.Transport == config.WarpTransportWireGuard {
 		fmt.Fprintf(a.stdout, "tunnel:  wireguard (inside the core)\n")
@@ -314,6 +331,9 @@ func (a *application) applyWarpRoute(cfg *config.Config, configPath string) int 
 	}
 	return exitOK
 }
+
+// millis rounds a measured probe for the report: the caller prints milliseconds, never a fraction.
+func millis(d time.Duration) int { return int(d / time.Millisecond) }
 
 // wireGuardStatus reports the transport that lives inside the core. There is no sidecar to ask and no
 // SOCKS port to dial, so the exit is checked the way a client would check it: through the tunnel,

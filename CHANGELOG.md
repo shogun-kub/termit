@@ -60,12 +60,26 @@ pre-releases, and whoever installs the release skipped them.
   from the host's own `/etc/hosts` (`127.0.1.1`) counts as this machine, so a node whose host name is its
   domain is not refused its own name.
 
+- **The tunnel is measured, not just named.** `termit-uv warp status` prints how long the trace through the
+  tunnel took, and `doctor` says the same and warns when it takes more than two seconds: an exit that answers
+  in seconds is unusable to every client even while the egress check is green.
+
+- **`termit-mn uv show` says which transport the probe took.** A node that serves the TLS profile and
+  Hysteria2 is probed on one leg; the view lists both declared transports and marks the one that was tested,
+  so "ok" can no longer stand for a transport nobody checked.
+
+- **`doctor` compares the table in force with the configuration.** A node whose applied table was rendered
+  before a UDP port was added, or before `ssh_from` was narrowed, gets a warning naming the fields and the
+  command that fixes it, instead of a clean report.
+
 ### Changed
 
 - **The page of client links exists without being asked for.** `init`, `sync`, the agent's cycle and a
   device change mint its random address the first time and keep it afterwards, instead of waiting for
   `termit-uv options`: a node that never ran that command had links but no page, and `status` had no
-  `options:` line to print. `termit-uv options --rotate` still moves the address.
+  `options:` line to print. `termit-uv options --rotate` still moves the address. The mesh heading counts
+  machines, not rows: a peer that serves a second transport is one node, and which transports it serves is
+  its owner's choice.
 
 - **Three wizard questions say what the answer is for.** The domain asks for the whole name — subdomain
   and domain together; the contact address says it is the mailbox that receives expiry notices; the ACME
@@ -75,6 +89,11 @@ pre-releases, and whoever installs the release skipped them.
   code: the prompt says so, and the action runs nothing. Questions that set a new value still ask again.
 
 ### Fixed
+
+- **The page of client links is readable by nginx.** A page minted by a process with a restrictive
+  umask left its directory `0700`, and nginx answered `403` to the owner's own address — which is what
+  the lab found on the first node that minted one itself. The directory is now set public explicitly,
+  whatever umask the writer runs under, and a test holds it there.
 
 - **The egress probe waits for the MASQUE relay.** `init --warp-transport usque` used to probe while the
   relay was still starting, go out through the balancer's fallback and report the node's own address as the
@@ -86,6 +105,18 @@ pre-releases, and whoever installs the release skipped them.
 - **`warp.family` is documented as a `wireguard` setting.** The MASQUE sidecar is dual-stack and takes no
   family flag, so on `usque` a non-default family is refused at load time and the default means nothing;
   the operations guide, the config comment and both guides say so.
+
+- **The firewall table and the configuration no longer drift apart unseen.** `firewall status` names the
+  fields that moved — `ports`, `udp_ports`, `ssh_from`, `default_deny` — and prints the applied UDP ports;
+  `firewall restore`, the boot unit, writes the same warning to the journal when the record it restores is
+  older than the configuration; and `init` prints the QUIC hint on every run, not only when `--hysteria` was
+  passed. The table is still applied only by `firewall on`: a host firewall that re-renders itself at boot
+  is a change of exposure nobody confirmed.
+
+- **`termit-uv sync` records the server's build.** The command reconciled the peers, the subscription
+  and the probe schedule but left `server_version` where the agent's last cycle put it, so `upgrade` and
+  the menu's update offer named the old release for up to a day after the server was upgraded. The
+  production pass found it; the command now writes the field the agent writes.
 
 ## 0.6.0 — 2026-11-22
 

@@ -205,7 +205,7 @@ func TestRenderInRussian(t *testing.T) {
 		`lang="ru"`,
 		"Ссылки для клиентов",
 		"Этот узел",
-		"Mesh (1)",
+		"Меш (1)",
 		"замедлен",
 		"копировать",
 	} {
@@ -244,5 +244,26 @@ func TestPageNamesTheEgress(t *testing.T) {
 	page := renderPage(t, options.Data{Domain: "node.example.com", Lang: i18n.EN, Egress: "all via usque"})
 	if !strings.Contains(page, "выход: all via usque") {
 		t.Errorf("the page does not name the egress:\n%s", page)
+	}
+}
+
+// The mesh heading counts machines, not rows: a peer that serves two transports is one node, and which
+// transports it serves is its owner's choice — it can change without the mesh growing or shrinking.
+func TestMeshHeadingCountsNodesNotLinks(t *testing.T) {
+	t.Parallel()
+	page, err := options.Render(options.Data{
+		Domain: "node.example.com",
+		Lang:   i18n.EN,
+		Peers: []options.Link{
+			{Label: "pesok.example.com", URI: "vless://a@pesok.example.com:443#pesok.example.com"},
+			{Label: "pesok.example.com (QUIC)", URI: "hy2://a:b@pesok.example.com:443#pesok.example.com%20(QUIC)"},
+			{Label: "another.example.com", URI: "vless://c@another.example.com:443#another.example.com"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if html := string(page); !strings.Contains(html, "Mesh (2)") {
+		t.Errorf("the heading does not count nodes, not links:\n%s", html)
 	}
 }

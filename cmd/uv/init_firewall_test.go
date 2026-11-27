@@ -26,29 +26,37 @@ func writeApplied(t *testing.T, path string, applied firewall.Applied) {
 	}
 }
 
-// TestFirewallHasQUIC: the hint after `--hysteria` is only true when the table in force lacks the port.
-// Saying it about a table that already carries it sends the owner to re-apply a correct table.
-func TestFirewallHasQUIC(t *testing.T) {
+// TestAppliedLacksQUIC: the hint after `init` is only true when a table is in force and does not carry
+// the QUIC port. A node with nothing applied has nothing to re-render, a table that already carries the
+// port needs no second apply, and a table the operator removed is not in force at all.
+func TestAppliedLacksQUIC(t *testing.T) {
 	t.Parallel()
 	cfg := config.Default()
 	cfg.Paths.StateDir = t.TempDir()
 	cfg.Paths.ConfigDir = t.TempDir()
 	path := cfg.Paths.FirewallPath()
 
-	if firewallHasQUIC(cfg) {
-		t.Error("a missing record was reported as carrying the QUIC port")
+	if appliedLacksQUIC(cfg) {
+		t.Error("a missing record was reported as a table without the QUIC port")
 	}
 	writeApplied(t, path, firewall.Applied{
 		Table: "inet termit", Ports: []int{22, 80, 443}, UDPPorts: []int{443},
 		AppliedAt: time.Now(),
 	})
-	if !firewallHasQUIC(cfg) {
-		t.Error("a table with UDP/443 was not reported as carrying the QUIC port")
+	if appliedLacksQUIC(cfg) {
+		t.Error("a table with UDP/443 was reported as missing it")
 	}
 	writeApplied(t, path, firewall.Applied{
 		Table: "inet termit", Ports: []int{22, 80, 443}, AppliedAt: time.Now(),
 	})
-	if firewallHasQUIC(cfg) {
-		t.Error("a table without UDP ports was reported as carrying the QUIC port")
+	if !appliedLacksQUIC(cfg) {
+		t.Error("a table without UDP ports was not reported as missing the QUIC port")
+	}
+	writeApplied(t, path, firewall.Applied{
+		Table: "inet termit", Ports: []int{22, 80, 443}, AppliedAt: time.Now().Add(-time.Hour),
+		ConfirmedAt: time.Now().Add(-time.Hour), RemovedAt: time.Now().Add(-time.Minute),
+	})
+	if appliedLacksQUIC(cfg) {
+		t.Error("a table the operator removed was reported as in force")
 	}
 }

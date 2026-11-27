@@ -139,7 +139,7 @@ func (a *application) diagnose(path string) checkGroups {
 // about the machine, which is what most of the preflight is.
 func checkGroup(name string) string {
 	switch name {
-	case "config", "state", "services", "certificate", "decoy", "proxy config":
+	case "config", "state", "services", "certificate", "decoy", "proxy config", "firewall":
 		return groupNode
 	case "transport", "warp", "warp-egress":
 		return groupTunnel

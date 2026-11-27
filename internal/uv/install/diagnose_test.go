@@ -4,9 +4,11 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/shogun-kub/termit/internal/firewall"
 	"github.com/shogun-kub/termit/internal/uv/config"
 	"github.com/shogun-kub/termit/internal/uv/warp"
 )
@@ -148,5 +150,54 @@ func TestDiagnoseChecksTheMasqueSidecar(t *testing.T) {
 	}))
 	if got := checks["warp"]; got != StatusFail {
 		t.Errorf("warp = %q, want fail while the sidecar is not running", got)
+	}
+}
+
+// TestDiagnoseNotesAFirewallOlderThanTheConfiguration: the boot unit restores the record the operator
+// confirmed, so a QUIC port added to the configuration afterwards is silently missing from the kernel
+// until the next `firewall on`. Doctor is where that has to become visible.
+func TestDiagnoseNotesAFirewallOlderThanTheConfiguration(t *testing.T) {
+	t.Parallel()
+	cfg, sb := installForDiagnose(t)
+	cfg.Security.Firewall.Enabled = true
+	cfg.Security.Firewall.UDPPorts = []int{443}
+	options := DiagnoseOptions{Config: cfg, Exec: sb.exec, Now: fixedNow,
+		WarpHost: &warp.Host{GOOS: "windows", GOARCH: "amd64"}}
+
+	if err := firewall.SaveApplied(cfg.Paths.FirewallPath(), &firewall.Applied{
+		Table: firewall.NodeTable, Ports: firewall.NodePorts, DefaultDeny: true,
+		AppliedAt: engineNow.Add(-time.Hour), ConfirmedAt: engineNow.Add(-time.Hour),
+	}); err != nil {
+		t.Fatalf("SaveApplied: %v", err)
+	}
+	if got := checkStatuses(Diagnose(context.Background(), options)); got["firewall"] != StatusWarn {
+		t.Errorf("firewall = %q, want warn while UDP/443 is missing: %+v", got["firewall"], got)
+	}
+
+	if err := firewall.SaveApplied(cfg.Paths.FirewallPath(), &firewall.Applied{
+		Table: firewall.NodeTable, Ports: firewall.NodePorts, UDPPorts: []int{443}, DefaultDeny: true,
+		AppliedAt: engineNow.Add(-time.Hour), ConfirmedAt: engineNow.Add(-time.Hour),
+	}); err != nil {
+		t.Fatalf("SaveApplied: %v", err)
+	}
+	if got := checkStatuses(Diagnose(context.Background(), options))["firewall"]; got != StatusOK {
+		t.Errorf("firewall = %q, want ok once the record carries the port", got)
+	}
+}
+
+// TestWarpEgressWarnsWhenSlow: "on" is not "usable". A tunnel that answers in seconds must not read as
+// green — a wireguard egress did exactly that on production for ten minutes.
+func TestWarpEgressWarnsWhenSlow(t *testing.T) {
+	t.Parallel()
+	trace := warp.Trace{IP: "104.28.0.1", Warp: "on"}
+	if got := warpEgressCheck("usque (MASQUE)", trace, 55*time.Millisecond); got.Status != StatusOK {
+		t.Errorf("a fast tunnel = %q, want ok: %+v", got.Status, got)
+	}
+	slow := warpEgressCheck("usque (MASQUE)", trace, 8*time.Second)
+	if slow.Status != StatusWarn {
+		t.Errorf("an eight-second tunnel = %q, want warn", slow.Status)
+	}
+	if slow.Hint == "" || !strings.Contains(slow.Detail, "took 8s") {
+		t.Errorf("slow check = %+v, want the time and a hint", slow)
 	}
 }
