@@ -9,6 +9,7 @@ Their coordinates never go into the repository — they are environment input:
 
 ```bash
 export TERMIT_LAB_MN=root@…   TERMIT_LAB_UV1=root@…   TERMIT_LAB_UV2=root@…   TERMIT_LAB_UV3=root@…
+export TERMIT_LAB_MN2=root@…                                  # the second server, for replication
 export TERMIT_LAB_SSH_KEY=<path to the lab private key>       # never committed
 export TERMIT_LAB_HOSTKEYS='host1=SHA256:…,host2=SHA256:…'    # pin every machine
 export TERMIT_LAB_MN_ADMIN_TOKEN=<admin token>                 # never committed

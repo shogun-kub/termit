@@ -17,10 +17,12 @@ import (
 // Environment variables the harness reads. They are the contract with the machine that runs the
 // suite: nothing about the lab is compiled into the repository.
 const (
-	EnvMN         = "TERMIT_LAB_MN"
-	EnvUV1        = "TERMIT_LAB_UV1"
-	EnvUV2        = "TERMIT_LAB_UV2"
-	EnvUV3        = "TERMIT_LAB_UV3"
+	EnvMN  = "TERMIT_LAB_MN"
+	EnvUV1 = "TERMIT_LAB_UV1"
+	EnvUV2 = "TERMIT_LAB_UV2"
+	EnvUV3 = "TERMIT_LAB_UV3"
+	// EnvMN2 names the second management server, the one a mesh test replicates with. Optional, like UV3.
+	EnvMN2        = "TERMIT_LAB_MN2"
 	EnvSSHKey     = "TERMIT_LAB_SSH_KEY"
 	EnvHostKeys   = "TERMIT_LAB_HOSTKEYS"
 	EnvAdminToken = "TERMIT_LAB_MN_ADMIN_TOKEN"
@@ -46,7 +48,9 @@ type Target struct {
 type Lab struct {
 	MN, UV1, UV2 *Machine
 	// UV3 is nil when TERMIT_LAB_UV3 is unset; tests that need it skip instead of failing.
-	UV3        *Machine
+	UV3 *Machine
+	// MN2 is nil when TERMIT_LAB_MN2 is unset: a single-server lab cannot run the replication tests.
+	MN2        *Machine
 	AdminToken string
 	DNSuffix   string
 	ACME       string
@@ -85,8 +89,10 @@ func FromEnv(t *testing.T) *Lab {
 	key := read(EnvSSHKey)
 	hostKeys := read(EnvHostKeys)
 	token := read(EnvAdminToken)
-	// The third node is optional, so its absence is not "incomplete": the suite runs with two.
+	// The third node and the second server are optional, so their absence is not "incomplete": the suite runs
+	// with two nodes and one server, and the tests that need more skip.
 	uv3 := strings.TrimSpace(os.Getenv(EnvUV3))
+	mn2 := strings.TrimSpace(os.Getenv(EnvMN2))
 	if len(missing) > 0 {
 		t.Skipf("lab environment is incomplete (%s); see AGENTS.md §4.3", strings.Join(missing, ", "))
 	}
@@ -124,23 +130,24 @@ func FromEnv(t *testing.T) *Lab {
 	}
 	return &Lab{
 		MN:         newMachine("mn", mn, EnvMN),
+		MN2:        optionalMachine(t, newMachine, "mn2", mn2, EnvMN2),
 		UV1:        newMachine("uv1", uv1, EnvUV1),
 		UV2:        newMachine("uv2", uv2, EnvUV2),
-		UV3:        optionalMachine(t, newMachine, uv3),
+		UV3:        optionalMachine(t, newMachine, "uv3", uv3, EnvUV3),
 		AdminToken: token,
 		DNSuffix:   os.Getenv("TERMIT_LAB_DNS_SUFFIX"),
 		ACME:       os.Getenv("TERMIT_LAB_ACME"),
 	}
 }
 
-// optionalMachine builds a machine only when its target is configured. The third node is an
-// enhancement, not a requirement: a lab with two UVs still runs the whole original suite.
-func optionalMachine(t *testing.T, build func(name, spec, envName string) *Machine, spec string) *Machine {
+// optionalMachine builds a machine only when its target is configured. An optional host is an enhancement,
+// not a requirement: a lab with two nodes and one server still runs the whole original suite.
+func optionalMachine(t *testing.T, build func(name, spec, envName string) *Machine, name, spec, envName string) *Machine {
 	t.Helper()
 	if spec == "" {
 		return nil
 	}
-	return build("uv3", spec, EnvUV3)
+	return build(name, spec, envName)
 }
 
 // Run executes one command and returns its combined output. A non-zero remote exit is an error: the
