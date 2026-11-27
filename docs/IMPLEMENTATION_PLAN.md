@@ -2683,9 +2683,12 @@ of this server's own log stay, the rest go, and a peer further behind than that 
 already exists. A replica keeps the cursor, not the peer's log, which is why the table only ever holds one
 log.
 
-What the replication slice still owes: the **quorum gate on `credential_epoch`** — the one decision left, and
-the reason a rotation in a split mesh is still unsafe — and the lab pair (`TERMIT_LAB_MN2` alone does not
-prove a partition; the split-brain rules stay unit tests).
+What the replication slice still owes: **rotation of `credential_epoch`** — there is no command that moves it
+in this build (it is 1 at enrollment, and a handoff or an adoption keeps it because the ids and the master key
+survive both), so the quorum gate the decision asks for is a gate on a door that is not built yet. When it is,
+the bump has to wait for every configured MN's acknowledgement before it takes effect, and this paragraph is
+where that starts. And the lab pair: `TERMIT_LAB_MN2` alone does not prove a partition, so the split-brain
+rules stay unit tests.
 
 Acceptance: two MNs and two UVs. A node enrolled on A appears on B and in a subscription B renders; a
 block on A reaches B and the peer's next sync; replaying a delivered event changes nothing; a gap is

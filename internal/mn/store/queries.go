@@ -64,7 +64,11 @@ type UV struct {
 	// token, and this is what lets MN put the token back into a URL at sync.
 	SubTokenSealed string
 
-	FailedCycles    int
+	FailedCycles int
+	// CredentialEpoch is sealed into every pair credential (docs/DESCRIPTION.md §6.2): changing it re-keys the
+	// whole mesh, so a bump must be acknowledged by every configured management server before it takes effect
+	// (docs/IMPLEMENTATION_PLAN.md §5.2.1). No command moves it in this build — it is 1 at enrollment and a
+	// handoff or an adoption leaves it alone, because the ids and the master key survive both.
 	CredentialEpoch int
 	InviteID        string
 	Notes           string

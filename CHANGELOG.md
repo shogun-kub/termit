@@ -69,6 +69,14 @@ pre-releases, and whoever installs the release skipped them.
   that has run for hours ages: the first request after an idle period can take seconds, and a fresh
   process bounds the damage. Off by default; refused on `proxy`.
 
+### Changed
+
+- **`credential_epoch` is pinned as a migration, not a field.** A test runs every operator write — a state
+  change, transports, a key or token rotation, a pin, a sighting, a schedule, a relocation — and fails if the
+  epoch moves; handoff and adoption are covered too. Rotation is not implemented in this build, and when it is
+  it has to wait for every configured management server (the quorum gate `IMPLEMENTATION_PLAN.md` §5.2.1 asks
+  for) before it takes effect.
+
 ### Fixed
 
 - **The WARP health probe speaks the tunnel's family.** It fetched a dual-stack name, which resolves to
