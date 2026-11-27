@@ -2491,7 +2491,7 @@ the jump to 0.7.0 is the scripts', and the commands the release adds are what a 
 
 ## 5. Not implemented yet
 
-Everything after `0.6.0` is postponed: understood and wanted, and nothing shipped depends on it. Each item
+Everything after `0.7.0` is postponed: understood and wanted, and nothing shipped depends on it. Each item
 names the rule that keeps it out and what it depends on, so nobody re-discovers the reason from scratch.
 
 ### 5.1 0.7.x candidates
@@ -2555,8 +2555,8 @@ groups that only share some nodes is a different thing (§6) and is not covered 
 What replicates: node records (`uv_id`, domain, profile, state, failure streak, certificate pin,
 agent-key hash), `credential_epoch`, policy that changes pairs, verdicts with their timestamps, and the
 schedule. What does not: the `master_key`. It is moved once, out of band, when the mesh is formed, or
-replaced by a threshold scheme below — sending it through a relay, even encrypted, makes every relay a
-candidate for the whole mesh.
+replaced by a threshold scheme below — handing it over through another host, even encrypted, makes that
+host a candidate for the whole mesh.
 
 | key model | consequence |
 |---|---|
@@ -2578,20 +2578,14 @@ Authority:
   acknowledged it. A bump during a partition is a mesh-wide split no node can detect from the inside;
   gating it on quorum is the whole safety argument.
 
-Transport, two paths, one envelope:
+Transport: **direct** — MN↔MN over HTTPS with pinned static keys, no new CA and no new service.
+Replication needs its own interval, not the daily sync: a state change that takes 24 h to reach the other
+half of the mesh is not replication.
 
-- **Direct**: MN↔MN over HTTPS with pinned static keys — no new CA and no new service.
-- **Indirect**: through mesh nodes. A UV already has an always-on process and is already trusted to reach
-  a management endpoint, so it carries opaque envelopes from its home MN to another MN, with a bounded
-  queue, a TTL, an ack and a per-MN quota. The envelope is end-to-end encrypted and signed — `mn_id`,
-  `seq`, `schema_version` and payload, X25519 + AEAD, Ed25519 — so a relay reads ciphertext, cannot forge
-  or replay (sequence window) and cannot alter it without a signature failure. A relay that drops costs
-  liveness only. The node does not become a general relay: only envelopes addressed to configured MNs,
-  only below a size cap, removed on ack. Encryption and signatures come from the standard library plus
-  the `x/crypto` already in the module, so this adds no dependency.
-- Replication needs its own interval, not the daily sync: a state change that takes 24 h to reach the
-  other half of the mesh is not replication. On the indirect path that means a short poll or long-poll
-  between UV and its home MN — a new always-on network behaviour on the node, and part of the cost.
+The **indirect** path — replication carried through mesh nodes as sealed envelopes — is parked in §5.3.
+It was moved out on 2026-11-27: it has no user while every MN can reach every other, and it is the
+expensive half of the item (a new always-on network behaviour on every node). Direct only is what a
+two-MN mesh needs.
 
 Replication itself is an append-only event log per MN, applied idempotently by `(mn_id, seq)`; a new or
 gapped peer takes a schema-versioned snapshot and resumes. SQLite stays single-writer: do not share the
@@ -2605,11 +2599,10 @@ local MN is a replica; and what a node does with two reachable homes (there is n
 there is one home, but the failover story must be written down).
 
 Acceptance: two MNs and two UVs. A node enrolled on A appears on B and in a subscription B renders; a
-block on A reaches B and the peer's next sync. Cut the direct link and the same event arrives through a
-UV relay with the same three results. A replayed envelope changes nothing; a tampered one is rejected and
-logged. A partition admits no replica enrollment and no epoch bump; a schema mismatch refuses replication
-but keeps serving the last good snapshot. The lab needs a second MN machine — the spare fourth container
-is a UV — so the suite grows before this ships.
+block on A reaches B and the peer's next sync; replaying a delivered event changes nothing. A partition
+admits no replica enrollment and no epoch bump; a schema mismatch refuses replication but keeps serving
+the last good snapshot. The lab needs a second MN machine — the spare fourth container is a UV — so the
+suite grows before this ships.
 
 #### 5.2.2 Traffic limits per node
 
@@ -2787,6 +2780,34 @@ profile option, not a new kind."
 The constraint is that nobody has needed it yet: the argument for it is a client that cannot read the XHTTP
 profile, and none has bitten. It depends on §5.1.1, because a second rendering is a profile option and needs
 somewhere to say so.
+
+### 5.3 Parked
+
+Understood, wanted, and out of every release's scope: each has no user today, and each would be paid for
+before the first one arrives. Parked is not dropped — the design is here so taking one up needs no second
+round of thinking, and the condition that un-parks it is written beside it.
+
+#### 5.3.1 The relay envelope inside a mesh
+
+Replication carried through the mesh's nodes instead of over a direct MN↔MN link: a UV already runs an
+always-on process and is already trusted to reach a management endpoint, so it carries opaque envelopes
+from its home MN to another MN — a bounded queue, a TTL, an ack and a per-MN quota, the envelope sealed
+and signed (`mn_id`, `seq`, `schema_version`, payload; X25519 + AEAD, Ed25519) so a relay reads ciphertext
+and cannot forge, replay or alter it. Only envelopes addressed to configured MNs, only below a size cap,
+removed on ack: the node never becomes a general relay. Encryption and signatures come from the standard
+library plus the `x/crypto` already in the module, so it adds no dependency.
+
+It sat inside §5.2.1 until 2026-11-27 and was moved out because nothing needs it yet: a mesh with two
+MNs whose paths to each other work — the only mesh this project has a plan for — replicates over the
+direct link (§5.2.1). What it buys is reachability between MNs that cannot talk directly, i.e. a NAT or
+CGNAT in front of one, a blocked path, an MN behind a node-only exit, or enough MNs that a full mesh of
+links stops being the cheaper thing. What it costs is the reason it is not free: a short poll or
+long-poll between every UV and its home MN (a new always-on network behaviour on the node, and the one
+part of it that touches §11's "direct traffic stays direct" argument), plus a second delivery path to
+test in every scenario.
+
+Un-parks when either becomes true: an MN that cannot reach another MN directly, or a mesh large enough
+that the direct links stop being the simple answer.
 
 ## 6. Explicitly deferred (post-v1)
 
@@ -3000,4 +3021,4 @@ below resolves the names the prose still uses.
 | M5-1 … M5-8 | §3.4.10; the production pass is §3.4.11 |
 
 New in this revision, with no old number: §1, §2, §3 and the introductions to its chapters, §4 and its
-sections, §5 and its introductions, §5.1.1, §5.1.2, §5.1.3, §5.2.5, §5.2.6, §7 and §8.
+sections, §5 and its introductions, §5.1.1, §5.1.2, §5.1.3, §5.2.5, §5.2.6, §5.3, §7 and §8.
