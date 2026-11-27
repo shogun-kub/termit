@@ -2491,34 +2491,15 @@ the jump to 0.7.0 is the scripts', and the commands the release adds are what a 
 
 ## 5. Not implemented yet
 
-Everything after `0.7.0` is postponed: understood and wanted, and nothing shipped depends on it. Each item
-names the rule that keeps it out and what it depends on, so nobody re-discovers the reason from scratch.
+Everything after `0.7.0` is postponed — with one exception, already on `dev` (§5.1.3): understood and
+wanted, and nothing shipped depends on it. Each item names the rule that keeps it out and what it depends
+on, so nobody re-discovers the reason from scratch.
 
-### 5.1 0.7.x candidates
+### 5.1 0.7.x patches
 
-Small and unplanned. Any of them may land in a `0.7.x` patch or wait for `0.8.0`; none is in `0.7.0`'s
-scope (§4.1).
-
-#### 5.1.1 Parameters in the profile envelope
-
-A node reports `{kind, version}` for what it serves, and §3.6.2 records what is left of that envelope: "a
-kind whose parameters vary has no place to say so yet, and the prober has no way to read a kind it does not
-implement." §3.6.1 describes the other half of the same work: options inside the profile — XHTTP mode,
-ALPN, mux/padding, path shape — are "a small enumerated set, validated at enrollment and versioned", and
-they change the URI builder, the generator and the prober together.
-
-The constraint that keeps it out: "a map with no consumer is a schema nobody can check" (§3.6.1). It
-depends on the first kind that varies its parameters; until then the two fields are the whole envelope.
-
-#### 5.1.2 The family on the MASQUE transport
-
-`warp.family: ipv4` is not applied on `usque`: the MASQUE tunnel is dual-stack and the trace egressed over
-IPv6 (`2a09:…`). That is not the node's own address and so not the 0.5.0 leak, but it is not what the key
-says either — "the sidecar would have to be told, which it cannot be through its command line today"
-(§3.8.2).
-
-The constraint is the third-party daemon's interface; it depends on `usque` growing a family flag, or on a
-rule the core can apply without being told.
+One of the three small items that stood here shipped on `dev` ahead of `0.8.0` (§5.1.3). The other two —
+the parameters inside the profile envelope and the family on the MASQUE transport — moved to §5.3.2 and
+§5.3.3 on 2026-11-27: neither was blocked by anything in this repository.
 
 #### 5.1.3 The minimum agent version
 
@@ -2782,14 +2763,15 @@ rendering of the same profile behind nginx — VLESS over WebSocket on a loopbac
 profile option, not a new kind."
 
 The constraint is that nobody has needed it yet: the argument for it is a client that cannot read the XHTTP
-profile, and none has bitten. It depends on §5.1.1, because a second rendering is a profile option and needs
+profile, and none has bitten. It depends on §5.3.2, because a second rendering is a profile option and needs
 somewhere to say so.
 
 ### 5.3 Parked
 
-Understood, wanted, and out of every release's scope: each has no user today, and each would be paid for
-before the first one arrives. Parked is not dropped — the design is here so taking one up needs no second
-round of thinking, and the condition that un-parks it is written beside it.
+Understood, wanted, and out of every release's scope: each is waiting for a user or for something outside
+this repository to allow it, and building one early costs more than building it when the need is real.
+Parked is not dropped — the design is here so taking one up needs no second round of thinking, and the
+condition that un-parks it is written beside it.
 
 #### 5.3.1 The relay envelope inside a mesh
 
@@ -2812,6 +2794,37 @@ test in every scenario.
 
 Un-parks when either becomes true: an MN that cannot reach another MN directly, or a mesh large enough
 that the direct links stop being the simple answer.
+
+#### 5.3.2 Parameters in the profile envelope
+
+A node reports `{kind, version}` for what it serves, and §3.6.2 records what is left of that envelope: "a
+kind whose parameters vary has no place to say so yet, and the prober has no way to read a kind it does not
+implement." §3.6.1 describes the other half of the same work: options inside the profile — XHTTP mode,
+ALPN, mux/padding, path shape — are "a small enumerated set, validated at enrollment and versioned", and
+they change the URI builder, the generator and the prober together.
+
+It was §5.1.1 until 2026-11-27 and is parked because of the rule that kept it out all along: "a map with
+no consumer is a schema nobody can check" (§3.6.1). No kind in the mesh varies its parameters today — both
+shipped kinds are the same shape on every node — so the extra field would be written by nobody and read by
+nobody. Un-parks with the first consumer: a kind whose options differ per node, or the second rendering of
+the profile (§5.2.6), which needs somewhere to say which rendering a node serves.
+
+#### 5.3.3 The family on the MASQUE transport
+
+`warp.family` names the address family the tunnel carries, and the WireGuard outbound inside the core
+honours it: the tunnel takes that family's address and default route, and a destination of the other family
+is refused rather than sent out on the node's own address. On `usque` it is not applied — the MASQUE tunnel
+is dual-stack, and the production traces egressed over IPv6 (`2a09:…`). That is not the node's own address
+and so not the 0.5.0 leak, but it is not what the key says either. The configuration refuses a non-default
+family on that transport instead of pretending to apply it (`docs/guide/using-uv.md`), so nothing is
+silently ignored; what is missing is the knob.
+
+It was §5.1.2 until 2026-11-27 and is parked on the third-party daemon: `usque` 4.2.1's `socks` mode takes
+a bind address, a port, credentials, resolvers, an SNI and `--http2`, and its configuration file carries one
+endpoint per family but no egress-family switch — the sidecar cannot be told, and the core cannot tell it
+either, because it hands each connection to a SOCKS5 proxy as a name or an address and never sees the family
+that proxy picks. Un-parks when `usque` grows the flag, or when the core can express the rule without asking
+it (§3.8.2).
 
 ## 6. Explicitly deferred (post-v1)
 
@@ -3025,4 +3038,5 @@ below resolves the names the prose still uses.
 | M5-1 … M5-8 | §3.4.10; the production pass is §3.4.11 |
 
 New in this revision, with no old number: §1, §2, §3 and the introductions to its chapters, §4 and its
-sections, §5 and its introductions, §5.1.1, §5.1.2, §5.1.3, §5.2.5, §5.2.6, §5.3, §7 and §8.
+sections, §5 and its introductions, §5.1.3, §5.2.5, §5.2.6, §5.3, §7 and §8. §5.1.1 and §5.1.2 became
+§5.3.2 and §5.3.3 on 2026-11-27, when both turned out to be blocked outside this repository.
