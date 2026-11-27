@@ -60,6 +60,9 @@ termit-uv firewall on          # render the table from the configuration
 termit-uv firewall confirm     # keep it — without this it rolls back in five minutes
 ```
 
+`firewall on` renders what the configuration asks for, so `security.firewall.udp_ports` has to list 443 —
+`init` refuses to turn Hysteria2 on without it.
+
 `on` applies the table for five minutes and prints a reminder to check that SSH and 443 still answer;
 `confirm` keeps it. A confirmed table is also what the next reboot restores, so the warning goes away with
 it. If a client is already banned, lift the ban by address:
