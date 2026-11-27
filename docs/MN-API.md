@@ -78,6 +78,8 @@ agent: the server has no API at https://mn.example.com/enroll: does the MN URL i
 | `GET` | `{prefix}/peer/snapshot` | another MN in the mesh | The whole registry, for a peer with no cursor (§3.5) |
 | `GET` | `{prefix}/peer/events` | another MN in the mesh | The journal after a cursor (§3.5) |
 | `POST` | `{prefix}/peer/report` | another MN in the mesh | A node's self-report taken while its home was away (§3.6) |
+| `GET` | `{prefix}/peer/state` | another MN in the mesh | Its identity and how far it applied each log (§3.7) |
+| `POST` | `{prefix}/peer/handoff` | another MN in the mesh | Take a node over, with a new agent key (§3.7) |
 | `GET` | `{prefix}/healthz` | monitoring | Liveness and version |
 | `GET` | `/sub/{token}` | a client | Peer list, base64 VLESS URIs |
 | `GET` | `/sub/{token}/json` | a client | Peer list, sing-box JSON |
@@ -435,6 +437,43 @@ learned directly. `409 conflict` when the receiver does not know the node, or do
 `home_mn`, so a replica cannot hand a report to a server that would not own the row. Nothing in the body is
 believed beyond what the node itself said at its sync: the agent key was verified by the replica, the rows
 written are the same ones `POST {prefix}/agent/sync` writes, and the state machine still moves nothing.
+
+### 3.7 `GET {prefix}/peer/state` and `POST {prefix}/peer/handoff`
+
+The two calls behind `termit-mn home handoff` (decisions 5–7 of `IMPLEMENTATION_PLAN.md` §5.2.1). Moving a
+node is a decision only its home makes; the target is asked, not told.
+
+`peer/state` answers with the identity the caller compares itself against and how far the receiver has
+applied every log it follows:
+
+```json
+{"mn_id": "mn_2b8e…", "applied": {"mn_7f3a…": 412}}
+```
+
+The caller checks `last_seq - applied[me] ≤ mesh.lag_max`. A target further behind may still take the node
+with a forced handoff, at the cost the operator accepted: a node enrolled after that cursor was never taught
+to it, so that node has to enroll again.
+
+`peer/handoff` takes the node over:
+
+```json
+{"uv": "uv_9f3c1a2b4d5e", "from": "mn_7f3a…"}
+```
+
+```json
+{"term": 3, "agent_key": "<32 bytes, base64url>"}
+```
+
+`200 OK` means the receiver now homes the row: `home_mn` is its own id, `home_term` is the previous term plus
+one, and `agent_key` is the node's new key — returned once, and the only way the node learns it. The receiver
+refuses with `409 conflict` when it does not know the node (it has never pulled the home's journal) or when
+`from` is not the row's current home. On `200` the caller writes its own row as *given away*: the same home
+and term, the same new key, and no journal entry — the change is announced by the receiver's log, which the
+caller pulls like any other.
+
+The node is not told: it cannot sync until somebody installs the new key and, because a node has one
+`mn.url`, points it at the new home (decision 9). Pair credentials are derived from the master key and the two
+ids, so they survive the move unchanged.
 
 ---
 

@@ -531,6 +531,7 @@ func TestOpenMigratesFromFive(t *testing.T) {
 		"DROP TABLE IF EXISTS replication_cursor",
 		"DROP TABLE IF EXISTS mesh_report",
 		"ALTER TABLE uv DROP COLUMN home_mn",
+		"ALTER TABLE uv DROP COLUMN home_term",
 		"PRAGMA user_version = 5",
 	} {
 		if _, err := raw.Exec(query); err != nil {

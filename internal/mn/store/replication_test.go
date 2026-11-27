@@ -293,19 +293,80 @@ func TestReplicaRefusesToTouchANodeItHomes(t *testing.T) {
 		t.Errorf("cursor = %d after a conflict, want 0", cursor)
 	}
 
-	// A removal of this server's own node is refused for the same reason. A second home is used because
-	// the first one's log is stuck at the event the replica refused: that is the gap rule, not this one.
+	// A removal of this server's own node is skipped, not refused: a removal from a server that no longer
+	// homes the row must never take it away here, and refusing would stall the cursor behind it.
 	other, _ := twoStores(t)
 	local2 := enrolled(t, replica, "uv_shared2", "shared2.example.com")
 	removal, err := other.AppendNodeRemoved(ctx, local2.ID)
 	if err != nil {
 		t.Fatalf("AppendNodeRemoved: %v", err)
 	}
-	if _, err := replica.ApplyEvents(ctx, []store.ReplicationEvent{removal}); !errors.Is(err, store.ErrReplicationConflict) {
-		t.Errorf("ApplyEvents removing a homed row = %v, want ErrReplicationConflict", err)
+	if _, err := replica.ApplyEvents(ctx, []store.ReplicationEvent{removal}); err != nil {
+		t.Errorf("ApplyEvents removing a homed row = %v, want it skipped", err)
 	}
 	if _, err := replica.UVByID(ctx, local2.ID); err != nil {
-		t.Errorf("a refused removal took the node away: %v", err)
+		t.Errorf("a stale removal took the node away: %v", err)
+	}
+}
+
+// A handoff is what home_term exists for: the server that takes the node announces it as its own with a
+// higher term, and the replica flips to it. An event that still claims the old home at the old term — what a
+// server returning from a partition has in its journal — loses without stalling the cursor.
+func TestANewerHomeTermWinsTheMerge(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	home, replica := twoStores(t)
+	enrolled(t, home, "uv_one", "one.example.com")
+	mnID, err := home.MeshID(ctx)
+	if err != nil {
+		t.Fatalf("MeshID: %v", err)
+	}
+	if _, err := replica.ApplyEvents(ctx, journal(t, home, mnID)); err != nil {
+		t.Fatalf("ApplyEvents: %v", err)
+	}
+
+	other, _ := twoStores(t)
+	otherID, err := other.MeshID(ctx)
+	if err != nil {
+		t.Fatalf("MeshID: %v", err)
+	}
+	handed := testUV("uv_one", "one.example.com")
+	handed.HomeMN, handed.HomeTerm = otherID, 1
+	event, err := other.AppendNode(ctx, handed, nil)
+	if err != nil {
+		t.Fatalf("AppendNode: %v", err)
+	}
+	if _, err := replica.ApplyEvents(ctx, []store.ReplicationEvent{event}); err != nil {
+		t.Fatalf("apply the handoff: %v", err)
+	}
+	got, err := replica.UVByID(ctx, "uv_one")
+	if err != nil {
+		t.Fatalf("UVByID: %v", err)
+	}
+	if got.HomeMN != otherID || got.HomeTerm != 1 {
+		t.Fatalf("the replica records home %q term %d, want %q term 1", got.HomeMN, got.HomeTerm, otherID)
+	}
+
+	// The old home's next event still says term 0: it is skipped, and the change is not counted.
+	stale, err := home.AppendNode(ctx, testUV("uv_one", "one.example.com"), nil)
+	if err != nil {
+		t.Fatalf("AppendNode: %v", err)
+	}
+	applied, err := replica.ApplyEvents(ctx, []store.ReplicationEvent{stale})
+	if err != nil {
+		t.Fatalf("apply the stale event: %v", err)
+	}
+	if applied != 0 {
+		t.Errorf("the stale event applied %d changes, want 0", applied)
+	}
+	if got, err = replica.UVByID(ctx, "uv_one"); err != nil {
+		t.Fatalf("UVByID: %v", err)
+	}
+	if got.HomeMN != otherID || got.HomeTerm != 1 {
+		t.Errorf("the stale event undid the handoff: home %q term %d", got.HomeMN, got.HomeTerm)
+	}
+	if cursor, err := replica.Cursor(ctx, mnID); err != nil || cursor != stale.Seq {
+		t.Errorf("the cursor is %d, %v; want %d — a skipped event must still move it", cursor, err, stale.Seq)
 	}
 }
 

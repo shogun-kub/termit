@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/shogun-kub/termit/internal/mn/secret"
+
 	"github.com/shogun-kub/termit/internal/mn/mesh"
 	"github.com/shogun-kub/termit/internal/mn/store"
 	"github.com/shogun-kub/termit/internal/proto"
@@ -147,6 +149,86 @@ func (h *Handler) peerReport(w http.ResponseWriter, r *http.Request) {
 	}
 	h.recordReport(r.Context(), node, report.Sync, report.IP, report.Cert, report.At.UTC())
 	writeJSON(w, http.StatusOK, map[string]bool{"applied": true})
+}
+
+// peerState answers how far this server has applied every log it follows. A server about to hand a node over
+// asks this first: "how much of me have you seen" is the freshness check of decision 7.
+func (h *Handler) peerState(w http.ResponseWriter, r *http.Request) {
+	if !h.peerAllowed(w, r) {
+		return
+	}
+	mnID, err := h.opts.Store.MeshID(r.Context())
+	if err != nil {
+		h.opts.Logger.Error("peer state: mesh id", "err", err)
+		writeProblem(w, http.StatusInternalServerError, proto.NewProblem(http.StatusInternalServerError,
+			proto.CodeInternal, "Internal Server Error", "the server could not read its identity"))
+		return
+	}
+	applied, err := h.opts.Store.Cursors(r.Context())
+	if err != nil {
+		h.opts.Logger.Error("peer state: cursors", "err", err)
+		writeProblem(w, http.StatusInternalServerError, proto.NewProblem(http.StatusInternalServerError,
+			proto.CodeInternal, "Internal Server Error", "the server could not read its progress"))
+		return
+	}
+	writeJSON(w, http.StatusOK, mesh.State{MNID: mnID, Applied: applied})
+}
+
+// peerHandoff makes this server the home of a node handed over by the server that homes it now. The node gets
+// a new agent key, returned once: the operator installs it, and the old key stops working.
+func (h *Handler) peerHandoff(w http.ResponseWriter, r *http.Request) {
+	if !h.peerAllowed(w, r) {
+		return
+	}
+	var body struct {
+		UV   string `json:"uv"`
+		From string `json:"from"`
+	}
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBody))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		writeProblem(w, http.StatusBadRequest, proto.NewProblem(http.StatusBadRequest, "",
+			"Bad Request", "the handoff body is not valid: "+err.Error()))
+		return
+	}
+	if body.UV == "" || body.From == "" {
+		writeProblem(w, http.StatusBadRequest, proto.NewProblem(http.StatusBadRequest, "",
+			"Bad Request", "a handoff names the node and the server giving it up"))
+		return
+	}
+	key, err := secret.Token()
+	if err != nil {
+		h.opts.Logger.Error("peer handoff: generate an agent key", "err", err)
+		writeProblem(w, http.StatusInternalServerError, proto.NewProblem(http.StatusInternalServerError,
+			proto.CodeInternal, "Internal Server Error", "the server could not generate a key"))
+		return
+	}
+	sealed, err := secret.Seal(h.opts.MasterKey, key)
+	if err != nil {
+		h.opts.Logger.Error("peer handoff: seal the agent key", "err", err)
+		writeProblem(w, http.StatusInternalServerError, proto.NewProblem(http.StatusInternalServerError,
+			proto.CodeInternal, "Internal Server Error", "the server could not store the key"))
+		return
+	}
+	node, err := h.opts.Store.AcceptHandoff(r.Context(), body.UV, body.From,
+		secret.Digest(key), sealed, h.opts.Now().UTC())
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		writeProblem(w, http.StatusConflict, proto.NewProblem(http.StatusConflict, proto.CodeConflict,
+			"Conflict", "this server does not know that node"))
+		return
+	case errors.Is(err, store.ErrReplicationConflict):
+		writeProblem(w, http.StatusConflict, proto.NewProblem(http.StatusConflict, proto.CodeConflict,
+			"Conflict", "that node is homed by another server"))
+		return
+	case err != nil:
+		h.opts.Logger.Error("peer handoff: take over the node", "uv", body.UV, "err", err)
+		writeProblem(w, http.StatusInternalServerError, proto.NewProblem(http.StatusInternalServerError,
+			proto.CodeInternal, "Internal Server Error", "the server could not take the node over"))
+		return
+	}
+	h.opts.Logger.Info("peer handoff: took a node over", "uv", node.ID, "from", body.From, "term", node.HomeTerm)
+	writeJSON(w, http.StatusOK, mesh.Handoff{Term: node.HomeTerm, AgentKey: key})
 }
 
 // peerAllowed checks the mesh credential: an HMAC of the master key under a label of its own, so it can

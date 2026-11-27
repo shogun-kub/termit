@@ -180,11 +180,15 @@ func (p *Puller) dropReport(ctx context.Context, uvID string) {
 }
 
 // postReport sends one queued report and reports whether the home applied it.
-func (p *Puller) postReport(ctx context.Context, peer config.Peer, payload []byte) (bool, error) {
+func (p *Puller) postReport(ctx context.Context, cfg config.Peer, payload []byte) (bool, error) {
+	peer, err := p.talkTo(cfg)
+	if err != nil {
+		return false, err
+	}
 	var answer struct {
 		Applied bool `json:"applied"`
 	}
-	if err := p.post(ctx, peer, "/peer/report", payload, &answer); err != nil {
+	if err := peer.post(ctx, "/peer/report", payload, &answer); err != nil {
 		return false, err
 	}
 	return answer.Applied, nil
@@ -283,91 +287,136 @@ func (p *Puller) takeSnapshot(ctx context.Context, peer config.Peer) (int, error
 	return len(snap.Nodes), nil
 }
 
-func (p *Puller) fetchSnapshot(ctx context.Context, peer config.Peer) (store.Snapshot, error) {
+func (p *Puller) fetchSnapshot(ctx context.Context, cfg config.Peer) (store.Snapshot, error) {
+	peer, err := p.talkTo(cfg)
+	if err != nil {
+		return store.Snapshot{}, err
+	}
 	var snap store.Snapshot
-	if err := p.get(ctx, peer, "/peer/snapshot", nil, &snap); err != nil {
+	if err := peer.get(ctx, "/peer/snapshot", nil, &snap); err != nil {
 		return store.Snapshot{}, err
 	}
 	return snap, nil
 }
 
-func (p *Puller) events(ctx context.Context, peer config.Peer, after int64) (Events, error) {
+func (p *Puller) events(ctx context.Context, cfg config.Peer, after int64) (Events, error) {
+	peer, err := p.talkTo(cfg)
+	if err != nil {
+		return Events{}, err
+	}
 	query := url.Values{
 		"after": {strconv.FormatInt(after, 10)},
 		"limit": {strconv.Itoa(batch)},
 	}
 	var page Events
-	if err := p.get(ctx, peer, "/peer/events", query, &page); err != nil {
+	if err := peer.get(ctx, "/peer/events", query, &page); err != nil {
 		return Events{}, err
 	}
 	return page, nil
+}
+
+// talkTo builds the peer handle for one call. A test supplies the client; production pins the leaf.
+func (p *Puller) talkTo(cfg config.Peer) (Peer, error) {
+	if p.Client != nil {
+		return Peer{Config: cfg, MasterKey: p.MasterKey, HTTP: p.Client}, nil
+	}
+	return NewPeer(cfg, p.MasterKey, DefaultRequestTimeout)
+}
+
+// Peer is one configured server plus the credential and the client needed to talk to it. The puller builds a
+// handle per peer per cycle; the admin socket builds one to hand a node over.
+type Peer struct {
+	Config    config.Peer
+	MasterKey []byte
+	HTTP      *http.Client
+}
+
+// NewPeer prepares a client for one peer: pinned to its leaf when the configuration names a pin.
+func NewPeer(cfg config.Peer, masterKey []byte, timeout time.Duration) (Peer, error) {
+	client, err := ClientFor(cfg, timeout)
+	if err != nil {
+		return Peer{}, err
+	}
+	return Peer{Config: cfg, MasterKey: masterKey, HTTP: client}, nil
+}
+
+// State is what a peer answers about itself: its identity and how far it applied every log it follows.
+type State struct {
+	MNID    string           `json:"mn_id"`
+	Applied map[string]int64 `json:"applied"`
+}
+
+// Handoff is the answer to "take this node": the home term that now orders the row, and the agent key the
+// node has to be given before it can talk to its new home.
+type Handoff struct {
+	Term     int64  `json:"term"`
+	AgentKey string `json:"agent_key"`
+}
+
+// State reads the peer's progress, which is what a handoff checks its freshness against.
+func (p Peer) State(ctx context.Context) (State, error) {
+	var state State
+	if err := p.get(ctx, "/peer/state", nil, &state); err != nil {
+		return State{}, err
+	}
+	return state, nil
+}
+
+// Handoff asks the peer to take a node this server homes, naming this server as the one handing it over.
+func (p Peer) Handoff(ctx context.Context, uvID, from string) (Handoff, error) {
+	body, err := json.Marshal(map[string]string{"uv": uvID, "from": from})
+	if err != nil {
+		return Handoff{}, fmt.Errorf("mesh: encode the handoff: %w", err)
+	}
+	var answer Handoff
+	if err := p.post(ctx, "/peer/handoff", body, &answer); err != nil {
+		return Handoff{}, err
+	}
+	return answer, nil
 }
 
 // maxAnswer bounds one response body. A snapshot of a thousand nodes is a few hundred kilobytes; this is
 // the point past which the answer is not this protocol's.
 const maxAnswer = 32 << 20
 
-func (p *Puller) get(ctx context.Context, peer config.Peer, path string, query url.Values, into any) error {
-	client, err := p.clientFor(peer)
-	if err != nil {
-		return err
-	}
-	target := strings.TrimRight(peer.URL, "/") + path
+func (p Peer) get(ctx context.Context, path string, query url.Values, into any) error {
+	target := strings.TrimRight(p.Config.URL, "/") + path
 	if len(query) > 0 {
 		target += "?" + query.Encode()
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
-		return fmt.Errorf("mesh: %s: %w", peer.Name, err)
+		return fmt.Errorf("mesh: %s: %w", p.Config.Name, err)
 	}
-	request.Header.Set("Authorization", "Bearer "+PullToken(p.MasterKey))
-	response, err := client.Do(request)
-	if err != nil {
-		return fmt.Errorf("mesh: %s: %w", peer.Name, err)
-	}
-	defer func() { _ = response.Body.Close() }()
-	if response.StatusCode != http.StatusOK {
-		return p.refusal(peer, response)
-	}
-	if err := json.NewDecoder(io.LimitReader(response.Body, maxAnswer)).Decode(into); err != nil {
-		return fmt.Errorf("mesh: %s: read %s: %w", peer.Name, path, err)
-	}
-	return nil
+	return p.send(request, path, into)
 }
 
-// post sends one queued report. It is the only write this package makes, and the home fences it: a report
-// for a row the receiver does not home is refused, not redirected.
-func (p *Puller) post(ctx context.Context, peer config.Peer, path string, body []byte, into any) error {
-	client, err := p.clientFor(peer)
-	if err != nil {
-		return err
-	}
-	target := strings.TrimRight(peer.URL, "/") + path
+// post sends one request that writes: a queued report, a handoff. The receiver fences both by the row's
+// home, so a wrong target is refused rather than redirected.
+func (p Peer) post(ctx context.Context, path string, body []byte, into any) error {
+	target := strings.TrimRight(p.Config.URL, "/") + path
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(body))
 	if err != nil {
-		return fmt.Errorf("mesh: %s: %w", peer.Name, err)
+		return fmt.Errorf("mesh: %s: %w", p.Config.Name, err)
 	}
-	request.Header.Set("Authorization", "Bearer "+PullToken(p.MasterKey))
 	request.Header.Set("Content-Type", "application/json")
-	response, err := client.Do(request)
+	return p.send(request, path, into)
+}
+
+func (p Peer) send(request *http.Request, path string, into any) error {
+	request.Header.Set("Authorization", "Bearer "+PullToken(p.MasterKey))
+	response, err := p.HTTP.Do(request)
 	if err != nil {
-		return fmt.Errorf("mesh: %s: %w", peer.Name, err)
+		return fmt.Errorf("mesh: %s: %w", p.Config.Name, err)
 	}
 	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK {
-		return p.refusal(peer, response)
+		return p.refusal(response)
 	}
 	if err := json.NewDecoder(io.LimitReader(response.Body, maxAnswer)).Decode(into); err != nil {
-		return fmt.Errorf("mesh: %s: read %s: %w", peer.Name, path, err)
+		return fmt.Errorf("mesh: %s: read %s: %w", p.Config.Name, path, err)
 	}
 	return nil
-}
-
-func (p *Puller) clientFor(peer config.Peer) (*http.Client, error) {
-	if p.Client != nil {
-		return p.Client, nil
-	}
-	return ClientFor(peer, DefaultRequestTimeout)
 }
 
 // errReportLoses marks an answer that says the report will never be applied: the node is unknown there, or
@@ -376,16 +425,17 @@ var errReportLoses = errors.New("mesh: the report will not be applied")
 
 // refusal turns a peer's answer into something an operator can act on: the two mistakes this protocol has
 // are a wrong key and a URL that does not carry the prefix, and both deserve to be named.
-func (p *Puller) refusal(peer config.Peer, response *http.Response) error {
+func (p Peer) refusal(response *http.Response) error {
 	detail, _ := io.ReadAll(io.LimitReader(response.Body, 512))
+	name := p.Config.Name
 	switch response.StatusCode {
 	case http.StatusUnauthorized:
-		return fmt.Errorf("mesh: %s refused the mesh credential: the two servers do not share a master key", peer.Name)
+		return fmt.Errorf("mesh: %s refused the mesh credential: the two servers do not share a master key", name)
 	case http.StatusNotFound:
-		return fmt.Errorf("mesh: %s has no replication endpoint: the url must carry the peer's API prefix", peer.Name)
+		return fmt.Errorf("mesh: %s has no replication endpoint: the url must carry the peer's API prefix", name)
 	case http.StatusConflict, http.StatusBadRequest:
-		return fmt.Errorf("%w: %s answered %s: %s", errReportLoses, peer.Name, response.Status,
+		return fmt.Errorf("%w: %s answered %s: %s", errReportLoses, name, response.Status,
 			strings.TrimSpace(string(detail)))
 	}
-	return fmt.Errorf("mesh: %s answered %s: %s", peer.Name, response.Status, strings.TrimSpace(string(detail)))
+	return fmt.Errorf("mesh: %s answered %s: %s", name, response.Status, strings.TrimSpace(string(detail)))
 }

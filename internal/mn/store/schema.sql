@@ -29,7 +29,10 @@ CREATE TABLE IF NOT EXISTS uv (
     -- home_mn is the management server that owns this row. Empty means "this one", which is every row
     -- written before the mesh existed; a replica stores the origin's id here and may never write a row
     -- it does not home (docs/IMPLEMENTATION_PLAN.md §5.2.1).
-    home_mn         TEXT NOT NULL DEFAULT ''
+    home_mn         TEXT NOT NULL DEFAULT '',
+-- home_term counts home roles: a handoff increments it, so a server that lost a node cannot win a merge
+-- with a stale write. 0 is every row that has never been handed over.
+    home_term       INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS uv_state ON uv (state);

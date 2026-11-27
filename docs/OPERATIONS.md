@@ -422,13 +422,31 @@ mesh:     mn_7f3a… (master key: yes)
   peer mn3      https://mn3.example.com/34xpus3fnghw — 12 behind (cursor 400 of 412)
 ```
 
+**Moving a node to another home.** `termit-mn home handoff --uv <id or domain> --to <peer>` moves one node;
+the menu offers the same under *Service*. The target must be within `mesh.lag_max` journal entries of this
+server, or `--force` says you accept that a node enrolled since the target's last pull has to re-enroll. The
+command prints the node's new agent key — it is shown once — and here is what it costs:
+
+```
+termit-mn home handoff --uv node1.example.com --to mn2
+node:      uv_9f3c1a2b4d5e
+new home:  mn2 (mn_2b8e…, term 3)
+agent key: <printed once>
+```
+
+Install that key on the node and point its `mn.url` at the new home (`termit-uv init --relocate
+--agent-key-file <file>`); until you do, the node cannot sync and its peers keep the last state they were
+given. The node's id and its pair credentials survive the move — only the agent key changes. The new home
+announces the handoff in its own journal, so the old one stops writing the row the moment it pulls.
+
 **What a replica does and does not do today.** It holds a copy of every node row and the transports each
 node serves, it refuses any write to a row another server homes, and its scheduler probes only its own
 nodes. A node whose home is away can sync to it: the answer is the last state the home published, marked
 `read_only`, and the node's report is kept there and handed to the home, which applies it as if the node had
-synced directly. It does not yet take a node over (`home handoff` is not implemented), a `credential_epoch`
-bump is not gated on quorum — do not rotate credentials while the mesh is apart — and the journal has no
-pruning yet. This is why the mesh is not announced in the guide yet.
+synced directly. A node can be moved to it by an explicit handoff. It does not take a node over on its own
+(no automatic failover — a split brain between two live homes is worse than a day of stale peers), a
+`credential_epoch` bump is not gated on quorum — do not rotate credentials while the mesh is apart — and the
+journal has no pruning yet. This is why the mesh is not announced in the guide yet.
 
 A trusted address that sends no header keeps its own address, so the server can be upgraded before the
 proxy is told to send one, and a proxy that is trusted for one name only still serves the rest.

@@ -137,6 +137,8 @@ func New(opts Options) (*Handler, error) {
 	h.mux.HandleFunc("GET "+prefix+"/peer/snapshot", h.peerSnapshot)
 	h.mux.HandleFunc("GET "+prefix+"/peer/events", h.peerEvents)
 	h.mux.HandleFunc("POST "+prefix+"/peer/report", h.peerReport)
+	h.mux.HandleFunc("GET "+prefix+"/peer/state", h.peerState)
+	h.mux.HandleFunc("POST "+prefix+"/peer/handoff", h.peerHandoff)
 	// Metrics stay where a scrape configuration expects them, and are refused off loopback: the path is
 	// not a secret, the access is.
 	h.mux.HandleFunc("GET /metrics", h.metrics)

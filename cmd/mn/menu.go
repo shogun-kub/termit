@@ -285,6 +285,9 @@ func (m *menu) entries() []menuEntry {
 				{labelKey: i18n.MnEntryUpdateLabel, hintKey: i18n.MnEntryUpdateHint, plan: m.planUpdate, local: true},
 				{labelKey: i18n.MnEntryBackupLabel, hintKey: i18n.MnEntryBackupHint, plan: fixedMn("backup"), local: true},
 				{labelKey: i18n.MnEntryRestoreLabel, hintKey: i18n.MnEntryRestoreHint, plan: m.planRestore, local: true},
+				// A handoff prints a credential once and leaves the node unable to sync until it is installed,
+				// which is the same shape as rotating the admin token — the two sit together for that reason.
+				{labelKey: i18n.MnNodesHandoffLabel, hintKey: i18n.MnNodesHandoffHint, plan: m.planHandoff},
 			}
 		}},
 		{labelKey: i18n.MnEntryHelpLabel, hintKey: i18n.MnEntryHelpHint, plan: fixedMn("help"), local: true},
@@ -563,6 +566,28 @@ func (m *menu) planRestore(ui *termui.UI) ([][]string, error) {
 
 // planUpdate asks before replacing the server's own binary and restarting it. The command publishes what
 // it found before it touches anything, and puts the previous binary back if the restart fails.
+// planHandoff moves one node to another server in the mesh. It asks which node, then which peer, then
+// confirms, because after the handoff the node cannot sync until somebody installs the new agent key on it.
+func (m *menu) planHandoff(ui *termui.UI) ([][]string, error) {
+	tr := m.translator()
+	node, err := m.pickNode(ui)
+	if err != nil || node == "" {
+		return nil, err
+	}
+	peer, err := ui.Prompt(tr.T(i18n.MnPromptHandoffPeer), "")
+	if err != nil {
+		return nil, err
+	}
+	if peer = strings.TrimSpace(peer); peer == "" {
+		return nil, nil
+	}
+	sure, err := ui.Confirm(tr.T(i18n.MnPromptHandoff), false)
+	if err != nil || !sure {
+		return nil, err
+	}
+	return [][]string{{"home", "handoff", "--uv", node, "--to", peer}}, nil
+}
+
 func (m *menu) planUpdate(ui *termui.UI) ([][]string, error) {
 	sure, err := ui.Confirm(m.translator().T(i18n.MnPromptUpdate), false)
 	if err != nil {

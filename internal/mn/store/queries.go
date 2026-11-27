@@ -72,6 +72,10 @@ type UV struct {
 	// by a single-server mesh, and every row written before the mesh existed. A replica stores the
 	// origin's id here and never writes a row it does not home (docs/IMPLEMENTATION_PLAN.md §5.2.1).
 	HomeMN string
+	// HomeTerm counts home roles, and a handoff increments it. It is what orders a merge: a write that
+	// still claims an older term loses to the row that has already moved, so a server returning from a
+	// partition cannot undo a handoff it missed.
+	HomeTerm int64
 }
 
 // Invite is a registration code. Only its hash is stored.
@@ -169,11 +173,11 @@ func scanNullTime(value sql.NullString) (*time.Time, error) {
 const uvColumns = `id, label, domain, self_uuid, probe_uuid, profile_json, state, state_reason,
 	created_at, approved_at, last_seen_at, last_request_ip, agent_version,
 	agent_key_hash, agent_key_sealed, sub_token_hash, sub_token_sealed, failed_cycles, credential_epoch, invite_id, notes,
-next_check_at, last_check_at, cert_sha256, home_mn`
+next_check_at, last_check_at, cert_sha256, home_mn, home_term`
 
 // uvPlaceholders is one "?" per column of uvColumns. It is written out rather than built from a count,
 // because a column added without its placeholder must fail loudly at the first insert, not shift values.
-const uvPlaceholders = `?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?`
+const uvPlaceholders = `?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?`
 
 // uvArgs is the argument order of uvColumns. Three statements write a whole node row — enrollment with
 // an invite, enrollment without one, and a snapshot applied from a peer — so the order lives here once.
@@ -183,7 +187,7 @@ func uvArgs(uv UV) []any {
 		uv.StateReason, formatTime(uv.CreatedAt), nullableTime(uv.ApprovedAt), nullableTime(uv.LastSeenAt),
 		uv.LastRequestIP, uv.AgentVersion, uv.AgentKeyHash, uv.AgentKeySealed, uv.SubTokenHash,
 		uv.SubTokenSealed, uv.FailedCycles, uv.CredentialEpoch, uv.InviteID, uv.Notes,
-		nullableTime(uv.NextCheckAt), nullableTime(uv.LastCheckAt), uv.CertSHA256, uv.HomeMN,
+		nullableTime(uv.NextCheckAt), nullableTime(uv.LastCheckAt), uv.CertSHA256, uv.HomeMN, uv.HomeTerm,
 	}
 }
 
@@ -196,7 +200,8 @@ func scanUV(row interface{ Scan(...any) error }) (UV, error) {
 	err := row.Scan(&uv.ID, &uv.Label, &uv.Domain, &uv.SelfUUID, &uv.ProbeUUID, &uv.ProfileJSON,
 		&uv.State, &uv.StateReason, &createdAt, &approvedAt, &lastSeenAt, &uv.LastRequestIP,
 		&uv.AgentVersion, &uv.AgentKeyHash, &uv.AgentKeySealed, &uv.SubTokenHash, &uv.SubTokenSealed, &uv.FailedCycles,
-		&uv.CredentialEpoch, &uv.InviteID, &uv.Notes, &nextCheckAt, &lastCheckAt, &uv.CertSHA256, &uv.HomeMN)
+		&uv.CredentialEpoch, &uv.InviteID, &uv.Notes, &nextCheckAt, &lastCheckAt, &uv.CertSHA256, &uv.HomeMN,
+		&uv.HomeTerm)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return UV{}, ErrNotFound

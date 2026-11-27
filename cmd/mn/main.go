@@ -56,6 +56,8 @@ func run(args []string, stdout, stderr *os.File) int {
 		return runUV(args[1:], stdout, stderr)
 	case "sub":
 		return runSub(args[1:], stdout, stderr)
+	case "home":
+		return runHome(args[1:], stdout, stderr)
 	case "backup":
 		return runBackup(args[1:], stdout, stderr)
 	case "restore":
@@ -113,6 +115,7 @@ Admin:
   admin        rotate the admin token (the credential every admin command uses)
   update       replace the binary with the newest release; --check reports, --apply installs and restarts
   sub          rotate the subscription token of one node
+  home         hand a node over to another server in the mesh (home handoff --uv <id> --to <peer>)
   status       show server, nodes and the check schedule
 
 Hardening:

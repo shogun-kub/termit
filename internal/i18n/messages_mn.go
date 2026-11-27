@@ -62,6 +62,8 @@ const (
 	MnNodesAgentKeyHint     Key = "mn.nodes.agentkey.hint"
 	MnNodesForgetLabel      Key = "mn.nodes.forget.label"
 	MnNodesForgetHint       Key = "mn.nodes.forget.hint"
+	MnNodesHandoffLabel     Key = "mn.nodes.handoff.label"
+	MnNodesHandoffHint      Key = "mn.nodes.handoff.hint"
 	MnInvitesHead           Key = "mn.invites.head"
 	MnInvitesListLabel      Key = "mn.invites.list.label"
 	MnInvitesListHint       Key = "mn.invites.list.hint"
@@ -100,6 +102,8 @@ const (
 	MnPickNodeMiss          Key = "mn.pick_node.miss"
 	MnPickNodeMany          Key = "mn.pick_node.many"
 	MnPromptReason          Key = "mn.prompt.reason"
+	MnPromptHandoffPeer     Key = "mn.prompt.handoffpeer"
+	MnPromptHandoff         Key = "mn.prompt.handoff"
 	MnPromptNote            Key = "mn.prompt.note"
 	MnPromptInviteCode      Key = "mn.prompt.invite_code"
 	MnPromptCheckAll        Key = "mn.prompt.check_all"
@@ -170,6 +174,10 @@ var messagesMNRU = map[Key]string{
 	MnNodesAgentKeyHint:  "показать текущий ключ, не ломая узел",
 	MnNodesForgetLabel:   "забыть запись",
 	MnNodesForgetHint:    "удалить запись домена, чтобы его можно было зарегистрировать заново",
+	MnNodesHandoffLabel:  "передать узел другому серверу",
+	MnNodesHandoffHint:   "узел переедет в меше; новый агентский ключ будет показан",
+	MnPromptHandoffPeer:  "Имя пира из mesh.peers:",
+	MnPromptHandoff:      "Передать узел? Он не сможет синхронизироваться, пока вы не установите новый ключ.",
 
 	MnInvitesHead:           "приглашения",
 	MnInvitesListLabel:      "список",
@@ -281,6 +289,10 @@ var messagesMNEN = map[Key]string{
 	MnNodesAgentKeyHint:  "print the current key without breaking the node",
 	MnNodesForgetLabel:   "forget",
 	MnNodesForgetHint:    "drop the record so the domain can be enrolled again",
+	MnNodesHandoffLabel:  "hand a node to another server",
+	MnNodesHandoffHint:   "hands the node over inside the mesh; prints its new agent key",
+	MnPromptHandoffPeer:  "Peer name from mesh.peers:",
+	MnPromptHandoff:      "Hand the node over? It cannot sync until you install the new key.",
 
 	MnInvitesHead:           "invites",
 	MnInvitesListLabel:      "list",

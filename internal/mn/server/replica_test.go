@@ -210,6 +210,100 @@ func TestAnOlderReportDoesNotRewindTheRow(t *testing.T) {
 	}
 }
 
+// A handoff is taken over by the target: it checks that the row is the asking server's, replaces the agent
+// key, bumps the term, and announces the node as its own. Anything else is refused.
+func TestAHandoffGivesTheNodeANewKey(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fx := newPeerFixture(t)
+	ownID, err := fx.db.MeshID(ctx)
+	if err != nil {
+		t.Fatalf("MeshID: %v", err)
+	}
+	if err := fx.db.ApplySnapshot(ctx, store.Snapshot{
+		MNID: "mn_other", Seq: 1, SchemaVersion: store.SchemaVersion,
+		Nodes: []store.UV{{
+			ID: "uv_other", Domain: "other.example.com", State: store.StateActive,
+			CreatedAt: time.Now().UTC(), CredentialEpoch: 1, AgentKeyHash: secret.Digest("the-old-key"),
+		}},
+	}); err != nil {
+		t.Fatalf("ApplySnapshot: %v", err)
+	}
+
+	recorder := postJSON(t, fx.handler, fx.prefix+"/peer/handoff", mesh.PullToken(peerKey),
+		`{"uv":"uv_other","from":"mn_other"}`)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("the handoff = %d: %s", recorder.Code, recorder.Body)
+	}
+	var answer mesh.Handoff
+	if err := json.NewDecoder(recorder.Body).Decode(&answer); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if answer.Term != 1 || answer.AgentKey == "" || answer.AgentKey == "the-old-key" {
+		t.Fatalf("the answer reads %+v, want term 1 and a new key", answer)
+	}
+	row, err := fx.db.UVByID(ctx, "uv_other")
+	if err != nil {
+		t.Fatalf("UVByID: %v", err)
+	}
+	if row.HomeMN != ownID || row.HomeTerm != 1 {
+		t.Errorf("the node reads home %q term %d, want %q term 1", row.HomeMN, row.HomeTerm, ownID)
+	}
+	if row.AgentKeyHash != secret.Digest(answer.AgentKey) {
+		t.Error("the new agent key is not what the row will authenticate")
+	}
+	// The same request again is refused: the row is this server's now, not the caller's.
+	if again := postJSON(t, fx.handler, fx.prefix+"/peer/handoff", mesh.PullToken(peerKey),
+		`{"uv":"uv_other","from":"mn_other"}`); again.Code != http.StatusConflict {
+		t.Errorf("a second handoff of the same node = %d, want 409", again.Code)
+	}
+}
+
+// The freshness check of decision 7 reads this: the target says how much of each log it has applied.
+func TestPeerStateReportsHowFarAlongThisServerIs(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fx := newPeerFixture(t)
+	ownID, err := fx.db.MeshID(ctx)
+	if err != nil {
+		t.Fatalf("MeshID: %v", err)
+	}
+	if err := fx.db.ApplySnapshot(ctx, store.Snapshot{
+		MNID: "mn_other", Seq: 7, SchemaVersion: store.SchemaVersion,
+		Nodes: []store.UV{{
+			ID: "uv_other", Domain: "other.example.com", State: store.StateActive,
+			CreatedAt: time.Now().UTC(), CredentialEpoch: 1,
+		}},
+	}); err != nil {
+		t.Fatalf("ApplySnapshot: %v", err)
+	}
+
+	recorder := fx.get(t, "/peer/state", mesh.PullToken(peerKey))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("peer/state = %d: %s", recorder.Code, recorder.Body)
+	}
+	var state mesh.State
+	if err := json.NewDecoder(recorder.Body).Decode(&state); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if state.MNID != ownID {
+		t.Errorf("the state names %q, want %q", state.MNID, ownID)
+	}
+	if got := state.Applied["mn_other"]; got != 7 {
+		t.Errorf("the cursor for mn_other = %d, want 7", got)
+	}
+}
+
+func postJSON(t *testing.T, handler http.Handler, path, token, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+	request.Header.Set("Authorization", "Bearer "+token)
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+	return recorder
+}
+
 func sendReport(t *testing.T, handler http.Handler, prefix, token string, body []byte) *httptest.ResponseRecorder {
 	t.Helper()
 	request := httptest.NewRequest(http.MethodPost, prefix+"/peer/report", strings.NewReader(string(body)))

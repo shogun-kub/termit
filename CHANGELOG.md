@@ -7,6 +7,14 @@ pre-releases, and whoever installs the release skipped them.
 
 ### Added
 
+- **A node can be moved to another management server.** `termit-mn home handoff --uv <id or domain> --to
+  <peer>` moves one node inside the mesh: the target must be within `mesh.lag_max` journal entries of the old
+  home (or `--force` says you accept that a node enrolled since its last pull has to re-enroll), it takes the
+  row over with a new agent key and a `home_term + 1` that orders every later merge, and the command prints
+  the key once. The old home records the same home and term without journaling — the change is announced by
+  the new home's journal. An event that still claims an older term is skipped with the cursor advancing, so a
+  server returning from a partition cannot undo a handoff it missed. Schema 9 adds `home_term`.
+
 - **A node whose home server is down keeps working through a replica.** A second management server in the
   mesh answers such a node with the last desired state it holds, marked `read_only` in the response and in
   `termit-uv sync`'s output, and keeps the node's report. Its puller posts that report to the home, which

@@ -235,6 +235,121 @@ func (s *Store) LastSeq(ctx context.Context, mnID string) (int64, error) {
 	return seq, nil
 }
 
+// Cursors reports how far this server has applied every log it follows. A handoff compares it with the home's
+// own position: the target says "I am this far along", and the operator decides whether that is close
+// enough to take a node.
+func (s *Store) Cursors(ctx context.Context) (map[string]int64, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT mn_id, seq FROM replication_cursor ORDER BY mn_id`)
+	if err != nil {
+		return nil, fmt.Errorf("store: read the cursors: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	applied := map[string]int64{}
+	for rows.Next() {
+		var (
+			mnID string
+			seq  int64
+		)
+		if err := rows.Scan(&mnID, &seq); err != nil {
+			return nil, fmt.Errorf("store: scan a cursor: %w", err)
+		}
+		applied[mnID] = seq
+	}
+	return applied, rows.Err()
+}
+
+// AcceptHandoff makes this server the home of a node another server hands over: one transaction moves the
+// home and the term, replaces the agent key, and journals the node as this server's own. A row that is not
+// the caller's, or is removed, is refused.
+func (s *Store) AcceptHandoff(ctx context.Context, id, from, keyHash, keySealed string, now time.Time) (UV, error) {
+	mnID, err := s.MeshID(ctx)
+	if err != nil {
+		return UV{}, err
+	}
+	if from == "" || from == mnID {
+		return UV{}, fmt.Errorf("store: %s cannot be handed over from %q", id, from)
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return UV{}, fmt.Errorf("store: begin the handoff: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var (
+		home  string
+		term  int64
+		state State
+	)
+	switch err := tx.QueryRowContext(ctx, `SELECT home_mn, home_term, state FROM uv WHERE id = ?`, id).
+		Scan(&home, &term, &state); {
+	case errors.Is(err, sql.ErrNoRows):
+		return UV{}, ErrNotFound
+	case err != nil:
+		return UV{}, fmt.Errorf("store: read %s for the handoff: %w", id, err)
+	}
+	if state == StateRemoved {
+		return UV{}, fmt.Errorf("store: %s is removed and cannot be handed over", id)
+	}
+	if home != from {
+		return UV{}, fmt.Errorf("%w: %s is homed by %q, not %q", ErrReplicationConflict, id, home, from)
+	}
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE uv SET home_mn = ?, home_term = ?, agent_key_hash = ?, agent_key_sealed = ? WHERE id = ?`,
+		mnID, term+1, keyHash, keySealed, id); err != nil {
+		return UV{}, fmt.Errorf("store: take over %s: %w", id, err)
+	}
+	// The row is this server's now, so this is the entry a third server will pull to learn about the handoff.
+	if err := recordNode(ctx, tx, mnID, now, id); err != nil {
+		return UV{}, err
+	}
+	node, err := scanUV(tx.QueryRowContext(ctx, `SELECT `+uvColumns+` FROM uv WHERE id = ?`, id))
+	if err != nil {
+		return UV{}, fmt.Errorf("store: read %s back: %w", id, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return UV{}, fmt.Errorf("store: commit the handoff: %w", err)
+	}
+	return node, nil
+}
+
+// HandoffOut records that this server gave a node away: the row is the new home's from now on, at the term
+// that home answered with. It is not journaled — the row is not this server's any more, and an entry about it
+// here would claim a decision this server no longer makes.
+func (s *Store) HandoffOut(ctx context.Context, id, to string, term int64, keyHash, keySealed string) error {
+	mnID, err := s.MeshID(ctx)
+	if err != nil {
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("store: begin the handoff: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if err := ownedHere(ctx, tx, id, mnID); err != nil {
+		return err
+	}
+	var current int64
+	if err := tx.QueryRowContext(ctx, `SELECT home_term FROM uv WHERE id = ?`, id).Scan(&current); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		return fmt.Errorf("store: read the term of %s: %w", id, err)
+	}
+	if term <= current {
+		return fmt.Errorf("store: %s is at term %d here and the new home answered %d", id, current, term)
+	}
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE uv SET home_mn = ?, home_term = ?, agent_key_hash = ?, agent_key_sealed = ? WHERE id = ?`,
+		to, term, keyHash, keySealed, id); err != nil {
+		return fmt.Errorf("store: hand %s over: %w", id, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("store: commit the handoff: %w", err)
+	}
+	return nil
+}
+
 // ApplyEvents applies one peer's events in order. An entry already applied is skipped, so a retry is
 // free; a gap, an unknown kind or an unreadable payload stops the batch before anything is written, so
 // the cursor never passes a change this server did not make.
@@ -269,6 +384,12 @@ func (s *Store) ApplyEvents(ctx context.Context, events []ReplicationEvent) (int
 				ErrReplicationGap, mnID, cursor, event.Seq)
 		}
 		if err := applyEvent(ctx, tx, event); err != nil {
+			if errors.Is(err, errSuperseded) {
+				// This entry lost to a handoff already applied here. It is not a failure — the journal
+				// must move past it — and it is not a change, so it does not count as applied.
+				cursor = event.Seq
+				continue
+			}
 			return 0, fmt.Errorf("store: apply %s event %d: %w", mnID, event.Seq, err)
 		}
 		cursor = event.Seq
@@ -352,6 +473,10 @@ func (s *Store) ApplySnapshot(ctx context.Context, snap Snapshot) error {
 			return fmt.Errorf("%w: %s has another home", ErrReplicationConflict, node.ID)
 		}
 		if err := putReplicatedNode(ctx, tx, node); err != nil {
+			if errors.Is(err, errSuperseded) {
+				// The snapshot is older than a handoff this server already applied: keep what is here.
+				continue
+			}
 			return err
 		}
 		if err := putReplicatedTransports(ctx, tx, node.ID, snap.Transports[node.ID]); err != nil {
@@ -383,6 +508,8 @@ func applyEvent(ctx context.Context, tx *sql.Tx, event ReplicationEvent) error {
 			return fmt.Errorf("%w: %s claims %s as its home", ErrReplicationConflict, event.MNID, node.ID)
 		}
 		if err := putReplicatedNode(ctx, tx, node); err != nil {
+			// A handoff this server already applied: the peer's row is older than what is here. The
+			// caller skips it and lets the cursor move.
 			return err
 		}
 		return putReplicatedTransports(ctx, tx, node.ID, body.Transports)
@@ -406,10 +533,17 @@ func putReplicatedNode(ctx context.Context, tx *sql.Tx, node UV) error {
 	if !node.State.Valid() {
 		return fmt.Errorf("%q is not a state", node.State)
 	}
-	var home string
-	err := tx.QueryRowContext(ctx, `SELECT home_mn FROM uv WHERE id = ?`, node.ID).Scan(&home)
+	var (
+		home string
+		term int64
+	)
+	err := tx.QueryRowContext(ctx, `SELECT home_mn, home_term FROM uv WHERE id = ?`, node.ID).Scan(&home, &term)
 	switch {
-	case err == nil && home != node.HomeMN:
+	case err == nil && node.HomeTerm < term:
+		// The peer's copy is behind a handoff it never applied: its write loses, and the batch must still
+		// move on, so the cursor keeps its place.
+		return errSuperseded
+	case err == nil && node.HomeTerm == term && home != node.HomeMN:
 		return fmt.Errorf("%w: %s is homed by %q, not %q", ErrReplicationConflict, node.ID, home, node.HomeMN)
 	case err != nil && !errors.Is(err, sql.ErrNoRows):
 		return fmt.Errorf("read the home of %s: %w", node.ID, err)
@@ -421,6 +555,11 @@ func putReplicatedNode(ctx context.Context, tx *sql.Tx, node UV) error {
 	}
 	return nil
 }
+
+// errSuperseded means the incoming row claims an older home term than this server already knows: the node
+// was handed over while the peer was away. The caller skips the write and lets the journal move on, because
+// refusing would stall the cursor behind a change that must never be applied.
+var errSuperseded = errors.New("store: the row is superseded by a newer home term")
 
 // removeReplicatedNode deletes a row the peer homes. A row that is not the peer's, or is this server's,
 // is a conflict: a removal must never take out somebody else's node.
@@ -443,7 +582,8 @@ func removeReplicatedNode(ctx context.Context, tx *sql.Tx, id, origin string) er
 		return nil
 	}
 	// Nothing was deleted: either the node was never here — a removal of something already gone, which is
-	// not an error — or it is homed elsewhere, which is.
+	// not an error — or it has moved to another home, which is a handoff this removal predates. Neither is
+	// a reason to stall the cursor, so both are skipped.
 	var home string
 	err = tx.QueryRowContext(ctx, `SELECT home_mn FROM uv WHERE id = ?`, id).Scan(&home)
 	switch {
@@ -452,7 +592,7 @@ func removeReplicatedNode(ctx context.Context, tx *sql.Tx, id, origin string) er
 	case err != nil:
 		return fmt.Errorf("store: read the home of %s: %w", id, err)
 	}
-	return fmt.Errorf("%w: %s is homed by %q, not %q", ErrReplicationConflict, id, home, origin)
+	return nil
 }
 
 // putReplicatedTransports replaces the transport list of a node with the peer's.
@@ -598,4 +738,4 @@ const replicatedUpdate = `label = excluded.label, domain = excluded.domain, self
 	sub_token_sealed = excluded.sub_token_sealed, failed_cycles = excluded.failed_cycles,
 	credential_epoch = excluded.credential_epoch, invite_id = excluded.invite_id, notes = excluded.notes,
 	next_check_at = excluded.next_check_at, last_check_at = excluded.last_check_at,
-	cert_sha256 = excluded.cert_sha256, home_mn = excluded.home_mn`
+	cert_sha256 = excluded.cert_sha256, home_mn = excluded.home_mn, home_term = excluded.home_term`

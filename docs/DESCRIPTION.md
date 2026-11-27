@@ -895,7 +895,7 @@ uv(id, label, domain, self_uuid, probe_uuid, profile_json, state, state_reason,
    created_at, approved_at, last_seen_at, last_request_ip, agent_version,
    agent_key_hash, agent_key_sealed, sub_token_hash, sub_token_sealed,
    failed_cycles, credential_epoch, invite_id, notes,
-   next_check_at, last_check_at, cert_sha256, home_mn)
+   next_check_at, last_check_at, cert_sha256, home_mn, home_term)
 uv_transport(uv_id, kind)                 -- what a node reported it serves: vless, hysteria2
 uv_event(id, uv_id, at, from_state, to_state, reason, actor)
 check(id, uv_id, at, kind, ok, latency_ms, error_class, detail_json)
@@ -913,6 +913,9 @@ mesh. Every write that changes a replicated field appends one journal entry in t
 row homed by another server is never announced here — its log is what a third server pulls. A write to a
 row another server homes is refused, and the scheduler does not pick such a row: a replica copies its peers'
 nodes and probes only its own.
+
+`home_term` counts home roles: a handoff increments it, so a write that still claims an older term loses the
+merge — a server coming back from a partition cannot undo a handoff it missed.
 
 A node may sync to a replica while its home is down. The replica answers with the last desired state it
 holds plus `read_only`, and keeps the report in `mesh_report`; its puller posts that report to the home,

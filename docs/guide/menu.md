@@ -167,6 +167,8 @@ Seven choices; `0` goes back up.
 - `update` — install the newest published release and restart the server; asks first, keeps the previous
   binary beside it, and puts it back if the restart fails
 - `update --check` — ask GitHub whether a newer release exists; installs nothing
+- `home handoff` — hand one node over to another server in the mesh; asks which node and which peer, and
+  prints the node's new agent key once (the node cannot sync until it is installed)
 
 **Help** — every command and flag.
 ## What the menu does not offer

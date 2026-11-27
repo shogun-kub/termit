@@ -2647,11 +2647,21 @@ two paths cannot drift — and ignores a report older than the row's last sighti
 outage must not rewind what the home learned directly. A report the home will never apply (unknown node,
 another home) is dropped rather than retried.
 
-What the replication slice still owes: **handoff and `home_term`** (decisions 5–7), which is the fence a
-returning master needs; the **quorum gate on `credential_epoch`**; `serve` reading `TERMIT_MN_MASTER` before
-the key file (decision 8, today only `init` honours it); journal pruning, without which the log grows
-forever; and the lab pair (`TERMIT_LAB_MN2` alone does not prove a partition — the split-brain rules stay
-unit tests).
+**And the handoff, after that.** `home_term` is on every row (schema 9), and a handoff is the one write that
+moves it: the target takes the row with `home_term + 1` and a new agent key, announces it in its own journal,
+and the old home records the same home and term without journaling anything — it no longer homes the row, so
+its log is not where the change is announced. `termit-mn home handoff --uv … --to <peer>` does it from the
+admin socket: it asks the target how far it has applied this server's log (`GET {prefix}/peer/state`) and
+refuses beyond `mesh.lag_max` unless `--force`, asks it to take the node (`POST {prefix}/peer/handoff`), and
+prints the new key once. The merge is ordered by the term: a newer term wins even across hands, an older one
+is skipped with the cursor still advancing, so a server returning from a partition cannot undo a handoff it
+missed and its stale writes cannot stall the journal. A removal from a server that no longer homes the row is
+skipped for the same reason — the plan's "refuse" would have stopped the pull for ever.
+
+What the replication slice still owes: the **quorum gate on `credential_epoch`**; `serve` reading
+`TERMIT_MN_MASTER` before the key file (decision 8, today only `init` honours it); journal pruning, without
+which the log grows forever; and the lab pair (`TERMIT_LAB_MN2` alone does not prove a partition — the
+split-brain rules stay unit tests).
 
 Acceptance: two MNs and two UVs. A node enrolled on A appears on B and in a subscription B renders; a
 block on A reaches B and the peer's next sync; replaying a delivered event changes nothing; a gap is
