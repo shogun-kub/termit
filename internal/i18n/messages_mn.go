@@ -182,7 +182,7 @@ var messagesMNRU = map[Key]string{
 	MnNodesForgetLabel:   "забыть запись",
 	MnNodesForgetHint:    "удалить запись домена, чтобы его можно было зарегистрировать заново",
 	MnNodesHandoffLabel:  "передать узел другому серверу",
-	MnNodesHandoffHint:   "узел переедет в меше; новый агентский ключ будет показан",
+	MnNodesHandoffHint:   "узел переедет к другому серверу; новый агентский ключ будет показан",
 	MnNodesAdoptLabel:    "принять узлы погибшего сервера",
 	MnNodesAdoptHint:     "если home не вернётся: узлы продолжат работать без визита",
 	MnEntryEpochLabel:    "сменить эпоху парных ключей",
