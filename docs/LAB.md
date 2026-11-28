@@ -1,7 +1,7 @@
 # Termit — the acceptance lab
 
-Three Debian machines over SSH (one MN, two UVs), optionally a fourth UV for the mesh tests. The lab is a
-manual gate, not part of `go test ./cmd/... ./internal/...`; `AGENTS.md` §4.3 points here.
+Two Debian servers over SSH (an MN and, for the replication drills, its replica) and two or three nodes.
+The lab is a manual gate, not part of `go test ./cmd/... ./internal/...`; `AGENTS.md` §4.3 points here.
 
 ## 1. What the tests read
 
@@ -18,11 +18,11 @@ export TERMIT_LAB_DNS_SUFFIX=lan
 export TERMIT_LAB_ACME=https://…/dir                           # a test ACME directory
 export TERMIT_LAB_PLINK='C:\Program Files\PuTTY\plink.exe'     # only when not on PATH
 export TERMIT_LAB_PSCP='C:\Program Files\PuTTY\pscp.exe'
-go test -tags=lab ./test/lab -v -timeout 30m
+go test -tags=lab -count=1 ./test/lab -v -timeout 30m
 ```
 
-Run it with `-count=1`: `go test` caches a pass and reprints it in seconds, proving nothing about the
-build in front of you.
+`-count=1` is in the command above because `go test` caches a pass and reprints it in seconds, proving
+nothing about the build in front of you.
 
 `TERMIT_LAB_MN2` is optional and skips the tests that need a mesh. That server has to be prepared by hand
 first: it holds a copy of the same `master.key`, each server lists the other under `mesh.peers` with the
@@ -47,9 +47,9 @@ picks the higher home term and the loser stops writing, but nothing moves a node
 
 Concrete coordinates for this machine live in the gitignored `.spike-out/lab.md`; the key is a PuTTY
 `.ppk`, so the harness calls `plink`/`pscp` and pins each machine. A missing variable skips the suite.
-Beside `lab.md` sit the credentials it lists (`github-token`, `mn-admin.token`, `sonar-token`) and the
-scripts that use them; none may appear in the repository, a document, a commit message or a log line —
-this repository is public.
+Beside `lab.md` sit the credentials it lists (`github-token`, `mn-admin.token`, `mn2-admin.token`,
+`sonar-token`) and the scripts that use them; none may appear in the repository, a document, a commit
+message or a log line — this repository is public.
 
 ## 3. Budget, and what cannot be tested there
 

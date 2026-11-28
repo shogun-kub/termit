@@ -158,7 +158,7 @@ and `internal` into `.spike-out/tidy`, run `go mod tidy` there, copy `go.mod`/`g
 
 ### 4.3 Acceptance lab
 
-Three Debian machines over SSH (one MN, two UVs), optionally a fourth UV for the mesh tests. The lab is a
+Two Debian servers over SSH (an MN and, optionally, its replica) and two or three nodes. The lab is a
 manual gate, not part of `go test ./cmd/... ./internal/...`. What the tests read, where the coordinates
 live, the budget, what the lab cannot prove and the rules of engagement are in
 [`docs/LAB.md`](docs/LAB.md). The short version: `go test -tags=lab -count=1 ./test/lab`, coordinates in

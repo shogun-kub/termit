@@ -22,13 +22,15 @@ neither.
 A release's artifacts are spent once they are on the server and the scratch directory grows by hundreds of
 megabytes per cycle. After every push: `git push && go run ./deploy/clean` (or `make push`). `clean` drops
 the build output, the lab logs and everything in `.spike-out/` off its keep list (the toolchain, the
-caches, `lab.md`/`prod.md`, `release-run.js` and the credentials beside them), and refuses a directory
-holding its own `.git`. `--dry-run` lists what would go.
+caches, `lab.md`/`prod.md`, the Russian glossary, `release-run.js` and the credentials beside them), and
+refuses a directory holding its own `.git`. The keep list itself is `scratchKeep` in
+`deploy/clean/main.go`; `--dry-run` lists what would go.
 
 Cache flags separate by cost: `--build-cache` drops compiled output (the next build recompiles and
-downloads nothing), `--module-cache` drops downloaded modules, `--all` both, `--toolchain` Go itself. Build
-the `clean` command outside the build cache first — `go build -o /tmp/clean ./deploy/clean` — because
-`go run` executes it from inside the directory it is about to delete.
+downloads nothing), `--module-cache` drops downloaded modules, `--all` both, `--toolchain` Go itself.
+When the run is going to delete the toolchain or the build cache, build the command first —
+`go build -o "$env:TEMP\clean.exe" ./deploy/clean` — because `go run` keeps the `go` process alive from
+the directory it is about to delete.
 
 ## 3. SonarQube
 
@@ -66,7 +68,7 @@ What works without escalation, because it does not use Schannel:
 |---|---|
 | `node` (v24 here) | OpenSSL |
 | `git -c http.sslBackend=openssl …` | Git for Windows ships both backends |
-| `gh`, `go run ./deploy/…`, the Termit binaries | Go's `crypto/tls` |
+| `go run ./deploy/…`, the Termit binaries, `gh` once installed | Go's `crypto/tls` |
 
 What breaks: `curl.exe`, `git` without the override, `Invoke-WebRequest`/`Invoke-RestMethod`, and anything
 else on Schannel. For a one-off of those, run that single command with `danger-full-access` instead of
