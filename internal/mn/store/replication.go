@@ -583,7 +583,7 @@ func (s *Store) ApplyEvents(ctx context.Context, events []ReplicationEvent) (int
 				ErrReplicationGap, mnID, cursor, event.Seq)
 		}
 		if err := applyEvent(ctx, tx, event); err != nil {
-			if errors.Is(err, errSuperseded) {
+			if errors.Is(err, errSuperseded) || errors.Is(err, errDomainTaken) {
 				// This entry lost to a handoff already applied here. It is not a failure — the journal
 				// must move past it — and it is not a change, so it does not count as applied.
 				cursor = event.Seq
@@ -775,10 +775,22 @@ func putReplicatedNode(ctx context.Context, tx *sql.Tx, node UV) error {
 	if _, err := tx.ExecContext(ctx,
 		`INSERT INTO uv (`+uvColumns+`) VALUES (`+uvPlaceholders+`) ON CONFLICT(id) DO UPDATE SET `+
 			replicatedUpdate, uvArgs(node)...); err != nil {
-		return wrapDuplicate(err, "store: replicate node "+node.ID)
+		// ON CONFLICT(id) covers the same node; anything left is another id serving a domain this server
+		// already has. That is a real disagreement — two records for one domain — but it must not freeze the
+		// journal: every later change from that peer would queue behind it. The local row stays, and the
+		// operator is the one who decides which record is real.
+		wrapped := wrapDuplicate(err, "store: replicate node "+node.ID)
+		if errors.Is(wrapped, ErrDuplicate) {
+			return errDomainTaken
+		}
+		return wrapped
 	}
 	return nil
 }
+
+// errDomainTaken means the peer homes a node whose domain this server already serves under another id. The
+// caller skips the write and lets the journal move on, exactly as it does for a superseded row.
+var errDomainTaken = errors.New("store: the domain is served by another node here")
 
 // errSuperseded means the incoming row claims an older home term than this server already knows: the node
 // was handed over while the peer was away. The caller skips the write and lets the journal move on, because

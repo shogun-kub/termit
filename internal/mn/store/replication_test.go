@@ -462,3 +462,71 @@ func TestSnapshotRefusesAnotherSchema(t *testing.T) {
 		t.Error("a snapshot without an origin was applied")
 	}
 }
+
+// A node is homed where it was enrolled. An empty home reads as "mine" to every ownership check — the
+// scheduler, the write guard, the replica's sync — so a row created without one would be written by
+// whichever server pulled it, and the mesh would have two authorities for one node.
+func TestANewNodeIsHomedWhereItWasEnrolled(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	home, replica := twoStores(t)
+	homeID, err := home.MeshID(ctx)
+	if err != nil {
+		t.Fatalf("MeshID: %v", err)
+	}
+
+	enrolled(t, home, "uv_one", "one.example.com")
+	row, err := home.UVByID(ctx, "uv_one")
+	if err != nil {
+		t.Fatalf("UVByID: %v", err)
+	}
+	if row.HomeMN != homeID {
+		t.Errorf("a row enrolled here is homed by %q, want %q", row.HomeMN, homeID)
+	}
+
+	if _, err := replica.ApplyEvents(ctx, journal(t, home, homeID)); err != nil {
+		t.Fatalf("ApplyEvents: %v", err)
+	}
+	copied, err := replica.UVByID(ctx, "uv_one")
+	if err != nil {
+		t.Fatalf("UVByID on the replica: %v", err)
+	}
+	// The replica's copy names the home, which is what stops it from writing a row it does not own.
+	if copied.HomeMN != homeID {
+		t.Errorf("the replica's copy is homed by %q, want %q", copied.HomeMN, homeID)
+	}
+}
+
+// A peer can home a node whose domain this server already serves under another id — a node re-enrolled on the
+// home while a replica still held the old one. That is a disagreement for an operator, but it must not freeze
+// the journal: every later change from that peer would wait behind it. The local row stays and the cursor
+// moves on.
+func TestAForeignRowForATakenDomainIsSkipped(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	home, replica := twoStores(t)
+	homeID, err := home.MeshID(ctx)
+	if err != nil {
+		t.Fatalf("MeshID: %v", err)
+	}
+	enrolled(t, home, "uv_one", "one.example.com")
+
+	// The same domain under another id, which this replica homed itself: the one authority it must not lose.
+	enrolled(t, replica, "uv_mine", "one.example.com")
+	if _, err := replica.ApplyEvents(ctx, journal(t, home, homeID)); err != nil {
+		t.Fatalf("ApplyEvents: %v", err)
+	}
+	mine, err := replica.UVByID(ctx, "uv_mine")
+	if err != nil {
+		t.Fatalf("UVByID: %v", err)
+	}
+	if mine.HomeMN == homeID {
+		t.Errorf("the peer's row took the domain from this server's own row")
+	}
+	if cursor, err := replica.Cursor(ctx, homeID); err != nil || cursor == 0 {
+		t.Errorf("the cursor is %d, %v; want the journal to have moved", cursor, err)
+	}
+	if _, err := replica.UVByID(ctx, "uv_one"); err == nil {
+		t.Errorf("the skipped row was written anyway")
+	}
+}
