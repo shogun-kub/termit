@@ -46,8 +46,10 @@ func (s *webStep) spec(ctx context.Context) (web.SiteSpec, error) {
 	}
 	spec.SecretPath = "/" + s.e.st.Identity.XHTTPPath + "/"
 	spec.XrayAddr = xrayAddress()
-	spec.WebSocketPath = proto.WebSocketPath(spec.SecretPath)
-	spec.WebSocketAddr = xray.WebSocketAddress()
+	if s.e.cfg.Profile.WebSockets() {
+		spec.WebSocketPath = proto.WebSocketPath(spec.SecretPath)
+		spec.WebSocketAddr = xray.WebSocketAddress()
+	}
 	spec.QUIC = s.e.cfg.Hysteria != nil
 	spec.HTTP2Directive = s.nginxHTTP2Directive(ctx)
 

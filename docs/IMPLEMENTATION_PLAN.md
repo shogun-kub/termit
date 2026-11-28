@@ -2891,10 +2891,17 @@ is derived from the node's XHTTP one (`proto.WebSocketPath`) rather than minted,
 and a re-run converges. Every node this build installs serves both renderings and says so in the sync
 request; schema 10 keeps that answer, the journal and the snapshot carry it to a replica, and
 `RenderList` writes the second `vless://` URI with `type=ws`. A node that reports no rendering keeps the
-single link it always had. What is deliberately absent: no switch turns the rendering on or off — a node
-either has the inbound this build installs or it does not, and the report is what a client sees. The
-prober still checks the XHTTP rendering alone, which is enough to tell whether a node serves at all; a
-check per rendering is the obvious next step if a ws-only failure ever needs telling apart.
+single link it always had.
+
+**Off by default, as an escape hatch.** `profile.websocket: true` in the node's configuration — set by
+`termit-uv init --profile-ws`, cleared by `--no-profile-ws` — is the switch, and everything downstream
+reads it: the core document, the vhost, and what the node reports to its server. A node without the
+switch has no inbound, no location and no second link, which is the state every node was in before the
+feature existed. The default flipped after the lab run, on the owner's call, and for two reasons: the
+core itself warns that its WebSocket transport is deprecated, and a compatibility escape hatch should
+not cost a second inbound on every node that never needs it. The prober still checks the XHTTP
+rendering alone, which is enough to tell whether a node serves at all; a check per rendering is the
+obvious next step if a ws-only failure ever needs telling apart.
 
 **Proved on the lab, 2026-11-28.** A node at `dev` regenerated its vhost and core config: the inbound
 listened on `127.0.0.1:8444` with the derived path, `nginx -t` accepted the location, and a real

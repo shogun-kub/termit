@@ -71,8 +71,12 @@ func (a *application) newLoop(cfg *config.Config) *agent.Loop {
 	// The server renders a link per kind, so it has to know which kinds this node serves — but only when
 	// that is more than the TLS profile. An older server decodes the sync body strictly and rejects the
 	// field outright, and a node that serves only `vless` has nothing to add: absent means exactly that.
-	if cfg.Hysteria != nil {
-		remote.Transports = proto.NodeTransports(true, proto.RenderingXHTTP, proto.RenderingWebSocket)
+	switch {
+	case cfg.Profile.WebSockets():
+		remote.Transports = proto.NodeTransports(cfg.Hysteria != nil,
+			proto.RenderingXHTTP, proto.RenderingWebSocket)
+	case cfg.Hysteria != nil:
+		remote.Transports = proto.NodeTransports(true)
 	}
 	remote.Egress = egressWant(cfg)
 	return &agent.Loop{

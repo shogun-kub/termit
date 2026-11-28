@@ -59,6 +59,9 @@ credential is ever regenerated.`)
 	flags.Bool("hysteria", false,
 		"serve the QUIC transport too: Hysteria2 on UDP/443, plus that port in the firewall's UDP list")
 	flags.Bool("no-hysteria", false, "stop serving the QUIC transport and remove it from this node")
+	flags.Bool("profile-ws", false,
+		"serve the profile over WebSocket beside XHTTP, for a client that cannot read XHTTP at all")
+	flags.Bool("no-profile-ws", false, "stop serving the WebSocket rendering on this node")
 	relocate := flags.Bool("relocate", false, "install a rebuilt node: reuse the agent key, mint a new identity, do not enroll")
 	agentKeyFile := flags.String("agent-key-file", "",
 		"0600 file holding the agent key of the node being rebuilt (required with --relocate)")
@@ -165,6 +168,15 @@ credential is ever regenerated.`)
 		enableTransport(cfg, false)
 	case set["hysteria"]:
 		enableTransport(cfg, true)
+	}
+	switch {
+	case set["profile-ws"] && set["no-profile-ws"]:
+		fmt.Fprintln(a.stderr, "termit-uv init: --profile-ws and --no-profile-ws contradict each other")
+		return exitUsage
+	case set["no-profile-ws"]:
+		cfg.Profile.WebSocket = false
+	case set["profile-ws"]:
+		cfg.Profile.WebSocket = true
 	}
 
 	if cfg.Domain == "" {

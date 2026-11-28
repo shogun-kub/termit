@@ -199,6 +199,11 @@ systemd unit or answers a question no menu screen can ask, and each is a decisio
 `TestEveryDocumentedCommandIsInTheMenuOrExplained`, in both binaries, fails when a command is in neither
 the menu nor this list. A new option therefore lands in the menu, or its reason lands here.
 
+- **The WebSocket rendering (`--profile-ws`).** A compatibility escape hatch for a client that cannot
+  read XHTTP, and the node serves it only when a person decides that client matters: it costs a second
+  inbound and a second nginx location, and the core marks the transport deprecated. A menu switch would
+  make it a thing to try, which is the wrong shape for it.
+
 ## Colour
 
 Colour is used when stdout is a terminal. `NO_COLOR=1` (any value) or `TERM=dumb` turns it off, and

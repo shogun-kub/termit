@@ -108,10 +108,28 @@ type Config struct {
 	// Hysteria is the QUIC transport. Absent means off: the block exists only when an operator turned it
 	// on, so a node that never wanted it writes no key at all.
 	Hysteria *Hysteria `yaml:"hysteria,omitempty"`
+	// Profile carries the renderings of the TLS profile this node serves. The default is XHTTP
+	// alone, which is what every client this project targets reads; the section exists because a
+	// second rendering is a compatibility escape hatch, not a second transport
+	// (docs/IMPLEMENTATION_PLAN.md §5.2.6).
+	Profile Profile `yaml:"profile,omitempty"`
 	// Security is off by default in every part; see Security.
 	Security Security `yaml:"security"`
 	Paths    Paths    `yaml:"paths"`
 }
+
+// Profile is how the node serves its profile to clients. One flag today, because one alternative
+// rendering exists; a second one would be another field here, not another kind.
+type Profile struct {
+	// WebSocket serves the same profile over WebSocket beside XHTTP, on a path of its own. Off by
+	// default: it is for clients that cannot read XHTTP at all, and it costs a second inbound and a
+	// second nginx location on every node that has it. Upstream's own core warns that the WebSocket
+	// transport is deprecated, which is a second reason not to serve it unasked.
+	WebSocket bool `yaml:"websocket,omitempty"`
+}
+
+// WebSockets reports whether the node serves the second rendering.
+func (p Profile) WebSockets() bool { return p.WebSocket }
 
 // Lang is the configured language. An unusable value falls back to the default rather than failing:
 // the configuration is validated on load, so this only matters for a value that got in another way.

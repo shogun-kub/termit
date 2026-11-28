@@ -17,12 +17,13 @@ pre-releases, and whoever installs the release skipped them.
   healthy. A node that could not be measured prints nothing: unknown is not direct. Schema 11 stores the
   fact, the exit address and the intention; the journal carries them to a replica.
 
-- **A node serves its profile over WebSocket as well as XHTTP.** A client that cannot read the XHTTP
-  profile now has a second way in: the same node, the same certificate and the same client credential,
-  served at `/ws/<hash>/` by an inbound of its own and announced in the sync request, so the subscription
-  carries a second `vless://` link with `type=ws` for it. The path is derived from the node's XHTTP path,
-  not stored, so nothing new is minted and a re-run converges. `termit-uv init` adds the inbound and the
-  nginx location on an existing node; a node that reports no rendering keeps today's single link.
+- **A node can serve its profile over WebSocket as well as XHTTP.** A client that cannot read the XHTTP
+  profile — stock sing-box above all — has a second way in once the node is asked for it:
+  `termit-uv init --profile-ws` serves the same node, certificate and client credential at `/ws/<hash>/`
+  from an inbound of its own, reports it at the next sync, and the subscription then carries a second
+  `vless://` link with `type=ws`. It is off by default: the rendering costs a second inbound and a second
+  nginx location, and the core itself marks its WebSocket transport deprecated. The path is derived from
+  the node's XHTTP path, not stored, so nothing new is minted and a re-run converges.
 
 - **A replica can drop its copy of a node another server homes.** `termit-mn uv forget --force <id|domain>`
   deletes this server's record of a node whose home is a peer — nothing is journaled, because this server

@@ -38,9 +38,12 @@ func (s *xrayConfigStep) spec() (xray.Spec, error) {
 		return spec, errors.New("the node identity has not been generated")
 	}
 	spec.Path = "/" + s.e.st.Identity.XHTTPPath + "/"
-	// The second rendering is served by every node this build installs: the path is derived from the
-	// node's own, so nothing new is minted and a re-run converges (proto.WebSocketPath).
-	spec.WebSocketPath = proto.WebSocketPath(spec.Path)
+	// The second rendering is opt-in: the path is derived from the node's own, so nothing new is
+	// minted and a re-run converges (proto.WebSocketPath), but the inbound exists only when the
+	// configuration asks for it.
+	if s.e.cfg.Profile.WebSockets() {
+		spec.WebSocketPath = proto.WebSocketPath(spec.Path)
+	}
 	spec.BlockBitTorrent = s.e.cfg.Security.BitTorrentBlock
 	warpSpec, err := WarpSpecFor(s.e.cfg)
 	if err != nil {

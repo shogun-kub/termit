@@ -165,14 +165,23 @@ termit-uv status
 # subscribe:  https://mn.example.com/sub/AbCdEf...
 ```
 
-Paste that URL into the client's "subscription URL" field. The core must read one of the two renderings
-the node serves. A core on Xray reads XHTTP: Happ, v2rayNG, v2rayN, NekoRay, or `podkop-engine` on
-OpenWrt. Stock sing-box has no XHTTP — unpatched it falls back to plain VLESS, the node answers `400`,
-and the client reports `unknown version: 72` (`72` is `H`, the first byte of `HTTP/1.1`) — so the list
-carries a second link for it, marked `(WS)`: the same node, the same credential and the same certificate
-over WebSocket, on a path of its own. Paste that one into a sing-box client. For sing-box builds patched
-with XHTTP, or a client that wants rules, add `/json`: the same peer list as a profile with a selector, a
-`direct` outbound and private ranges kept direct.
+Paste that URL into the client's "subscription URL" field. The core must read the profile: a core on Xray
+reads XHTTP — Happ, v2rayNG, v2rayN, NekoRay, or `podkop-engine` on OpenWrt. Stock sing-box has no XHTTP:
+unpatched it falls back to plain VLESS, the node answers `400`, and the client reports `unknown version:
+72` (`72` is `H`, the first byte of `HTTP/1.1`). Such a client needs the second rendering, and the node
+serves it only when asked:
+
+```bash
+termit-uv init --profile-ws     # serve the profile over WebSocket too; --no-profile-ws takes it away
+```
+
+The node then reports both renderings at its next sync, and the subscription carries a second link marked
+`(WS)`: the same node, the same credential and the same certificate over WebSocket, on a path of its own.
+Paste that one into a sing-box client. It is off by default because it costs a second inbound and a
+second nginx location, and because the core itself says its WebSocket transport is deprecated — enable it
+for the client that needs it, not for every node. For sing-box builds patched with XHTTP, or a client
+that wants rules, add `/json`: the same peer list as a profile with a selector, a `direct` outbound and
+private ranges kept direct.
 
 The client fetches the list again on its own schedule; when a peer comes or goes, one refresh is all
 it takes. The URL is a secret: it carries your credentials. If it leaks, rotate it on the server

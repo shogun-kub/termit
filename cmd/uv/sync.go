@@ -72,8 +72,12 @@ func (a *application) runSync(args []string) int {
 	remote := agent.Remote{BaseURL: cfg.MN.URL, CAFile: cfg.MN.CAFile, CertPin: agent.CertFingerprint(install.LeafCertPath(cfg))}
 	// Only what the TLS profile cannot say: an older server decodes the body strictly and rejects the
 	// field, and absent already means `vless`.
-	if cfg.Hysteria != nil {
-		remote.Transports = proto.NodeTransports(true, proto.RenderingXHTTP, proto.RenderingWebSocket)
+	switch {
+	case cfg.Profile.WebSockets():
+		remote.Transports = proto.NodeTransports(cfg.Hysteria != nil,
+			proto.RenderingXHTTP, proto.RenderingWebSocket)
+	case cfg.Hysteria != nil:
+		remote.Transports = proto.NodeTransports(true)
 	}
 	remote.Egress = egressWant(cfg)
 	answer, err := remote.Fetch(ctx, st.Credentials.AgentKey, proto.SyncRequest{AgentVersion: version.Agent("termit-uv")})
