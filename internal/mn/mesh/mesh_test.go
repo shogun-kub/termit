@@ -18,8 +18,11 @@ func TestThePullTokenFollowsTheMasterKey(t *testing.T) {
 	key := []byte("0123456789abcdef0123456789abcdef")
 	other := []byte("fedcba9876543210fedcba9876543210")
 
-	if PullToken(key) != PullToken(key) {
-		t.Fatal("the same key must derive the same token")
+	// The token is a credential two servers exchange: a change to its derivation breaks every peer's pull at
+	// once, so it is pinned here the way internal/cred pins its vectors.
+	const wantToken = "e7006f9f2a8ebf56300758e555814307c24ecb6fa34ea0ac0b0e94638ac59983"
+	if got := PullToken(key); got != wantToken {
+		t.Fatalf("PullToken = %q, want %q", got, wantToken)
 	}
 	if PullToken(key) == PullToken(other) {
 		t.Fatal("two keys must not share a token")
