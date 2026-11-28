@@ -26,8 +26,11 @@ const (
 	EnvSSHKey     = "TERMIT_LAB_SSH_KEY"
 	EnvHostKeys   = "TERMIT_LAB_HOSTKEYS"
 	EnvAdminToken = "TERMIT_LAB_MN_ADMIN_TOKEN"
-	EnvPlink      = "TERMIT_LAB_PLINK"
-	EnvPscp       = "TERMIT_LAB_PSCP"
+	// EnvMN2AdminToken is the second server's own admin token. It is not the first server's: each server
+	// issues its own, and a replica refuses the other one.
+	EnvMN2AdminToken = "TERMIT_LAB_MN2_ADMIN_TOKEN"
+	EnvPlink         = "TERMIT_LAB_PLINK"
+	EnvPscp          = "TERMIT_LAB_PSCP"
 )
 
 // DefaultCommandTimeout bounds one remote command. A probe or a sync can be slow on a loaded box, but
@@ -52,8 +55,10 @@ type Lab struct {
 	// MN2 is nil when TERMIT_LAB_MN2 is unset: a single-server lab cannot run the replication tests.
 	MN2        *Machine
 	AdminToken string
-	DNSuffix   string
-	ACME       string
+	// MN2AdminToken is empty when TERMIT_LAB_MN2_ADMIN_TOKEN is unset; the mesh tests then skip.
+	MN2AdminToken string
+	DNSuffix      string
+	ACME          string
 }
 
 // Machine is one lab host. Its methods are the only way the suite touches the lab.
@@ -128,15 +133,22 @@ func FromEnv(t *testing.T) *Lab {
 			token: token, timeout: DefaultCommandTimeout,
 		}
 	}
+	mn2Token := strings.TrimSpace(os.Getenv(EnvMN2AdminToken))
+	mn2Machine := optionalMachine(t, newMachine, "mn2", mn2, EnvMN2)
+	if mn2Machine != nil {
+		// Redaction is per machine: the second server's token must not survive in a failure message either.
+		mn2Machine.token = mn2Token
+	}
 	return &Lab{
-		MN:         newMachine("mn", mn, EnvMN),
-		MN2:        optionalMachine(t, newMachine, "mn2", mn2, EnvMN2),
-		UV1:        newMachine("uv1", uv1, EnvUV1),
-		UV2:        newMachine("uv2", uv2, EnvUV2),
-		UV3:        optionalMachine(t, newMachine, "uv3", uv3, EnvUV3),
-		AdminToken: token,
-		DNSuffix:   os.Getenv("TERMIT_LAB_DNS_SUFFIX"),
-		ACME:       os.Getenv("TERMIT_LAB_ACME"),
+		MN:            newMachine("mn", mn, EnvMN),
+		MN2:           mn2Machine,
+		MN2AdminToken: mn2Token,
+		UV1:           newMachine("uv1", uv1, EnvUV1),
+		UV2:           newMachine("uv2", uv2, EnvUV2),
+		UV3:           optionalMachine(t, newMachine, "uv3", uv3, EnvUV3),
+		AdminToken:    token,
+		DNSuffix:      os.Getenv("TERMIT_LAB_DNS_SUFFIX"),
+		ACME:          os.Getenv("TERMIT_LAB_ACME"),
 	}
 }
 
@@ -242,6 +254,25 @@ func (l *Lab) MNAdmin(ctx context.Context, args ...string) (string, error) {
 func (l *Lab) MustMNAdmin(t *testing.T, ctx context.Context, args ...string) string {
 	t.Helper()
 	out, err := l.MNAdmin(ctx, args...)
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	return out
+}
+
+// MN2Admin is MNAdmin against the second server, with that server's own token.
+func (l *Lab) MN2Admin(ctx context.Context, args ...string) (string, error) {
+	if l.MN2 == nil {
+		return "", fmt.Errorf("lab: no second server is configured")
+	}
+	command := "TERMIT_MN_ADMIN_TOKEN=" + shellQuote(l.MN2AdminToken) + " termit-mn " + strings.Join(args, " ")
+	return l.MN2.Run(ctx, command)
+}
+
+// MustMN2Admin fails the test when the admin command on the second server fails.
+func (l *Lab) MustMN2Admin(t *testing.T, ctx context.Context, args ...string) string {
+	t.Helper()
+	out, err := l.MN2Admin(ctx, args...)
 	if err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}

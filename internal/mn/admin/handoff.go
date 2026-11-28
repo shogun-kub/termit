@@ -57,7 +57,7 @@ func (s *Service) handoff(ctx context.Context, raw json.RawMessage) (any, *Error
 		return nil, &Error{Code: CodeBadRequest,
 			Detail: fmt.Sprintf("no peer %q in mesh.peers (configured: %v)", args.Peer, names)}
 	}
-	peer, err := mesh.NewPeer(cfg, s.Master, 0)
+	peer, err := mesh.NewPeer(cfg, s.Master, mesh.AdminRequestTimeout)
 	if err != nil {
 		return nil, &Error{Code: CodeInternal, Detail: err.Error()}
 	}
@@ -151,7 +151,7 @@ func (s *Service) adopt(ctx context.Context, raw json.RawMessage) (any, *Error) 
 		return nil, &Error{Code: CodeConflict,
 			Detail: fmt.Sprintf("%s has never been pulled from here, so it homed nothing this server holds", cfg.Name)}
 	}
-	peer, err := mesh.NewPeer(cfg, s.Master, 0)
+	peer, err := mesh.NewPeer(cfg, s.Master, mesh.AdminRequestTimeout)
 	if err != nil {
 		return nil, &Error{Code: CodeInternal, Detail: err.Error()}
 	}

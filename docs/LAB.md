@@ -13,6 +13,7 @@ export TERMIT_LAB_MN2=root@…                                  # the second ser
 export TERMIT_LAB_SSH_KEY=<path to the lab private key>       # never committed
 export TERMIT_LAB_HOSTKEYS='host1=SHA256:…,host2=SHA256:…'    # pin every machine
 export TERMIT_LAB_MN_ADMIN_TOKEN=<admin token>                 # never committed
+export TERMIT_LAB_MN2_ADMIN_TOKEN=<the second server's token>  # its own; only for the mesh drills
 export TERMIT_LAB_DNS_SUFFIX=lan
 export TERMIT_LAB_ACME=https://…/dir                           # a test ACME directory
 export TERMIT_LAB_PLINK='C:\Program Files\PuTTY\plink.exe'     # only when not on PATH
@@ -27,6 +28,12 @@ build in front of you.
 first: it holds a copy of the same `master.key`, each server lists the other under `mesh.peers` with the
 peer's leaf pinned, and both run the same build — `OPERATIONS.md` §3.4 is the runbook. The harness only
 addresses it, it does not build the mesh.
+
+The replication drills (`TestDrillReplicationPeerDown`, `…Partition`, `…Restart`, `…SnapshotOnGap`) need
+the pair and its own admin token. They break one thing each — the replica stopped, the link cut in both
+directions with `nft`, the process killed, a journal entry deleted so the replica's cursor no longer fits —
+and assert that the mesh converges afterwards without an operator. The gap drill edits the home's database
+with `sqlite3` and skips without it.
 
 ## 2. Coordinates and credentials
 

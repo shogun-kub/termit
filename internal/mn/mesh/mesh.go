@@ -84,6 +84,12 @@ func ClientFor(peer config.Peer, timeout time.Duration) (*http.Client, error) {
 // under it, and a peer that stops answering must not hold the loop past its own interval.
 const DefaultRequestTimeout = 30 * time.Second
 
+// AdminRequestTimeout bounds one peer request made from an admin operation. The admin socket answers
+// within 30 seconds, and an operation may make two calls, so a peer that stopped answering has to fail
+// well inside that: a socket timeout reaches the operator as "i/o timeout", which says nothing about
+// whether the operation ran.
+const AdminRequestTimeout = 10 * time.Second
+
 // batch is how many journal entries one request asks for.
 const batch = 200
 

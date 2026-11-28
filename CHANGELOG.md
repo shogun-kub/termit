@@ -75,11 +75,17 @@ pre-releases, and whoever installs the release skipped them.
 
 - **`credential_epoch` is pinned as a migration, not a field.** A test runs every operator write — a state
   change, transports, a key or token rotation, a pin, a sighting, a schedule, a relocation — and fails if the
-  epoch moves; handoff and adoption are covered too. Rotation is not implemented in this build, and when it is
-  it has to wait for every configured management server (the quorum gate `IMPLEMENTATION_PLAN.md` §5.2.1 asks
-  for) before it takes effect.
+  epoch moves; handoff and adoption are covered too. The epoch only ever moves through `epoch rotate`, which
+  waits for every configured management server (the quorum gate `IMPLEMENTATION_PLAN.md` §5.2.1 asks for).
 
 ### Fixed
+
+- **An operation that contacts a peer answers instead of timing out.** `epoch rotate`, `home handoff` and
+  `home adopt` ask the other server before they act, and the admin socket answers within 30 seconds. A peer
+  that stopped answering used to consume that whole budget, so the operator got `i/o timeout` on the socket —
+  which says nothing about whether the operation ran. A peer request made from an admin operation now has its
+  own 10-second bound, so the refusal arrives as a refusal, and the drill that cuts the link between two live
+  servers asserts exactly that.
 
 - **The WARP health probe speaks the tunnel's family.** It fetched a dual-stack name, which resolves to
   IPv6 on most hosts; a tunnel that carries only IPv4 could not carry it, the probe failed, and the

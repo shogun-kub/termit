@@ -36,7 +36,7 @@ func (s *Service) rotateEpoch(ctx context.Context) (any, *Error) {
 	}
 	answered := make([]string, 0, len(s.Mesh.Peers))
 	for _, cfg := range s.Mesh.Peers {
-		peer, err := mesh.NewPeer(cfg, s.Master, 0)
+		peer, err := mesh.NewPeer(cfg, s.Master, mesh.AdminRequestTimeout)
 		if err != nil {
 			return nil, &Error{Code: CodeInternal, Detail: err.Error()}
 		}
