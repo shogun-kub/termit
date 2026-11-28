@@ -2501,11 +2501,12 @@ Everything after `0.7.0` is postponed — with one exception, already on `dev` (
 wanted, and nothing shipped depends on it. Each item names the rule that keeps it out and what it depends
 on, so nobody re-discovers the reason from scratch.
 
-### 5.1 0.7.x patches
+### 5.1 Small items folded into 0.8.0
 
-One of the three small items that stood here shipped on `dev` ahead of `0.8.0` (§5.1.3). The other two —
-the parameters inside the profile envelope and the family on the MASQUE transport — moved to §5.3.2 and
-§5.3.3 on 2026-11-27: neither was blocked by anything in this repository.
+There is no `0.7.1`: the next release is `0.8.0`, so the three small items that stood here land in it
+instead of a patch line. One is already on `dev` (§5.1.3). The other two — the parameters inside the
+profile envelope and the family on the MASQUE transport — moved to §5.3.2 and §5.3.3 on 2026-11-27:
+neither was blocked by anything in this repository.
 
 #### 5.1.3 The minimum agent version
 
@@ -2592,7 +2593,7 @@ without a credential migration:
 2. **Replicas never enroll, approve, unblock, relocate or change policy.** Invites and approval stay at the
    home; a replica applies events and writes only rows it homes. The node row carries its home
    (`home_mn`), set at enrollment; an empty home means "this MN", which is every row that exists today.
-   A row created now always names its home, so an empty one is only a row from before 0.7.1.
+   A row created now always names its home, so an empty one is only a row written before 0.8.0.
 3. **A node may sync to a replica while its home is down**: it gets the last desired state the replica
    holds, and its self-report is stored there as *pending for the home*. A replica never moves a state, so
    the report is replayed to the home when it returns. A stale subscription beats a wrong one.
