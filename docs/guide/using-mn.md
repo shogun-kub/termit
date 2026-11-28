@@ -6,8 +6,10 @@ The management server is the one box that keeps the mesh honest: it holds the me
 every node from the outside, and serves each owner a subscription. It never carries your traffic.
 
 You need: a Debian 13 box (2 vCPU, 2 GB RAM, 10 GB disk), root, a DNS name pointing at it, and ports
-80 and 443 free. One server is enough for a group of up to a few dozen nodes; there is no clustering,
-and there does not need to be — if it is down, existing connections keep working.
+80 and 443 free. One server is enough for a group of up to a few dozen nodes, and if it is down, existing
+connections keep working. A second one can hold a copy of the registry and answer nodes whose home is
+down — see [A second server](#a-second-server). That is replication, not clustering: every node still has
+one home.
 
 If you would rather pick from a list than remember flags, run `termit-mn` with no arguments on the server:
 that is [the interactive menu](menu.md).
@@ -285,6 +287,32 @@ Restore is an offline operation: stop `termit-mn`, restore, start it. A restored
 useful with the same master key — if you have the database but not the key, the nodes will have to
 re-enrol.
 
+## A second server
+
+A second `termit-mn` can hold a copy of the registry, so a node whose home is down is still answered: it
+gets the last state the home published, marked read-only, and its report is queued until the home returns.
+This is not clustering and not a load balancer: every node has exactly one home, and only that home writes
+its row.
+
+1. **Give both servers the same master key**, once, out of band: the key file of the first copied to the
+   second, `0600`. A host that holds the key can derive every node's credentials, so it belongs on a host
+   you would let take over. `serve` also reads `TERMIT_MN_MASTER`, so a standby can be handed its key
+   without writing it to disk, and `termit-mn status` prints which source this process used.
+2. **Name the other server on each side** in `config.yaml`: `mesh.peers` with a name, a base URL that
+   carries the peer's API prefix, and an optional `leaf_sha256` pin, plus `pull_every` and `lag_max`. Then
+   restart both. Each pulls the other every `pull_every`; the first pull takes a snapshot of the whole
+   registry.
+3. **Read `mesh:` in `termit-mn status`**: this server's id, the epoch, and per peer whether it answered
+   and how far behind it is.
+
+Moving a node between the two is explicit: `termit-mn home handoff --uv <id|domain> --to <peer>` gives it
+a new agent key and one more home term, and prints the two commands the node runs. A home that never comes
+back is `termit-mn home adopt --from <peer>`, which refuses while the old home answers; nodes enrolled
+after this server's last pull are unknown here and have to enroll again. `termit-mn epoch rotate`
+re-derives every pair credential, and refuses unless every configured peer answers.
+
+The whole runbook — the key, the name, the failure cases — is [`OPERATIONS.md`](../OPERATIONS.md) §3.4.
+
 ## Monitoring
 
 `/metrics` is available on loopback only, in Prometheus format, and never names a node:
@@ -317,6 +345,10 @@ journalctl -u termit-mn -f
 | `termit-mn invite create\|list\|revoke\|policy` | manage invite codes, and the enrollment rule a new node meets |
 | `termit-mn uv list\|show\|approve\|reject\|block\|unblock\|rm\|forget\|reissue\|agentkey` | manage nodes |
 | `termit-mn check now <node>\|--all` | run health checks immediately |
+| `termit-mn home handoff --uv <node> --to <peer>` | move one node to another server: new agent key, one more home term, the two commands for the node |
+| `termit-mn home adopt --from <peer> [--uv <node>]` | take over the nodes of a home that is gone; refuses while it answers |
+| `termit-mn epoch rotate` | re-derive every pair credential in the mesh; refuses unless every configured peer answers |
+| `termit-mn uv forget --force <node>` | drop this server's copy of a row another server homes; nothing is journaled |
 | `termit-mn policy show\|set` | read or change scheduler thresholds |
 | `termit-mn sub rotate <node>` | issue a new subscription token |
 | `termit-mn admin rotate` | replace the admin token you authenticated with; `--token-out FILE` writes it |
@@ -339,8 +371,9 @@ name and ports: [Hardening a node](hardening.md) is the page for it.
 - **Never edit the database by hand.** It is the registry; admin commands are the interface.
 - **Back up the master key with the database, and keep both encrypted.** Nothing can be recovered
   without the key.
-- **Run one server.** Two instances on one database corrupt it, and the second one cannot issue
-  certificates for the same name anyway.
+- **One server per database.** Two instances on one database corrupt it, and the second cannot issue
+  certificates for the same name anyway. A second *server* is a replica on its own database, see
+  [A second server](#a-second-server).
 - **Keep `termit-mn status`' prober line green.** A dead prober is not a broken mesh, but it is a blind one.
 - **Protect the admin token like the master key.** It is created by `termit-mn init` and stored hashed;
   `termit-mn admin rotate` replaces it, and the old one stops working immediately. Keep it in a file with
