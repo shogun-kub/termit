@@ -19,6 +19,10 @@ const (
 	// Network is the transport Xray speaks inside TLS.
 	Network = "xhttp"
 
+	// NetworkWS is the URI's type for the WebSocket rendering: the same profile, served by an nginx
+	// location in front of a WebSocket inbound, for a client that cannot read the XHTTP one.
+	NetworkWS = "ws"
+
 	// Security is the transport security a client must use.
 	Security = "tls"
 
@@ -72,6 +76,18 @@ type Profile struct {
 	Path string
 	// Label is the client-side display name. Optional.
 	Label string
+	// Rendering is how the client speaks the profile through nginx: RenderingWebSocket, or empty for
+	// RenderingXHTTP, which is what every node serves. One node may serve both, and then it has a URI
+	// and a path per rendering.
+	Rendering string
+}
+
+// RenderingOrDefault is the rendering this profile is written for.
+func (p Profile) RenderingOrDefault() string {
+	if p.Rendering == "" {
+		return RenderingXHTTP
+	}
+	return p.Rendering
 }
 
 // Validate reports whether the profile can be turned into a working client.
@@ -94,6 +110,9 @@ func (p Profile) Validate() error {
 	case strings.ContainsAny(p.Path, " \t?#"):
 		problems = append(problems, fmt.Errorf("path %q contains a character a URL cannot carry", p.Path))
 	}
+	if p.Rendering != "" && !KnownRendering(p.Rendering) {
+		problems = append(problems, fmt.Errorf("rendering %q is not one this build writes", p.Rendering))
+	}
 	if len(problems) > 0 {
 		return fmt.Errorf("invalid profile: %w", errors.Join(problems...))
 	}
@@ -106,19 +125,31 @@ func BuildVLESSUrl(p Profile) (string, error) {
 	if err := p.Validate(); err != nil {
 		return "", err
 	}
+	rendering := p.RenderingOrDefault()
 	query := url.Values{}
 	query.Set("encryption", "none")
 	query.Set("security", Security)
 	query.Set("sni", p.Domain)
-	query.Set("type", Network)
-	query.Set("mode", Mode)
 	query.Set("path", p.Path)
 	query.Set("fp", Fingerprint)
-	query.Set("extra", Extra)
+	switch rendering {
+	case RenderingWebSocket:
+		query.Set("type", NetworkWS)
+		// The Host header a WebSocket client sends: nginx picks the node's vhost by it, and a client
+		// that leaves it to the address would send the IP.
+		query.Set("host", p.Domain)
+	default:
+		query.Set("type", Network)
+		query.Set("mode", Mode)
+		query.Set("extra", Extra)
+	}
 
 	label := p.Label
 	if label == "" {
 		label = Network
+		if rendering == RenderingWebSocket {
+			label = NetworkWS
+		}
 	}
 	link := url.URL{
 		Scheme:   "vless",
@@ -158,14 +189,30 @@ func ParseVLESSUrl(raw string) (Profile, error) {
 	if got := query.Get("security"); got != Security {
 		return Profile{}, fmt.Errorf("vless url: security %q is not %q", got, Security)
 	}
-	if got := query.Get("type"); got != Network {
-		return Profile{}, fmt.Errorf("vless url: type %q is not %q", got, Network)
+	rendering := RenderingXHTTP
+	switch got := query.Get("type"); got {
+	case Network:
+	case NetworkWS:
+		rendering = RenderingWebSocket
+	case "":
+		return Profile{}, fmt.Errorf("vless url: type is not %q or %q", Network, NetworkWS)
+	default:
+		return Profile{}, fmt.Errorf("vless url: type %q is not %q or %q", got, Network, NetworkWS)
 	}
 	if encryption := query.Get("encryption"); encryption != "" && encryption != "none" {
 		return Profile{}, fmt.Errorf("vless url: encryption %q is not supported", encryption)
 	}
-	if mode := query.Get("mode"); mode != "" && mode != Mode {
-		return Profile{}, fmt.Errorf("vless url: mode %q is not %q", mode, Mode)
+	if mode := query.Get("mode"); mode != "" {
+		if rendering == RenderingWebSocket {
+			return Profile{}, fmt.Errorf("vless url: mode %q is an xhttp setting", mode)
+		}
+		if mode != Mode {
+			return Profile{}, fmt.Errorf("vless url: mode %q is not %q", mode, Mode)
+		}
+	}
+	if host := query.Get("host"); host != "" && rendering == RenderingWebSocket &&
+		!strings.EqualFold(host, link.Hostname()) {
+		return Profile{}, fmt.Errorf("vless url: host %q is not the profile domain %q", host, link.Hostname())
 	}
 
 	profile := Profile{
@@ -173,6 +220,9 @@ func ParseVLESSUrl(raw string) (Profile, error) {
 		UUID:   link.User.Username(),
 		Path:   query.Get("path"),
 		Label:  link.Fragment,
+	}
+	if rendering == RenderingWebSocket {
+		profile.Rendering = RenderingWebSocket
 	}
 	if profile.Path == "" {
 		profile.Path = "/"

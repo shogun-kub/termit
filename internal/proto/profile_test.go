@@ -120,7 +120,6 @@ func TestParseVLESSUrlRejects(t *testing.T) {
 		{"allowInsecure", valid + "&allowInsecure=1", "allowInsecure"},
 		{"insecure", valid + "&insecure=1", "allowInsecure"},
 		{"plaintext", "vless://" + testUUID + "@node.example.com:443?security=none&type=xhttp", "security"},
-		{"ws transport", "vless://" + testUUID + "@node.example.com:443?security=tls&type=ws", "type"},
 		{"bad uuid", "vless://not-a-uuid@node.example.com:443?security=tls&type=xhttp", "uuid"},
 	}
 	for _, tc := range cases {
@@ -219,5 +218,95 @@ func TestAddSingBoxFragmentSetsPodkopsSwitches(t *testing.T) {
 	}
 	if got := proto.AddSingBoxFragment(uri, false, false); got != uri {
 		t.Errorf("with both off the URI changed: %s", got)
+	}
+}
+
+// The WebSocket rendering is the same profile spoken differently: same name, same device, same path
+// shape, and a URI a stock sing-box can read.
+func TestTheWebSocketRenderingRoundTrips(t *testing.T) {
+	t.Parallel()
+	want := proto.Profile{
+		Domain:    "node.example.com",
+		UUID:      testUUID,
+		Path:      "/a1b2c3d4e5f60718/",
+		Rendering: proto.RenderingWebSocket,
+	}
+	uri, err := proto.BuildVLESSUrl(want)
+	if err != nil {
+		t.Fatalf("BuildVLESSUrl: %v", err)
+	}
+	for _, wantPart := range []string{
+		"vless://" + testUUID + "@node.example.com:443",
+		"security=tls",
+		"sni=node.example.com",
+		"type=ws",
+		"host=node.example.com",
+		"path=%2Fa1b2c3d4e5f60718%2F",
+		"fp=firefox",
+		"#ws",
+	} {
+		if !strings.Contains(uri, wantPart) {
+			t.Errorf("the URI does not contain %q: %s", wantPart, uri)
+		}
+	}
+	// An xhttp-only query is not a WebSocket URI: mode and extra mean the client will speak XHTTP.
+	for _, forbidden := range []string{"mode=", "extra="} {
+		if strings.Contains(uri, forbidden) {
+			t.Errorf("the WebSocket URI carries %q: %s", forbidden, uri)
+		}
+	}
+
+	got, err := proto.ParseVLESSUrl(uri)
+	if err != nil {
+		t.Fatalf("ParseVLESSUrl(%q): %v", uri, err)
+	}
+	// An unlabelled profile is named after its rendering, as the xhttp one is named after the network.
+	want.Label = proto.NetworkWS
+	if got != want {
+		t.Errorf("round trip changed the profile:\n got %+v\nwant %+v", got, want)
+	}
+}
+
+// A URI that mixes the two renderings is refused rather than guessed: a client cannot speak both.
+func TestAURICannotMixTheRenderings(t *testing.T) {
+	t.Parallel()
+	base := "vless://" + testUUID + "@node.example.com:443?security=tls"
+	for _, raw := range []string{
+		base + "&type=ws&mode=packet-up",
+		base + "&type=ws&host=other.example.com",
+		base + "&type=" + proto.RenderingWebSocket,
+	} {
+		if _, err := proto.ParseVLESSUrl(raw); err == nil {
+			t.Errorf("ParseVLESSUrl accepted %q", raw)
+		}
+	}
+}
+
+func TestTheDefaultRenderingIsXHTTP(t *testing.T) {
+	t.Parallel()
+	if got := (proto.Profile{}).RenderingOrDefault(); got != proto.RenderingXHTTP {
+		t.Errorf("the default rendering is %q", got)
+	}
+	uri, err := proto.BuildVLESSUrl(proto.Profile{Domain: "node.example.com", UUID: testUUID, Path: "/p/"})
+	if err != nil {
+		t.Fatalf("BuildVLESSUrl: %v", err)
+	}
+	parsed, err := proto.ParseVLESSUrl(uri)
+	if err != nil {
+		t.Fatalf("ParseVLESSUrl: %v", err)
+	}
+	if parsed.Rendering != "" {
+		t.Errorf("an xhttp URI parsed as the rendering %q", parsed.Rendering)
+	}
+}
+
+func TestAnUnknownRenderingIsRefused(t *testing.T) {
+	t.Parallel()
+	profile := proto.Profile{Domain: "node.example.com", UUID: testUUID, Path: "/p/", Rendering: "grpc"}
+	if err := profile.Validate(); err == nil {
+		t.Error("Validate accepted a rendering this build does not write")
+	}
+	if _, err := proto.BuildVLESSUrl(profile); err == nil {
+		t.Error("BuildVLESSUrl accepted a rendering this build does not write")
 	}
 }
