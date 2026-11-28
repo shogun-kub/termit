@@ -701,3 +701,178 @@ func serverURLErr(ctx context.Context, m *lab.Machine) string {
 	}
 	return "https://" + d + p
 }
+
+// TestDrillReplicationAdoptGoneHome kills the home and lets the replica take its nodes. The guard is the
+// point: while the home answers, the adoption is refused, because a live home means a handoff. Once it is
+// gone the replica adopts the rows with the agent keys they already have — the node keeps working without a
+// visit — and the home that comes back pulls the adoption and stops writing the row.
+func TestDrillReplicationAdoptGoneHome(t *testing.T) {
+	l := replicationLab(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	defer cancel()
+
+	home := meshOnMN(t, ctx, l)
+	replica := meshOnMN2(t, ctx, l)
+	toHome := onlyPeer(t, replica)
+	victim := drillVictim(t, l)
+	domain := nodeDomain(t, ctx, victim)
+	makeActive(t, ctx, l, victim, domain)
+	// The replica has to hold the row before the home dies, or there is nothing to adopt.
+	waitReplicated(t, ctx, l, domain, "active")
+
+	t.Cleanup(func() {
+		bg := context.Background()
+		startMN(t, bg, l)
+		if strings.Contains(homeOn(t, bg, l, false, domain), replica.MNID) {
+			if err := restoreNode(bg, l, victim, domain, toHome); err != nil {
+				t.Errorf("the node was left homed by the replica: %v", err)
+			}
+		}
+	})
+
+	// A live home is not gone: the refusal is the whole safety argument.
+	out, err := l.MN2Admin(ctx, "home", "adopt", "--from", toHome)
+	if err == nil {
+		t.Fatalf("the adoption went through with the home alive:\n%s", out)
+	}
+	if !strings.Contains(out, "answered") {
+		t.Errorf("the refusal does not say the home answered:\n%s", out)
+	}
+	if got := homeOn(t, ctx, l, true, domain); !strings.Contains(got, home.MNID) {
+		t.Fatalf("the refusal changed the home to %q", got)
+	}
+
+	stopMN(t, ctx, l)
+	// One node, named: adopting the whole home would move every row of the lab, and this drill is about one
+	// node changing hands.
+	out = l.MustMN2Admin(t, ctx, "home", "adopt", "--from", toHome, "--uv", domain)
+	if !strings.Contains(out, domain) {
+		t.Errorf("the adoption does not name the node it took:\n%s", out)
+	}
+	// The rows it was not asked for stay where they are.
+	other := nodeDomain(t, ctx, l.UV1)
+	if got := homeOn(t, ctx, l, true, other); !strings.Contains(got, home.MNID) {
+		t.Errorf("%s moved with an adoption that named only %s: %q", other, domain, got)
+	}
+	if got := homeOn(t, ctx, l, true, domain); !strings.Contains(got, replica.MNID) {
+		t.Fatalf("the replica reports home %q, want itself", got)
+	}
+
+	// The node's own key is the key the new home accepts: no install, no visit.
+	sighting := lastSeenSQL(t, ctx, l, true, domain)
+	victim.MustRun(t, ctx, "termit-uv init --mn "+serverURL(t, ctx, l.MN2)+" 2>&1 | tail -2")
+	victim.MustRun(t, ctx, "termit-uv sync")
+	if err := lab.WaitFor(ctx, time.Minute, time.Second, "the adopted row to be sighted by its new home",
+		func(ctx context.Context) (bool, error) {
+			return lastSeenSQL(t, ctx, l, true, domain) != sighting, nil
+		}); err != nil {
+		t.Fatalf("%v", err)
+	}
+
+	// The home comes back, pulls the adoption, and stops writing the row.
+	startMN(t, ctx, l)
+	if err := lab.WaitFor(ctx, 4*time.Minute, 3*time.Second, "the returning home to take the adoption",
+		func(ctx context.Context) (bool, error) {
+			return strings.Contains(homeOn(t, ctx, l, false, domain), replica.MNID), nil
+		}); err != nil {
+		t.Fatalf("%v\nthe home still reports %q", err, homeOn(t, ctx, l, false, domain))
+	}
+	if out := victim.MustRun(t, ctx, "termit-uv sync"); strings.Contains(out, "read-only") {
+		t.Errorf("the node syncs read-only against the home that adopted it:\n%s", out)
+	}
+
+	// And back to the shape the rest of the suite expects: hand off, install the key, point it home.
+	if err := restoreNode(ctx, l, victim, domain, toHome); err != nil {
+		t.Fatalf("the node did not come back: %v", err)
+	}
+	if got := homeOn(t, ctx, l, false, domain); !strings.Contains(got, home.MNID) {
+		t.Errorf("the node is homed by %q after coming back, want %s", got, home.MNID)
+	}
+	if out := victim.MustRun(t, ctx, "termit-uv sync"); strings.Contains(out, "read-only") {
+		t.Errorf("the returning node syncs read-only against its home:\n%s", out)
+	}
+}
+
+// TestDrillReplicationEpochRotation is the successful half of the rotation the partition drill refuses: the
+// whole mesh moves, every node re-derives its pair credentials at the next sync, its own identity does not
+// change, and the nodes still pass their checks. The epoch never goes back, so this leaves the lab one
+// number higher — which is what a rotation is.
+func TestDrillReplicationEpochRotation(t *testing.T) {
+	l := replicationLab(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
+	defer cancel()
+
+	for _, machine := range labNodes(l) {
+		makeActive(t, ctx, l, machine, nodeDomain(t, ctx, machine))
+	}
+	home := meshOnMN(t, ctx, l)
+	before := pairCredentials(t, ctx, l.UV1)
+	identity := selfUUID(t, ctx, l.UV1)
+	if before == "" || identity == "" {
+		t.Fatalf("cannot read the node's credentials: pairs %q, identity %q", before, identity)
+	}
+
+	out := l.MustMNAdmin(t, ctx, "epoch", "rotate")
+	if !strings.Contains(out, "re-keyed") || !strings.Contains(out, "answered") {
+		t.Errorf("the rotation does not say what it did:\n%s", out)
+	}
+
+	// The replica applies the entry from the journal, and both servers agree afterwards.
+	if err := lab.WaitFor(ctx, 4*time.Minute, 2*time.Second, "the replica to take the rotation",
+		func(ctx context.Context) (bool, error) {
+			return meshOnMN2(t, ctx, l).Epoch == home.Epoch+1, nil
+		}); err != nil {
+		t.Fatalf("%v\nthe replica says epoch %d", err, meshOnMN2(t, ctx, l).Epoch)
+	}
+	if got := meshOnMN(t, ctx, l).Epoch; got != home.Epoch+1 {
+		t.Errorf("the home is at epoch %d, want %d", got, home.Epoch+1)
+	}
+
+	// Every node takes the new pairs at its own sync, and its own identity survives.
+	for _, machine := range labNodes(l) {
+		machine.MustRun(t, ctx, "termit-uv sync")
+	}
+	after := pairCredentials(t, ctx, l.UV1)
+	if after == before {
+		t.Fatalf("the pair credentials did not change: %s", after)
+	}
+	if got := selfUUID(t, ctx, l.UV1); got != identity {
+		t.Errorf("the rotation changed the node's identity: %s → %s", identity, got)
+	}
+
+	// And the mesh is still a mesh: every node answers its check.
+	for _, domain := range []string{
+		nodeDomain(t, ctx, l.UV1), nodeDomain(t, ctx, l.UV2),
+	} {
+		l.MustMNAdmin(t, ctx, "uv", "check", "now", domain)
+		state := showState(t, ctx, l, domain)
+		if state != "active" {
+			t.Errorf("%s is %s after a rotation", domain, state)
+		}
+	}
+}
+
+// labNodes is every node the lab has: the three the drills use.
+func labNodes(l *lab.Lab) []*lab.Machine {
+	nodes := []*lab.Machine{l.UV1, l.UV2}
+	if l.UV3 != nil {
+		nodes = append(nodes, l.UV3)
+	}
+	return nodes
+}
+
+// pairCredentials is the set of pair UUIDs a node holds: the credentials the rotation is about.
+func pairCredentials(t *testing.T, ctx context.Context, m *lab.Machine) string {
+	t.Helper()
+	out := m.MustRun(t, ctx,
+		`sed -n 's/.*"uuid": "\([0-9a-f-]\{36\}\)".*/\1/p' /var/lib/termit/uv/state.json | sort -u | tr '\n' ' '`)
+	return strings.TrimSpace(out)
+}
+
+// selfUUID is the node's own identity, which a rotation must never touch.
+func selfUUID(t *testing.T, ctx context.Context, m *lab.Machine) string {
+	t.Helper()
+	out := m.MustRun(t, ctx,
+		`sed -n 's/.*"self_uuid": "\([0-9a-f-]*\)".*/\1/p' /var/lib/termit/uv/state.json`)
+	return strings.TrimSpace(out)
+}
