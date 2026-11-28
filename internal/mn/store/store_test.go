@@ -636,3 +636,39 @@ func TestTheMeasuredEgressIsStoredAndKept(t *testing.T) {
 		t.Errorf("an unmeasurable probe erased the fact: %q %q", got.Egress, got.EgressIP)
 	}
 }
+
+// The intention and the measurement arrive on different schedules and neither may erase the other: a sync that
+// says "warp" after a probe measured "direct" is exactly the mismatch the operator has to see.
+func TestTheWantedEgressIsKeptApartFromTheMeasurement(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	s := openTestStore(t)
+	node := testUV("uv_one", "one.example.com")
+	if err := s.CreateUV(ctx, node); err != nil {
+		t.Fatalf("CreateUV: %v", err)
+	}
+	at := time.Date(2026, 11, 28, 12, 0, 0, 0, time.UTC)
+	if err := s.SetUVEgress(ctx, node.ID, "direct", "203.0.113.9", "", at); err != nil {
+		t.Fatalf("SetUVEgress: %v", err)
+	}
+	if err := s.SetUVEgressWant(ctx, node.ID, "warp"); err != nil {
+		t.Fatalf("SetUVEgressWant: %v", err)
+	}
+	got, err := s.UVByID(ctx, node.ID)
+	if err != nil {
+		t.Fatalf("UVByID: %v", err)
+	}
+	if got.Egress != "direct" || got.EgressWant != "warp" {
+		t.Errorf("egress = %q, want = %q; the second write must not touch the first", got.Egress, got.EgressWant)
+	}
+	if err := s.SetUVEgressWant(ctx, node.ID, ""); err != nil {
+		t.Fatalf("SetUVEgressWant(empty): %v", err)
+	}
+	got, err = s.UVByID(ctx, node.ID)
+	if err != nil {
+		t.Fatalf("UVByID: %v", err)
+	}
+	if got.EgressWant != "warp" {
+		t.Errorf("an empty report erased the intention: %q", got.EgressWant)
+	}
+}

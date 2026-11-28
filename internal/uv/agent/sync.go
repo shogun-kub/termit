@@ -38,6 +38,9 @@ type Remote struct {
 	// rather than in the request the caller passes, because both the agent and the one-shot sync must
 	// report it and one of them forgetting is a silent gap.
 	Transports []proto.Transport
+	// Egress is what the configuration asks for ("warp" or "direct"), for the same reason: both
+	// callers must say it, or the server cannot tell an intended direct exit from a fallen-back one.
+	Egress string
 	// Timeout bounds one call. Defaults to 30s.
 	Timeout time.Duration
 }
@@ -58,6 +61,9 @@ func (r Remote) Fetch(ctx context.Context, agentKey string, request proto.SyncRe
 	}
 	if request.AgentVersion == "" {
 		request.AgentVersion = proto.APIVersion
+	}
+	if request.Egress == "" {
+		request.Egress = r.Egress
 	}
 	if len(request.Transports) == 0 {
 		request.Transports = r.Transports

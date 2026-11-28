@@ -74,6 +74,7 @@ func (a *application) newLoop(cfg *config.Config) *agent.Loop {
 	if cfg.Hysteria != nil {
 		remote.Transports = proto.NodeTransports(true, proto.RenderingXHTTP, proto.RenderingWebSocket)
 	}
+	remote.Egress = egressWant(cfg)
 	return &agent.Loop{
 		Remote:    remote,
 		Logger:    slog.Default(),

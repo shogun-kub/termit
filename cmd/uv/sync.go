@@ -75,6 +75,7 @@ func (a *application) runSync(args []string) int {
 	if cfg.Hysteria != nil {
 		remote.Transports = proto.NodeTransports(true, proto.RenderingXHTTP, proto.RenderingWebSocket)
 	}
+	remote.Egress = egressWant(cfg)
 	answer, err := remote.Fetch(ctx, st.Credentials.AgentKey, proto.SyncRequest{AgentVersion: version.Agent("termit-uv")})
 	if err != nil {
 		fmt.Fprintf(stderr, "termit-uv sync: %v\n", err)
@@ -195,4 +196,14 @@ func (a *application) runSync(args []string) int {
 		fmt.Fprintf(stderr, "termit-uv sync: the client options page could not be refreshed: %v\n", err)
 	}
 	return exitOK
+}
+
+// egressWant is what this node's configuration asks the egress to be. The server compares it with what
+// it measures through the tunnel; a node whose tunnel is down and fail-open is on reports "warp" and
+// is measured as "direct", which is the case the owner has to see.
+func egressWant(cfg *config.Config) string {
+	if cfg != nil && cfg.Warp.UsesWarp() {
+		return "warp"
+	}
+	return "direct"
 }

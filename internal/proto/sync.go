@@ -17,6 +17,10 @@ type SyncRequest struct {
 	// Transports is what this node serves. A node that predates the field sends nothing, which every
 	// server reads as the TLS profile alone — the only thing a node could serve before it existed.
 	Transports []Transport `json:"transports,omitempty"`
+	// Egress is what this node's configuration asks its proxy traffic to leave through: "warp" or
+	// "direct". It is the intention, not the fact — the server measures the fact through the tunnel
+	// and flags the two apart, which is how a dead tunnel with fail-open shows up.
+	Egress string `json:"egress,omitempty"`
 }
 
 // HeaderCertSHA256 carries the leaf certificate the node currently serves, lowercase hex, so the

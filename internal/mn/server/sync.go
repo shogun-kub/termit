@@ -176,6 +176,13 @@ func (h *Handler) recordReport(ctx context.Context, node store.UV, req proto.Syn
 	if len(kinds) == 0 {
 		kinds = []string{proto.KindVLESS}
 	}
+	// The node's intention about its egress, kept next to the measurement the probe makes. A mismatch is
+	// the whole point: it is what a dead tunnel with fail-open looks like from here.
+	if wants := strings.TrimSpace(req.Egress); wants != "" {
+		if err := h.opts.Store.SetUVEgressWant(ctx, node.ID, wants); err != nil {
+			h.opts.Logger.Error("sync: record the wanted egress", "uv", node.ID, "err", err)
+		}
+	}
 	if err := h.opts.Store.SetUVTransports(ctx, node.ID, kinds,
 		proto.ServedRenderings(req.Transports, proto.KindVLESS)); err != nil {
 		h.opts.Logger.Error("sync: record the transports", "uv", node.ID, "err", err)

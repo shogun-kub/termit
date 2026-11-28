@@ -818,6 +818,34 @@ func (s *Store) SetUVEgress(ctx context.Context, uvID, egress, exitIP, want stri
 	return tx.Commit()
 }
 
+// SetUVEgressWant records what a node says its configuration asks the egress to be. It is kept apart
+// from the measurement because the two arrive on different schedules: a probe every cycle, a report on
+// every sync, and neither may erase the other.
+func (s *Store) SetUVEgressWant(ctx context.Context, uvID, want string) error {
+	if want == "" {
+		return nil
+	}
+	mnID, err := s.MeshID(ctx)
+	if err != nil {
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := ownedHere(ctx, tx, uvID, mnID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE uv SET egress_want = ? WHERE id = ?`, want, uvID); err != nil {
+		return fmt.Errorf("store: record what %s asks for: %w", uvID, err)
+	}
+	if err := recordNode(ctx, tx, mnID, s.now().UTC(), uvID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 // UVTransports is what every node reported, keyed by node id and ordered so a rendering is stable.
 func (s *Store) UVTransports(ctx context.Context) (map[string][]string, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT uv_id, kind FROM uv_transport ORDER BY uv_id, kind`)
