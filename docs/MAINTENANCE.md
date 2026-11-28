@@ -43,14 +43,16 @@ go test -coverprofile=coverage.out ./cmd/... ./internal/...
 SONAR_TOKEN=… sonar-scanner -Dsonar.host.url=<server>
 ```
 
-**The gate.** The project is bound to the built-in `Sonar way` gate, and a built-in gate cannot be edited:
-the analysis token reads the gates (`api/qualitygates/list` answers `200`) but every endpoint that changes
-or binds one answers `Insufficient privileges`, so the change is made in the UI — Quality Gates →
-`Sonar way` → Copy, name the copy `Termit 0.8`, set "Coverage on New Code" to the number below, then
-Project Information → Quality Gate → select it. **Decided 2026-11-28:** `0.8.0` runs on that copy, because
-the built-in 80 % was measured against 51.7 % over the 20 552 lines that landed since `0.4.1`, and writing
-five thousand statements of tests is not what this release is for. The threshold goes back to 80 the
-moment `new_coverage` reports it.
+**The gate.** The project is bound to a copy of the built-in `Sonar way` gate, named `Temporary Termit` on
+the server, with `new_coverage` (new code) at 54. The built-in gate itself cannot be edited — the analysis
+token reads the gates (`api/qualitygates/list` and `api/qualitygates/show` answer `200`) but every endpoint
+that changes or binds one answers `Insufficient privileges` — so a threshold is changed in the UI: Quality
+Gates → the copy → its "Coverage on New Code" condition → Project Information → Quality Gate → select it.
+**The project's gate status is computed when an analysis arrives**, so a lowered condition shows no change
+until the scanner has run again; read it after a scan, not before. **Decided 2026-11-28:** `0.8.0` runs on
+that copy at 54 %, because the built-in 80 % was measured against 51.7 % over the 20 552 lines that landed
+since `0.4.1`, and writing five thousand statements of tests is not what this release is for. The
+threshold goes back to 80 the moment `new_coverage` reports it.
 
 **What tests alone buy, measured.** A commit that took `internal/hardencmd` from 0 % to 26.6 % — 205 more
 statements — moved overall coverage 53.8 % → 54.8 % and left `new_coverage` at 54.1 %: the metric counts
