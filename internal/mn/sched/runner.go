@@ -294,6 +294,14 @@ func (r *Runner) record(ctx context.Context, uvID, transport string, result prob
 	} else if result.Err != nil {
 		detail = result.Err.Error()
 	}
+	// The egress travels with the check that measured it: the probe has already asked the tunnel
+	// where it leaves, and a row that cannot say is left alone (SetUVEgress ignores an empty value).
+	// A failure here must not lose the check itself, so it is logged below by the caller's error.
+	if result.Egress != "" {
+		if err := r.Store.SetUVEgress(ctx, uvID, result.Egress, result.ExitIP, "", r.Now().UTC()); err != nil {
+			return err
+		}
+	}
 	return r.Store.AppendCheck(ctx, store.Check{
 		UVID:       uvID,
 		At:         r.Now().UTC(),

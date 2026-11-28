@@ -329,6 +329,13 @@ type NodeView struct {
 	// able to see that a node lives elsewhere, and since when (HomeTerm counts handoffs and adoptions).
 	HomeMN   string `json:"home_mn,omitempty"`
 	HomeTerm int64  `json:"home_term,omitempty"`
+	// Egress is where this server last measured the node's proxy traffic leaving from, and EgressWant
+	// what the node says its configuration asks for. The two differ when the tunnel is down and
+	// fail-open is on: traffic leaves directly while the owner asked for WARP.
+	Egress     string     `json:"egress,omitempty"`
+	EgressIP   string     `json:"egress_ip,omitempty"`
+	EgressWant string     `json:"egress_want,omitempty"`
+	EgressAt   *time.Time `json:"egress_at,omitempty"`
 }
 
 func view(uv store.UV) NodeView {
@@ -340,6 +347,7 @@ func view(uv store.UV) NodeView {
 		FailedCycles: uv.FailedCycles, CredentialEpoch: uv.CredentialEpoch,
 		HasAgentKey: uv.AgentKeyHash != "", HasSubToken: uv.SubTokenHash != "",
 		HomeMN: uv.HomeMN, HomeTerm: uv.HomeTerm,
+		Egress: uv.Egress, EgressIP: uv.EgressIP, EgressWant: uv.EgressWant, EgressAt: uv.EgressAt,
 	}
 }
 

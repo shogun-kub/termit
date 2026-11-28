@@ -18,6 +18,8 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -77,6 +79,11 @@ type Result struct {
 	Latency time.Duration
 	Class   Class
 	Err     error
+	// Egress is where the node's tunnel actually leaves from, as this probe measured it: "warp",
+	// "direct", or empty when the measurement could not be made. Empty is not "direct".
+	Egress string
+	// ExitIP is the address the trace endpoint saw the request come from.
+	ExitIP string
 }
 
 // Unknown reports whether the prober failed rather than the node.
@@ -84,12 +91,19 @@ func (r Result) Unknown() bool {
 	return r.Class == ClassWorker || r.Class == ClassProbeError || r.Class == ClassCertChanged
 }
 
+// DefaultTraceURL is what the egress measurement asks: Cloudflare reports the address the request
+// arrived from and whether it came through WARP, which is the same evidence a client would produce.
+const DefaultTraceURL = "https://cloudflare.com/cdn-cgi/trace"
+
 // Config configures a Worker.
 type Config struct {
 	// Binary is the xray-core executable.
 	Binary string
 	// WorkDir holds the generated config and the worker's log; created if missing.
 	WorkDir string
+	// TraceURL is fetched through each tunnel after the check, to record where the traffic left from.
+	// Empty means DefaultTraceURL.
+	TraceURL string
 	// ProbeURL is fetched through each tunnel. Its host and port are what the tunnel must reach.
 	ProbeURL string
 	// ExpectStatus is the HTTP status that counts as success. Defaults to 200.
@@ -371,7 +385,7 @@ func (w *Worker) probeOne(ctx context.Context, t Target, socksPort int) Result {
 	start := time.Now()
 	res := Result{ID: t.ID}
 
-	ctx, cancel := context.WithTimeout(ctx, w.cfg.Timeout)
+	checkCtx, cancel := context.WithTimeout(ctx, w.cfg.Timeout)
 	defer cancel()
 
 	socksAddr := net.JoinHostPort("127.0.0.1", strconv.Itoa(socksPort))
@@ -381,7 +395,7 @@ func (w *Worker) probeOne(ctx context.Context, t Target, socksPort int) Result {
 		return res
 	}
 
-	conn, err := socksConnect(ctx, socksAddr, host, port)
+	conn, err := socksConnect(checkCtx, socksAddr, host, port)
 	if err != nil {
 		res.Latency = time.Since(start)
 		res.Class, res.Err = classify(err)
@@ -394,7 +408,7 @@ func (w *Worker) probeOne(ctx context.Context, t Target, socksPort int) Result {
 	// 400 from the web server looks like, and it is not the node's fault.
 	if port == 443 {
 		tlsConn := tls.Client(conn, &tls.Config{ServerName: host, MinVersion: tls.VersionTLS12})
-		if err := tlsConn.HandshakeContext(ctx); err != nil {
+		if err := tlsConn.HandshakeContext(checkCtx); err != nil {
 			res.Latency = time.Since(start)
 			res.Class, res.Err = classify(err)
 			return res
@@ -413,6 +427,11 @@ func (w *Worker) probeOne(ctx context.Context, t Target, socksPort int) Result {
 		return res
 	}
 	res.OK = true
+	// The check says the tunnel carries a request; this says where the request came from. A second
+	// budget, because the check's is spent by now.
+	traceCtx, cancelTrace := context.WithTimeout(ctx, w.cfg.Timeout)
+	defer cancelTrace()
+	res.Egress, res.ExitIP = w.egressThroughTunnel(traceCtx, socksPort)
 	return res
 }
 
@@ -740,6 +759,94 @@ func encodeSocksAddr(host string) ([]byte, byte, error) {
 }
 
 // httpStatusThroughTunnel sends one minimal GET and returns the status code.
+// egressThroughTunnel asks the node's tunnel where its traffic leaves. It is a second request with its own
+// budget, and its failure is not the node's: an unmeasurable egress leaves the field empty, exactly as a
+// check that could not run leaves the state alone.
+func (w *Worker) egressThroughTunnel(ctx context.Context, socksPort int) (string, string) {
+	body, err := w.traceThroughTunnel(ctx, socksPort)
+	if err != nil {
+		return "", ""
+	}
+	return parseTrace(body)
+}
+
+// traceThroughTunnel fetches the trace document through the tunnel and returns it whole.
+func (w *Worker) traceThroughTunnel(ctx context.Context, socksPort int) (string, error) {
+	raw := w.cfg.TraceURL
+	if raw == "" {
+		raw = DefaultTraceURL
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return "", err
+	}
+	host := parsed.Hostname()
+	port := 443
+	if given := parsed.Port(); given != "" {
+		port, err = strconv.Atoi(given)
+		if err != nil {
+			return "", err
+		}
+	}
+	socksAddr := net.JoinHostPort("127.0.0.1", strconv.Itoa(socksPort))
+	conn, err := socksConnect(ctx, socksAddr, host, port)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = conn.Close() }()
+	_ = conn.SetDeadline(time.Now().Add(w.cfg.Timeout))
+	if port == 443 {
+		tlsConn := tls.Client(conn, &tls.Config{ServerName: host, MinVersion: tls.VersionTLS12})
+		if err := tlsConn.HandshakeContext(ctx); err != nil {
+			return "", err
+		}
+		conn = tlsConn
+	}
+	path := parsed.RequestURI()
+	if path == "" {
+		path = "/"
+	}
+	request := "GET " + path + " HTTP/1.1\r\nHost: " + host + "\r\nUser-Agent: termit-probe/1\r\nConnection: close\r\n\r\n"
+	if _, err := io.WriteString(conn, request); err != nil {
+		return "", err
+	}
+	response, err := http.ReadResponse(bufio.NewReader(conn), nil)
+	if err != nil {
+		return "", err
+	}
+	defer response.Body.Close() //nolint:errcheck // read-only body.
+	if response.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("probe: the trace endpoint answered %s", response.Status)
+	}
+	body, err := io.ReadAll(io.LimitReader(response.Body, 64<<10))
+	if err != nil {
+		return "", err
+	}
+	return string(body), nil
+}
+
+// parseTrace reads the two lines the trace document carries: the address that arrived and whether WARP
+// carried it. A document without them is not a verdict.
+func parseTrace(body string) (egress, exitIP string) {
+	for _, line := range strings.Split(body, "\n") {
+		key, value, ok := strings.Cut(strings.TrimSpace(line), "=")
+		if !ok {
+			continue
+		}
+		switch key {
+		case "ip":
+			exitIP = value
+		case "warp":
+			if value == "on" {
+				egress = "warp"
+			} else {
+				egress = "direct"
+			}
+		}
+	}
+	return egress, exitIP
+}
+
 func httpStatusThroughTunnel(conn net.Conn, host string) (int, error) {
 	req := "GET / HTTP/1.1\r\nHost: " + host + "\r\nUser-Agent: termit-probe/1\r\nConnection: close\r\n\r\n"
 	if _, err := io.WriteString(conn, req); err != nil {

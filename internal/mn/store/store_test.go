@@ -532,6 +532,10 @@ func TestOpenMigratesFromFive(t *testing.T) {
 		"DROP TABLE IF EXISTS mesh_report",
 		"ALTER TABLE uv DROP COLUMN home_mn",
 		"ALTER TABLE uv DROP COLUMN home_term",
+		"ALTER TABLE uv DROP COLUMN egress",
+		"ALTER TABLE uv DROP COLUMN egress_ip",
+		"ALTER TABLE uv DROP COLUMN egress_want",
+		"ALTER TABLE uv DROP COLUMN egress_at",
 		"PRAGMA user_version = 5",
 	} {
 		if _, err := raw.Exec(query); err != nil {
@@ -593,5 +597,42 @@ func TestTheRenderingsAreStoredBesideTheKind(t *testing.T) {
 	}
 	if got := renderings[node.ID]; len(got) != 0 {
 		t.Errorf("a report without renderings left %v behind", got)
+	}
+}
+
+// The measurement is a fact about the node, so it lives on the row and travels with it. An empty measurement
+// keeps the previous one: a probe that could not tell must not erase what it said before.
+func TestTheMeasuredEgressIsStoredAndKept(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	s := openTestStore(t)
+	node := testUV("uv_one", "one.example.com")
+	if err := s.CreateUV(ctx, node); err != nil {
+		t.Fatalf("CreateUV: %v", err)
+	}
+	at := time.Date(2026, 11, 28, 12, 0, 0, 0, time.UTC)
+	if err := s.SetUVEgress(ctx, node.ID, "warp", "104.28.1.2", "warp", at); err != nil {
+		t.Fatalf("SetUVEgress: %v", err)
+	}
+	got, err := s.UVByID(ctx, node.ID)
+	if err != nil {
+		t.Fatalf("UVByID: %v", err)
+	}
+	if got.Egress != "warp" || got.EgressIP != "104.28.1.2" || got.EgressWant != "warp" {
+		t.Errorf("stored egress = %q %q %q", got.Egress, got.EgressIP, got.EgressWant)
+	}
+	if got.EgressAt == nil || !got.EgressAt.Equal(at) {
+		t.Errorf("egress_at = %v, want %v", got.EgressAt, at)
+	}
+
+	if err := s.SetUVEgress(ctx, node.ID, "", "", "", at.Add(time.Hour)); err != nil {
+		t.Fatalf("SetUVEgress(empty): %v", err)
+	}
+	got, err = s.UVByID(ctx, node.ID)
+	if err != nil {
+		t.Fatalf("UVByID: %v", err)
+	}
+	if got.Egress != "warp" || got.EgressIP != "104.28.1.2" {
+		t.Errorf("an unmeasurable probe erased the fact: %q %q", got.Egress, got.EgressIP)
 	}
 }

@@ -582,6 +582,9 @@ func runUVShow(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "home:    %s (term %d)\n", result.Node.HomeMN, result.Node.HomeTerm)
 	}
 	fmt.Fprintf(stdout, "failed cycles: %d\n", result.Node.FailedCycles)
+	if line := egressLine(result.Node); line != "" {
+		fmt.Fprintf(stdout, "egress:  %s\n", line)
+	}
 	if len(result.Transports) > 1 {
 		parts := make([]string, 0, len(result.Transports))
 		for _, kind := range result.Transports {
@@ -732,4 +735,23 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 	fmt.Fprintf(stdout, "state:    %s (changed: %v)\n", result.State, result.Changed)
 	fmt.Fprintf(stdout, "reason:   %s\n", result.Reason)
 	return exitOK
+}
+
+// egressLine says where the node's traffic actually leaves from, and flags a node whose measurement
+// disagrees with what it was told to do. An unmeasured node prints nothing: "unknown" is not "direct".
+func egressLine(node admin.NodeView) string {
+	if node.Egress == "" {
+		return ""
+	}
+	line := node.Egress
+	if node.EgressIP != "" {
+		line += " via " + node.EgressIP
+	}
+	if node.EgressAt != nil {
+		line += " (measured " + node.EgressAt.UTC().Format(time.RFC3339) + ")"
+	}
+	if node.EgressWant != "" && node.EgressWant != node.Egress {
+		line += ", but the node is configured for " + node.EgressWant
+	}
+	return line
 }

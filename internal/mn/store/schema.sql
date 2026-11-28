@@ -32,7 +32,14 @@ CREATE TABLE IF NOT EXISTS uv (
     home_mn         TEXT NOT NULL DEFAULT '',
 -- home_term counts home roles: a handoff increments it, so a server that lost a node cannot win a merge
 -- with a stale write. 0 is every row that has never been handed over.
-    home_term       INTEGER NOT NULL DEFAULT 0
+    home_term       INTEGER NOT NULL DEFAULT 0,
+    -- What this server measured of the node's egress, and what the node said it asks for. Both are
+    -- empty until something writes them; a reader treats the empty case as "unknown", never as
+    -- "direct".
+    egress          TEXT NOT NULL DEFAULT '',
+    egress_ip       TEXT NOT NULL DEFAULT '',
+    egress_want     TEXT NOT NULL DEFAULT '',
+    egress_at       TEXT
 );
 
 CREATE INDEX IF NOT EXISTS uv_state ON uv (state);

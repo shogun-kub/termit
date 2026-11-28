@@ -310,3 +310,30 @@ func TestAnUnmodelledErrorIsNotAVerdict(t *testing.T) {
 		t.Errorf("a reset was classified %q", class)
 	}
 }
+
+// The trace document is the only evidence: a node behind a dead tunnel fails to fetch it at all, and a node
+// whose tunnel is bypassed reports warp=off. A document without the lines is not a verdict.
+func TestTheTraceSaysWhereTrafficLeft(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name   string
+		body   string
+		egress string
+		ip     string
+	}{
+		{"through warp", "fl=1f2\nip=104.28.1.2\nwarp=on\ncolo=AMS\n", "warp", "104.28.1.2"},
+		{"direct", "ip=203.0.113.9\nwarp=off\n", "direct", "203.0.113.9"},
+		{"no warp line", "ip=203.0.113.9\n", "", "203.0.113.9"},
+		{"garbage", "not a trace document", "", ""},
+		{"empty", "", "", ""},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			egress, ip := parseTrace(test.body)
+			if egress != test.egress || ip != test.ip {
+				t.Errorf("parseTrace(%q) = %q, %q; want %q, %q", test.body, egress, ip, test.egress, test.ip)
+			}
+		})
+	}
+}

@@ -81,6 +81,17 @@ type UV struct {
 	// still claims an older term loses to the row that has already moved, so a server returning from a
 	// partition cannot undo a handoff it missed.
 	HomeTerm int64
+	// Egress is where this server last saw the node's proxy traffic leave from, measured through the
+	// node's own profile: "warp", "direct", or empty for a node it never measured. It is a fact about
+	// the path a client takes, not the mode the node was asked for.
+	Egress string
+	// EgressIP is the address the internet saw the request come from.
+	EgressIP string
+	// EgressWant is what the node said its configuration asks for ("warp" or "direct"). Empty means
+	// it never reported one: a node from before the field, or one that has no WARP at all.
+	EgressWant string
+	// EgressAt is when the measurement was made.
+	EgressAt *time.Time
 }
 
 // Invite is a registration code. Only its hash is stored.
@@ -178,11 +189,13 @@ func scanNullTime(value sql.NullString) (*time.Time, error) {
 const uvColumns = `id, label, domain, self_uuid, probe_uuid, profile_json, state, state_reason,
 	created_at, approved_at, last_seen_at, last_request_ip, agent_version,
 	agent_key_hash, agent_key_sealed, sub_token_hash, sub_token_sealed, failed_cycles, credential_epoch, invite_id, notes,
-next_check_at, last_check_at, cert_sha256, home_mn, home_term`
+next_check_at, last_check_at, cert_sha256, home_mn, home_term,
+	egress, egress_ip, egress_want, egress_at`
 
 // uvPlaceholders is one "?" per column of uvColumns. It is written out rather than built from a count,
 // because a column added without its placeholder must fail loudly at the first insert, not shift values.
-const uvPlaceholders = `?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?`
+const uvPlaceholders = `?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+	?, ?, ?, ?`
 
 // uvArgs is the argument order of uvColumns. Three statements write a whole node row — enrollment with
 // an invite, enrollment without one, and a snapshot applied from a peer — so the order lives here once.
@@ -193,20 +206,21 @@ func uvArgs(uv UV) []any {
 		uv.LastRequestIP, uv.AgentVersion, uv.AgentKeyHash, uv.AgentKeySealed, uv.SubTokenHash,
 		uv.SubTokenSealed, uv.FailedCycles, uv.CredentialEpoch, uv.InviteID, uv.Notes,
 		nullableTime(uv.NextCheckAt), nullableTime(uv.LastCheckAt), uv.CertSHA256, uv.HomeMN, uv.HomeTerm,
+		uv.Egress, uv.EgressIP, uv.EgressWant, nullableTime(uv.EgressAt),
 	}
 }
 
 func scanUV(row interface{ Scan(...any) error }) (UV, error) {
 	var (
-		uv                                               UV
-		createdAt                                        string
-		approvedAt, lastSeenAt, nextCheckAt, lastCheckAt sql.NullString
+		uv                                                         UV
+		createdAt                                                  string
+		approvedAt, lastSeenAt, nextCheckAt, lastCheckAt, egressAt sql.NullString
 	)
 	err := row.Scan(&uv.ID, &uv.Label, &uv.Domain, &uv.SelfUUID, &uv.ProbeUUID, &uv.ProfileJSON,
 		&uv.State, &uv.StateReason, &createdAt, &approvedAt, &lastSeenAt, &uv.LastRequestIP,
 		&uv.AgentVersion, &uv.AgentKeyHash, &uv.AgentKeySealed, &uv.SubTokenHash, &uv.SubTokenSealed, &uv.FailedCycles,
 		&uv.CredentialEpoch, &uv.InviteID, &uv.Notes, &nextCheckAt, &lastCheckAt, &uv.CertSHA256, &uv.HomeMN,
-		&uv.HomeTerm)
+		&uv.HomeTerm, &uv.Egress, &uv.EgressIP, &uv.EgressWant, &egressAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return UV{}, ErrNotFound
@@ -227,6 +241,9 @@ func scanUV(row interface{ Scan(...any) error }) (UV, error) {
 	}
 	if uv.LastSeenAt, err = scanNullTime(lastSeenAt); err != nil {
 		return UV{}, fmt.Errorf("store: parse last_seen_at: %w", err)
+	}
+	if uv.EgressAt, err = scanNullTime(egressAt); err != nil {
+		return UV{}, fmt.Errorf("store: parse egress_at: %w", err)
 	}
 	return uv, nil
 }
@@ -762,6 +779,43 @@ func (s *Store) UVRenderings(ctx context.Context) (map[string][]string, error) {
 		return nil, err
 	}
 	return out, nil
+}
+
+// SetUVEgress records what this server measured about a node's egress and what the node said it asks
+// for. An empty egress is not written: a probe that could not tell must leave the previous fact in
+// place, exactly as a check that could not run leaves the state alone.
+func (s *Store) SetUVEgress(ctx context.Context, uvID, egress, exitIP, want string, at time.Time) error {
+	if egress == "" {
+		return nil
+	}
+	mnID, err := s.MeshID(ctx)
+	if err != nil {
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := ownedHere(ctx, tx, uvID, mnID); err != nil {
+		return err
+	}
+	// The want is the node's own statement and arrives on a different schedule than the measurement,
+	// so an empty one keeps what is stored rather than clearing it.
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE uv SET egress = ?, egress_ip = ?, egress_at = ? WHERE id = ?`,
+		egress, exitIP, formatTime(at), uvID); err != nil {
+		return fmt.Errorf("store: record the egress of %s: %w", uvID, err)
+	}
+	if want != "" {
+		if _, err := tx.ExecContext(ctx, `UPDATE uv SET egress_want = ? WHERE id = ?`, want, uvID); err != nil {
+			return fmt.Errorf("store: record what %s asks for: %w", uvID, err)
+		}
+	}
+	if err := recordNode(ctx, tx, mnID, s.now().UTC(), uvID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // UVTransports is what every node reported, keyed by node id and ordered so a rendering is stable.
