@@ -2864,6 +2864,41 @@ only by the peer and reaches `active` on the peer's `ok`; stopping the peer leav
 in decision 1, recorded in the guide; a stale result never moves the node; the state-machine tests are
 unchanged, because no transition was added.
 
+**Built on `dev`, 2026-11-28.** `prober.vantage: {peer, domains}` names a peer from `mesh.peers` and the
+nodes it is asked about; `POST {prefix}/peer/probe` carries one probe target and answers with the peer's own
+prober result plus when it produced it. The home server consults the vantage only after its own attempts
+failed, and folds the answer into the verdict it already computes: an `ok` from another network overrules a
+local failure, a `failed` agrees with what was already seen, no answer — peer down, no prober, an answer
+from an old cycle — changes nothing. The check row names the vantage, and `uv show` prints
+`last probe: … ok via mn2`, so a verdict this server did not produce cannot be mistaken for its own. The
+block is validated at load: a peer that is not configured, no domains at all, or something that is not a
+domain refuses to start.
+
+The four decisions the item listed, as taken:
+
+1. **How many negatives block** — the rule above, with one addition the plan did not spell out: a peer's
+   `failed` can only ever agree with a failing local verdict, so a peer that is compromised or simply
+   misconfigured cannot block a node by itself. It can keep a dead node `active` by lying an `ok`, which the
+   mesh accepts for the same reason it accepts a hostile node: this is a cooperative network (§3.6).
+2. **What the peer learns** — the probe credential, the secret path and the pin, for the domains listed and
+   nothing else. Under a shared master key a peer derives pair credentials anyway, so this is not new power
+   inside a mesh; the explicit `domains` list is what keeps it from being new power outside one.
+3. **Who picks the peer** — the operator, by name, in the configuration. No automatic selection: the
+   topology is a decision, not an inference. What is missing from this build: `termit-mn status` does not say
+   "no external vantage" for a node whose peer is gone, so a delegation that stopped working is visible in
+   `uv show` and the check history, not in `status`.
+4. **Visibility of the vantage** — every served verdict names it, in the check row's detail and in
+   `uv show`. Metrics do not yet carry it.
+
+Authentication reuses the mesh credential (`mesh.PullToken` over the shared master key) instead of the
+per-vantage key the item sketched: inside a mesh that key already exists, and a second one would be one more
+secret to rotate for no new property. A vantage outside the mesh would need one, and that is the case this
+build does not cover.
+
+Not yet proved: no live `peer/probe` call between two servers has run. Both ends are covered by tests
+(an HTTP test server on each side) and the acceptance list below still has to be walked on the lab, which
+has the two MNs it needs.
+
 #### 5.2.5 Completion for both binaries
 
 `termit-uv completion bash|zsh` and `termit-mn completion …`, generated from the same flag definitions the

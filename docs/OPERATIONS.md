@@ -778,6 +778,51 @@ node; the two rows are why both kinds are kept.
 Logs are structured and go to stderr, which means the journal. Identifiers are logged; credentials,
 keys and UUIDs are not.
 
+### 5.1 A second vantage for a node this server cannot reach
+
+A check that times out is a verdict: after `policy.block_after_failed_cycles` cycles the node is blocked,
+even when the path between this server and that node is the broken part. That happens for real — a node
+co-located with its server behind hairpin NAT (`IMPLEMENTATION_PLAN.md` §5.2.3), or one provider's path to
+one node failing while every other node is fine.
+
+The fix is one peer on another network asked what it sees. It is a delegation, not a federation: only the
+home server decides and writes state, and the peer never touches the registry.
+
+```yaml
+# /etc/termit/mn/config.yaml
+prober:
+  xray_binary: /usr/local/lib/termit/xray
+  url: https://cp.cloudflare.com/generate_204
+  vantage:
+    peer: mn2                       # a name from mesh.peers
+    domains: [node1.example.com]    # the nodes it is asked about
+```
+
+The list of domains is explicit on purpose: the delegation hands the peer the ability to connect to a node
+it does not own (the probe credential, the secret path, the pin), and a rule that inferred it would hide
+which node is delegated to whom. The call uses the mesh credential replication already carries, so there is
+no second secret to mint or rotate. `termit-mn` refuses to start with a peer that is not in `mesh.peers`, an
+empty list, or something that is not a domain.
+
+**How the answers combine** — the same rule the retry aggregation uses, extended to vantages:
+
+| this server | the peer | verdict |
+|---|---|---|
+| ok | — | ok; the peer is not asked at all |
+| failed | ok | ok — another network reached it, so the node serves |
+| failed | failed | failed; every observation that concluded said the same |
+| failed | no answer | failed on this server's own evidence, as before |
+| unknown | any | unknown; nothing moves |
+
+A peer that is down, has no prober, or answers from a cycle that has already passed contributes nothing:
+`termit-mn uv show` then names no vantage, and the node keeps its state. `uv show` prints the vantage when
+one answered — `last probe: … ok via mn2` — so an `ok` this server did not produce cannot be mistaken for
+its own.
+
+Known limit: `termit-mn status` does not yet say "no external vantage" for a delegated node whose peer is
+gone (decision 3 in `IMPLEMENTATION_PLAN.md` §5.2.4). The check history and `uv show` are where that shows
+today.
+
 ## 6. Egress: WARP
 
 WARP is **on by default** (`warp.mode: all`). The reason is in the design: an application on a client's

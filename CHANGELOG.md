@@ -7,6 +7,16 @@ pre-releases, and whoever installs the release skipped them.
 
 ### Added
 
+- **A server can ask a peer on another network about a node it cannot reach.** `prober.vantage` names one
+  peer from `mesh.peers` and the domains it is asked about; on `POST {prefix}/peer/probe` that peer runs
+  its own prober against one target and answers with what it saw and when. The home server asks only after
+  its own attempts failed, and an `ok` from the other side overrules the local failure, so a blocked path
+  no longer blocks the node. `termit-mn uv show` prints `last probe: … ok via mn2` when the verdict came
+  from elsewhere, and a peer that does not answer — or answers from an old cycle — changes nothing. It is
+  a delegation: only the home server writes state, and the credential is the mesh one replication already
+  uses.
+
+
 ### Added
 
 - **The management server measures where a node's traffic actually leaves from.** On every probe cycle it

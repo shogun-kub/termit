@@ -272,6 +272,24 @@ egress line at all — unknown is not direct. The target is Cloudflare's trace e
 prober: with `warp.mode: selected` the answer is about that domain, not about every domain a client
 reaches.
 
+### When this server cannot see a node
+
+A check that times out is a verdict: the node is blocked after the grace cycles, even when the broken part
+is the path from here. One named peer can be asked what it sees instead:
+
+```yaml
+prober:
+  vantage:
+    peer: mn2                       # a name from mesh.peers
+    domains: [node1.example.com]    # the nodes it is asked about
+```
+
+The peer answers with what its own prober saw and when; this server asks only after its own attempts fail,
+and an `ok` from there overrules the local failure. `uv show` then prints `last probe: … ok via mn2`, so
+the verdict is not mistaken for one this server produced. A peer that does not answer changes nothing, and
+so does an answer from an old cycle. The list of domains is explicit because the peer is given the ability
+to connect to a node it does not own; the credential is the mesh one replication already carries.
+
 ## Subscriptions
 
 Every node has one token. The endpoints are:

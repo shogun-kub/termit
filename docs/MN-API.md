@@ -487,6 +487,36 @@ key it shares. What it does ask the peer is whether it still answers, and a peer
 alive home means a handoff, not an adoption. The adoption is announced in the replica's own journal
 (`home_term` + 1, the same key), so a home that returns later pulls it and stops writing the row.
 
+### 3.8 `POST {prefix}/peer/probe`
+
+The second vantage (`IMPLEMENTATION_PLAN.md` §5.2.4): a home server that cannot reach one of its nodes asks a
+peer on another network what the peer sees. The peer answers with an observation — never a state, and it
+neither reads nor writes the registry.
+
+```json
+{"target": {"address": "node1.example.com", "port": 443, "server_name": "node1.example.com",
+            "path": "/2ed18341babc42659bbd61de3bfce069/", "mode": "packet-up",
+            "uuid": "…", "pinned_cert_sha256": "…", "transport": "vless"}}
+```
+
+```json
+{"ok": true, "latency_ms": 118, "at": "2026-11-28T18:44:02Z", "vantage": "mn2.example.com"}
+```
+
+`class` and `error` carry the reason when `ok` is false, in the prober's own vocabulary
+(`tunnel_rejected`, `cert_changed`, …). The caller must treat `at` as part of the answer: an observation from
+a cycle that has already passed is not a verdict, and its own default is five minutes.
+
+`503` means the answering server has no prober or could not run the check — the asking side reads that as no
+verdict, exactly as it reads its own broken worker, and no node moves. `401` is a missing or wrong mesh
+credential: the call uses the same one replication does, so a peer that may pull a journal may also be asked
+what it sees. `400` is a body that is not the request above.
+
+What the target carries is the ability to connect to a node the peer does not own: the probe credential, the
+secret path and the certificate pin. Under a shared master key (§3.5) a peer derives pair credentials anyway,
+so this is not new power; without replication it is, which is why the delegation is listed per domain in
+`prober.vantage.domains` and never inferred.
+
 ---
 
 ## 4. Subscriptions
