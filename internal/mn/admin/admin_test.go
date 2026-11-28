@@ -346,6 +346,45 @@ func TestOperatorOverrideFollowsTheStateTable(t *testing.T) {
 	}
 }
 
+// A replica cannot erase a row a peer homes the ordinary way, and that is on purpose — but the copy is this
+// server's own record of a node the peer owns, and dropping it is the repair for a domain held twice. A row
+// this server homes stays out of reach of --force.
+func TestForgetForceDropsOnlyACopyAnotherServerHomes(t *testing.T) {
+	t.Parallel()
+	client, db := start(t)
+	ctx := context.Background()
+	if err := db.CreateUV(ctx, store.UV{ID: "uv_foreign", Domain: "foreign.example.com", SelfUUID: "u1",
+		State: store.StateActive, CreatedAt: testNow, CredentialEpoch: 1, HomeMN: "mn_somewhere_else"}); err != nil {
+		t.Fatalf("CreateUV: %v", err)
+	}
+	if err := call(ctx, client, "uv.forget", map[string]any{"id": "uv_foreign"}, &struct{}{}); err == nil {
+		t.Error("uv.forget dropped a live foreign row without --force")
+	}
+	var dropped struct {
+		Home string `json:"home"`
+	}
+	if err := call(ctx, client, "uv.forget", map[string]any{"id": "uv_foreign", "force": true}, &dropped); err != nil {
+		t.Fatalf("uv.forget --force: %v", err)
+	}
+	if dropped.Home != "mn_somewhere_else" {
+		t.Errorf("the answer names home %q", dropped.Home)
+	}
+	if _, err := db.UVByID(ctx, "uv_foreign"); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("the foreign copy survived: %v", err)
+	}
+
+	// A row this server homes is not a copy: it goes through rm and then forget.
+	if err := db.CreateUV(ctx, store.UV{ID: "uv_own", Domain: "own.example.com", SelfUUID: "u2",
+		State: store.StateActive, CreatedAt: testNow, CredentialEpoch: 1}); err != nil {
+		t.Fatalf("CreateUV: %v", err)
+	}
+	if err := call(ctx, client, "uv.forget", map[string]any{"id": "uv_own", "force": true}, &struct{}{}); err == nil {
+		t.Error("uv.forget --force erased a row this server homes")
+	}
+	if _, err := db.UVByID(ctx, "uv_own"); err != nil {
+		t.Fatalf("the row this server homes is gone: %v", err)
+	}
+}
 func TestForgetFreesTheDomainOnlyAfterRemoval(t *testing.T) {
 	t.Parallel()
 	client, db := start(t)

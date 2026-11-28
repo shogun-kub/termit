@@ -210,3 +210,43 @@ func TestAcceptHandoffRefusesWhatItCannotOwn(t *testing.T) {
 		t.Errorf("a handoff from the wrong server = %v, want ErrReplicationConflict", err)
 	}
 }
+
+// A replica can drop its copy of a row a peer homes: that is the repair for a domain it holds under an id the
+// peer no longer knows, and the reason two records for one domain are recoverable without editing the
+// database. A row this server homes is refused — that is `uv rm` then `uv forget`, and the two must not
+// blur into one command.
+func TestDropRemovesOnlyACopyAnotherServerHomes(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	replica := openTestStore(t)
+
+	foreign := testUV("uv_foreign", "foreign.example.com")
+	foreign.HomeMN = "mn_somewhere_else"
+	if err := replica.CreateUV(ctx, foreign); err != nil {
+		t.Fatalf("CreateUV: %v", err)
+	}
+	dropped, err := replica.DropUV(ctx, "uv_foreign")
+	if err != nil {
+		t.Fatalf("DropUV: %v", err)
+	}
+	if dropped.Domain != "foreign.example.com" || dropped.HomeMN != "mn_somewhere_else" {
+		t.Errorf("the drop reported %+v", dropped)
+	}
+	if _, err := replica.UVByID(ctx, "uv_foreign"); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("the foreign row survived the drop: %v", err)
+	}
+
+	own := testUV("uv_own", "own.example.com")
+	if err := replica.CreateUV(ctx, own); err != nil {
+		t.Fatalf("CreateUV: %v", err)
+	}
+	if _, err := replica.DropUV(ctx, "uv_own"); err == nil {
+		t.Error("the drop erased a row this server homes")
+	}
+	if _, err := replica.UVByID(ctx, "uv_own"); err != nil {
+		t.Fatalf("the row this server homes is gone: %v", err)
+	}
+	if _, err := replica.DropUV(ctx, "uv_absent"); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("dropping an absent node = %v, want ErrNotFound", err)
+	}
+}

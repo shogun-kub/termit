@@ -287,6 +287,9 @@ func (s *Service) createInvite(ctx context.Context, raw json.RawMessage) (any, *
 
 type inviteIDArgs struct {
 	ID string `json:"id"`
+	// Force lets uv.forget drop this server's copy of a row another server homes. Every other operation
+	// ignores it; a copy that was never this server's to announce is deletable, and that is the whole case.
+	Force bool `json:"force"`
 }
 
 func (s *Service) revokeInvite(ctx context.Context, raw json.RawMessage) (any, *Error) {
@@ -497,8 +500,27 @@ func (s *Service) forgetUV(ctx context.Context, raw json.RawMessage) (any, *Erro
 		return nil, refused
 	}
 	if node.State != store.StateRemoved {
-		return nil, &Error{Code: CodeConflict,
-			Detail: fmt.Sprintf("node %s is %s; remove it first, and only then forget it", node.ID, node.State)}
+		if !args.Force {
+			return nil, &Error{Code: CodeConflict,
+				Detail: fmt.Sprintf("node %s is %s; remove it first, and only then forget it", node.ID, node.State)}
+		}
+		// A row another server homes is this server's copy, not its node: dropping it is a local repair for
+		// the two-records-for-one-domain case, and the peer keeps the authority it has.
+		dropped, err := s.Store.DropUV(ctx, node.ID)
+		if err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				return nil, &Error{Code: CodeNotFound, Detail: "no such node"}
+			}
+			return nil, &Error{Code: CodeConflict, Detail: err.Error()}
+		}
+		if err := s.Store.AppendAudit(ctx, store.AuditRecord{
+			At: s.Now().UTC(), Actor: "admin", Action: "uv.forget", Target: dropped.ID,
+			DetailJSON: fmt.Sprintf(`{"domain":%q,"foreign":true,"home":%q}`, dropped.Domain, dropped.HomeMN),
+		}); err != nil {
+			return nil, &Error{Code: CodeInternal, Detail: err.Error()}
+		}
+		return map[string]any{"id": dropped.ID, "domain": dropped.Domain, "forgotten": true,
+			"home": dropped.HomeMN}, nil
 	}
 	if err := s.Store.ForgetUV(ctx, node.ID); err != nil {
 		if errors.Is(err, store.ErrNotFound) {

@@ -332,10 +332,12 @@ func probeDetail(ok bool, class, kind string, latencyMS int) string {
 	return strings.Join(parts, ", ")
 }
 
-// runUVForget erases a removed node, which is what frees its domain for a new enrollment.
+// runUVForget erases a removed node, which is what frees its domain for a new enrollment. With --force it
+// drops this server's copy of a node another server homes, which is the repair for a domain held twice.
 func runUVForget(args []string, stdout, stderr io.Writer) int {
 	flags, configPath, socket, token, tokenFile := uvFlags("termit-mn uv forget", stderr)
-	if err := flags.Parse(flagsFirst(args, map[string]bool{})); err != nil {
+	force := flags.Bool("force", false, "drop this server's copy of a node another server homes")
+	if err := flags.Parse(flagsFirst(args, map[string]bool{"-force": true, "--force": true})); err != nil {
 		return flagExit(err)
 	}
 	if flags.NArg() != 1 {
@@ -350,12 +352,22 @@ func runUVForget(args []string, stdout, stderr io.Writer) int {
 	var result struct {
 		ID     string `json:"id"`
 		Domain string `json:"domain"`
+		Home   string `json:"home"`
 	}
 	callCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	if err := client.Call(callCtx, "uv.forget", map[string]string{"id": flags.Arg(0)}, &result); err != nil {
+	callArgs := map[string]any{"id": flags.Arg(0)}
+	if *force {
+		callArgs["force"] = true
+	}
+	if err := client.Call(callCtx, "uv.forget", callArgs, &result); err != nil {
 		fmt.Fprintf(stderr, "termit-mn uv forget: %v\n", err)
 		return exitFailure
+	}
+	if result.Home != "" {
+		fmt.Fprintf(stdout, "dropped this server's copy of %s (%s); %s homes it\n",
+			result.ID, result.Domain, result.Home)
+		return exitOK
 	}
 	fmt.Fprintf(stdout, "forgot %s (%s); the domain can be enrolled again\n", result.ID, result.Domain)
 	return exitOK

@@ -629,23 +629,70 @@ func (s *Store) ForgetUV(ctx context.Context, id string) error {
 	if state != StateRemoved {
 		return fmt.Errorf("store: node %s is %s, not removed", id, state)
 	}
-	// The transports go with the node: a forgotten node's rows would otherwise outlive it and appear in
-	// every later snapshot of this server.
-	for _, statement := range []string{
-		`DELETE FROM uv_event WHERE uv_id = ?`,
-		`DELETE FROM "check" WHERE uv_id = ?`,
-		`DELETE FROM uv_transport WHERE uv_id = ?`,
-		`DELETE FROM uv WHERE id = ?`,
-	} {
-		if _, err := tx.ExecContext(ctx, statement, id); err != nil {
-			return fmt.Errorf("store: forget node %s: %w", id, err)
-		}
+	if err := deleteUVRows(ctx, tx, id); err != nil {
+		return fmt.Errorf("store: forget node %s: %w", id, err)
 	}
 	if err := recordNodeRemoved(ctx, tx, mnID, s.now().UTC(), id); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("store: commit forget: %w", err)
+	}
+	return nil
+}
+
+// DropUV deletes this server's copy of a node another server homes — the record a replica kept for a node
+// its peer re-enrolled elsewhere, or one it no longer recognises. Nothing is journaled: this server never
+// announced the row, and the peer keeps its own. After the drop the peer's next entry for that node is
+// applied instead of colliding with what was left behind.
+//
+// A row this server homes is refused, because that is `uv rm` then `uv forget`: the two mean different
+// things, and a command that quietly erased a live node of this server would be the one mistake the design
+// refuses everywhere else.
+func (s *Store) DropUV(ctx context.Context, id string) (UV, error) {
+	mnID, err := s.MeshID(ctx)
+	if err != nil {
+		return UV{}, err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return UV{}, fmt.Errorf("store: begin drop: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	node, err := scanUV(tx.QueryRowContext(ctx, `SELECT `+uvColumns+` FROM uv WHERE id = ?`, id))
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return UV{}, ErrNotFound
+	case err != nil:
+		return UV{}, fmt.Errorf("store: read %s for the drop: %w", id, err)
+	}
+	if node.HomeMN == "" || node.HomeMN == mnID {
+		return UV{}, fmt.Errorf("store: %s is homed here; remove it with uv rm and forget it, "+
+			"or hand it to the server that now homes it", id)
+	}
+	if err := deleteUVRows(ctx, tx, id); err != nil {
+		return UV{}, fmt.Errorf("store: drop node %s: %w", id, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return UV{}, fmt.Errorf("store: commit drop: %w", err)
+	}
+	return node, nil
+}
+
+// deleteUVRows takes a node's own rows with it. A row left behind outlives the node and shows up in every
+// later snapshot of this server.
+func deleteUVRows(ctx context.Context, tx *sql.Tx, id string) error {
+	for _, statement := range []string{
+		`DELETE FROM uv_event WHERE uv_id = ?`,
+		`DELETE FROM "check" WHERE uv_id = ?`,
+		`DELETE FROM uv_transport WHERE uv_id = ?`,
+		`DELETE FROM mesh_report WHERE uv_id = ?`,
+		`DELETE FROM uv WHERE id = ?`,
+	} {
+		if _, err := tx.ExecContext(ctx, statement, id); err != nil {
+			return err
+		}
 	}
 	return nil
 }
