@@ -530,3 +530,47 @@ func TestAForeignRowForATakenDomainIsSkipped(t *testing.T) {
 		t.Errorf("the skipped row was written anyway")
 	}
 }
+
+// Two servers that each took the same node while the mesh was apart end at the same home term with different
+// homes: nothing in the row says which one is right. The merge must refuse rather than pick — that is the
+// split-brain guard, and the reason an operator has to be sure a home is gone before adopting.
+func TestAnEqualHomeTermFromAnotherHomeIsAConflict(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	home, replica := twoStores(t)
+	homeID, err := home.MeshID(ctx)
+	if err != nil {
+		t.Fatalf("MeshID: %v", err)
+	}
+	enrolled(t, home, "uv_one", "one.example.com")
+	if _, err := replica.ApplyEvents(ctx, journal(t, home, homeID)); err != nil {
+		t.Fatalf("ApplyEvents: %v", err)
+	}
+
+	// One side takes the node while the mesh is apart ...
+	replicaID, err := replica.MeshID(ctx)
+	if err != nil {
+		t.Fatalf("MeshID: %v", err)
+	}
+	if _, err := replica.AdoptUV(ctx, "uv_one", homeID, testNow); err != nil {
+		t.Fatalf("AdoptUV: %v", err)
+	}
+	// ... and the other raises its own row to the same term at the same time: neither saw the other.
+	taken := testUV("uv_one", "one.example.com")
+	taken.HomeMN, taken.HomeTerm = homeID, 1
+	event, err := home.AppendNode(ctx, taken, nil)
+	if err != nil {
+		t.Fatalf("AppendNode: %v", err)
+	}
+	if _, err := replica.ApplyEvents(ctx, []store.ReplicationEvent{event}); !errors.Is(err, store.ErrReplicationConflict) {
+		t.Fatalf("the equal term = %v, want a conflict", err)
+	}
+	got, err := replica.UVByID(ctx, "uv_one")
+	if err != nil {
+		t.Fatalf("UVByID: %v", err)
+	}
+	if got.HomeMN != replicaID || got.HomeTerm != 1 {
+		t.Errorf("the conflict changed the row to home %q term %d, want %q term 1",
+			got.HomeMN, got.HomeTerm, replicaID)
+	}
+}
