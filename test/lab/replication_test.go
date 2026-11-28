@@ -437,3 +437,115 @@ func peerHost(l *lab.Lab, machine *lab.Machine) string {
 	}
 	return l.MN.Host
 }
+
+// TestDrillReplicationReadOnlySync points a node at the replica while its home is alive. The replica has to
+// answer from the last state the home published, say so, change nothing of its own, and hand the node's
+// report to the home — which applies it as if the node had synced directly.
+func TestDrillReplicationReadOnlySync(t *testing.T) {
+	l := replicationLab(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)
+	defer cancel()
+
+	home := meshOnMN(t, ctx, l)
+	victim := drillVictim(t, l)
+	domain := nodeDomain(t, ctx, victim)
+	makeActive(t, ctx, l, victim, domain)
+	waitReplicated(t, ctx, l, domain, "active")
+
+	homeURL := serverURL(t, ctx, l.MN)
+	replicaURL := serverURL(t, ctx, l.MN2)
+	// The sighting timestamp is compared as stored: `uv list` rounds to the minute, and a drill that compares
+	// minutes cannot tell a delivered report from a stale one.
+	for _, machine := range []*lab.Machine{l.MN, l.MN2} {
+		if _, err := machine.Run(ctx, "command -v sqlite3"); err != nil {
+			t.Skip("no sqlite3 on both servers: this drill reads the sighting timestamp")
+		}
+	}
+	if homeURL == "" || replicaURL == "" {
+		t.Fatalf("cannot read the management URLs: node %q, replica %q", homeURL, replicaURL)
+	}
+	seenBefore := lastSeenSQL(t, ctx, l, false, domain)
+	copiedBefore := lastSeenSQL(t, ctx, l, true, domain)
+	stateBefore := stateOn(t, ctx, l, true, domain)
+
+	restore := repointNode(t, ctx, victim, homeURL, replicaURL)
+	t.Cleanup(restore)
+
+	out := victim.MustRun(t, ctx, "termit-uv sync")
+	if !strings.Contains(out, "read-only") {
+		t.Fatalf("the replica did not answer read-only:\n%s", out)
+	}
+	if !strings.Contains(out, home.MNID) {
+		t.Errorf("the read-only answer does not name the home %s:\n%s", home.MNID, out)
+	}
+	// A replica copies and never writes: its own view of the node must be exactly what it was.
+	if got := lastSeenSQL(t, ctx, l, true, domain); got != copiedBefore {
+		t.Errorf("the replica recorded a sighting of a node it does not home: %q, want %q", got, copiedBefore)
+	}
+	if got := stateOn(t, ctx, l, true, domain); got != stateBefore {
+		t.Errorf("the replica changed the node's state to %q, want %q", got, stateBefore)
+	}
+	// The report is queued there and delivered to the home, which is what makes the read-only answer safe.
+	if err := lab.WaitFor(ctx, 4*time.Minute, 3*time.Second, "the home to apply the queued report",
+		func(ctx context.Context) (bool, error) {
+			return lastSeenSQL(t, ctx, l, false, domain) != seenBefore, nil
+		}); err != nil {
+		t.Fatalf("%v\nthe home still says %q", err, lastSeenSQL(t, ctx, l, false, domain))
+	}
+
+	restore()
+	if out := victim.MustRun(t, ctx, "termit-uv sync"); strings.Contains(out, "read-only") {
+		t.Errorf("the node still syncs read-only after being pointed back at its home:\n%s", out)
+	}
+}
+
+// nodeMNURL is the management server a node is configured to sync with.
+func nodeMNURL(t *testing.T, ctx context.Context, m *lab.Machine) string {
+	t.Helper()
+	out := m.MustRun(t, ctx, "sed -n 's|^  url: *||p' /etc/termit/uv/config.yaml | head -n 1")
+	return strings.TrimSpace(out)
+}
+
+// serverURL is a management server's own API address, the shape a node's configuration holds.
+func serverURL(t *testing.T, ctx context.Context, m *lab.Machine) string {
+	t.Helper()
+	domain := strings.TrimSpace(m.MustRun(t, ctx, "sed -n 's|^domain: *||p' /etc/termit/mn/config.yaml | head -n 1"))
+	prefix := strings.TrimSpace(m.MustRun(t, ctx, "sed -n 's|^api_prefix: *||p' /etc/termit/mn/config.yaml | head -n 1"))
+	if domain == "" || prefix == "" {
+		return ""
+	}
+	return "https://" + strings.Trim(domain, `"`) + prefix
+}
+
+// repointNode points a node at another management server and restarts its agent. The returned function puts
+// the configuration back and restarts the agent again, so a failed drill still leaves the node at home.
+func repointNode(t *testing.T, ctx context.Context, m *lab.Machine, from, to string) func() {
+	t.Helper()
+	// Starting anywhere else would turn the drill into a no-op that still reports success.
+	if got := nodeMNURL(t, ctx, m); got != from {
+		t.Fatalf("the node points at %q, not at %q; point it back at its home first", got, from)
+	}
+	m.MustRun(t, ctx, "cp /etc/termit/uv/config.yaml /root/uv-config.repoint")
+	m.MustRun(t, ctx, "sed -i "+lab.Quote("s|"+from+"|"+to+"|")+" /etc/termit/uv/config.yaml")
+	m.MustRun(t, ctx, "systemctl restart termit-uv-agent")
+	if got := nodeMNURL(t, ctx, m); got != to {
+		t.Fatalf("the node reads %q as its management server, want %q", got, to)
+	}
+	restore := func() {
+		_, _ = m.Run(context.Background(), "cp /root/uv-config.repoint /etc/termit/uv/config.yaml")
+		_, _ = m.Run(context.Background(), "systemctl restart termit-uv-agent")
+	}
+	return restore
+}
+
+// lastSeenSQL is the node's sighting timestamp as the registry stores it, on either server.
+func lastSeenSQL(t *testing.T, ctx context.Context, l *lab.Lab, onMN2 bool, domain string) string {
+	t.Helper()
+	query := "SELECT COALESCE(last_seen_at, '') FROM uv WHERE domain = '" + domain + "'"
+	machine := l.MN
+	if onMN2 {
+		machine = l.MN2
+	}
+	out := machine.MustRun(t, ctx, "sqlite3 /var/lib/termit/mn/termit.db \""+query+"\"")
+	return strings.TrimSpace(out)
+}

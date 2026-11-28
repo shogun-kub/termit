@@ -315,6 +315,9 @@ func (m *Machine) sanitize(text string) string {
 	return text
 }
 
+// Quote shell-quotes one argument for a command a drill builds itself.
+func Quote(value string) string { return shellQuote(value) }
+
 // splitTarget parses "user@host".
 func splitTarget(spec string) (user, host string, err error) {
 	user, host, ok := strings.Cut(spec, "@")
