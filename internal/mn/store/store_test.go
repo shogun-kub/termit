@@ -480,7 +480,7 @@ func TestTransportsAreReplacedNotMerged(t *testing.T) {
 	if err := s.CreateUV(ctx, uv); err != nil {
 		t.Fatalf("CreateUV: %v", err)
 	}
-	if err := s.SetUVTransports(ctx, uv.ID, []string{"vless", "hysteria2"}); err != nil {
+	if err := s.SetUVTransports(ctx, uv.ID, []string{"vless", "hysteria2"}, nil); err != nil {
 		t.Fatalf("SetUVTransports: %v", err)
 	}
 	got, err := s.UVTransports(ctx)
@@ -490,7 +490,7 @@ func TestTransportsAreReplacedNotMerged(t *testing.T) {
 	if len(got[uv.ID]) != 2 {
 		t.Fatalf("got %v, want two kinds", got[uv.ID])
 	}
-	if err := s.SetUVTransports(ctx, uv.ID, []string{"vless"}); err != nil {
+	if err := s.SetUVTransports(ctx, uv.ID, []string{"vless"}, nil); err != nil {
 		t.Fatalf("SetUVTransports: %v", err)
 	}
 	got, err = s.UVTransports(ctx)
@@ -555,5 +555,43 @@ func TestOpenMigratesFromFive(t *testing.T) {
 	}
 	if _, err := s.UVByID(ctx, uv.ID); err != nil {
 		t.Fatalf("the node was lost in the migration: %v", err)
+	}
+}
+
+// The renderings belong to the TLS kind, survive a rewrite, and are cleared by a report that carries none —
+// the same rule as the kinds, for the same reason: a node that stopped serving one must lose its link.
+func TestTheRenderingsAreStoredBesideTheKind(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	s := openTestStore(t)
+	node := enrolled(t, s, "uv_one", "one.example.com")
+
+	if err := s.SetUVTransports(ctx, node.ID, []string{"vless", "hysteria2"}, []string{"websocket"}); err != nil {
+		t.Fatalf("SetUVTransports: %v", err)
+	}
+	renderings, err := s.UVRenderings(ctx)
+	if err != nil {
+		t.Fatalf("UVRenderings: %v", err)
+	}
+	if got := renderings[node.ID]; len(got) != 1 || got[0] != "websocket" {
+		t.Errorf("stored renderings = %v, want [websocket]", got)
+	}
+	kinds, err := s.UVTransports(ctx)
+	if err != nil {
+		t.Fatalf("UVTransports: %v", err)
+	}
+	if got := kinds[node.ID]; len(got) != 2 {
+		t.Errorf("the kinds changed: %v", got)
+	}
+
+	if err := s.SetUVTransports(ctx, node.ID, []string{"vless"}, nil); err != nil {
+		t.Fatalf("SetUVTransports: %v", err)
+	}
+	renderings, err = s.UVRenderings(ctx)
+	if err != nil {
+		t.Fatalf("UVRenderings: %v", err)
+	}
+	if got := renderings[node.ID]; len(got) != 0 {
+		t.Errorf("a report without renderings left %v behind", got)
 	}
 }

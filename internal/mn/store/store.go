@@ -25,7 +25,7 @@ import (
 
 // SchemaVersion is the schema this build understands. A database with a higher version is refused
 // rather than migrated down: an older binary writing a newer schema is how registries get corrupted.
-const SchemaVersion = 9
+const SchemaVersion = 10
 
 //go:embed schema.sql
 var schemaFS embed.FS
@@ -140,6 +140,9 @@ var migrations = map[int][]string{
 	},
 	9: {
 		`ALTER TABLE uv ADD COLUMN home_term INTEGER NOT NULL DEFAULT 0`,
+	},
+	10: {
+		`ALTER TABLE uv_transport ADD COLUMN renderings TEXT NOT NULL DEFAULT ''`,
 	},
 }
 

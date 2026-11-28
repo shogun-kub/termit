@@ -80,7 +80,7 @@ func TestTheTargetFollowsWhatTheNodeServes(t *testing.T) {
 	}
 	targeter := profileTargeter{store: db}
 
-	if err := db.SetUVTransports(ctx, uv.ID, []string{proto.KindHysteria2}); err != nil {
+	if err := db.SetUVTransports(ctx, uv.ID, []string{proto.KindHysteria2}, nil); err != nil {
 		t.Fatalf("record transports: %v", err)
 	}
 	target, ok := targeter.Target(ctx, uv)
@@ -91,7 +91,7 @@ func TestTheTargetFollowsWhatTheNodeServes(t *testing.T) {
 		t.Fatalf("transport = %q, want the QUIC one", target.Transport)
 	}
 
-	if err := db.SetUVTransports(ctx, uv.ID, []string{proto.KindVLESS, proto.KindHysteria2}); err != nil {
+	if err := db.SetUVTransports(ctx, uv.ID, []string{proto.KindVLESS, proto.KindHysteria2}, nil); err != nil {
 		t.Fatalf("record transports: %v", err)
 	}
 	target, _ = targeter.Target(ctx, uv)

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -81,6 +82,7 @@ type ReplicationEvent struct {
 type nodeEvent struct {
 	Node       UV       `json:"node"`
 	Transports []string `json:"transports,omitempty"`
+	Renderings []string `json:"renderings,omitempty"`
 }
 
 // nodeRemoved is the payload of EventNodeRemoved.
@@ -102,6 +104,9 @@ type Snapshot struct {
 	Seq           int64               `json:"seq"`
 	Nodes         []UV                `json:"nodes"`
 	Transports    map[string][]string `json:"transports,omitempty"`
+	// Renderings are the TLS profile's renderings per node. Absent means the default, which is what
+	// a peer running a build from before the field sends.
+	Renderings map[string][]string `json:"renderings,omitempty"`
 }
 
 // MeshID is this server's identity in the journal: minted once, kept in settings. The domain cannot
@@ -617,10 +622,18 @@ func (s *Store) Snapshot(ctx context.Context) (Snapshot, error) {
 	if err != nil {
 		return Snapshot{}, err
 	}
+	renderings, err := s.UVRenderings(ctx)
+	if err != nil {
+		return Snapshot{}, err
+	}
 	transports := make(map[string][]string, len(nodes))
+	keptRenderings := make(map[string][]string, len(nodes))
 	for _, node := range nodes {
 		if kinds := served[node.ID]; len(kinds) > 0 {
 			transports[node.ID] = kinds
+		}
+		if served := renderings[node.ID]; len(served) > 0 {
+			keptRenderings[node.ID] = served
 		}
 	}
 	var seq int64
@@ -628,7 +641,8 @@ func (s *Store) Snapshot(ctx context.Context) (Snapshot, error) {
 		`SELECT COALESCE(MAX(seq), 0) FROM replication_event WHERE mn_id = ?`, mnID).Scan(&seq); err != nil {
 		return Snapshot{}, fmt.Errorf("store: read the journal tail: %w", err)
 	}
-	return Snapshot{SchemaVersion: SchemaVersion, MNID: mnID, Seq: seq, Nodes: nodes, Transports: transports}, nil
+	return Snapshot{SchemaVersion: SchemaVersion, MNID: mnID, Seq: seq, Nodes: nodes,
+		Transports: transports, Renderings: keptRenderings}, nil
 }
 
 // ApplySnapshot replaces what this server holds of the origin's nodes. Rows this server homes are never
@@ -678,7 +692,7 @@ func (s *Store) ApplySnapshot(ctx context.Context, snap Snapshot) error {
 			}
 			return err
 		}
-		if err := putReplicatedTransports(ctx, tx, node.ID, snap.Transports[node.ID]); err != nil {
+		if err := putReplicatedTransports(ctx, tx, node.ID, snap.Transports[node.ID], snap.Renderings[node.ID]); err != nil {
 			return err
 		}
 	}
@@ -711,7 +725,7 @@ func applyEvent(ctx context.Context, tx *sql.Tx, event ReplicationEvent) error {
 			// caller skips it and lets the cursor move.
 			return err
 		}
-		return putReplicatedTransports(ctx, tx, node.ID, body.Transports)
+		return putReplicatedTransports(ctx, tx, node.ID, body.Transports, body.Renderings)
 	case EventNodeRemoved:
 		var body nodeRemoved
 		if err := json.Unmarshal(event.Payload, &body); err != nil {
@@ -832,13 +846,19 @@ func removeReplicatedNode(ctx context.Context, tx *sql.Tx, id, origin string) er
 }
 
 // putReplicatedTransports replaces the transport list of a node with the peer's.
-func putReplicatedTransports(ctx context.Context, tx *sql.Tx, uvID string, kinds []string) error {
+func putReplicatedTransports(ctx context.Context, tx *sql.Tx, uvID string, kinds, renderings []string) error {
 	if _, err := tx.ExecContext(ctx, `DELETE FROM uv_transport WHERE uv_id = ?`, uvID); err != nil {
 		return fmt.Errorf("store: clear the transports of %s: %w", uvID, err)
 	}
+	joined := strings.Join(renderings, ",")
 	for _, kind := range kinds {
+		attached := ""
+		if kind == kindVLESS {
+			attached = joined
+		}
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO uv_transport (uv_id, kind) VALUES (?, ?) ON CONFLICT DO NOTHING`, uvID, kind); err != nil {
+			`INSERT INTO uv_transport (uv_id, kind, renderings) VALUES (?, ?, ?) ON CONFLICT DO NOTHING`,
+			uvID, kind, attached); err != nil {
 			return fmt.Errorf("store: replicate a transport of %s: %w", uvID, err)
 		}
 	}
@@ -860,11 +880,11 @@ func recordNode(ctx context.Context, tx *sql.Tx, mnID string, at time.Time, id s
 	if node.HomeMN != "" && node.HomeMN != mnID {
 		return nil
 	}
-	kinds, err := transportsTx(ctx, tx, id)
+	kinds, renderings, err := transportsTx(ctx, tx, id)
 	if err != nil {
 		return err
 	}
-	body, err := json.Marshal(nodeEvent{Node: node, Transports: kinds})
+	body, err := json.Marshal(nodeEvent{Node: node, Transports: kinds, Renderings: renderings})
 	if err != nil {
 		return fmt.Errorf("store: encode %s for the journal: %w", id, err)
 	}
@@ -884,25 +904,28 @@ func recordNodeRemoved(ctx context.Context, tx *sql.Tx, mnID string, at time.Tim
 
 // transportsTx is what one node reported it serves, read inside the caller's transaction so the journal
 // entry describes the same moment as the row it travels with.
-func transportsTx(ctx context.Context, tx *sql.Tx, uvID string) ([]string, error) {
+func transportsTx(ctx context.Context, tx *sql.Tx, uvID string) ([]string, []string, error) {
 	rows, err := tx.QueryContext(ctx,
-		`SELECT kind FROM uv_transport WHERE uv_id = ? ORDER BY kind`, uvID)
+		`SELECT kind, renderings FROM uv_transport WHERE uv_id = ? ORDER BY kind`, uvID)
 	if err != nil {
-		return nil, fmt.Errorf("store: read the transports of %s: %w", uvID, err)
+		return nil, nil, fmt.Errorf("store: read the transports of %s: %w", uvID, err)
 	}
 	defer func() { _ = rows.Close() }()
-	var kinds []string
+	var kinds, renderings []string
 	for rows.Next() {
-		var kind string
-		if err := rows.Scan(&kind); err != nil {
-			return nil, fmt.Errorf("store: scan a transport of %s: %w", uvID, err)
+		var kind, joined string
+		if err := rows.Scan(&kind, &joined); err != nil {
+			return nil, nil, fmt.Errorf("store: scan a transport of %s: %w", uvID, err)
 		}
 		kinds = append(kinds, kind)
+		if joined != "" {
+			renderings = strings.Split(joined, ",")
+		}
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("store: read the transports of %s: %w", uvID, err)
+		return nil, nil, fmt.Errorf("store: read the transports of %s: %w", uvID, err)
 	}
-	return kinds, nil
+	return kinds, renderings, nil
 }
 
 // homedNodes are the rows this server owns: its own (an empty home) and any written under its own id.

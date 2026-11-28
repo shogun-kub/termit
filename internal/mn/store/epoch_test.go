@@ -32,7 +32,7 @@ func TestNoCommandChangesTheCredentialEpoch(t *testing.T) {
 			_, err := s.SetUVState(ctx, node.ID, store.StateActive, "approved", "test", testNow)
 			return err
 		}},
-		{"transports", func() error { return s.SetUVTransports(ctx, node.ID, []string{"hysteria2"}) }},
+		{"transports", func() error { return s.SetUVTransports(ctx, node.ID, []string{"hysteria2"}, nil) }},
 		{"agent key", func() error { return s.SetAgentKeyHash(ctx, node.ID, "new-hash", "new-sealed") }},
 		{"subscription token", func() error { return s.SetSubTokenHash(ctx, node.ID, "new-hash", "new-sealed") }},
 		{"certificate pin", func() error { return s.SetUVCertPin(ctx, node.ID, strings.Repeat("ab", 32)) }},

@@ -118,6 +118,13 @@ func (h *Handler) peers(r *http.Request, owner store.UV) ([]sub.Peer, error) {
 		h.opts.Logger.Warn("subscription: reading the reported transports", "err", err)
 		transports = nil
 	}
+	// The renderings are read the same way: a failure leaves every node on the profile's default, which
+	// is the link it certainly serves.
+	renderings, err := h.opts.Store.UVRenderings(r.Context())
+	if err != nil {
+		h.opts.Logger.Warn("subscription: reading the reported renderings", "err", err)
+		renderings = nil
+	}
 	for _, node := range nodes {
 		profile, err := profileOf(node)
 		if err != nil {
@@ -149,6 +156,7 @@ func (h *Handler) peers(r *http.Request, owner store.UV) ([]sub.Peer, error) {
 			Path:       profile.Path,
 			Degraded:   node.State == store.StateUnavailable,
 			Transports: kinds,
+			Renderings: renderings[node.ID],
 		})
 	}
 	return out, nil

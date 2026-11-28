@@ -176,7 +176,8 @@ func (h *Handler) recordReport(ctx context.Context, node store.UV, req proto.Syn
 	if len(kinds) == 0 {
 		kinds = []string{proto.KindVLESS}
 	}
-	if err := h.opts.Store.SetUVTransports(ctx, node.ID, kinds); err != nil {
+	if err := h.opts.Store.SetUVTransports(ctx, node.ID, kinds,
+		proto.ServedRenderings(req.Transports, proto.KindVLESS)); err != nil {
 		h.opts.Logger.Error("sync: record the transports", "uv", node.ID, "err", err)
 	}
 

@@ -106,6 +106,9 @@ CREATE INDEX IF NOT EXISTS audit_at ON audit (at);
 CREATE TABLE IF NOT EXISTS uv_transport (
     uv_id TEXT NOT NULL,
     kind  TEXT NOT NULL,
+    -- The renderings of the TLS profile, comma-separated: empty on every other kind, and on a node
+    -- that reported none, which is read as the profile's default.
+    renderings TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (uv_id, kind)
 );
 

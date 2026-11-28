@@ -45,7 +45,7 @@ func TestEveryReplicatedWriteLeavesOneEntry(t *testing.T) {
 	home, _ := twoStores(t)
 
 	node := enrolled(t, home, "uv_one", "one.example.com")
-	if err := home.SetUVTransports(ctx, node.ID, []string{"vless"}); err != nil {
+	if err := home.SetUVTransports(ctx, node.ID, []string{"vless"}, nil); err != nil {
 		t.Fatalf("SetUVTransports: %v", err)
 	}
 	if _, err := home.SetUVState(ctx, node.ID, store.StateActive, "checks passed", "prober", testNow); err != nil {
@@ -120,7 +120,7 @@ func TestTheJournalRebuildsTheRegistry(t *testing.T) {
 	home, replica := twoStores(t)
 
 	node := enrolled(t, home, "uv_one", "one.example.com")
-	if err := home.SetUVTransports(ctx, node.ID, []string{"vless", "hysteria2"}); err != nil {
+	if err := home.SetUVTransports(ctx, node.ID, []string{"vless", "hysteria2"}, nil); err != nil {
 		t.Fatalf("SetUVTransports: %v", err)
 	}
 	if _, err := home.SetUVState(ctx, node.ID, store.StateActive, "checks passed", "prober", testNow); err != nil {
@@ -377,7 +377,7 @@ func TestSnapshotCarriesTheOriginNodesAndNothingElse(t *testing.T) {
 
 	one := enrolled(t, home, "uv_one", "one.example.com")
 	two := enrolled(t, home, "uv_two", "two.example.com")
-	if err := home.SetUVTransports(ctx, one.ID, []string{"vless"}); err != nil {
+	if err := home.SetUVTransports(ctx, one.ID, []string{"vless"}, nil); err != nil {
 		t.Fatalf("SetUVTransports: %v", err)
 	}
 	enrolled(t, replica, "uv_local", "local.example.com")
@@ -572,5 +572,45 @@ func TestAnEqualHomeTermFromAnotherHomeIsAConflict(t *testing.T) {
 	if got.HomeMN != replicaID || got.HomeTerm != 1 {
 		t.Errorf("the conflict changed the row to home %q term %d, want %q term 1",
 			got.HomeMN, got.HomeTerm, replicaID)
+	}
+}
+
+// A replica answers the subscription too, so the renderings have to reach it: through the journal for a
+// write, and through the snapshot for a server that starts from one.
+func TestTheRenderingsReplicateThroughTheJournal(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	home, replica := twoStores(t)
+	node := enrolled(t, home, "uv_one", "one.example.com")
+
+	if err := home.SetUVTransports(ctx, node.ID, []string{"vless"}, []string{"websocket"}); err != nil {
+		t.Fatalf("SetUVTransports: %v", err)
+	}
+	mnID, err := home.MeshID(ctx)
+	if err != nil {
+		t.Fatalf("MeshID: %v", err)
+	}
+	events := journal(t, home, mnID)
+	if len(events) == 0 {
+		t.Fatal("no journal entry")
+	}
+	if _, err := replica.ApplyEvents(ctx, events); err != nil {
+		t.Fatalf("ApplyEvents: %v", err)
+	}
+	renderings, err := replica.UVRenderings(ctx)
+	if err != nil {
+		t.Fatalf("UVRenderings: %v", err)
+	}
+	if got := renderings[node.ID]; len(got) != 1 || got[0] != "websocket" {
+		t.Errorf("the replica stored %v, want [websocket]", got)
+	}
+
+	// And the snapshot, which is how a peer that is too far behind catches up.
+	snap, err := home.Snapshot(ctx)
+	if err != nil {
+		t.Fatalf("Snapshot: %v", err)
+	}
+	if got := snap.Renderings[node.ID]; len(got) != 1 || got[0] != "websocket" {
+		t.Errorf("the snapshot carries %v", got)
 	}
 }

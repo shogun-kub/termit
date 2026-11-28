@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -701,8 +702,9 @@ func deleteUVRows(ctx context.Context, tx *sql.Tx, id string) error {
 
 // SetUVTransports records what a node says it serves, replacing the previous answer. A node that reported
 // nothing this server can serve is stored as no rows: the subscription then renders the TLS profile, which
-// is what a node predating the field served anyway.
-func (s *Store) SetUVTransports(ctx context.Context, uvID string, kinds []string) error {
+// is what a node predating the field served anyway. renderings are the renderings of the TLS profile, and
+// they belong to that kind: a node that reports none is read the way a node that never sent the field is.
+func (s *Store) SetUVTransports(ctx context.Context, uvID string, kinds, renderings []string) error {
 	mnID, err := s.MeshID(ctx)
 	if err != nil {
 		return err
@@ -718,9 +720,14 @@ func (s *Store) SetUVTransports(ctx context.Context, uvID string, kinds []string
 	if _, err := tx.ExecContext(ctx, `DELETE FROM uv_transport WHERE uv_id = ?`, uvID); err != nil {
 		return err
 	}
+	joined := strings.Join(renderings, ",")
 	for _, kind := range kinds {
+		attached := ""
+		if kind == kindVLESS {
+			attached = joined
+		}
 		if _, err := tx.ExecContext(ctx,
-			`INSERT OR IGNORE INTO uv_transport (uv_id, kind) VALUES (?, ?)`, uvID, kind); err != nil {
+			`INSERT OR IGNORE INTO uv_transport (uv_id, kind, renderings) VALUES (?, ?, ?)`, uvID, kind, attached); err != nil {
 			return err
 		}
 	}
@@ -728,6 +735,33 @@ func (s *Store) SetUVTransports(ctx context.Context, uvID string, kinds []string
 		return err
 	}
 	return tx.Commit()
+}
+
+// kindVLESS is the one kind that carries renderings. It is spelled here rather than imported so the
+// store keeps knowing nothing about the protocol beyond the names it stores.
+const kindVLESS = "vless"
+
+// UVRenderings is the renderings each node reported for the TLS profile, keyed by node id. A node
+// that reported none is absent, and the caller reads it as the profile's default.
+func (s *Store) UVRenderings(ctx context.Context) (map[string][]string, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT uv_id, renderings FROM uv_transport WHERE kind = ? AND renderings != '' ORDER BY uv_id`, kindVLESS)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	out := map[string][]string{}
+	for rows.Next() {
+		var id, joined string
+		if err := rows.Scan(&id, &joined); err != nil {
+			return nil, err
+		}
+		out[id] = strings.Split(joined, ",")
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // UVTransports is what every node reported, keyed by node id and ordered so a rendering is stable.

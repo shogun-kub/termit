@@ -387,3 +387,46 @@ func TestRenderJSONUsesTheDNSFormatSingBoxReads(t *testing.T) {
 		t.Error("the profile names no default DNS server")
 	}
 }
+
+// A node that serves the profile a second way gets a second link: same credential, same host, the ws type
+// and the derived path. A node that never reported one keeps its single link.
+func TestTheSecondRenderingBecomesASecondLink(t *testing.T) {
+	t.Parallel()
+	one, err := proto.BuildVLESSUrl(proto.Profile{
+		Domain: "one.example.com", UUID: "8f1c2d3e-4a5b-4c6d-8e7f-90a1b2c3d4e5",
+		Path: "/a1b2c3d4e5f60718/", Label: "alpha",
+	})
+	if err != nil {
+		t.Fatalf("BuildVLESSUrl: %v", err)
+	}
+	if one == "" {
+		t.Fatal("no baseline link")
+	}
+	body, err := sub.RenderList([]sub.Peer{{
+		ID: "uv_one", Label: "alpha", Domain: "one.example.com",
+		UUID:       "8f1c2d3e-4a5b-4c6d-8e7f-90a1b2c3d4e5",
+		Path:       "/a1b2c3d4e5f60718/",
+		Transports: []string{proto.KindVLESS},
+		Renderings: []string{proto.RenderingWebSocket},
+	}}, sub.Options{})
+	if err != nil {
+		t.Fatalf("RenderList: %v", err)
+	}
+	lines := decodeList(t, body)
+	if len(lines) != 2 {
+		t.Fatalf("the list has %d lines, want 2: %v", len(lines), lines)
+	}
+	ws, err := proto.ParseVLESSUrl(lines[1])
+	if err != nil {
+		t.Fatalf("the ws URI does not parse: %v", err)
+	}
+	if ws.Rendering != proto.RenderingWebSocket {
+		t.Errorf("the second link renders %q", ws.Rendering)
+	}
+	if want := proto.WebSocketPath("/a1b2c3d4e5f60718/"); ws.Path != want {
+		t.Errorf("the second link's path is %q, want %q", ws.Path, want)
+	}
+	if ws.UUID != "8f1c2d3e-4a5b-4c6d-8e7f-90a1b2c3d4e5" || ws.Domain != "one.example.com" {
+		t.Errorf("the second link renames the node: %+v", ws)
+	}
+}

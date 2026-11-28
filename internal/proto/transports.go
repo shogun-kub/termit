@@ -125,6 +125,24 @@ func RenderingServed(transports []Transport, kind, rendering string) bool {
 // ServedKinds reduces what a node reported to the kinds a server of this version can render. An unknown
 // kind or a newer version is dropped rather than refused: a node running a newer build must still be
 // usable, and a link this server cannot write correctly is worse than no link.
+// ServedRenderings is the renderings a node reported for one kind, in the order it sent them and
+// without any this build does not write. An empty answer means the kind's default rendering, which
+// is what a node that predates the field serves.
+func ServedRenderings(transports []Transport, kind string) []string {
+	var out []string
+	for _, transport := range transports {
+		if transport.Kind != kind {
+			continue
+		}
+		for _, rendering := range transport.Serves() {
+			if KnownRendering(rendering) {
+				out = append(out, rendering)
+			}
+		}
+	}
+	return out
+}
+
 func ServedKinds(transports []Transport) []string {
 	kinds := make([]string, 0, len(transports))
 	for _, transport := range transports {

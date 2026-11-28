@@ -12,6 +12,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -31,6 +32,9 @@ type Peer struct {
 	// Transports is what the node reported it serves (proto.KindVLESS, proto.KindHysteria2). Empty
 	// means the TLS profile alone, which is what a node predating the report served.
 	Transports []string
+	// Renderings is how the node serves that TLS profile (proto.RenderingWebSocket). Empty means
+	// XHTTP alone, which is what every node served before the field existed.
+	Renderings []string
 }
 
 // Options configure the web links.
@@ -88,6 +92,24 @@ func RenderList(peers []Peer, opts Options) (string, error) {
 		// and the patched sing-box builds read them from the URI.
 		raw = proto.AddSingBoxFragment(raw, opts.Fragment, opts.RecordFragment)
 		lines = append(lines, raw)
+		// The same profile served a second way gets a second link: a client reads one rendering at a time,
+		// and only the path and the URI's type differ.
+		if slices.Contains(peer.Renderings, proto.RenderingWebSocket) {
+			ws, err := proto.BuildVLESSUrl(proto.Profile{
+				Domain:    peer.Domain,
+				UUID:      peer.UUID,
+				Path:      proto.WebSocketPath(peer.Path),
+				Rendering: proto.RenderingWebSocket,
+				Label:     label + " (WS)",
+			})
+			if err != nil {
+				return "", fmt.Errorf("sub: build the WebSocket URI for %s: %w", peer.Domain, err)
+			}
+			if opts.FragmentParam != "" {
+				ws = withFragmentParam(ws, opts.FragmentParam)
+			}
+			lines = append(lines, proto.AddSingBoxFragment(ws, opts.Fragment, opts.RecordFragment))
+		}
 		// A node that also serves the QUIC transport gets a second link: different protocol, different
 		// port, and the user name and password derived from the same pair credential. The TLS-only
 		// parameters above do not belong on it.

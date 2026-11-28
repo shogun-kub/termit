@@ -507,7 +507,7 @@ func TestUVShowSaysWhichTransportWasProbed(t *testing.T) {
 		State: store.StateActive, CreatedAt: testNow, CredentialEpoch: 1}); err != nil {
 		t.Fatalf("CreateUV: %v", err)
 	}
-	if err := db.SetUVTransports(ctx, "uv_1", []string{"vless", "hysteria2"}); err != nil {
+	if err := db.SetUVTransports(ctx, "uv_1", []string{"vless", "hysteria2"}, nil); err != nil {
 		t.Fatalf("SetUVTransports: %v", err)
 	}
 	if err := db.AppendCheck(ctx, store.Check{UVID: "uv_1", At: testNow, Kind: "probe", OK: true,
