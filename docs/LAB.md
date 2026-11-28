@@ -30,11 +30,13 @@ peer's leaf pinned, and both run the same build — `OPERATIONS.md` §3.4 is the
 addresses it, it does not build the mesh.
 
 The replication drills (`TestDrillReplicationPeerDown`, `…Partition`, `…Restart`, `…SnapshotOnGap`,
-`…ReadOnlySync`) need the pair and its own admin token. They break one thing each — the replica stopped, the
-link cut in both directions with `nft`, the process killed, a journal entry deleted so the replica's cursor
-no longer fits, a node pointed at the replica while its home is alive — and assert that the mesh converges
-afterwards without an operator. The gap drill edits the home's database and the read-only drill compares
-sighting timestamps as stored (a minute is too coarse), so both skip without `sqlite3`.
+`…ReadOnlySync`, `…Handoff`) need the pair and its own admin token. They break one thing each — the replica
+stopped, the link cut in both directions with `nft`, the process killed, a journal entry deleted so the
+replica's cursor no longer fits, a node pointed at the replica while its home is alive, a node handed to the
+other server and back — and assert that the mesh converges afterwards without an operator. The gap drill
+edits the home's database and the read-only drill compares sighting timestamps as stored (a minute is too
+coarse), so both skip without `sqlite3`. The handoff drill carries the agent key the command prints; the
+harness redacts it from every line it may print.
 
 ## 2. Coordinates and credentials
 

@@ -71,7 +71,9 @@ type Machine struct {
 	Plink   string
 	Pscp    string
 
-	token   string
+	// secrets are redacted from anything the harness prints: the lab's admin tokens, and any key a drill
+	// has to carry.
+	secrets []string
 	timeout time.Duration
 }
 
@@ -130,14 +132,14 @@ func FromEnv(t *testing.T) *Lab {
 		return &Machine{
 			Name: name, Host: host, User: user, HostKey: pin,
 			KeyPath: key, Plink: plink, Pscp: pscp,
-			token: token, timeout: DefaultCommandTimeout,
+			secrets: secretsOf(token), timeout: DefaultCommandTimeout,
 		}
 	}
 	mn2Token := strings.TrimSpace(os.Getenv(EnvMN2AdminToken))
 	mn2Machine := optionalMachine(t, newMachine, "mn2", mn2, EnvMN2)
 	if mn2Machine != nil {
 		// Redaction is per machine: the second server's token must not survive in a failure message either.
-		mn2Machine.token = mn2Token
+		mn2Machine.secrets = secretsOf(mn2Token)
 	}
 	return &Lab{
 		MN:            newMachine("mn", mn, EnvMN),
@@ -309,10 +311,32 @@ func WaitFor(ctx context.Context, timeout, every time.Duration, what string, fn 
 
 // sanitize removes the admin token from anything the harness may print.
 func (m *Machine) sanitize(text string) string {
-	if m.token != "" {
-		text = strings.ReplaceAll(text, m.token, "<redacted>")
+	for _, secret := range m.secrets {
+		text = strings.ReplaceAll(text, secret, "<redacted>")
 	}
 	return text
+}
+
+// secretsOf is the list of secrets to redact, without the empty string a missing token would leave.
+func secretsOf(secret string) []string {
+	if secret == "" {
+		return nil
+	}
+	return []string{secret}
+}
+
+// Redact adds a secret to what every machine of this lab hides. It is for a credential a drill has to
+// carry, such as the agent key a handoff prints once.
+func (l *Lab) Redact(secret string) {
+	if secret == "" {
+		return
+	}
+	for _, m := range []*Machine{l.MN, l.MN2, l.UV1, l.UV2, l.UV3} {
+		if m == nil {
+			continue
+		}
+		m.secrets = append(m.secrets, secret)
+	}
 }
 
 // Quote shell-quotes one argument for a command a drill builds itself.

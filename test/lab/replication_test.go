@@ -4,6 +4,7 @@ package lab_test
 
 import (
 	"context"
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -548,4 +549,155 @@ func lastSeenSQL(t *testing.T, ctx context.Context, l *lab.Lab, onMN2 bool, doma
 	}
 	out := machine.MustRun(t, ctx, "sqlite3 /var/lib/termit/mn/termit.db \""+query+"\"")
 	return strings.TrimSpace(out)
+}
+
+// TestDrillReplicationHandoff moves a live node to the other server and back. The row changes hands with a
+// new agent key, the old key stops working the moment the new home holds the row, and the node takes the new
+// key and address without being rebuilt — which is what `termit-uv agentkey --install` exists for.
+func TestDrillReplicationHandoff(t *testing.T) {
+	l := replicationLab(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	defer cancel()
+
+	home := meshOnMN(t, ctx, l)
+	replica := meshOnMN2(t, ctx, l)
+	toReplica := onlyPeer(t, home)
+	toHome := onlyPeer(t, replica)
+	victim := drillVictim(t, l)
+	domain := nodeDomain(t, ctx, victim)
+	makeActive(t, ctx, l, victim, domain)
+
+	// The move, and the key it prints once.
+	key := handoffNode(t, ctx, l, false, domain, toReplica)
+	movedBack := false
+	t.Cleanup(func() {
+		if movedBack {
+			return
+		}
+		// The node may be homed by the replica now: put it back rather than leave the lab split. A failure
+		// here is reported, not hidden — the next run of the suite would find the node on the wrong server.
+		if err := restoreNode(context.Background(), l, victim, domain, toHome); err != nil {
+			t.Errorf("the node was left homed by %s: %v", toReplica, err)
+		}
+	})
+
+	if got := homeOn(t, ctx, l, false, domain); !strings.Contains(got, replica.MNID) {
+		t.Fatalf("the old home still reports home %q, want %s", got, replica.MNID)
+	}
+	// The new home announces the move in its own journal, so both servers agree within a pull.
+	waitReplicated(t, ctx, l, domain, "active")
+	if got := homeOn(t, ctx, l, true, domain); !strings.Contains(got, replica.MNID) {
+		t.Fatalf("the new home reports %q, want itself", got)
+	}
+	if !strings.Contains(homeOn(t, ctx, l, true, domain), "(term ") {
+		t.Errorf("the move did not raise the term: %q", homeOn(t, ctx, l, true, domain))
+	}
+
+	// The key the node still has is dead: it answers to nobody until the new one is installed.
+	if out, err := victim.Run(ctx, "termit-uv sync"); err == nil {
+		t.Fatalf("the node still syncs with the key the handoff replaced:\n%s", out)
+	}
+	installAgentKey(t, ctx, l, victim, key)
+	victim.MustRun(t, ctx, "termit-uv init --mn "+serverURL(t, ctx, l.MN2)+" 2>&1 | tail -2")
+	if got := nodeMNURL(t, ctx, victim); got != serverURL(t, ctx, l.MN2) {
+		t.Fatalf("the node reads %q as its new home", got)
+	}
+	victim.MustRun(t, ctx, "termit-uv sync")
+
+	// And back, so the lab is where it started.
+	if err := restoreNode(ctx, l, victim, domain, toHome); err != nil {
+		t.Fatalf("the node did not come back: %v", err)
+	}
+	movedBack = true
+	if got := homeOn(t, ctx, l, false, domain); !strings.Contains(got, home.MNID) {
+		t.Errorf("the node is homed by %q after coming back, want %s", got, home.MNID)
+	}
+	if out := victim.MustRun(t, ctx, "termit-uv sync"); strings.Contains(out, "read-only") {
+		t.Errorf("the returning node syncs read-only:\n%s", out)
+	}
+}
+
+// handoffNode moves one node to a peer and returns the key it printed, redacted everywhere from now on.
+func handoffNode(t *testing.T, ctx context.Context, l *lab.Lab, onMN2 bool, domain, peer string) string {
+	t.Helper()
+	var out string
+	if onMN2 {
+		out = l.MustMN2Admin(t, ctx, "home", "handoff", "--uv", domain, "--to", peer)
+	} else {
+		out = l.MustMNAdmin(t, ctx, "home", "handoff", "--uv", domain, "--to", peer)
+	}
+	key := outputField(out, "agent key")
+	if key == "" {
+		t.Fatalf("the handoff printed no key:\n%s", out)
+	}
+	l.Redact(key)
+	return key
+}
+
+// installAgentKey gives the node a key the way an operator does: a 0600 file, the command, and the key gone.
+func installAgentKey(t *testing.T, ctx context.Context, l *lab.Lab, m *lab.Machine, key string) {
+	t.Helper()
+	l.Redact(key)
+	if err := m.WriteFile(ctx, []byte(key+"\n"), "/root/agent.key", "0600"); err != nil {
+		t.Fatalf("write the key to the node: %v", err)
+	}
+	out := m.MustRun(t, ctx, "termit-uv agentkey --install /root/agent.key")
+	m.MustRun(t, ctx, "shred -u /root/agent.key 2>/dev/null || rm -f /root/agent.key")
+	if !strings.Contains(out, "installed") {
+		t.Fatalf("the key was not installed:\n%s", out)
+	}
+	m.MustRun(t, ctx, "systemctl restart termit-uv-agent")
+}
+
+// restoreNode hands the node back to the first server and points it there, with the key that handoff issued.
+func restoreNode(ctx context.Context, l *lab.Lab, victim *lab.Machine, domain, toHome string) error {
+	if _, err := l.MN2Admin(ctx, "uv", "show", domain); err != nil {
+		return fmt.Errorf("the replica cannot see the node: %w", err)
+	}
+	out, err := l.MN2Admin(ctx, "home", "handoff", "--uv", domain, "--to", toHome)
+	if err != nil {
+		return fmt.Errorf("hand off back: %w", err)
+	}
+	key := outputField(out, "agent key")
+	if key == "" {
+		return fmt.Errorf("the handoff printed no key")
+	}
+	l.Redact(key)
+	if err := victim.WriteFile(ctx, []byte(key+"\n"), "/root/agent.key", "0600"); err != nil {
+		return err
+	}
+	if out, err := victim.Run(ctx, "termit-uv agentkey --install /root/agent.key"); err != nil {
+		return fmt.Errorf("install the key: %w\n%s", err, out)
+	}
+	_, _ = victim.Run(ctx, "shred -u /root/agent.key 2>/dev/null || rm -f /root/agent.key")
+	if out, err := victim.Run(ctx, "termit-uv init --mn "+serverURLErr(ctx, l.MN)+" 2>&1 | tail -2"); err != nil {
+		return fmt.Errorf("point the node back at its home: %w\n%s", err, out)
+	}
+	if out, err := victim.Run(ctx, "termit-uv sync"); err != nil {
+		return fmt.Errorf("sync after coming back: %w\n%s", err, out)
+	}
+	return nil
+}
+
+// homeOn is the `home:` line of `uv show`: which server owns the row, and the term that orders the merges.
+func homeOn(t *testing.T, ctx context.Context, l *lab.Lab, onMN2 bool, domain string) string {
+	t.Helper()
+	var out string
+	if onMN2 {
+		out = l.MustMN2Admin(t, ctx, "uv", "show", domain)
+	} else {
+		out = l.MustMNAdmin(t, ctx, "uv", "show", domain)
+	}
+	return outputField(out, "home")
+}
+
+// serverURLErr is serverURL without a *testing.T, for the paths that return an error instead of failing.
+func serverURLErr(ctx context.Context, m *lab.Machine) string {
+	domain, _ := m.Run(ctx, "sed -n 's|^domain: *||p' /etc/termit/mn/config.yaml | head -n 1")
+	prefix, _ := m.Run(ctx, "sed -n 's|^api_prefix: *||p' /etc/termit/mn/config.yaml | head -n 1")
+	d, p := strings.Trim(strings.TrimSpace(domain), `"`), strings.TrimSpace(prefix)
+	if d == "" || p == "" {
+		return ""
+	}
+	return "https://" + d + p
 }
