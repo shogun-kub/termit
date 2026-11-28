@@ -78,6 +78,10 @@ pre-releases, and whoever installs the release skipped them.
 
 ### Changed
 
+- **The menu says what the documents say.** The node menu's membership group is «Прокси-сеть» instead
+  of «Меш», and the ban menu says «бан» where the node state says «блокировка»: one word used to mean
+  both the engine's bans and a blocked node.
+
 - **A live node can take the agent key a new home issued.** `termit-uv agentkey --install <file>` writes the
   key into the node's state and prints the identity it left and the one it took, so `termit-mn home handoff`
   can be finished on a node that is serving: give it the key, point it at the new home with `termit-uv init
