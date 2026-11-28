@@ -145,7 +145,13 @@ func waitReplicated(t *testing.T, ctx context.Context, l *lab.Lab, domain, want 
 	t.Helper()
 	err := lab.WaitFor(ctx, 4*time.Minute, 3*time.Second, "the replica to report "+domain+" "+want,
 		func(ctx context.Context) (bool, error) {
-			return stateOn(t, ctx, l, true, domain) == want, nil
+			// A row the replica has not pulled yet is not an error while waiting: it is the state before
+			// the state this waits for.
+			out, err := l.MN2Admin(ctx, "uv", "show", domain)
+			if err != nil {
+				return false, nil
+			}
+			return stateWord(outputField(out, "state")) == want, nil
 		})
 	if err != nil {
 		t.Fatalf("%v\nreplica view: %s", err, l.MustMN2Admin(t, ctx, "uv", "show", domain))
@@ -656,7 +662,7 @@ func restoreNode(ctx context.Context, l *lab.Lab, victim *lab.Machine, domain, t
 	}
 	out, err := l.MN2Admin(ctx, "home", "handoff", "--uv", domain, "--to", toHome)
 	if err != nil {
-		return fmt.Errorf("hand off back: %w", err)
+		return fmt.Errorf("hand off back: %w\n%s", err, out)
 	}
 	key := outputField(out, "agent key")
 	if key == "" {
@@ -875,4 +881,189 @@ func selfUUID(t *testing.T, ctx context.Context, m *lab.Machine) string {
 	out := m.MustRun(t, ctx,
 		`sed -n 's/.*"self_uuid": "\([0-9a-f-]*\)".*/\1/p' /var/lib/termit/uv/state.json`)
 	return strings.TrimSpace(out)
+}
+
+// TestDrillReplicationAdoptMissesNewNode is the documented limit of an adoption. A node enrolled on the home
+// after the replica's last pull was never taught to the replica, so taking the home's rows does not rescue
+// it: the node answers to nobody there until it enrolls again. The drill proves both halves — the refusal,
+// and that a re-enrollment on the new server is what fixes it.
+func TestDrillReplicationAdoptMissesNewNode(t *testing.T) {
+	l := replicationLab(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Minute)
+	defer cancel()
+
+	home := meshOnMN(t, ctx, l)
+	toHome := onlyPeer(t, meshOnMN2(t, ctx, l))
+	victim := drillVictim(t, l)
+	domain := nodeDomain(t, ctx, victim)
+	keeper := l.UV2
+	keeperDomain := nodeDomain(t, ctx, keeper)
+	makeActive(t, ctx, l, victim, domain)
+	makeActive(t, ctx, l, keeper, keeperDomain)
+	waitReplicated(t, ctx, l, domain, "active")
+
+	t.Cleanup(func() {
+		bg := context.Background()
+		for _, node := range []struct {
+			machine *lab.Machine
+			domain  string
+		}{{keeper, keeperDomain}, {victim, domain}} {
+			if strings.Contains(homeOn(t, bg, l, false, node.domain), home.MNID) {
+				continue
+			}
+			if err := restoreNode(bg, l, node.machine, node.domain, toHome); err != nil {
+				t.Errorf("%s was left on the replica: %v", node.domain, err)
+			}
+		}
+	})
+
+	// The replica stops reading the journal while staying up: it has to answer its own admin socket, and it
+	// must not learn the enrollment that follows.
+	healOne(ctx, l.MN2)
+	cutOne(t, ctx, l.MN2, l.MN)
+	t.Cleanup(func() { healOne(context.Background(), l.MN2) })
+
+	// Re-enrolling on the home mints a new identity and a new key: a row only the home has ever seen.
+	oldID := nodeIDOn(t, ctx, l, false, domain)
+	removeOnMN(t, ctx, l, false, domain)
+	newID := enrollNode(t, ctx, l, false, victim, domain)
+	if newID == "" || newID == oldID {
+		t.Fatalf("the re-enrollment did not mint a new identity: %q then %q", oldID, newID)
+	}
+
+	// The home dies. The replica adopts what it holds — the other node — and can only ever hold the *old*
+	// row for the re-enrolled one.
+	stopMN(t, ctx, l)
+	t.Cleanup(func() { startMN(t, context.Background(), l) })
+	// Nothing left to learn from a dead home: the rule has done its job.
+	healOne(ctx, l.MN2)
+	l.MustMN2Admin(t, ctx, "home", "adopt", "--from", toHome, "--uv", keeperDomain)
+	if got := stateOn(t, ctx, l, true, keeperDomain); got == "" {
+		t.Fatalf("the adopted node is not on the replica")
+	}
+
+	// The new node is unknown there: its key was issued after the replica's last pull.
+	victim.MustRun(t, ctx, "termit-uv init --mn "+serverURL(t, ctx, l.MN2)+" 2>&1 | tail -2")
+	if out, err := victim.Run(ctx, "termit-uv sync"); err == nil {
+		t.Fatalf("the node synced to a replica that was never taught its key:\n%s", out)
+	}
+
+	// What fixes it is a re-enrollment on the server that now holds the mesh, and that costs the identity.
+	// The replica still holds the *old* row for this domain, homed by the dead home: it has to adopt that row
+	// first, because a server cannot remove a row another server homes.
+	l.MustMN2Admin(t, ctx, "home", "adopt", "--from", toHome, "--uv", domain)
+	removeOnMN(t, ctx, l, true, domain)
+	if got := enrollNode(t, ctx, l, true, victim, domain); got == "" || got == newID {
+		t.Fatalf("the re-enrollment on the replica did not mint an identity: %q", got)
+	}
+	victim.MustRun(t, ctx, "termit-uv sync")
+	if got := homeOn(t, ctx, l, true, domain); !strings.Contains(got, meshOnMN2(t, ctx, l).MNID) {
+		t.Errorf("the re-enrolled node reports home %q, want the replica", got)
+	}
+
+	// Back to the shape the rest of the suite expects. The home has to have pulled the adoption before a
+	// handoff back can be accepted: its own copy says which server the row belongs to.
+	startMN(t, ctx, l)
+	if err := lab.WaitFor(ctx, 4*time.Minute, 2*time.Second, "the home to pull the adoption",
+		func(ctx context.Context) (bool, error) {
+			return strings.Contains(homeOn(t, ctx, l, false, keeperDomain), meshOnMN2(t, ctx, l).MNID), nil
+		}); err != nil {
+		t.Fatalf("%v", err)
+	}
+	if err := restoreNode(ctx, l, keeper, keeperDomain, toHome); err != nil {
+		t.Fatalf("%s did not come back: %v", keeperDomain, err)
+	}
+	// The re-enrolled node cannot be handed back: the home still has its own record for that domain, and a
+	// row a peer homes never takes a domain over (that skip is what kept the journal moving). Two records
+	// for one domain are an operator's decision; the way out is to free both and enroll once.
+	resetNodeOnHome(t, ctx, l, victim, domain)
+	for _, d := range []string{keeperDomain, domain} {
+		if got := homeOn(t, ctx, l, false, d); !strings.Contains(got, home.MNID) {
+			t.Errorf("%s is homed by %q after the drill", d, got)
+		}
+	}
+}
+
+// resetNodeOnHome frees a domain on both servers and enrolls the node once, on the home: the way out of two
+// records for one domain, which the mesh refuses to resolve by itself.
+func resetNodeOnHome(t *testing.T, ctx context.Context, l *lab.Lab, machine *lab.Machine, domain string) {
+	t.Helper()
+	for _, admin := range []func(context.Context, ...string) (string, error){l.MNAdmin, l.MN2Admin} {
+		if _, err := admin(ctx, "uv", "show", domain); err != nil {
+			continue
+		}
+		_, _ = admin(ctx, "uv", "rm", domain)
+		_, _ = admin(ctx, "uv", "forget", domain)
+	}
+	// The node still holds the key of the record that was just freed, and init refuses a live identity: this
+	// is a fresh enrollment that overwrites it.
+	machine.MustRun(t, ctx, "termit-uv init --mn "+serverURL(t, ctx, l.MN)+" 2>&1 | tail -2")
+	enrollNode(t, ctx, l, false, machine, domain)
+}
+
+// cutOne stops one server from reading the other's journal while leaving everything else alone: the replica
+// stays up to answer its own admin socket and simply never learns what the home enrolled.
+func cutOne(t *testing.T, ctx context.Context, from, to *lab.Machine) {
+	t.Helper()
+	from.MustRun(t, ctx, "nft add table inet labpull")
+	from.MustRun(t, ctx, "nft 'add chain inet labpull out { type filter hook output priority 0; policy accept; }'")
+	from.MustRun(t, ctx, "nft add rule inet labpull out ip daddr "+to.Host+" tcp dport 443 drop")
+}
+
+// healOne removes what cutOne installed; harmless when it is already gone.
+func healOne(ctx context.Context, from *lab.Machine) {
+	_, _ = from.Run(ctx, "nft delete table inet labpull")
+}
+
+// removeOnMN takes a node out of the registry the way an operator frees a domain: remove, then forget.
+func removeOnMN(t *testing.T, ctx context.Context, l *lab.Lab, onMN2 bool, domain string) {
+	t.Helper()
+	if onMN2 {
+		l.MustMN2Admin(t, ctx, "uv", "rm", domain)
+		l.MustMN2Admin(t, ctx, "uv", "forget", domain)
+		return
+	}
+	l.MustMNAdmin(t, ctx, "uv", "rm", domain)
+	l.MustMNAdmin(t, ctx, "uv", "forget", domain)
+}
+
+// nodeIDOn is the registry id of one node on a chosen server.
+func nodeIDOn(t *testing.T, ctx context.Context, l *lab.Lab, onMN2 bool, domain string) string {
+	t.Helper()
+	var out string
+	if onMN2 {
+		out = l.MustMN2Admin(t, ctx, "uv", "show", domain)
+	} else {
+		out = l.MustMNAdmin(t, ctx, "uv", "show", domain)
+	}
+	return outputField(out, "id")
+}
+
+// enrollNode re-enrolls a live node against one server and approves it: the invite, the node's own enroll,
+// and the operator's decision. It returns the identity the server minted.
+func enrollNode(t *testing.T, ctx context.Context, l *lab.Lab, onMN2 bool, machine *lab.Machine, domain string) string {
+	t.Helper()
+	var out string
+	if onMN2 {
+		out = l.MustMN2Admin(t, ctx, "invite", "create", "--uses", "1")
+	} else {
+		out = l.MustMNAdmin(t, ctx, "invite", "create", "--uses", "1")
+	}
+	code := outputField(out, "code")
+	if code == "" {
+		t.Fatalf("the invite carries no code:\n%s", out)
+	}
+	l.Redact(code)
+	url := serverURL(t, ctx, l.MN)
+	if onMN2 {
+		url = serverURL(t, ctx, l.MN2)
+	}
+	machine.MustRun(t, ctx, "termit-uv enroll --force --mn "+url+" --invite "+code+" 2>&1 | tail -3")
+	if onMN2 {
+		l.MustMN2Admin(t, ctx, "uv", "approve", domain)
+	} else {
+		l.MustMNAdmin(t, ctx, "uv", "approve", domain)
+	}
+	machine.MustRun(t, ctx, "termit-uv sync")
+	return nodeIDOn(t, ctx, l, onMN2, domain)
 }
