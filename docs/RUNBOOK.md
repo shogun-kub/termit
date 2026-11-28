@@ -22,7 +22,7 @@ matches what you see.
 | node `blocked` right after an upgrade | the certificate was replaced and the server still pinned the old leaf | the next sync reports the new leaf; `termit-uv sync` then `termit-uv unblock` if it stayed blocked |
 | `termit-uv doctor` → `services` failed | a unit is down | `systemctl status <unit>`; `termit-uv init` starts them again |
 | `termit-uv doctor` → `certificate` warn/fail | renewal is late or broken | `termit-uv renew-cert`; the journal of `termit-uv-renew.service` says why |
-| `termit-uv status` shows `warp: … direct` | WARP is down and fail-open is doing its job | `termit-uv warp status` names the reason; traffic still works |
+| `termit-uv status` shows `warp: … direct` | WARP is down and fail-open is doing its job | `termit-uv warp status` names the reason; traffic still works. On `usque`, `systemctl restart termit-usque` is the last resort: the sidecar rebuilds a lost tunnel by itself, so a restart is for one that stays down |
 | `termit-uv warp status` shows `not-installed` | there is no WARP identity: `--no-warp` was used, or the state was removed | `termit-uv init` (or `termit-uv warp mode all`) registers and puts it in the tunnel; the command exits 0 in this state |
 | `termit-uv warp mode` → `start-limit-hit` | too many restarts in five minutes | `systemctl reset-failed termit-xray termit-uv-agent` |
 | `termit-uv sync --check` exits 4 | the core's client set differs from the server's | `termit-uv sync` |

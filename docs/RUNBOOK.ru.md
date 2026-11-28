@@ -22,7 +22,7 @@
 | узел стал `blocked` сразу после обновления | сертификат заменили, а сервер всё ещё держал старый лист | следующая синхронизация принесёт новый лист; `termit-uv sync`, затем `termit-uv unblock`, если узел остался заблокированным |
 | `termit-uv doctor` → `services` failed | какой-то юнит не работает | `systemctl status <юнит>`; `termit-uv init` запустит их снова |
 | `termit-uv doctor` → `certificate` warn/fail | продление опоздало или сломано | `termit-uv renew-cert`; журнал `termit-uv-renew.service` скажет почему |
-| `termit-uv status` показывает `warp: … direct` | WARP упал, и fail-open делает своё дело | `termit-uv warp status` назовёт причину; трафик при этом работает |
+| `termit-uv status` показывает `warp: … direct` | WARP упал, и fail-open делает своё дело | `termit-uv warp status` назовёт причину; трафик при этом работает. На `usque` последнее средство — `systemctl restart termit-usque`: потерянный туннель он поднимает сам, а перезапуск нужен, только если он не отвечает |
 | `termit-uv warp status` показывает `not-installed` | личности WARP нет: ставили с `--no-warp` или состояние удалили | `termit-uv init` (или `termit-uv warp mode all`) зарегистрирует и поставит туннель; команда в этом состоянии возвращает 0 |
 | `termit-uv warp mode` → `start-limit-hit` | слишком много перезапусков за пять минут | `systemctl reset-failed termit-xray termit-uv-agent` |
 | `termit-uv sync --check` выходит с кодом 4 | набор клиентов в ядре отличается от серверного | `termit-uv sync` |
