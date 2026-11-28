@@ -7,6 +7,13 @@ pre-releases, and whoever installs the release skipped them.
 
 ### Added
 
+- **A replica can drop its copy of a node another server homes.** `termit-mn uv forget --force <id|domain>`
+  deletes this server's record of a node whose home is a peer — nothing is journaled, because this server
+  never announced the row, and the peer keeps its authority. It is the repair for a domain held twice (a node
+  re-enrolled on both sides of an outage): the peer's next entry for that node is then applied instead of
+  colliding with what was left behind. A row this server homes is refused; that one is `uv rm` then
+  `uv forget`.
+
 - **The master key can come from the environment.** `serve` (and `init`) read `TERMIT_MN_MASTER` first — hex, 32+ bytes, the shape `systemd-creds` hands over — and fall back to `master_key_file`. A standby can therefore be given the key without ever writing it to disk, and `termit-mn status` prints which source this process used, so a host that is not ready to take over says so before the outage.
 
 - **The replication journal is pruned.** The daily retention pass keeps the newest 1000 entries of this server's own log and drops the rest; a peer further behind than that takes a snapshot, which is the path a new peer takes anyway. A replica keeps the cursor, not a copy of a peer's log, so the table only ever holds one log.

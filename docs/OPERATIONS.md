@@ -504,11 +504,14 @@ the adoption are the ones that make it safe, and the ones after it are what make
 and again here) leaves each server holding a record for the same domain under a different id. Replication
 skips the peer's record for a domain this server already serves — the local one wins, the cursor moves on —
 so the two servers keep their own id and neither learns the other's, which is why the skip is in the log and
-`uv list` on the two servers differs. That is not something the mesh resolves: free the domain on both
-servers (`uv rm` then `uv forget`) and enroll the node once, on the home. A record a peer homes cannot be
-handed back either (`home handoff` answers `this server does not know that node` until the peer's record for
-that id arrives) — the same reset is the way out. Both are cheap for one node and the reason to enroll a
-node in exactly one place.
+`uv list` on the two servers differs. That is not something the mesh resolves: the server holding the copy it
+does not want drops it with `uv forget --force <id|domain>` — a row another server homes is this server's
+copy, not its node, so the command deletes the local record and journals nothing, and the owner's next entry
+for that node is then applied instead of colliding. Decide which record is real first: the id the node is
+actually enrolled under, and the other is the one to drop. A record a peer homes cannot be handed back either
+(`home handoff` answers `this server does not know that node` until the peer's record for that id arrives) —
+dropping the copy is the way out of that too, and then the peer's next entry (or an enrollment here, if that
+peer is not coming back) fills the domain again.
 
 **Two homes for one node, at the same term.** If both servers adopted the same node while the mesh was apart,
 each raised its own copy to the same `home_term`, and replication refuses it as a conflict: the pull logs

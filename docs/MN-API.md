@@ -656,6 +656,7 @@ target.
 | `uv.block` / `uv.unblock` | `{"id": ...}` | the node after the transition |
 | `uv.rm` | `{"id": ...}` | the node, removed (its records stay for history) |
 | `uv.forget` | `{"id": ...}` | confirmation; the record and its history are deleted |
+| `uv.forget` | `{"id": ..., "force": true}` | confirmation with the home; this server's copy of a row another server homes is dropped, nothing is journaled |
 | `uv.reissue` | `{"id": ...}` | a new agent key, shown once; the subscription token is separate |
 | `uv.agentkey` | `{"id": ...}` | the stored agent key, decrypted with the master key |
 | `sub.rotate` | `{"id": ...}` | a new subscription token, shown once |

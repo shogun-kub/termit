@@ -189,6 +189,9 @@ systemd unit or answers a question no menu screen can ask, and each is a decisio
   interactive use.
 - `version` — printed in the header above every screen.
 - `menu` — it is the menu.
+- `termit-mn uv forget --force` — the menu forgets a node that is already removed, after one confirmation.
+  `--force` drops this server's copy of a row another **server** homes: a repair for a mesh, done after
+  reading which of the two records is real, so it stays in the CLI where the id can be quoted.
 
 `TestEveryDocumentedCommandIsInTheMenuOrExplained`, in both binaries, fails when a command is in neither
 the menu nor this list. A new option therefore lands in the menu, or its reason lands here.
