@@ -92,6 +92,7 @@ func TestPlanRemovesArtifactsAndScratchButKeepsTheToolchain(t *testing.T) {
 	// The toolchain, the caches, the notes, the credentials beside them and the input directories stay.
 	for _, path := range []string{
 		".spike-out/tools", ".spike-out/gocache", ".spike-out/lab.md", ".spike-out/mn-admin.token",
+		".spike-out/mn2-admin.token",
 		".spike-out/github-token", ".spike-out/sonar-token", ".spike-out/gh.js",
 		".spike-out/release-run.js",
 		".spike-out/prod.md", ".spike-out/prod_known_hosts",

@@ -54,6 +54,7 @@ var scratchKeep = map[string]bool{
 	"prod.md":          true, // the production mesh: coordinates, versions, what was observed there
 	"prod_known_hosts": true, // its host keys, pinned by OpenSSH
 	"mn-admin.token":   true, // the lab's admin credential
+	"mn2-admin.token":  true, // the second server's, which the replication drills need
 	"github-token":     true, // a personal access token for the GitHub API, for the logs of a failed release
 	"gh.js":            true, // the small API client the notes above tell you to run
 	"release-run.js":   true, // dispatches a pre-release and waits for it; OpenSSL TLS, see MAINTENANCE §4
