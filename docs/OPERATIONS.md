@@ -488,8 +488,9 @@ the adoption are the ones that make it safe, and the ones after it are what make
 7. **Move the name**, then check it from outside: `curl https://<name><prefix>/healthz` must answer, and the
    certificate must be the one for that name.
 8. **Prove a node.** Its next sync (or `termit-uv sync` on it) answers without `read_only`, the log here says
-   `sync served` rather than `sync served read-only`, and `termit-mn uv show <node>` no longer prints a `home:`
-   line — the node is this server's own now.
+   `sync served` rather than `sync served read-only`, and `termit-mn uv show <node>` prints
+   `home: <this server's id> (term N)`: the row names the server that owns it, and a row that says anything
+   else is not this server's to write.
 9. **Retire the dead peer.** Remove it from `mesh.peers` and restart `termit-mn`, or every pull keeps failing
    against it. If it was the only peer, the mesh is a single server again, which is a fine place to be.
 10. **Re-enroll what this server never saw.** A node enrolled on the dead home after cursor `X` fails with
@@ -498,6 +499,16 @@ the adoption are the ones that make it safe, and the ones after it are what make
 11. **If the old home comes back**, do not move the name back. Either wipe it, or start it as a replica — with
     this server in its `mesh.peers` it pulls the adoption within one interval, sees `home_term + 1` and stops
     writing the rows (`uv show` there shows `home: mn_… (term N)`). Returning a node to it is a `home handoff`.
+
+**Two records for one domain.** A node enrolled on both sides of an outage (on the dead home before it went,
+and again here) leaves each server holding a record for the same domain under a different id. Replication
+skips the peer's record for a domain this server already serves — the local one wins, the cursor moves on —
+so the two servers keep their own id and neither learns the other's, which is why the skip is in the log and
+`uv list` on the two servers differs. That is not something the mesh resolves: free the domain on both
+servers (`uv rm` then `uv forget`) and enroll the node once, on the home. A record a peer homes cannot be
+handed back either (`home handoff` answers `this server does not know that node` until the peer's record for
+that id arrives) — the same reset is the way out. Both are cheap for one node and the reason to enroll a
+node in exactly one place.
 
 Adoption does **not** rotate the master key. If the dead home may have fallen into the wrong hands, its copy of
 the key is the entire mesh's credentials: that needs an epoch rotation and re-enrollment of every node, which

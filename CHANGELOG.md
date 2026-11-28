@@ -87,6 +87,18 @@ pre-releases, and whoever installs the release skipped them.
 
 ### Fixed
 
+- **A node is homed by the server that enrolled it.** A row created by `enroll` (or by redeeming an invite)
+  was stored with an empty home, and an empty home means "this server" to every ownership check: a replica
+  that pulled such a row answered for the node and wrote it, so one node had two authorities. The row now
+  names the server that created it, and `uv show` prints the `home:` line again.
+
+- **One stale id does not stop replication.** A replica that homed a node under an id its peer did not have,
+  while the peer held its own record for the same domain (a node re-enrolled on both sides of an outage),
+  hit the domain index on write; the whole batch failed and the cursor stopped there, so every later entry
+  from that peer queued behind it and the mesh stopped learning. The foreign row is now skipped the way a
+  superseded one is — the local record stays, the cursor advances — and an operator decides which record is
+  real. The way out of two records for one domain is to free both and enroll once.
+
 - **An operation that contacts a peer answers instead of timing out.** `epoch rotate`, `home handoff` and
   `home adopt` ask the other server before they act, and the admin socket answers within 30 seconds. A peer
   that stopped answering used to consume that whole budget, so the operator got `i/o timeout` on the socket —

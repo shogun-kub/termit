@@ -2592,6 +2592,7 @@ without a credential migration:
 2. **Replicas never enroll, approve, unblock, relocate or change policy.** Invites and approval stay at the
    home; a replica applies events and writes only rows it homes. The node row carries its home
    (`home_mn`), set at enrollment; an empty home means "this MN", which is every row that exists today.
+   A row created now always names its home, so an empty one is only a row from before 0.7.1.
 3. **A node may sync to a replica while its home is down**: it gets the last desired state the replica
    holds, and its self-report is stored there as *pending for the home*. A replica never moves a state, so
    the report is replayed to the home when it returns. A stale subscription beats a wrong one.
