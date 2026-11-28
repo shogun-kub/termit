@@ -723,7 +723,7 @@ Two consequences of the target class:
 ### 13.2 UV install
 
 ```bash
-# the newest published release; --version v0.4.1 pins one
+# the newest published release; --version v0.7.0 pins one
 wget -q https://github.com/shogun-kub/termit/releases/latest/download/uv.sh
 sudo sh uv.sh --mn https://mn.example.com/6rfjdqfn5nno --domain node.example.com --invite ABCD-EFGH
 ```

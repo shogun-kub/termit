@@ -230,7 +230,7 @@ termit-uv doctor
 
 ```bash
 sh uv.sh --no-enroll                     # самый свежий релиз
-sh uv.sh --version v0.4.1 --no-enroll    # или ровно этот
+sh uv.sh --version v0.7.0 --no-enroll    # или ровно этот
 ```
 
 Вручную это те же два шага:

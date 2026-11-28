@@ -141,7 +141,7 @@ and the server has no `doctor` command to hide one in — because a status call 
 | Flag | Effect |
 |---|---|
 | `--domain` | the name the server answers on; required on a first install, read from the installed configuration on an upgrade |
-| `--version` | `v0.4.1`, or a `v0.4.1p1` build; **the newest published release by default** |
+| `--version` | `v0.7.0`, or a `v0.7.0p1` build; **the newest published release by default** |
 | `--email` / `--mode` / `--acme-ca` / `--acme-skip-tls-verify` / `--api-prefix` | passed to `termit-mn init` |
 | `--admin-token-out` | where `init` writes the admin token instead of printing it |
 | `--prober-version` / `--no-prober` | the probe worker's Xray-core release (default: the one the nodes run), or none |
@@ -173,7 +173,7 @@ listen:       :443
 api prefix:   /6rfjdqfn5nno
 masking site: portal (what a prober gets for every path the API does not claim)
 config:       /etc/termit/mn/config.yaml
-database:     /var/lib/termit/mn/termit.db (schema 6)
+database:     /var/lib/termit/mn/termit.db (schema 9)
 master key:   /etc/termit/mn/master.key (generated now)
 master key id: <fingerprint>
 
@@ -271,9 +271,9 @@ server:   mn.example.com
 listen:   :443
 api:      /6rfjdqfn5nno
 decoy:    portal
-version:  termit-mn v0.4.1 (commit …, built …, api 1, profile v1)
+version:  termit-mn v0.7.0 (commit …, built …, api 1, profile v1)
 uptime:   3h12m (started 2026-11-10 11:18)
-database: /var/lib/termit/mn/termit.db (412.0 KiB, schema 6)
+database: /var/lib/termit/mn/termit.db (412.0 KiB, schema 9)
 prober:   ready (/usr/local/lib/termit/xray)
 queue:    0 due, next 2026-11-11 12:34 UTC
 cert:     2027-02-08T12:06:44Z (in 89 days)
@@ -589,7 +589,7 @@ sh uv.sh \
 
 | Flag | Effect |
 |---|---|
-| `--version` | the release to install, `v0.4.1` or a `v0.4.1p1` build; **the newest published release by default** — `releases/latest` is followed for the tag, so a pre-release is never picked by accident |
+| `--version` | the release to install, `v0.7.0` or a `v0.7.0p1` build; **the newest published release by default** — `releases/latest` is followed for the tag, so a pre-release is never picked by accident |
 | `--base-url` | release directory: an `https://` URL, a `file://` URL or a local path (a mirror, or a USB stick); a local one needs only `cp`, but it cannot answer "newest", so `--version` is required |
 | `--checksum-file` / `--sha256` | verify against a local `SHA256SUMS` or an explicit digest, for a private build |
 | `--no-warp` / `--warp selected --warp-selected …` | the WARP decision (`all` is the default) |
@@ -600,7 +600,7 @@ sh uv.sh \
 
 Re-running the script **is** an upgrade: the binary is replaced and `termit-uv init` converges the
 rest, keeping the identity, the Xray path and the certificate. Without `--version` it takes the newest
-release, so an upgrade is `sh uv.sh --no-enroll`; `--version v0.4.1` installs exactly that one, which is
+release, so an upgrade is `sh uv.sh --no-enroll`; `--version v0.7.0` installs exactly that one, which is
 also how a node that must not move is kept where it is. The invite code is passed on the command line and
 is visible in `ps` for the duration of the run; revoke it afterwards if that matters
 (`termit-mn invite revoke`).
@@ -1247,7 +1247,7 @@ A useful alert set, in the order that matters:
 A release is one command, and CI runs the same one on a tag:
 
 ```bash
-go run ./deploy/release --version v0.4.1 --out dist
+go run ./deploy/release --version v0.7.0 --out dist
 ```
 
 It cross-compiles both binaries for `linux/amd64` and `linux/arm64` with `CGO_ENABLED=0 -trimpath`, stamps
@@ -1269,7 +1269,7 @@ a renamed asset is a broken installation, so the tool refuses a version that is 
 than sanitising it. Verify a directory the way an operator would:
 
 ```bash
-cd dist/v0.4.1 && sha256sum -c SHA256SUMS
+cd dist/v0.7.0 && sha256sum -c SHA256SUMS
 ```
 
 There are deliberately no tarballs: one artifact per platform, verified by digest, is what the installer
@@ -1277,9 +1277,9 @@ consumes, and a tarball adds an unpacking step that protects nothing. The build 
 same toolchain, commit and `--date`:
 
 ```bash
-go run ./deploy/release --version v0.4.1 --out /tmp/a --commit "$(git rev-parse --short HEAD)" --date 2026-11-10T00:00:00Z
-go run ./deploy/release --version v0.4.1 --out /tmp/b --commit "$(git rev-parse --short HEAD)" --date 2026-11-10T00:00:00Z
-diff /tmp/a/v0.4.1/SHA256SUMS /tmp/b/v0.4.1/SHA256SUMS
+go run ./deploy/release --version v0.7.0 --out /tmp/a --commit "$(git rev-parse --short HEAD)" --date 2026-11-10T00:00:00Z
+go run ./deploy/release --version v0.7.0 --out /tmp/b --commit "$(git rev-parse --short HEAD)" --date 2026-11-10T00:00:00Z
+diff /tmp/a/v0.7.0/SHA256SUMS /tmp/b/v0.7.0/SHA256SUMS
 ```
 
 Publishing is a tag push on `main`, after the branch process in `docs/RELEASE.md` §1 has put a tested tree there:
@@ -1296,17 +1296,17 @@ can do the same by hand with `gh release create` and the files from `dist/<versi
 files, so nothing depends on the workflow.
 
 Before that tag exists, a `release/<version>` branch is built by hand:
-`gh workflow run release.yaml --ref release/v0.4.1 -f publish_prerelease=true`. The workflow numbers the
+`gh workflow run release.yaml --ref release/v0.7.0 -f publish_prerelease=true`. The workflow numbers the
 build itself: the pre-release is `v<version>p<n>`, `n` being one more than the highest `v<version>p*` tag
-that already exists, so the first build of `0.4.1` is `v0.4.1p1` and the counter never resets for that
-version. The artifacts carry that same version — installed with `sh uv.sh --version v0.4.1p1` — and the
-body is the `0.4.1` section of the changelog, because a section per build would be noise. That is how
+that already exists, so the first build of `0.7.0` is `v0.7.0p1` and the counter never resets for that
+version. The artifacts carry that same version — installed with `sh uv.sh --version v0.7.0p1` — and the
+body is the `0.7.0` section of the changelog, because a section per build would be noise. That is how
 testers get a build without anything being published from `dev` or `main`.
 
 A **release** body is longer. Versions handed out only as pre-releases were never installed by a
 participant, so the body of the next release counts back to the last one that was:
-`go run ./deploy/release --version v0.4.1 --notes --since v0.4.0` prints the `0.4.1` section and stops at
-`0.4.0`. The workflow works the `--since` value out itself — the newest GitHub release not flagged
+`go run ./deploy/release --version v0.7.0 --notes --since v0.6.0` prints the `0.7.0` section and stops at
+`0.6.0`. The workflow works the `--since` value out itself — the newest GitHub release not flagged
 pre-release — so nobody has to remember which version participants last saw. `--since` refuses a version
 the changelog has no section for, and one that is not older than the release being cut: a typo must not
 silently publish everything or nothing.

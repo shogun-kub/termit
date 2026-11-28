@@ -144,7 +144,7 @@ go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0   # on
 go run ./cmd/uv --help                # and: go run ./cmd/mn init --domain mn.localhost --data-dir ./.dev/mn
 gofmt -l cmd internal deploy test     # must print nothing
 goimports -l cmd internal deploy      # must print nothing
-go run ./deploy/release --version v0.4.1 --out dist   # the release directory, as CI builds it
+go run ./deploy/release --version v0.7.0 --out dist   # the release directory, as CI builds it
 go run ./deploy/clean                 # drop the artifacts and the scratch; --dry-run lists them first
                                       # cache flags, the scanner and the push setup: docs/MAINTENANCE.md
 ```
