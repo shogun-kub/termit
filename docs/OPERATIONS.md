@@ -510,6 +510,13 @@ handed back either (`home handoff` answers `this server does not know that node`
 that id arrives) — the same reset is the way out. Both are cheap for one node and the reason to enroll a
 node in exactly one place.
 
+**Two homes for one node, at the same term.** If both servers adopted the same node while the mesh was apart,
+each raised its own copy to the same `home_term`, and replication refuses it as a conflict: the pull logs
+`pull failed` every interval, and neither side learns the other's rows until one of the records is gone. This
+is the one case the term cannot settle on its own — delete the record you do not want (`uv rm`, `uv forget`)
+on the server that holds it, keep the other, and the journal resumes. Handoffs are ordered by term; adoptions
+taken in the dark are ordered by an operator.
+
 Adoption does **not** rotate the master key. If the dead home may have fallen into the wrong hands, its copy of
 the key is the entire mesh's credentials: that needs an epoch rotation and re-enrollment of every node, which
 is not gated on quorum yet (the remaining debt of §5.2.1), and should not be attempted while the mesh is apart.

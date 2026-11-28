@@ -915,7 +915,10 @@ row another server homes is refused, and the scheduler does not pick such a row:
 nodes and probes only its own.
 
 `home_term` counts home roles: a handoff increments it, so a write that still claims an older term loses the
-merge — a server coming back from a partition cannot undo a handoff it missed.
+merge — a server coming back from a partition cannot undo a handoff it missed. Two servers that both took the
+same row while the mesh was apart end at the same term with different homes, and the row says nothing about
+which is right: the merge refuses that write, so the pull keeps failing until an operator removes one of the
+two records. A term cannot settle a tie, and guessing one would be a split brain with a clean log.
 
 A node may sync to a replica while its home is down. The replica answers with the last desired state it
 holds plus `read_only`, and keeps the report in `mesh_report`; its puller posts that report to the home,
