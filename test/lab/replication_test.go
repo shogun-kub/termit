@@ -949,10 +949,19 @@ func TestDrillReplicationAdoptMissesNewNode(t *testing.T) {
 	}
 
 	// What fixes it is a re-enrollment on the server that now holds the mesh, and that costs the identity.
-	// The replica still holds the *old* row for this domain, homed by the dead home: it has to adopt that row
-	// first, because a server cannot remove a row another server homes.
-	l.MustMN2Admin(t, ctx, "home", "adopt", "--from", toHome, "--uv", domain)
-	removeOnMN(t, ctx, l, true, domain)
+	// The replica still holds the *old* row for this domain, homed by the dead home: a row it does not home
+	// is this server's copy, so it drops it without asking anybody — the dead home will never re-teach it —
+	// and the domain is free to enroll again.
+	out, err := l.MN2Admin(ctx, "uv", "forget", "--force", domain)
+	if err != nil {
+		t.Fatalf("dropping the stale row on the replica: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "dropped this server's copy") {
+		t.Errorf("the drop does not say what it did:\n%s", out)
+	}
+	if _, err := l.MN2Admin(ctx, "uv", "show", domain); err == nil {
+		t.Fatalf("the stale row survived the drop")
+	}
 	if got := enrollNode(t, ctx, l, true, victim, domain); got == "" || got == newID {
 		t.Fatalf("the re-enrollment on the replica did not mint an identity: %q", got)
 	}
@@ -988,12 +997,24 @@ func TestDrillReplicationAdoptMissesNewNode(t *testing.T) {
 // records for one domain, which the mesh refuses to resolve by itself.
 func resetNodeOnHome(t *testing.T, ctx context.Context, l *lab.Lab, machine *lab.Machine, domain string) {
 	t.Helper()
-	for _, admin := range []func(context.Context, ...string) (string, error){l.MNAdmin, l.MN2Admin} {
-		if _, err := admin(ctx, "uv", "show", domain); err != nil {
+	// A server frees its own row with rm and forget; a copy another server homes is not its to remove, and
+	// that is what --force is for. The drill needs both, one per server, which is what "two records" means.
+	for _, side := range []struct {
+		admin func(context.Context, ...string) (string, error)
+		home  string
+	}{{l.MNAdmin, meshOnMN(t, ctx, l).MNID}, {l.MN2Admin, meshOnMN2(t, ctx, l).MNID}} {
+		out, err := side.admin(ctx, "uv", "show", domain)
+		if err != nil {
 			continue
 		}
-		_, _ = admin(ctx, "uv", "rm", domain)
-		_, _ = admin(ctx, "uv", "forget", domain)
+		if strings.Contains(outputField(out, "home"), side.home) {
+			_, _ = side.admin(ctx, "uv", "rm", domain)
+			_, _ = side.admin(ctx, "uv", "forget", domain)
+			continue
+		}
+		if out, err := side.admin(ctx, "uv", "forget", "--force", domain); err != nil {
+			t.Fatalf("%s: dropping the copy %s homes: %v\n%s", domain, side.home, err, out)
+		}
 	}
 	// The node still holds the key of the record that was just freed, and init refuses a live identity: this
 	// is a fresh enrollment that overwrites it.
