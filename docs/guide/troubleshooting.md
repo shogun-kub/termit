@@ -74,6 +74,7 @@ how you tell "the box is broken" from "the path to it is broken". For anything e
 | `termit-mn status` shows a growing `queue: N due` | the scheduler is not completing passes | `journalctl -u termit-mn`; a stuck probe shows up here before any node changes state |
 | node `blocked` right after an upgrade | the certificate was replaced and the server still pinned the old one | the next sync reports the new leaf; `termit-uv unblock` if it stayed blocked |
 | peer list is stale | the daily sync has not run yet (it is once a day, by design) | `termit-uv sync` |
+| `termit-uv sync` answers `read-only` | the node's home is another server, and this one is a replica | nothing to fix: the replica serves the last state it holds and queues the report for the home. Rescue the node only if the home is gone for good, `home adopt` (RUNBOOK §3) |
 | `termit-uv sync --check` exits 4 | the core's client set differs from the server's | `termit-uv sync` |
 | `termit-uv status` shows an old `last sync` | the agent is not running | `systemctl status termit-uv-agent`, `journalctl -u termit-uv-agent` |
 | node lost after a reboot | units not enabled | `termit-uv init` re-enables and starts them |

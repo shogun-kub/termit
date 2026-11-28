@@ -54,6 +54,19 @@ themselves are in [`OPERATIONS.md`](OPERATIONS.md) §9.1.
 Restore from backup (§10 below). With no backup the mesh cannot be rebuilt without re-enrolling every node:
 pair credentials derive from the master key, and the master key cannot be recovered from a node.
 
+**If a replica exists, the nodes keep working while you read this.** A second `termit-mn` with the same
+master key and `mesh.peers` set answers each node with the last state it holds, marked `read_only`, and
+queues the report for the home. Two ways back, in this order:
+
+1. **The machine comes back.** Nothing to rescue: the replica has already handed the queued reports to it,
+   and the nodes never changed their `mn.url`. Check `mesh:` in `termit-mn status` on both.
+2. **The machine is gone for good.** Point the name at the replica, then `termit-mn home adopt --from
+   <peer>` on it: the replica takes the rows and keeps the agent keys, so no node is visited. Nodes
+   enrolled after the replica's last pull are unknown there and enroll again. A node that was moved to a
+   third server is `home handoff --uv <node> --to <peer>` once that server answers.
+
+The full runbook — the key, the name, the node recovery — is `OPERATIONS.md` §3.4.
+
 ## 4. The admin token leaked
 
 Rotate it: the command replaces the credential it authenticated with, and the old one stops working the
