@@ -520,9 +520,11 @@ is the one case the term cannot settle on its own — delete the record you do n
 on the server that holds it, keep the other, and the journal resumes. Handoffs are ordered by term; adoptions
 taken in the dark are ordered by an operator.
 
-Adoption does **not** rotate the master key. If the dead home may have fallen into the wrong hands, its copy of
-the key is the entire mesh's credentials: that needs an epoch rotation and re-enrollment of every node, which
-is not gated on quorum yet (the remaining debt of §5.2.1), and should not be attempted while the mesh is apart.
+Adoption does **not** rotate the master key. If the dead home may have fallen into the wrong hands,
+its copy of the key is the entire mesh's credentials: that needs an epoch rotation and re-enrollment
+of every node. `epoch rotate` refuses while a configured peer does not answer, which is exactly the
+state an adoption starts from: do it once the mesh is whole again — retire the dead peer first — and
+not while it is apart.
 
 **Rotating the pair credentials.** `termit-mn epoch rotate` moves every pair credential in the mesh to the
 next epoch (`credential_epoch` + 1 on every node). Do it when the master key or a node's credentials may have

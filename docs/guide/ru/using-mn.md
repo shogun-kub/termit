@@ -160,7 +160,7 @@ level=INFO msg="admin socket ready" path=/run/termit/mn/admin.sock
 
 ```bash
 curl -sS https://mn.example.com/6rfjdqfn5nno/healthz   # {"status":"ok", …}
-termit-mn status
+termit-mn status                                       # печатает и префикс API
 ```
 
 `termit-mn status` — экран, который открывают первым каждый раз:
@@ -212,7 +212,7 @@ send this to them (the wizard asks for their own domain; these are the other two
   server: https://mn.example.com/6rfjdqfn5nno
   invite: ABCD-EFGH-IJKL
 
-for: node-a for Anna
+for: узел Ани
 ```
 
 ## Наблюдение и управление узлами

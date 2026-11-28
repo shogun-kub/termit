@@ -183,9 +183,11 @@ termit-mn status
 ```
 
 `--apply` keeps the running binary as `/usr/bin/termit-mn.prev` and puts it back if
-`systemctl restart termit-mn` fails, so a failed update leaves the previous binary in place; the database
-migrates on start, forward only, and the previous binary will not read a newer schema. **Take a backup
-before an upgrade** (§3.5.1) — that is the only way back if the new build is wrong rather than broken.
+`systemctl restart termit-mn` fails, so a failed update leaves the previous binary in place; the
+database migrates on start, forward only, and the previous binary will not read a newer schema.
+`termit-mn update --apply` and `mn.sh` take a backup of the registry themselves, print its path and
+refuse to go on if it fails; replacing the binary by hand means taking one first (§3.5.1) — that is
+the only way back if the new build is wrong rather than broken.
 Re-running `mn.sh` is still the way to move the probe worker or the unit, which `termit-mn update` does
 not touch.
 
