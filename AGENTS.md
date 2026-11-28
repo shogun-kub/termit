@@ -18,6 +18,14 @@ The user mixes Russian and English freely; read either, never ask which to use.
 A Russian question does not make the write-up Russian: investigate in whichever language is clearer,
 write the finding in English, explain it back in Russian.
 
+**Russian text is written with the Russian skills loaded.** Load `ru-text` before touching
+`docs/guide/ru/`, `README.ru.md`, `CHANGELOG.ru.md`, `docs/RUNBOOK.ru.md` or a Russian string in
+`internal/i18n`: its typography rules — guillemets, «ё» everywhere, a non-breaking space before
+every em dash, an en dash in ranges — apply to every Russian line, not only to the one being edited.
+Load `simplified-technical-russian` (УТР, ГОСТ Р 58049—2017) when a Russian page is written or
+rewritten, not for a one-word fix: it is about one meaning per word, active voice, direct word order
+and sentences under twenty words. The two answer different questions and neither replaces the other.
+
 ## 0. Read first
 
 | Document | Why |
