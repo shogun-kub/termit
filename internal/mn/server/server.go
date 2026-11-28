@@ -22,6 +22,7 @@ import (
 	"github.com/shogun-kub/termit/internal/mn/config"
 	"github.com/shogun-kub/termit/internal/mn/enroll"
 	"github.com/shogun-kub/termit/internal/mn/metrics"
+	"github.com/shogun-kub/termit/internal/mn/probe"
 	"github.com/shogun-kub/termit/internal/mn/store"
 	"github.com/shogun-kub/termit/internal/proto"
 	"github.com/shogun-kub/termit/internal/version"
@@ -70,6 +71,9 @@ type Options struct {
 	// ProberUp says whether checks can actually run. The server keeps serving either way; this is
 	// what makes "every node is unknown" visible instead of mysterious.
 	ProberUp bool
+	// Prober runs one check and returns its result. Set when this server may be asked by a peer
+	// what it sees of a node (docs/IMPLEMENTATION_PLAN.md §5.2.4); nil means it answers 503.
+	Prober func(ctx context.Context, target probe.Target) (probe.Result, error)
 	// CertPath is the server's own certificate; its expiry is a gauge, because a management server
 	// that renews only on restart is a failure an alert should catch.
 	CertPath string
@@ -137,6 +141,7 @@ func New(opts Options) (*Handler, error) {
 	h.mux.HandleFunc("GET "+prefix+"/peer/snapshot", h.peerSnapshot)
 	h.mux.HandleFunc("GET "+prefix+"/peer/events", h.peerEvents)
 	h.mux.HandleFunc("POST "+prefix+"/peer/report", h.peerReport)
+	h.mux.HandleFunc("POST "+prefix+proto.PeerProbePath, h.peerProbe)
 	h.mux.HandleFunc("GET "+prefix+"/peer/state", h.peerState)
 	h.mux.HandleFunc("POST "+prefix+"/peer/handoff", h.peerHandoff)
 	// Metrics stay where a scrape configuration expects them, and are refused off loopback: the path is

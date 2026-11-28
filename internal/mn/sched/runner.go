@@ -82,8 +82,13 @@ type CheckObserver interface {
 
 // Runner checks nodes on a schedule and applies the transition table to what it finds.
 type Runner struct {
-	Store    *store.Store
-	Prober   Prober
+	Store  *store.Store
+	Prober Prober
+	// Vantage, when set, names the peer to ask about a node this server could not reach, so a blocked
+	// path is told apart from a broken node (docs/IMPLEMENTATION_PLAN.md §5.2.4). It is consulted only
+	// after the local attempts failed: an `ok` from it rescues the node, a `failed` agrees with what was
+	// already seen, and no answer at all changes nothing (invariant 2).
+	Vantage  func(node store.UV) (*probe.Vantage, bool)
 	Targeter Targeter
 	Policy   Policy
 	Now      func() time.Time
@@ -186,6 +191,21 @@ func (r *Runner) runCycle(ctx context.Context, node store.UV, retries RetryPolic
 		}
 	}
 
+	if !okSeen && r.Vantage != nil {
+		if vantage, ok := r.Vantage(node); ok {
+			if result, err := vantage.Probe(ctx, target); err == nil && !result.Unknown() {
+				if err := r.record(ctx, node.ID, target.Transport, result); err != nil {
+					return cycle, err
+				}
+				if result.OK {
+					// Another network reached it, so the node serves; this overrules the local failure.
+					okSeen = true
+					last = result
+				}
+			}
+		}
+	}
+
 	event := EventCheckUnknown
 	switch {
 	case okSeen:
@@ -285,6 +305,9 @@ func (r *Runner) record(ctx context.Context, uvID, transport string, result prob
 		payload := map[string]string{"transport": transport}
 		if result.Err != nil {
 			payload["error"] = result.Err.Error()
+		}
+		if result.Vantage != "" {
+			payload["vantage"] = result.Vantage
 		}
 		body, err := json.Marshal(payload)
 		if err != nil {

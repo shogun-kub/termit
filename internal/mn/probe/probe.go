@@ -84,6 +84,9 @@ type Result struct {
 	Egress string
 	// ExitIP is the address the trace endpoint saw the request come from.
 	ExitIP string
+	// Vantage names the peer that produced this result, when it came from one
+	// (docs/IMPLEMENTATION_PLAN.md §5.2.4). Empty means this process measured it.
+	Vantage string
 }
 
 // Unknown reports whether the prober failed rather than the node.

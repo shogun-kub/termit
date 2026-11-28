@@ -2,16 +2,18 @@ package sched_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
-	"path/filepath"
-	"strings"
-	"testing"
-	"time"
-
 	"github.com/shogun-kub/termit/internal/mn/probe"
 	"github.com/shogun-kub/termit/internal/mn/sched"
 	"github.com/shogun-kub/termit/internal/mn/store"
 	"github.com/shogun-kub/termit/internal/proto"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
 )
 
 var now = time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC)
@@ -532,4 +534,147 @@ func TestACheckSaysWhichTransportItProbed(t *testing.T) {
 	if !strings.Contains(checks[0].DetailJSON, `"transport":"vless"`) {
 		t.Errorf("the row does not say which transport it probed: %q", checks[0].DetailJSON)
 	}
+}
+
+// A vantage answers for a node this server cannot reach (docs/IMPLEMENTATION_PLAN.md §5.2.4). The rule is the
+// one the plan decided: an `ok` from another network overrules the local failure, a `failed` only agrees with
+// what was already seen, and a vantage that cannot answer leaves the node alone.
+func TestASecondVantageRescuesANodeThisServerCannotReach(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name      string
+		answer    proto.ProbeAnswer
+		wantEvent sched.Event
+	}{
+		{"the peer reaches it", proto.ProbeAnswer{OK: true}, sched.EventCheckOK},
+		{"the peer agrees it is down", proto.ProbeAnswer{OK: false, Class: "tunnel_rejected"}, sched.EventCheckFailed},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			db := newStore(t)
+			enroll(t, db, "uv_1", "one.example.com", store.StateActive)
+			test.answer.At = now
+
+			peer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/prefix"+proto.PeerProbePath {
+					t.Errorf("the vantage was called at %s", r.URL.Path)
+				}
+				if got := r.Header.Get("Authorization"); got != "Bearer test-token" {
+					t.Errorf("credential = %q", got)
+				}
+				_ = json.NewEncoder(w).Encode(test.answer)
+			}))
+			defer peer.Close()
+
+			r := runner(db, &rejectingProber{}, staticTargeter{ok: true})
+			r.Vantage = func(store.UV) (*probe.Vantage, bool) {
+				return &probe.Vantage{
+					Name:    "mn2",
+					BaseURL: peer.URL + "/prefix",
+					Token:   "test-token",
+					HTTP:    peer.Client(),
+					Now:     func() time.Time { return now },
+				}, true
+			}
+			cycles, err := r.Pass(context.Background())
+			if err != nil {
+				t.Fatalf("Pass: %v", err)
+			}
+			if len(cycles) != 1 || cycles[0].Event != test.wantEvent {
+				t.Fatalf("cycles = %v, want %v", ids(cycles), test.wantEvent)
+			}
+		})
+	}
+}
+
+// A vantage that does not answer is not a verdict: the node's state is what the local probe left it as.
+func TestAVantageThatCannotAnswerChangesNothing(t *testing.T) {
+	t.Parallel()
+	db := newStore(t)
+	enroll(t, db, "uv_1", "one.example.com", store.StateActive)
+
+	peer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer peer.Close()
+
+	r := runner(db, &rejectingProber{}, staticTargeter{ok: true})
+	r.Vantage = func(store.UV) (*probe.Vantage, bool) {
+		return &probe.Vantage{Name: "mn2", BaseURL: peer.URL, Token: "t", HTTP: peer.Client(),
+			Now: func() time.Time { return now }}, true
+	}
+	cycles, err := r.Pass(context.Background())
+	if err != nil {
+		t.Fatalf("Pass: %v", err)
+	}
+	if len(cycles) != 1 || cycles[0].Event != sched.EventCheckFailed {
+		t.Fatalf("cycles = %v", ids(cycles))
+	}
+}
+
+// A stale observation is not a verdict about now.
+func TestAStaleVantageAnswerIsNotAVerdict(t *testing.T) {
+	t.Parallel()
+	db := newStore(t)
+	enroll(t, db, "uv_1", "one.example.com", store.StateActive)
+
+	peer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(proto.ProbeAnswer{OK: true, At: now.Add(-time.Hour)})
+	}))
+	defer peer.Close()
+
+	r := runner(db, &rejectingProber{}, staticTargeter{ok: true})
+	r.Vantage = func(store.UV) (*probe.Vantage, bool) {
+		return &probe.Vantage{Name: "mn2", BaseURL: peer.URL, Token: "t", HTTP: peer.Client(),
+			Now: func() time.Time { return now }}, true
+	}
+	cycles, err := r.Pass(context.Background())
+	if err != nil {
+		t.Fatalf("Pass: %v", err)
+	}
+	if len(cycles) != 1 || cycles[0].Event != sched.EventCheckFailed {
+		t.Fatalf("a stale answer was taken as a verdict: %v", ids(cycles))
+	}
+}
+
+// A prober that reaches the node ends the cycle before any vantage is consulted: the peer is for the case
+// this server could not conclude, not a second opinion on every check.
+func TestTheVantageIsNotAskedWhenTheLocalProbeSucceeded(t *testing.T) {
+	t.Parallel()
+	db := newStore(t)
+	enroll(t, db, "uv_1", "one.example.com", store.StateActive)
+
+	asked := false
+	r := runner(db, &acceptingProber{}, staticTargeter{ok: true})
+	r.Vantage = func(store.UV) (*probe.Vantage, bool) {
+		asked = true
+		return nil, false
+	}
+	if _, err := r.Pass(context.Background()); err != nil {
+		t.Fatalf("Pass: %v", err)
+	}
+	if asked {
+		t.Error("the vantage was consulted after a successful local probe")
+	}
+}
+
+type rejectingProber struct{}
+
+func (rejectingProber) Probe(_ context.Context, targets []probe.Target) ([]probe.Result, error) {
+	out := make([]probe.Result, 0, len(targets))
+	for _, target := range targets {
+		out = append(out, probe.Result{ID: target.ID, Class: probe.ClassRejected, Err: errors.New("blocked")})
+	}
+	return out, nil
+}
+
+type acceptingProber struct{}
+
+func (acceptingProber) Probe(_ context.Context, targets []probe.Target) ([]probe.Result, error) {
+	out := make([]probe.Result, 0, len(targets))
+	for _, target := range targets {
+		out = append(out, probe.Result{ID: target.ID, OK: true})
+	}
+	return out, nil
 }

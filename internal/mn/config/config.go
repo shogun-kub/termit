@@ -123,6 +123,29 @@ type Peer struct {
 	LeafSHA256 string `yaml:"leaf_sha256,omitempty"`
 }
 
+// Vantage names the peer that acts as a second observer and the nodes it is asked about. The list of
+// domains is explicit on purpose: an automatic "delegate my own domain" rule would hard-code a topology,
+// and a delegation made by accident hands a peer the credential to a node it does not own.
+type Vantage struct {
+	// Peer names an entry under mesh.peers; its URL, pin and credential are that peer's.
+	Peer string `yaml:"peer"`
+	// Domains are the nodes this vantage is asked about. Empty delegates nothing.
+	Domains []string `yaml:"domains,omitempty"`
+}
+
+// Valid reports whether the delegation names a peer and at least one domain.
+func (v *Vantage) Valid() bool { return v != nil && v.Peer != "" && len(v.Domains) > 0 }
+
+// Covers reports whether a node with this domain is delegated to the vantage.
+func (v *Vantage) Covers(domain string) bool {
+	for _, candidate := range v.Domains {
+		if strings.EqualFold(candidate, domain) {
+			return true
+		}
+	}
+	return false
+}
+
 // Replication defaults: a journal read every five minutes is fast enough for a state change to reach the
 // other half of a mesh within one polling period, and 500 events is a comfortable handoff margin for a
 // registry of this size.
@@ -254,6 +277,10 @@ type Prober struct {
 	XrayBinary string `yaml:"xray_binary"`
 	// URL is fetched through each tunnel to prove the tunnel carries traffic.
 	URL string `yaml:"url"`
+	// Vantage asks a peer on another network what it sees, for the domains listed, and folds that
+	// answer into this server's own verdict. Nil means every node is judged from here alone, which
+	// is what a single-server mesh does (docs/IMPLEMENTATION_PLAN.md §5.2.4).
+	Vantage *Vantage `yaml:"vantage,omitempty"`
 	// CAFile is a PEM bundle the prober trusts instead of the system roots.
 	CAFile string `yaml:"ca_file"`
 }
