@@ -71,6 +71,13 @@ pre-releases, and whoever installs the release skipped them.
 
 ### Changed
 
+- **A live node can take the agent key a new home issued.** `termit-uv agentkey --install <file>` writes the
+  key into the node's state and prints the identity it left and the one it took, so `termit-mn home handoff`
+  can be finished on a node that is serving: give it the key, point it at the new home with `termit-uv init
+  --mn <url>`, sync. The file must be 0600 and the node must already have an identity; the old key stops
+  working at once, which is why the command names both. The menu has the same entry under *Node*, and the
+  handoff command now prints the two commands to run instead of naming `init --relocate`, which refuses a
+  live node.
 - **The pair credentials can be rotated: `termit-mn epoch rotate`.** One command moves every node to `credential_epoch + 1`, and every pair is re-derived from the master key, the two ids and the epoch — so a leak of the master key or a node's credentials is answered without touching a node's identity or agent key. It is gated on the mesh being whole: every configured peer is asked its epoch first, and a peer that does not answer (or one already ahead) stops it with nothing changed. The rotation is one journal entry, applied by every server with one statement; the mesh digest includes the epoch, so nodes resync within one poll instead of a day, and `termit-mn status` prints the epoch so two servers that disagree are visible. The menu has the same entry under Service, with a warning about the window: until both ends of a pair have synced, that pair carries nothing.
 
 - **`credential_epoch` is pinned as a migration, not a field.** A test runs every operator write — a state

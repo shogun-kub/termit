@@ -22,6 +22,8 @@ type HandoffOutcome struct {
 	Term int64  `json:"term"`
 	// AgentKey is shown once. The node's old key stops working at the moment the new home took the row.
 	AgentKey string `json:"agent_key"`
+	// URL is that server's address as a node writes it, so the printed recovery command can be copied.
+	URL string `json:"url"`
 }
 
 type handoffArgs struct {
@@ -99,6 +101,7 @@ func (s *Service) handoff(ctx context.Context, raw json.RawMessage) (any, *Error
 	}
 	return HandoffOutcome{
 		UV: node.ID, Peer: cfg.Name, Home: state.MNID, Term: answer.Term, AgentKey: answer.AgentKey,
+		URL: cfg.URL,
 	}, nil
 }
 

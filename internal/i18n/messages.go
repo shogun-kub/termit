@@ -82,6 +82,8 @@ const (
 	MenuUnblockLabel   Key = "menu.unblock.label"
 	MenuUnblockHint    Key = "menu.unblock.hint"
 	MenuMigrateLabel   Key = "menu.migrate.label"
+	MenuAgentKeyLabel  Key = "menu.agentkey.label"
+	MenuAgentKeyHint   Key = "menu.agentkey.hint"
 	MenuMigrateHint    Key = "menu.migrate.hint"
 	MenuFirewallLabel  Key = "menu.firewall.label"
 	MenuFirewallHint   Key = "menu.firewall.hint"
@@ -148,13 +150,15 @@ const (
 	PromptSure         Key = "prompt.sure"
 
 	// Prompts for the recovery, relocation and hardening entries.
-	PromptAddress    Key = "prompt.address"
-	PromptNewDomain  Key = "prompt.new_domain"
-	PromptWarpRotate Key = "prompt.warp_rotate"
-	PromptArchive    Key = "prompt.archive"
-	PromptRestore    Key = "prompt.restore"
-	PromptReissue    Key = "prompt.reissue"
-	PromptForget     Key = "prompt.forget"
+	PromptAddress         Key = "prompt.address"
+	PromptNewDomain       Key = "prompt.new_domain"
+	PromptAgentKeyFile    Key = "prompt.agentkey_file"
+	PromptAgentKeyConfirm Key = "prompt.agentkey_confirm"
+	PromptWarpRotate      Key = "prompt.warp_rotate"
+	PromptArchive         Key = "prompt.archive"
+	PromptRestore         Key = "prompt.restore"
+	PromptReissue         Key = "prompt.reissue"
+	PromptForget          Key = "prompt.forget"
 
 	// The wizard.
 	WizardTitle          Key = "wizard.title"
@@ -310,6 +314,8 @@ var messagesUVRU = map[Key]string{
 	MenuUpgradeSame:    "Узел уже на %s, как и сервер.",
 	PromptUpgrade:      "Поставить %s и дать новому бинарнику сойтись?",
 	MenuMigrateLabel:   "переехать на другой домен",
+	MenuAgentKeyLabel:  "вписать новый агентский ключ",
+	MenuAgentKeyHint:   "после передачи узла другому дому; старый ключ сразу перестанет работать",
 	MenuMigrateHint:    "перенести узел на новый домен (сценарий C)",
 	MenuFirewallLabel:  "межсетевой экран",
 	MenuFirewallHint:   "таблица хоста: состояние, включить, выключить, подтвердить",
@@ -372,13 +378,15 @@ var messagesUVRU = map[Key]string{
 	PromptPurge:        "Удалить также конфигурацию, состояние, сертификаты и служебного пользователя?",
 	PromptSure:         "Точно удалить %s?",
 
-	PromptAddress:    "Адрес (IP или подсеть)",
-	PromptNewDomain:  "Новый домен (пусто — оставить текущий)",
-	PromptWarpRotate: "Заменить устройство в Cloudflare? Старое перестанет работать.",
-	PromptArchive:    "Путь к архиву резервной копии",
-	PromptRestore:    "Заменить базу и сертификаты этим архивом? Сначала остановите termit-mn serve.",
-	PromptReissue:    "Выпустить узлу новую идентичность? Старый ключ перестанет работать сразу.",
-	PromptForget:     "Забыть запись об узле? Домен можно будет зарегистрировать заново.",
+	PromptAddress:         "Адрес (IP или подсеть)",
+	PromptNewDomain:       "Новый домен (пусто — оставить текущий)",
+	PromptAgentKeyFile:    "Файл с ключом (права 0600)",
+	PromptAgentKeyConfirm: "Вписать ключ? Текущий перестанет работать сразу, и до синхронизации узел никому не отвечает.",
+	PromptWarpRotate:      "Заменить устройство в Cloudflare? Старое перестанет работать.",
+	PromptArchive:         "Путь к архиву резервной копии",
+	PromptRestore:         "Заменить базу и сертификаты этим архивом? Сначала остановите termit-mn serve.",
+	PromptReissue:         "Выпустить узлу новую идентичность? Старый ключ перестанет работать сразу.",
+	PromptForget:          "Забыть запись об узле? Домен можно будет зарегистрировать заново.",
 
 	WizardTitle:          "Termit — первая установка",
 	WizardHint:           "Enter принимает значение в скобках; пустой ответ без значения означает «не сейчас».",
@@ -531,6 +539,8 @@ var messagesUVEN = map[Key]string{
 	MenuUpgradeSame:    "This node is already on %s, the same as the server.",
 	PromptUpgrade:      "Install %s and let the new binary converge the node?",
 	MenuMigrateLabel:   "move to another domain",
+	MenuAgentKeyLabel:  "install a new agent key",
+	MenuAgentKeyHint:   "after a handoff to another home; the old key stops working at once",
 	MenuMigrateHint:    "relocate this node to a new domain (Scenario C)",
 	MenuFirewallLabel:  "firewall",
 	MenuFirewallHint:   "the host table: status, on, off, confirm",
@@ -593,13 +603,15 @@ var messagesUVEN = map[Key]string{
 	PromptPurge:        "Also delete configuration, state, certificates and the service user?",
 	PromptSure:         "Really remove %s?",
 
-	PromptAddress:    "Address (IP or prefix)",
-	PromptNewDomain:  "New domain (empty keeps the configured one)",
-	PromptWarpRotate: "Replace the Cloudflare device? The old one stops working.",
-	PromptArchive:    "Path to the backup archive",
-	PromptRestore:    "Replace the database and the certificates with this archive? Stop termit-mn serve first.",
-	PromptReissue:    "Reissue this node's identity? The old key stops working at once.",
-	PromptForget:     "Forget this node's record? The domain can then be enrolled again.",
+	PromptAddress:         "Address (IP or prefix)",
+	PromptNewDomain:       "New domain (empty keeps the configured one)",
+	PromptAgentKeyFile:    "The file holding the key (0600)",
+	PromptAgentKeyConfirm: "Install the key? The current one stops working at once, and the node answers to nobody until it syncs.",
+	PromptWarpRotate:      "Replace the Cloudflare device? The old one stops working.",
+	PromptArchive:         "Path to the backup archive",
+	PromptRestore:         "Replace the database and the certificates with this archive? Stop termit-mn serve first.",
+	PromptReissue:         "Reissue this node's identity? The old key stops working at once.",
+	PromptForget:          "Forget this node's record? The domain can then be enrolled again.",
 
 	WizardTitle:          "Termit — first installation",
 	WizardHint:           "Enter accepts the value in brackets; an empty answer with no value means \"not now\".",

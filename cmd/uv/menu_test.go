@@ -183,6 +183,7 @@ var everyCommand = map[string]struct {
 	"unblock":    {menu: i18n.MenuUnblockLabel},
 	"upgrade":    {menu: i18n.MenuUpgradeLabel, why: "--check is a flag of the entry, not a second line"},
 	"migrate":    {menu: i18n.MenuMigrateLabel},
+	"agentkey":   {menu: i18n.MenuAgentKeyLabel},
 	"warp":       {menu: i18n.MenuWarpLabel},
 	"warp-relay": {why: "the loopback relay's own unit runs it; no operator action"},
 	"firewall":   {menu: i18n.MenuFirewallLabel, why: "rollback belongs to the rollback timer"},
@@ -281,8 +282,8 @@ func TestTheMenuTreeFitsOnOneScreen(t *testing.T) {
 	walk(top)
 	// 23 commands, four of which were their own menu and are now groups of 5, 3, 6 and 5 leaves, plus
 	// the second cycle `agent --once` that the CLI always had.
-	if leaves != 39 {
-		t.Errorf("the tree has %d leaves, want 39", leaves)
+	if leaves != 40 {
+		t.Errorf("the tree has %d leaves, want 40", leaves)
 	}
 }
 

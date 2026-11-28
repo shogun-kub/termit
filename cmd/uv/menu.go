@@ -302,6 +302,7 @@ func (a *application) menuEntries() []menuEntry {
 				{labelKey: i18n.MenuWizardLabel, hintKey: i18n.MenuWizardHint, plan: fixed("wizard")},
 				{labelKey: i18n.MenuUpgradeLabel, hintKey: i18n.MenuUpgradeHint, plan: a.planUpgrade},
 				{labelKey: i18n.MenuMigrateLabel, hintKey: i18n.MenuMigrateHint, plan: a.planMigrate},
+				{labelKey: i18n.MenuAgentKeyLabel, hintKey: i18n.MenuAgentKeyHint, plan: a.planAgentKey},
 				{labelKey: i18n.MenuUninstallLabel, hintKey: i18n.MenuUninstallHint, plan: a.planUninstall},
 			}
 		}},
@@ -540,6 +541,21 @@ func (a *application) planMigrate(ui *termui.UI) ([][]string, error) {
 		argv = append(argv, "--domain", domain)
 	}
 	return [][]string{argv}, nil
+}
+
+// planAgentKey installs an agent key a new home issued. It asks for the file and confirms, because the swap
+// takes effect at once: until the node syncs, it answers to nobody.
+func (a *application) planAgentKey(ui *termui.UI) ([][]string, error) {
+	tr := a.translator()
+	path, err := ui.Required(tr.T(i18n.PromptAgentKeyFile), "")
+	if err != nil {
+		return nil, err
+	}
+	sure, err := ui.Confirm(tr.T(i18n.PromptAgentKeyConfirm), false)
+	if err != nil || !sure {
+		return nil, err
+	}
+	return [][]string{{"agentkey", "--install", path}}, nil
 }
 
 // planCertificate renews the certificate, forcing a reissue when asked.

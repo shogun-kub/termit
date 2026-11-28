@@ -156,6 +156,8 @@ func (a *application) run(args []string) int {
 		return a.runUpgrade(rest)
 	case "migrate":
 		return a.runMigrate(rest)
+	case "agentkey":
+		return a.runAgentKey(rest)
 	case "uri":
 		return a.runURI(rest)
 	case "options":
@@ -211,6 +213,7 @@ Commands:
   unblock      ask the server to verify this node and lift a block
   upgrade      replace this node's binary with a published release and converge
   migrate      move this node to a new domain (--relocate)
+  agentkey     show the credential identity, or install a key a new home issued
   warp         show the egress, or change its mode (all, selected, off)
   warp-relay   the loopback relay in front of the MASQUE sidecar (its systemd unit runs this)
   firewall     the host firewall: status, on, off, confirm — off until you say otherwise

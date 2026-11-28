@@ -108,8 +108,9 @@ func runHandoff(args []string, stdout, stderr io.Writer) int {
 	fmt.Fprintf(stdout, "new home:  %s (%s, term %d)\n", outcome.Peer, outcome.Home, outcome.Term)
 	fmt.Fprintf(stdout, "agent key: %s\n", outcome.AgentKey)
 	fmt.Fprintln(stdout)
-	fmt.Fprintln(stdout, "The old key stopped working. Install the new one on the node, point its mn.url at the new")
-	fmt.Fprintln(stdout, "home, and restart the agent: `termit-uv init --relocate --agent-key-file <file>`.")
+	fmt.Fprintln(stdout, "The old key stopped working. On the node, with the key in a 0600 file:")
+	fmt.Fprintln(stdout, "  termit-uv agentkey --install <file>")
+	fmt.Fprintf(stdout, "  termit-uv init --mn %s\n", outcome.URL)
 	fmt.Fprintln(stdout, "Until then the node cannot sync, and its peers keep the last state they were given.")
 	return exitOK
 }

@@ -441,10 +441,28 @@ new home:  mn2 (mn_2b8e…, term 3)
 agent key: <printed once>
 ```
 
-Install that key on the node and point its `mn.url` at the new home (`termit-uv init --relocate
---agent-key-file <file>`); until you do, the node cannot sync and its peers keep the last state they were
-given. The node's id and its pair credentials survive the move — only the agent key changes. The new home
-announces the handoff in its own journal, so the old one stops writing the row the moment it pulls.
+The node keeps its id, its certificate and its pair credentials; only the agent key changes, and the old one
+stops working as soon as the new home holds the row. Give the node the new key and its new address, in this
+order:
+
+```bash
+# on the node, with the key from the command above in a file nobody else can read
+install -m 0600 /dev/stdin /root/agent.key <<'EOF'
+<the key>
+EOF
+termit-uv agentkey --install /root/agent.key   # prints the identity it left and the one it took
+termit-uv init --mn https://mn2.example.com/<api-prefix>
+termit-uv sync                                 # the node answers to the new home from here
+shred -u /root/agent.key
+```
+
+`init` on an installed node converges and keeps everything it already decided, so `--mn` is the supported way
+to move a live node's address. Until the two commands have run, the node cannot sync and its peers keep the
+last state they were given. The new home announces the handoff in its own journal, so the old one stops
+writing the row the moment it pulls.
+
+A node whose box has to be rebuilt instead uses `termit-uv init --relocate --agent-key-file <file>` on the
+fresh install, with the same key: that path mints the identity the rebuilt box has to start from.
 
 **When the home never comes back.** `home handoff` needs the old home to give the node up, which a dead
 machine cannot do. `termit-mn home adopt --from <peer>` takes over every node that peer homed (or one, with

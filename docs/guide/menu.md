@@ -122,6 +122,8 @@ runs.
 - `upgrade` — install the release the server names; the previous binary stays beside it and comes back if
   the converge fails. Offered only when the server named a release that differs from this build.
 - `migrate --relocate` — move the node to another domain (Scenario C)
+- `agentkey --install <file>` — take the key a new home issued after `termit-mn home handoff`
+  (asks for the file and confirms; the old key stops working at once)
 - `uninstall` — asks twice, names what `--purge` takes
 
 **Help** — every command and flag.
