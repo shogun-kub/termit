@@ -38,10 +38,11 @@ Wherever you see `mn.example.com` or `node-a.example.com`, use your own names.
 ## 1. The server
 
 Log in to the server as `root` and run these commands. They download the newest release with `wget`
-(`curl -fsSLO <same URL>` works too; a minimal Debian image ships neither, and the first snippet line
-installs one), check the file against its published checksum, install the server and its systemd unit,
-give it the probe worker it needs, create the configuration, start the service and print its status.
-`--version vX.Y.Z` installs that release instead of the newest one.
+(`curl -fsSLO <same URL>` works too; a minimal Debian image ships neither, and the first snippet
+line installs one), check the file against its published checksum, install the server and its
+systemd unit, give it the probe worker it needs, create the configuration, start the service and
+print its status. `--version vX.Y.Z` installs that release instead of the newest one, where `vX.Y.Z`
+is a release tag — `v0.7.0`, for example.
 
 ```bash
 # only when the image has neither curl nor wget

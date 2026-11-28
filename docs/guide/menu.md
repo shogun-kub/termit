@@ -50,6 +50,9 @@ a provisioning script is a hang, not a convenience.
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
+`vX.Y.Z` in the header is this node's build (`v0.7.0`, for example) and the `server` line is the
+management server's.
+
 Answer with the number or with the label — `1` and `State` are the same answer, because
 the label is what you are looking at. An empty line takes the default shown in brackets, `q` quits, and
 an answer that matches nothing re-asks instead of exiting: a menu that dies on a typo is a menu nobody

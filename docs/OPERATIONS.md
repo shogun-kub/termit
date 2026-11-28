@@ -141,7 +141,7 @@ and the server has no `doctor` command to hide one in — because a status call 
 | Flag | Effect |
 |---|---|
 | `--domain` | the name the server answers on; required on a first install, read from the installed configuration on an upgrade |
-| `--version` | `vX.Y.Z`, or a `vX.Y.Zp1` build; **the newest published release by default** |
+| `--version` | `vX.Y.Z` (a release tag, `v0.7.0` for example), or a `vX.Y.Zp1` build; **the newest published release by default** |
 | `--email` / `--mode` / `--acme-ca` / `--acme-skip-tls-verify` / `--api-prefix` | passed to `termit-mn init` |
 | `--admin-token-out` | where `init` writes the admin token instead of printing it |
 | `--prober-version` / `--no-prober` | the probe worker's Xray-core release (default: the one the nodes run), or none |
@@ -589,7 +589,7 @@ sh uv.sh \
 
 | Flag | Effect |
 |---|---|
-| `--version` | the release to install, `vX.Y.Z` or a `vX.Y.Zp1` build; **the newest published release by default** — `releases/latest` is followed for the tag, so a pre-release is never picked by accident |
+| `--version` | the release to install, `vX.Y.Z` (a release tag, `v0.7.0` for example) or a `vX.Y.Zp1` build; **the newest published release by default** — `releases/latest` is followed for the tag, so a pre-release is never picked by accident |
 | `--base-url` | release directory: an `https://` URL, a `file://` URL or a local path (a mirror, or a USB stick); a local one needs only `cp`, but it cannot answer "newest", so `--version` is required |
 | `--checksum-file` / `--sha256` | verify against a local `SHA256SUMS` or an explicit digest, for a private build |
 | `--no-warp` / `--warp selected --warp-selected …` | the WARP decision (`all` is the default) |
@@ -1249,6 +1249,9 @@ A release is one command, and CI runs the same one on a tag:
 ```bash
 go run ./deploy/release --version vX.Y.Z --out dist
 ```
+
+`vX.Y.Z` is the version being cut — `v0.7.0`, for example — and it is the branch, the tag and the
+changelog heading at once.
 
 It cross-compiles both binaries for `linux/amd64` and `linux/arm64` with `CGO_ENABLED=0 -trimpath`, stamps
 `internal/version` (version, commit, date), copies the bootstrap script and the server's units from the

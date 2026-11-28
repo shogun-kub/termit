@@ -39,8 +39,9 @@ sh uv.sh \
   --mn https://mn.example.com/6rfjdqfn5nno --invite ABCD-EFGH-IJKL
 ```
 
-Without `--version` the script installs the newest published release; `--version vX.Y.Z` pins the one
-you name, and a `v<version>p<n>` build is how a tester installs a pre-release.
+Without `--version` the script installs the newest published release; `--version vX.Y.Z` pins the
+one you name, and a `v<version>p<n>` build is how a tester installs a pre-release. `vX.Y.Z` is a
+release tag — `v0.7.0`, for example.
 
 `--mn` must be the URL the server printed at `termit-mn init`, **including the API prefix**:
 `https://mn.example.com/6rfjdqfn5nno`, not the bare host. The prefix is where the API lives, and a node

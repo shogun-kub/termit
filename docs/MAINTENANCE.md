@@ -80,11 +80,12 @@ Check the state of the machine in one line:
 curl.exe -sS -o NUL -w "%{http_code}\n" https://api.github.com/   # 000 plus the schannel error = confined
 ```
 
-**Publishing a pre-release** is a `workflow_dispatch` of `release.yaml` on a `release/<version>` branch
-(`docs/RELEASE.md` §2). `gh` is not installed here; with `gh` it is
-`gh workflow run release.yaml --ref release/vX.Y.Z -f publish_prerelease=true`. Without it, the same call
-from node is `.spike-out/release-run.js`, which dispatches, waits for the run and prints the release it
-published (`clean` keeps it; the script below is the same call if the file is ever lost):
+**Publishing a pre-release** is a `workflow_dispatch` of `release.yaml` on a `release/<version>`
+branch, `<version>` being what you are cutting — `release/v0.7.0`, for example (`docs/RELEASE.md` §2).
+`gh` is not installed here; with `gh` it is
+`gh workflow run release.yaml --ref release/vX.Y.Z -f publish_prerelease=true`. Without it, the same
+call from node is `.spike-out/release-run.js`, which dispatches, waits for the run and prints the
+release it published (`clean` keeps it; the script below is the same call if the file is ever lost):
 
 ```js
 // node dispatch.js <git-token-file>: the branch name is the version

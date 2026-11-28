@@ -81,6 +81,8 @@ wget -q https://github.com/shogun-kub/termit/releases/latest/download/uv.sh
 sh uv.sh --wizard
 ```
 
+В этих командах `vX.Y.Z` — тег выпуска, например `v0.7.0`.
+
 `wget` входит в стандартную установку Debian 13; если у вас есть `curl`, `curl -fsSLO <тот же URL>`
 работает так же, и сами установщики качают любым из них.
 
