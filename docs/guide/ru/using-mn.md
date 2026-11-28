@@ -176,6 +176,8 @@ database: /var/lib/termit/mn/termit.db (412.0 KiB, schema 6)
 prober:   ready (/usr/local/lib/termit/xray)
 queue:    0 due, next 2026-11-11 12:34 UTC
 cert:     2027-02-08T12:06:44Z (in 89 days)
+mesh:     mn_6f3c0a5e1b2d4c8f (master key: yes, epoch 2)
+  peer mn2      https://mn2.example.com/6rfjdqfn5nno — up to date (41 entries)
 nodes:    3 (3 active)
 check:    every 24h, times below are UTC
 

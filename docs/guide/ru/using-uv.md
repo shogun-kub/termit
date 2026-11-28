@@ -234,15 +234,19 @@ termit-uv unblock              # попросить сервер перепро�
 
 ```
 domain:       node1.example.com
+installed:    2026-11-09T18:20:01Z
 identity:     a10ceae7
 proxy path:   e9438a65
 decoy:        portal (seed 5927413a)
+local users:  2 (phone, laptop)
 core:         xray 26.11.9 at /usr/lib/termit/bin/xray
 certificate:  expires 2027-02-08T12:06:44Z (in 89 days)
 management:   enrolled 2026-11-10T06:16:10Z
 subscribe:    https://mn.example.com/sub/AbCdEf...
 peers:        2 (node2.example.com, node3.example.com)
+options:      https://node1.example.com/915aa2413e4a124bfed884ca5029c967/
 server:       v0.7.0
+support:      meets the server's minimum v0.7.0
 last sync:    ok 2026-11-10T14:51:11Z
 next sync:    2026-11-11T14:55:13Z
 warp:         on (via 104.28.1.1 (AMS))
@@ -260,7 +264,7 @@ self-check:   ok 2026-11-10T11:17:04Z
 
 | Команда | Что делает | Основные флаги |
 |---|---|---|
-| `termit-uv init` | установить или довести узел до нужного состояния | `--domain`, `--email`, `--locale ru\|en`, `--happ-fragment VALUE`, `--no-warp`, `--warp MODE`, `--warp-selected LIST`, `--dry-run`, `--only`, `--skip`, `--acme-ca`, `--xray-version`, `--xray-download-base`, `--relocate`, `--agent-key-file` |
+| `termit-uv init` | установить или довести узел до нужного состояния | `--domain`, `--email`, `--locale ru\|en`, `--happ-fragment VALUE`, `--no-warp`, `--warp MODE`, `--warp-selected LIST`, `--dry-run`, `--only`, `--skip`, `--acme-ca`, `--xray-version`, `--xray-download-base`, `--warp-transport wireguard\|usque\|proxy`, `--warp-family ipv4\|ipv6`, `--harden`, `--decoy-template`, `--acme-skip-tls-verify`, `--relocate`, `--agent-key-file` |
 | `termit-uv doctor` | диагностика машины, узла и туннеля тремя группами, с одним итоговым вердиктом; ничего не меняет | `--json` |
 | `termit-uv net` | отличить плохой путь от больного узла по счётчикам TCP | `--seconds 60`, `--json` |
 | `termit-uv status` | идентичность, сертификат, пиры, сборка сервера, синхронизация, WARP | `--json` |
@@ -277,10 +281,13 @@ self-check:   ok 2026-11-10T11:17:04Z
 | `termit-uv unblock` | попросить сервер перепроверить и разблокировать | `--domain`, `--vless-url`, `--no-sync` |
 | `termit-uv upgrade` | заменить бинарник узла опубликованным релизом | `--to vX.Y.Z` (по умолчанию — версия сервера), `--check`, `--release-base URL` |
 | `termit-uv migrate` | перевести узел на новый домен | `--relocate`, `--domain`, `--no-sync` |
+| `termit-uv agentkey` | показать идентичность учётных данных узла или принять ключ, который выдал новый ведущий сервер после `home handoff` | `--install FILE` |
+| `termit-uv menu` | интерактивное меню: его открывает команда без аргументов на терминале | `--config` |
+| `termit-uv warp-relay` | loopback-релей перед MASQUE-сайдкаром; его запускает юнит | |
 | `termit-uv renew-cert` | продлить сертификат сейчас | `--force` (перевыпустить, даже если не пора) |
 | `termit-uv renew-site` | перегенерировать сайт-приманку | `--template product\|portal`, `--seed`, `--dry-run` |
 | `termit-uv uninstall` | убрать то, что создал Termit | `--purge` (ещё конфигурация, состояние, сертификаты, пользователь), `--dry-run` |
-| `termit-uv firewall` | межсетевой экран на хосте: `status`, `on`, `off`, `confirm`, `refresh`, `restore` | `--ssh-from`, `--default-deny`, `--dry-run` |
+| `termit-uv firewall` | межсетевой экран на хосте: `status`, `on`, `off`, `confirm`, `rollback`, `refresh`, `restore` | `--ssh-from`, `--default-deny`, `--dry-run` |
 | `termit-uv bans` | что решил движок банов: `list`, `offenders`, `block IP`, `unban IP`, `unblock IP` | |
 | `termit-uv guard` | движок банов: `status`, `run --once` | |
 | `termit-uv version` | версия сборки и протокола | |

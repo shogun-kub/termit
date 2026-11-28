@@ -232,15 +232,19 @@ termit-uv unblock              # ask the server to re-verify this node and lift 
 
 ```
 domain:       node1.example.com
+installed:    2026-11-09T18:20:01Z
 identity:     a10ceae7
 proxy path:   e9438a65
 decoy:        portal (seed 5927413a)
+local users:  2 (phone, laptop)
 core:         xray 26.11.9 at /usr/lib/termit/bin/xray
 certificate:  expires 2027-02-08T12:06:44Z (in 89 days)
 management:   enrolled 2026-11-10T06:16:10Z
 subscribe:    https://mn.example.com/sub/AbCdEf...
 peers:        2 (node2.example.com, node3.example.com)
+options:      https://node1.example.com/915aa2413e4a124bfed884ca5029c967/
 server:       v0.7.0
+support:      meets the server's minimum v0.7.0
 last sync:    ok 2026-11-10T14:51:11Z
 next sync:    2026-11-11T14:55:13Z
 warp:         on (via 104.28.1.1 (AMS))
@@ -258,7 +262,7 @@ interval. You do not need a timer of your own; the systemd units are installed b
 
 | Command | What it does | Main flags |
 |---|---|---|
-| `termit-uv init` | install or converge this node | `--domain`, `--email`, `--locale ru\|en`, `--happ-fragment VALUE`, `--no-warp`, `--warp MODE`, `--warp-selected LIST`, `--dry-run`, `--only`, `--skip`, `--acme-ca`, `--xray-version`, `--xray-download-base`, `--relocate`, `--agent-key-file` |
+| `termit-uv init` | install or converge this node | `--domain`, `--email`, `--locale ru\|en`, `--happ-fragment VALUE`, `--no-warp`, `--warp MODE`, `--warp-selected LIST`, `--dry-run`, `--only`, `--skip`, `--acme-ca`, `--xray-version`, `--xray-download-base`, `--warp-transport wireguard\|usque\|proxy`, `--warp-family ipv4\|ipv6`, `--harden`, `--decoy-template`, `--acme-skip-tls-verify`, `--relocate`, `--agent-key-file` |
 | `termit-uv doctor` | diagnose the host, the node and the tunnel in three groups, and close with one verdict; changes nothing | `--json` |
 | `termit-uv net` | tell a lossy path from a broken node, by sampling the TCP counters | `--seconds 60`, `--json` |
 | `termit-uv status` | identity, certificate, peers, the server's build, sync, WARP | `--json` |
@@ -275,10 +279,13 @@ interval. You do not need a timer of your own; the systemd units are installed b
 | `termit-uv unblock` | ask the server to re-verify and unblock | `--domain`, `--vless-url`, `--no-sync` |
 | `termit-uv upgrade` | replace this node's binary with a published release | `--to vX.Y.Z` (default: the server's version), `--check`, `--release-base URL` |
 | `termit-uv migrate` | move this node to its new domain | `--relocate`, `--domain`, `--no-sync` |
+| `termit-uv agentkey` | show this node's credential identity, or install the key a new home issued after `home handoff` | `--install FILE` |
+| `termit-uv menu` | the interactive menu, which the bare command opens on a terminal | `--config` |
+| `termit-uv warp-relay` | the loopback relay in front of the MASQUE sidecar; its unit runs it | |
 | `termit-uv renew-cert` | renew the certificate now | `--force` (reissue even if not due) |
 | `termit-uv renew-site` | regenerate the decoy site | `--template product\|portal`, `--seed`, `--dry-run` |
 | `termit-uv uninstall` | remove what Termit created | `--purge` (also config, state, certificates, user), `--dry-run` |
-| `termit-uv firewall` | the host firewall: `status`, `on`, `off`, `confirm`, `refresh`, `restore` | `--ssh-from`, `--default-deny`, `--dry-run` |
+| `termit-uv firewall` | the host firewall: `status`, `on`, `off`, `confirm`, `rollback`, `refresh`, `restore` | `--ssh-from`, `--default-deny`, `--dry-run` |
 | `termit-uv bans` | what the ban engine decided: `list`, `offenders`, `block IP`, `unban IP`, `unblock IP` | |
 | `termit-uv guard` | the ban engine: `status`, `run --once` | |
 | `termit-uv version` | build and protocol version | |
