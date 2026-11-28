@@ -1001,6 +1001,94 @@ func resetNodeOnHome(t *testing.T, ctx context.Context, l *lab.Lab, machine *lab
 	enrollNode(t, ctx, l, false, machine, domain)
 }
 
+// TestDrillReplicationSplitMerge splits the mesh and lets each side write the same node: the replica takes it
+// while its home is only unreachable, and the home blocks it. Healed, the merge is decided by the home term
+// alone. The adoption is one term higher, so it wins on both servers, and what the home wrote during the
+// split — the block — is what loses. The node is never cut off: the home serves the adopted row read-only
+// until the node is handed back, which is what an adoption taken on an unreachable home costs.
+func TestDrillReplicationSplitMerge(t *testing.T) {
+	l := replicationLab(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	defer cancel()
+
+	home := meshOnMN(t, ctx, l)
+	replica := meshOnMN2(t, ctx, l)
+	toHome := onlyPeer(t, replica)
+	victim := drillVictim(t, l)
+	domain := nodeDomain(t, ctx, victim)
+	makeActive(t, ctx, l, victim, domain)
+	waitReplicated(t, ctx, l, domain, "active")
+	if got := homeOn(t, ctx, l, false, domain); !strings.Contains(got, home.MNID) {
+		t.Fatalf("%s starts homed by %q, want %s", domain, got, home.MNID)
+	}
+
+	t.Cleanup(func() {
+		bg := context.Background()
+		healLink(bg, l)
+		if strings.Contains(homeOn(t, bg, l, false, domain), replica.MNID) {
+			if err := restoreNode(bg, l, victim, domain, toHome); err != nil {
+				t.Errorf("the node was left homed by the replica: %v", err)
+			}
+		}
+	})
+
+	cutLink(t, ctx, l)
+	if out := l.MustMN2Admin(t, ctx, "home", "adopt", "--from", toHome, "--uv", domain); !strings.Contains(out, domain) {
+		t.Fatalf("the adoption does not name the node it took:\n%s", out)
+	}
+	l.MustMNAdmin(t, ctx, "uv", "block", domain)
+	// The split is real: each server reads its own row and neither has seen the other's.
+	if got := homeOn(t, ctx, l, true, domain); !strings.Contains(got, replica.MNID) {
+		t.Fatalf("the replica reads home %q during the split", got)
+	}
+	if got := homeOn(t, ctx, l, false, domain); !strings.Contains(got, home.MNID) {
+		t.Fatalf("the home reads home %q during the split", got)
+	}
+	if got := stateOn(t, ctx, l, false, domain); got != "blocked" {
+		t.Fatalf("the home reports %q after the block", got)
+	}
+
+	healLink(ctx, l)
+	// The higher term wins where it should: the home takes the adoption it never agreed to.
+	if err := lab.WaitFor(ctx, 4*time.Minute, 3*time.Second, "the home to take the newer term",
+		func(ctx context.Context) (bool, error) {
+			return strings.Contains(homeOn(t, ctx, l, false, domain), replica.MNID), nil
+		}); err != nil {
+		t.Fatalf("%v\nthe home still reports %q", err, homeOn(t, ctx, l, false, domain))
+	}
+	// The whole row moves with the term, so the block made after the split is gone: that is what an adoption
+	// on an unreachable home costs, and why the runbook demands evidence the home is dead.
+	if got := stateOn(t, ctx, l, false, domain); got != "active" {
+		t.Errorf("the home reports %q after the merge, want the adopted state", got)
+	}
+	// And the home's older entry does not undo the adoption where it lands.
+	if got := homeOn(t, ctx, l, true, domain); !strings.Contains(got, replica.MNID) {
+		t.Errorf("the replica reads home %q after pulling the home's block", got)
+	}
+	if got := stateOn(t, ctx, l, true, domain); got != "active" {
+		t.Errorf("the replica reports %q after pulling the home's block", got)
+	}
+	// The loser stops writing: the home no longer owns the row.
+	if out, err := l.MNAdmin(ctx, "uv", "block", domain); err == nil {
+		t.Errorf("the home wrote a row it no longer homes:\n%s", out)
+	}
+	// The node is served, not cut off: the home answers from the adopted row, read-only, until an operator
+	// hands it back.
+	if out := victim.MustRun(t, ctx, "termit-uv sync"); !strings.Contains(out, "read-only") {
+		t.Errorf("the node syncs to the home as if it were its home:\n%s", out)
+	}
+
+	if err := restoreNode(ctx, l, victim, domain, toHome); err != nil {
+		t.Fatalf("the node did not come back: %v", err)
+	}
+	if got := homeOn(t, ctx, l, false, domain); !strings.Contains(got, home.MNID) {
+		t.Errorf("the node is homed by %q after coming back, want %s", got, home.MNID)
+	}
+	if out := victim.MustRun(t, ctx, "termit-uv sync"); strings.Contains(out, "read-only") {
+		t.Errorf("the returning node syncs read-only against its own home:\n%s", out)
+	}
+}
+
 // cutOne stops one server from reading the other's journal while leaving everything else alone: the replica
 // stays up to answer its own admin socket and simply never learns what the home enrolled.
 func cutOne(t *testing.T, ctx context.Context, from, to *lab.Machine) {
