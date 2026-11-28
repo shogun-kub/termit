@@ -283,7 +283,22 @@ names a client-facing transport (`vless` for the TLS profile, `hysteria2` for th
 says which shape of that kind's parameters the node speaks. A node that predates the field sends nothing,
 which every server reads as the TLS profile alone. A kind or a version this server does not know is
 **dropped, not refused**: a newer node must still be usable, and a link this server cannot write correctly
-is worse than no link. The record is the node's latest answer, so a node that stops serving a kind loses
+is worse than no link.
+
+A kind whose parameters vary says so in `options`, inside its own entry: today the only one is
+`renderings`, the ways the TLS profile is served.
+
+```json
+{"agent_version": "termit-uv v0.8.0", "egress": "warp",
+ "transports": [{"kind": "vless", "version": 1, "options": {"renderings": ["xhttp", "websocket"]}}]}
+```
+
+`xhttp` is the default and is what a node that sends no `options` serves; `websocket` is the second
+rendering, served only when the node's `profile.websocket` is on, and it is what makes the subscription
+carry a `type=ws` link for that node. An unknown rendering is dropped like an unknown kind, and the field
+is additive on purpose: `version` did not change, because an absent `options` already means exactly what
+every node meant before it existed. The record is the node's latest answer, so a node that stops serving a
+kind loses
 that link at its next sync.
 
 `check` is the node's own last self-check, folded into the server's history for that node. It is
