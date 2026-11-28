@@ -7,6 +7,13 @@ pre-releases, and whoever installs the release skipped them.
 
 ### Added
 
+- **A node serves its profile over WebSocket as well as XHTTP.** A client that cannot read the XHTTP
+  profile now has a second way in: the same node, the same certificate and the same client credential,
+  served at `/ws/<hash>/` by an inbound of its own and announced in the sync request, so the subscription
+  carries a second `vless://` link with `type=ws` for it. The path is derived from the node's XHTTP path,
+  not stored, so nothing new is minted and a re-run converges. `termit-uv init` adds the inbound and the
+  nginx location on an existing node; a node that reports no rendering keeps today's single link.
+
 - **A replica can drop its copy of a node another server homes.** `termit-mn uv forget --force <id|domain>`
   deletes this server's record of a node whose home is a peer — nothing is journaled, because this server
   never announced the row, and the peer keeps its authority. It is the repair for a domain held twice (a node

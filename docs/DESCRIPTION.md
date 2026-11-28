@@ -280,9 +280,15 @@ turns into failed handshakes; `hMaxReusableSecs` bounds how long one connection 
 sing-box profile: sing-box validates strictly and would reject a field it does not know.
 
 XHTTP is a transport, not a protocol every client implements: stock sing-box has no XHTTP, and its
-`/json` subscription form therefore only serves builds that patched it in. See
-[`OPERATIONS.md`](OPERATIONS.md) §8.1 for the client matrix and for the `unknown version: 72` failure
-that a wrong client produces.
+`/json` subscription form therefore only serves builds that patched it in.
+
+Since 0.8.0 the node also serves the same profile over WebSocket — a rendering of the same kind, not a
+second kind: one more inbound on loopback, one more `location` in the same vhost, the same certificate
+and client credential, and a path derived from the node's XHTTP path rather than stored. It is what a
+stock sing-box client pastes, and the subscription carries it as a second link marked `(WS)` for any
+node that reported the rendering. See [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) §5.2.6 for the
+decision and [`OPERATIONS.md`](OPERATIONS.md) §8.1 for the client matrix and for the
+`unknown version: 72` failure that a wrong client produces.
 
 ### 6.5 Trust boundaries
 

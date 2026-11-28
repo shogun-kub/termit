@@ -2885,16 +2885,16 @@ The constraint is that nobody has needed it yet: the argument for it is a client
 profile, and none has bitten. It depends on §5.3.2, because a second rendering is a profile option and needs
 somewhere to say so.
 
-**Built on `dev`, 2026-11-28 — the node's half, with the server's half still open.** The core carries a
-VLESS inbound on `127.0.0.1:8444` with `network: ws` and its own secret path, the vhost forwards
-`/ws/<16 hex>/` to it with the upgrade headers, and the path is derived from the node's XHTTP one
-(`proto.WebSocketPath`) rather than minted, so nothing new is stored and a re-run converges. Every node
-this build installs serves both renderings and says so in the sync request. What is not there yet: the
-server drops the renderings when it stores a node (`uv_transport` keeps `(uv_id, kind)` only), so a
-subscription still renders the XHTTP link alone; closing that needs a schema version, the replication of
-the field, the second URI in `internal/mn/sub`, and the guide in both languages. Until then the
-rendering is served and unadvertised, which is the safe half: an older client never sees a link it
-cannot use.
+**Built on `dev`, 2026-11-28.** The core carries a VLESS inbound on `127.0.0.1:8444` with `network: ws`
+and its own secret path, the vhost forwards `/ws/<16 hex>/` to it with the upgrade headers, and the path
+is derived from the node's XHTTP one (`proto.WebSocketPath`) rather than minted, so nothing new is stored
+and a re-run converges. Every node this build installs serves both renderings and says so in the sync
+request; schema 10 keeps that answer, the journal and the snapshot carry it to a replica, and
+`RenderList` writes the second `vless://` URI with `type=ws`. A node that reports no rendering keeps the
+single link it always had. What is deliberately absent: no switch turns the rendering on or off — a node
+either has the inbound this build installs or it does not, and the report is what a client sees. The
+prober still checks the XHTTP rendering alone, which is enough to tell whether a node serves at all; a
+check per rendering is the obvious next step if a ws-only failure ever needs telling apart.
 
 ### 5.3 Parked
 
