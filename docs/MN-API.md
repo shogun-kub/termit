@@ -275,6 +275,9 @@ Request:
 }
 ```
 
+`egress` is what the node's configuration asks the proxy traffic to leave through, `warp` or `direct`;
+it is an intention, and the probe's measurement of the same thing is what `uv show` prints beside it.
+
 `transports` is what the node serves, and it is what decides which links its participants get. `kind`
 names a client-facing transport (`vless` for the TLS profile, `hysteria2` for the QUIC one) and `version`
 says which shape of that kind's parameters the node speaks. A node that predates the field sends nothing,
@@ -430,7 +433,7 @@ report; its puller then hands the report to the home:
 {"uv": "uv_9f3c1a2b4d5e", "at": "2026-11-27T21:04:11Z", "from": "mn_2b8e…",
  "ip": "203.0.113.7", "cert_sha256": "…",
  "sync": {"agent_version": "0.7.1", "transports": [{"kind": "hysteria2", "version": 1}],
-          "check": {"ok": true, "latency_ms": 12}}}
+          "egress": "warp", "check": {"ok": true, "latency_ms": 12}}}
 ```
 
 `200 OK` with `{"applied": true}` when the home applied it as a sync, `{"applied": false}` when the row has

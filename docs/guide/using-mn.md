@@ -224,7 +224,7 @@ for: node-a for Anna
 | Goal | Command |
 |---|---|
 | list nodes | `termit-mn uv list` |
-| inspect one node | `termit-mn uv show node1.example.com` — state, history, last probe and self-check |
+| inspect one node | `termit-mn uv show node1.example.com` — state, history, last probe and self-check, and where its traffic actually leaves from |
 | admit a pending node | `termit-mn uv approve node1.example.com` |
 | reject a pending node | `termit-mn uv reject node1.example.com` |
 | block a node yourself | `termit-mn uv block node1.example.com --reason "abuse report"` |
@@ -254,6 +254,23 @@ the server, timeout — is `unknown` and changes nothing. That is why a node can
 
 `block` and `unblock` are your word against the prober's: a passing check does not undo your block,
 which is what keeps a flapping check from flapping the mesh.
+
+### What `uv show` says about egress
+
+The server does not take the node's word for its egress, and it does not guess: it fetches Cloudflare's
+trace through the node's own tunnel on every probe cycle and records the address the request arrived from
+and whether WARP carried it. `uv show` prints that beside what the node says its configuration asks for:
+
+```
+egress:  warp via 104.28.1.2 (measured 2026-11-28T12:00:00Z)
+egress:  direct via 203.0.113.9 (measured 2026-11-28T12:00:00Z), but the node is configured for warp
+```
+
+The second line is the state worth acting on: the tunnel is down and fail-open sent the traffic out
+directly, so the address the owner wanted to hide is exposed. A node that was never measured prints no
+egress line at all — unknown is not direct. The target is Cloudflare's trace endpoint, fixed in the
+prober: with `warp.mode: selected` the answer is about that domain, not about every domain a client
+reaches.
 
 ## Subscriptions
 

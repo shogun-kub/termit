@@ -7,6 +7,16 @@ pre-releases, and whoever installs the release skipped them.
 
 ### Added
 
+### Added
+
+- **The management server measures where a node's traffic actually leaves from.** On every probe cycle it
+  fetches Cloudflare's trace through the node's own tunnel and records the address the request arrived from
+  and whether WARP carried it — the same evidence a client would produce, not the node's word. `termit-mn uv
+  show` prints it beside what the node says its configuration asks for, so a tunnel that died and fail-open
+  that sent traffic out directly reads as `direct … but the node is configured for warp` instead of looking
+  healthy. A node that could not be measured prints nothing: unknown is not direct. Schema 11 stores the
+  fact, the exit address and the intention; the journal carries them to a replica.
+
 - **A node serves its profile over WebSocket as well as XHTTP.** A client that cannot read the XHTTP
   profile now has a second way in: the same node, the same certificate and the same client credential,
   served at `/ws/<hash>/` by an inbound of its own and announced in the sync request, so the subscription
