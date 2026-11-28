@@ -81,16 +81,16 @@ curl.exe -sS -o NUL -w "%{http_code}\n" https://api.github.com/   # 000 plus the
 ```
 
 **Publishing a pre-release** is a `workflow_dispatch` of `release.yaml` on a `release/<version>` branch
-(`docs/RELEASE.md` §2). `gh` is not installed here; with `gh` it is `gh workflow run release.yaml --ref
-release/v0.7.0 -f publish_prerelease=true`. Without it, the same call from node is
-`.spike-out/release-run.js`, which dispatches, waits for the run and prints the release it published
-(`clean` keeps it; the script below is the same call if the file is ever lost):
+(`docs/RELEASE.md` §2). `gh` is not installed here; with `gh` it is
+`gh workflow run release.yaml --ref release/vX.Y.Z -f publish_prerelease=true`. Without it, the same call
+from node is `.spike-out/release-run.js`, which dispatches, waits for the run and prints the release it
+published (`clean` keeps it; the script below is the same call if the file is ever lost):
 
 ```js
 // node dispatch.js <git-token-file>: the branch name is the version
 const https = require('https'), fs = require('fs');
 const token = fs.readFileSync(process.argv[2], 'utf8').trim();
-const ref = 'release/v0.7.0';
+const ref = 'release/vX.Y.Z';
 const req = https.request({ host: 'api.github.com', method: 'POST',
   path: '/repos/shogun-kub/termit/actions/workflows/release.yaml/dispatches',
   headers: { authorization: `Bearer ${token}`, 'user-agent': 'termit', accept: 'application/vnd.github+json' } },

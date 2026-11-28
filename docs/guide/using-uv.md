@@ -39,7 +39,7 @@ sh uv.sh \
   --mn https://mn.example.com/6rfjdqfn5nno --invite ABCD-EFGH-IJKL
 ```
 
-Without `--version` the script installs the newest published release; `--version v0.7.0` pins the one
+Without `--version` the script installs the newest published release; `--version vX.Y.Z` pins the one
 you name, and a `v<version>p<n>` build is how a tester installs a pre-release.
 
 `--mn` must be the URL the server printed at `termit-mn init`, **including the API prefix**:
@@ -243,8 +243,8 @@ management:   enrolled 2026-11-10T06:16:10Z
 subscribe:    https://mn.example.com/sub/AbCdEf...
 peers:        2 (node2.example.com, node3.example.com)
 options:      https://node1.example.com/915aa2413e4a124bfed884ca5029c967/
-server:       v0.7.0
-support:      meets the server's minimum v0.7.0
+server:       vX.Y.Z
+support:      meets the server's minimum vX.Y.Z
 last sync:    ok 2026-11-10T14:51:11Z
 next sync:    2026-11-11T14:55:13Z
 warp:         on (via 104.28.1.1 (AMS))

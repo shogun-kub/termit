@@ -216,12 +216,12 @@ termit-uv doctor
 `latest` — verifies it, writes it beside the running binary and lets **it** run `init`, because the new
 release is the one that knows what it needs. A converge that fails restores the previous binary by
 itself. If it says the server has not reported its version, run `termit-uv sync` first (or name the
-release: `--to v0.7.0`). The bootstrap script is the other short path — it installs the newest release,
+release: `--to vX.Y.Z`). The bootstrap script is the other short path — it installs the newest release,
 or the one `--version` names, and runs the same `init`:
 
 ```bash
 sh uv.sh --no-enroll                     # the newest release
-sh uv.sh --version v0.7.0 --no-enroll    # or exactly this one
+sh uv.sh --version vX.Y.Z --no-enroll    # or exactly this one
 ```
 
 By hand it is the same two steps:

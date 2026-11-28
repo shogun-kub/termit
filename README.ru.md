@@ -73,7 +73,7 @@ WARP, а собственный трафик машины — никогда. �
 ```bash
 # на сервере (Debian 13, порты 80/443 свободны, DNS указывает на него)
 wget -q https://github.com/shogun-kub/termit/releases/latest/download/mn.sh
-sh mn.sh --domain mn.example.com --email you@example.com   # --version v0.7.0 закрепляет релиз
+sh mn.sh --domain mn.example.com --email you@example.com   # --version vX.Y.Z закрепляет релиз
 termit-mn invite create --note "node-a"                    # печатает код один раз
 
 # на узле (Debian 13, порты 80/443 свободны, DNS указывает на него)
@@ -145,7 +145,7 @@ go test ./cmd/... ./internal/...                  # юнит-тесты
 go vet ./cmd/... ./internal/...
 gofmt -l cmd internal deploy test                 # должно быть пусто
 
-go run ./deploy/release --version v0.7.0 --out dist   # каталог релиза, как его собирает CI
+go run ./deploy/release --version vX.Y.Z --out dist   # каталог релиза, как его собирает CI
 ```
 
 Шаблоны пакетов указаны явно намеренно: `references/` содержит сторонний Go-код внутри дерева

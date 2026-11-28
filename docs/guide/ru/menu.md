@@ -28,20 +28,20 @@ termit-mn menu
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
 │  Termit — node                                                       │
-│  termit-uv v0.7.0 (commit …, built …, api 1)                         │
+│  termit-uv vX.Y.Z (commit …, built …, api 1)                         │
 │                                                                      │
 │    domain        node-a.example.com                                  │
 │    identity      3f9c1a2b                                            │
 │    peer path     e9438a65                                            │
 │    serves        TLS/443 only                                        │
 │    egress        all via wireguard                                   │
-│    server        v0.7.0 (this node is behind)                        │
+│    server        vX.Y.Z (this node is behind)                        │
 │    peers         3 (1 degraded)                                      │
 │    sync          2h ago                                              │
 │    ✔ installed                                                       │
 │                                                                      │
-│    1   Состояние            что это за узел и всё ли с ним в пор…  │
-│    2   Сеть                 счётчики, WARP, второй транспорт        │
+│    1   Состояние            что это за узел и всё ли с ним в пор…    │
+│    2   Сеть                 счётчики, WARP, второй транспорт         │
 │    …                                                                 │
 │    8   Справка              все команды и флаги                      │
 │    q   quit                                                          │

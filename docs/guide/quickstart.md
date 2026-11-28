@@ -41,7 +41,7 @@ Log in to the server as `root` and run these commands. They download the newest 
 (`curl -fsSLO <same URL>` works too; a minimal Debian image ships neither, and the first snippet line
 installs one), check the file against its published checksum, install the server and its systemd unit,
 give it the probe worker it needs, create the configuration, start the service and print its status.
-`--version v0.7.0` installs that release instead of the newest one.
+`--version vX.Y.Z` installs that release instead of the newest one.
 
 ```bash
 # only when the image has neither curl nor wget
@@ -89,7 +89,7 @@ The code (for example `ABCD-EFGH-IJKL`) is printed **once**. Copy it now — you
 Log in to the node as `root` and run these commands. They download the installer with `wget` (`curl
 -fsSLO <same URL>` works too; a minimal Debian image ships neither), verify the release, install the node
 program, and then ask you questions. Without `--version` it installs the newest release;
-`sh uv.sh --version v0.7.0 --wizard` pins one instead.
+`sh uv.sh --version vX.Y.Z --wizard` pins one instead.
 
 ```bash
 # only when the image has neither curl nor wget
