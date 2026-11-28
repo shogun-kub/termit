@@ -125,16 +125,18 @@ func RenderingServed(transports []Transport, kind, rendering string) bool {
 // ServedKinds reduces what a node reported to the kinds a server of this version can render. An unknown
 // kind or a newer version is dropped rather than refused: a node running a newer build must still be
 // usable, and a link this server cannot write correctly is worse than no link.
-// ServedRenderings is the renderings a node reported for one kind, in the order it sent them and
-// without any this build does not write. An empty answer means the kind's default rendering, which
-// is what a node that predates the field serves.
+// ServedRenderings is what a node actually announced for one kind, in the order it sent it and without
+// any rendering this build does not write. It is deliberately not Serves(): the default belongs to the
+// reader, and a caller that stores an answer must not record a rendering nobody announced — a node with
+// one inbound would then look like a node that chose XHTTP, which is the distinction the field exists
+// to keep.
 func ServedRenderings(transports []Transport, kind string) []string {
 	var out []string
 	for _, transport := range transports {
-		if transport.Kind != kind {
+		if transport.Kind != kind || transport.Options == nil {
 			continue
 		}
-		for _, rendering := range transport.Serves() {
+		for _, rendering := range transport.Options.Renderings {
 			if KnownRendering(rendering) {
 				out = append(out, rendering)
 			}

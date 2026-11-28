@@ -80,3 +80,29 @@ func TestAnUnknownTransportRenderingIsRefused(t *testing.T) {
 		}
 	}
 }
+
+// Announced renderings are what the node said, never the default. The difference matters where an answer is
+// stored: a node with one inbound must not read as a node that chose XHTTP.
+func TestOnlyAnnouncedRenderingsAreReported(t *testing.T) {
+	t.Parallel()
+	quiet := proto.NodeTransports(false)
+	if got := proto.ServedRenderings(quiet, proto.KindVLESS); len(got) != 0 {
+		t.Errorf("a node that announced nothing reported %v", got)
+	}
+	// Reading the same answer still yields the effective rendering, which is the reader's default.
+	if !proto.RenderingServed(quiet, proto.KindVLESS, proto.RenderingXHTTP) {
+		t.Error("the default rendering is not read as served")
+	}
+
+	loud := proto.NodeTransports(false, proto.RenderingXHTTP, proto.RenderingWebSocket)
+	got := proto.ServedRenderings(loud, proto.KindVLESS)
+	if len(got) != 2 || got[0] != proto.RenderingXHTTP || got[1] != proto.RenderingWebSocket {
+		t.Errorf("announced renderings = %v", got)
+	}
+	if unknown := proto.ServedRenderings([]proto.Transport{{
+		Kind: proto.KindVLESS, Version: proto.TransportVersion,
+		Options: &proto.Options{Renderings: []string{"smuggled"}},
+	}}, proto.KindVLESS); len(unknown) != 0 {
+		t.Errorf("a rendering this build cannot write was kept: %v", unknown)
+	}
+}
