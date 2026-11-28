@@ -98,6 +98,13 @@ pre-releases, and whoever installs the release skipped them.
 
 ### Fixed
 
+- **The MASQUE sidecar rebuilds a lost tunnel by itself.** `termit-usque.service` now runs
+  `usque socks … --always-reconnect`. A tunnel lost while nothing was flowing used to wait for the next
+  request, and a sidecar whose state machine still believed the old session was open answered every new
+  request from a dead connection: `warp status` said `egress: unavailable`, the core fell back to direct,
+  and the node kept serving with its own address on the wire until the sidecar was restarted. With the
+  flag the tunnel is re-established on loss, idle or not.
+
 - **A node is homed by the server that enrolled it.** A row created by `enroll` (or by redeeming an invite)
   was stored with an empty home, and an empty home means "this server" to every ownership check: a replica
   that pulled such a row answered for the node and wrote it, so one node had two authorities. The row now

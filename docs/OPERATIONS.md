@@ -882,6 +882,9 @@ than an evening of slow pages. Nothing else restarts: the relay, the certificate
 state on `usque`, `fail_open` covers the seconds the tunnel is down with direct egress, and a negative
 value is refused at load time, as is the key on `proxy`, which has no unit of its own.
 
+The sidecar also runs with `--always-reconnect`, so a tunnel lost while it was idle is rebuilt on the spot
+instead of answering every request from a dead connection until the next scheduled restart.
+
 **Registration is a warning, not a gate.** Cloudflare's API is unreachable from whole networks — in
 Russia the range is routinely blocked — so a node that cannot register still installs: the step reports
 the reason, the core is written with direct egress, and the run succeeds. `termit-uv warp status` and

@@ -259,7 +259,7 @@ func TestUsqueUnit(t *testing.T) {
 	}
 	text := string(unit)
 	for _, want := range []string{
-		"ExecStart=/usr/lib/termit/bin/usque socks -b 127.0.0.1 -p 40001 -c /etc/termit/uv/usque.json",
+		"ExecStart=/usr/lib/termit/bin/usque socks -b 127.0.0.1 -p 40001 -c /etc/termit/uv/usque.json --always-reconnect",
 		"User=termit-usque",
 		"Restart=always",
 		"MemoryMax=256M",

@@ -43,6 +43,10 @@ func Usque(binary, config, socks string, restartEvery time.Duration) ([]byte, er
 	// A sidecar that has run for hours carries a MASQUE connection to Cloudflare that has gone stale:
 	// the first request after an idle period pays seconds for it, and a fresh process is the cheaper
 	// cure. RuntimeMaxSec stops it, Restart=always starts the replacement.
+	//
+	// --always-reconnect covers the tunnel that is lost while nothing is flowing: without it the sidecar
+	// rebuilds only on the next request, and one whose state machine still believes the old session is
+	// open answers every new request from a dead connection until the process is restarted.
 	var maxRun string
 	if restartEvery > 0 {
 		maxRun = "\nRuntimeMaxSec=" + systemdSpan(restartEvery)
@@ -60,7 +64,7 @@ StartLimitBurst=5
 Type=simple
 User=%s
 Group=%s
-ExecStart=%s socks -b %s -p %s -c %s
+ExecStart=%s socks -b %s -p %s -c %s --always-reconnect
 Restart=always
 RestartSec=3s%s
 LimitNOFILE=65535
