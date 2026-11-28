@@ -11,7 +11,7 @@ matches what you see.
 | Symptom | Likely cause | What to do |
 |---|---|---|
 | `termit-uv init` stops at `preflight` with `ports` failed | something already listens on 80/443 | `ss -H -ltnp`, stop it, re-run `termit-uv init` |
-| `dns` failed at preflight | the record does not point at this box yet | point the A/AAAA record at this server: the certificate is refused until it does. A verified proxy or NAT in front declares itself with `acme.allow_remote_ip: true` |
+| `dns` warned at preflight | the record does not point at this box yet | point the A/AAAA record at this server: the certificate is refused until it does. A verified proxy or NAT in front declares itself with `acme.allow_remote_ip: true` |
 | `termit-uv enroll` → `dns_mismatch` | the domain resolves elsewhere, or the request came through a proxy | fix DNS; the check compares against the TCP peer |
 | `termit-uv enroll` → `rate_limited` | ten failed attempts in fifteen minutes from one address | wait, then retry; the window is per address |
 | `termit-uv enroll` → `domain_taken` | a record with that domain exists | `termit-mn uv show <domain>`; remove or relocate it first |

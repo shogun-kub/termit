@@ -39,7 +39,7 @@ sh uv.sh \
   --mn https://mn.example.com/6rfjdqfn5nno --invite ABCD-EFGH-IJKL
 ```
 
-Without `--version` the script installs the newest published release; `--version v0.4.1` pins the one
+Without `--version` the script installs the newest published release; `--version v0.7.0` pins the one
 you name, and a `v<version>p<n>` build is how a tester installs a pre-release.
 
 `--mn` must be the URL the server printed at `termit-mn init`, **including the API prefix**:
@@ -250,6 +250,10 @@ next sync:    2026-11-11T14:55:13Z
 warp:         on (via 104.28.1.1 (AMS))
 self-check:   ok 2026-11-10T11:17:04Z
 ```
+
+`support:` on that screen is the oldest node build the server supports, `min_agent_version` in its
+configuration: a node below it says so here, `termit-uv doctor` warns, and nothing stops working on
+that account — the fix is `termit-uv upgrade`.
 
 The agent syncs at the server-given time plus a small per-node jitter, checks itself (the node's own
 view of the internet), applies the peer set and goes back to sleep. Between those cycles it wakes on the

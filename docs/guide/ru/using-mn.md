@@ -25,7 +25,7 @@ wget -q https://github.com/shogun-kub/termit/releases/latest/download/mn.sh
 sh mn.sh --domain mn.example.com --email you@example.com --admin-token-out /etc/termit/mn/admin.token
 ```
 
-`--version v0.4.1` поставит указанный релиз вместо самого свежего; `--base-url` направит скрипт на
+`--version v0.7.0` поставит указанный релиз вместо самого свежего; `--base-url` направит скрипт на
 зеркало, `file://`-URL или локальный каталог (там `--version` обязателен: зеркало не может ответить,
 какой релиз самый свежий). Повторный запуск скрипта — это обновление, и флагов оно не требует: домен
 берётся из установленной конфигурации, свежий релиз определяется заново, служба перезапускается.
@@ -58,7 +58,7 @@ listen:       :443
 api prefix:   /6rfjdqfn5nno
 masking site: portal (what a prober gets for every path the API does not claim)
 config:       /etc/termit/mn/config.yaml
-database:     /var/lib/termit/mn/termit.db (schema 6)
+database:     /var/lib/termit/mn/termit.db (schema 9)
 master key:   /etc/termit/mn/master.key (generated now)
 
 admin token (shown once, store it now):
@@ -170,9 +170,9 @@ server:   mn.example.com
 listen:   :443
 api:      /6rfjdqfn5nno
 decoy:    portal
-version:  termit-mn v0.4.1 (commit …, built …, api 1, profile v1)
+version:  termit-mn v0.7.0 (commit …, built …, api 1, profile v1)
 uptime:   3h12m (started 2026-11-10 11:18)
-database: /var/lib/termit/mn/termit.db (412.0 KiB, schema 6)
+database: /var/lib/termit/mn/termit.db (412.0 KiB, schema 9)
 prober:   ready (/usr/local/lib/termit/xray)
 queue:    0 due, next 2026-11-11 12:34 UTC
 cert:     2027-02-08T12:06:44Z (in 89 days)

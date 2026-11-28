@@ -11,7 +11,7 @@ look in.
 ```bash
 termit-uv doctor                  # on the node: host, node and tunnel, in three groups and one verdict
 termit-uv status                  # identity, certificate, peers, last sync, WARP
-termit-mn status                  # on the server: prober, queue, certificate, node table
+termit-mn status                  # server, database, prober, queue, certificate, node table
 ```
 
 `termit-uv doctor` prints a hint next to every failing check and closes with one verdict line, and

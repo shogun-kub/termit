@@ -262,5 +262,3 @@ pre-releases, and whoever installs the release skipped them.
   space is `%20`, and the page printed it verbatim: `then5.bookinet.ru%20(QUIC)`. The fragment is decoded for
   display now — which also restores the `(degraded)` marker, because that suffix arrives encoded too, so a
   degraded peer was not being marked on the page at all.
-
-## 0.5.2 — 2026-11-22

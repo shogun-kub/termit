@@ -28,7 +28,7 @@ a provisioning script is a hang, not a convenience.
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
 │  Termit — node                                                       │
-│  termit-uv v0.4.1 (commit …, built …, api 1)                         │
+│  termit-uv v0.7.0 (commit …, built …, api 1)                         │
 │                                                                      │
 │    domain        node-a.example.com                                  │
 │    identity      3f9c1a2b                                            │
@@ -134,7 +134,7 @@ Seven choices; `0` goes back up.
 
 **State** — *server, check, thresholds, the guard*
 
-- `status` — server, database, prober, node table
+- `status` — server, database, prober, queue, certificate, node table
 - `check now --all` / `check now <node>` — the whole mesh, or one node
 - `policy` — show thresholds, or change one
 - `guard status` — whether the ban engine runs, and what it banned
