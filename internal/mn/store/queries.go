@@ -242,6 +242,11 @@ func (s *Store) CreateUV(ctx context.Context, uv UV) error {
 	if err != nil {
 		return err
 	}
+	// A node is homed where it was enrolled: an empty home means "this server" to every ownership check, so
+	// a replica that pulled such a row would treat it as its own and write it.
+	if uv.HomeMN == "" {
+		uv.HomeMN = mnID
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("store: begin create: %w", err)
@@ -273,6 +278,9 @@ func (s *Store) CreateUVRedeemingInvite(ctx context.Context, uv UV, invite Invit
 	mnID, err := s.MeshID(ctx)
 	if err != nil {
 		return err
+	}
+	if uv.HomeMN == "" {
+		uv.HomeMN = mnID
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {

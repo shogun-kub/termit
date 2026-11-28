@@ -123,8 +123,13 @@ func TestHandoffRefusesAFarBehindPeer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UVByID: %v", err)
 	}
-	if row.HomeMN != "" || row.HomeTerm != 0 {
-		t.Errorf("the refused handoff touched the row: home %q term %d", row.HomeMN, row.HomeTerm)
+	own, err := db.MeshID(ctx)
+	if err != nil {
+		t.Fatalf("MeshID: %v", err)
+	}
+	if row.HomeMN != own || row.HomeTerm != 0 {
+		t.Errorf("the refused handoff touched the row: home %q term %d, want %q and 0",
+			row.HomeMN, row.HomeTerm, own)
 	}
 }
 
@@ -183,7 +188,11 @@ func TestHandoffReportsAPeerThatRefuses(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "refused") {
 		t.Fatalf("a refusing peer = %v, want it named", err)
 	}
-	if row, err := db.UVByID(ctx, "uv_one"); err != nil || row.HomeMN != "" {
+	own, err := db.MeshID(ctx)
+	if err != nil {
+		t.Fatalf("MeshID: %v", err)
+	}
+	if row, err := db.UVByID(ctx, "uv_one"); err != nil || row.HomeMN != own {
 		t.Errorf("the row moved although the peer refused: %+v, %v", row.HomeMN, err)
 	}
 }

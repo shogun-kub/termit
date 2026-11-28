@@ -51,8 +51,14 @@ func TestQueuedReportsWaitForTheHome(t *testing.T) {
 	if foreign.Home != mnID || string(foreign.Payload) != `{"step":2}` {
 		t.Errorf("the foreign report reads %+v, want uv_one at %s with the newest payload", foreign, mnID)
 	}
-	if local := byUV["uv_local"]; local.Home != "" {
-		t.Errorf("the local report reads %+v, want an empty home", local)
+	// The row this server homes names this server, so the queue says where the report belongs; the puller
+	// drops it for that reason instead of sending it to itself.
+	localID, err := replica.MeshID(ctx)
+	if err != nil {
+		t.Fatalf("MeshID: %v", err)
+	}
+	if local := byUV["uv_local"]; local.Home != localID {
+		t.Errorf("the local report reads %+v, want home %s", local, localID)
 	}
 
 	if err := replica.DropReport(ctx, "uv_one"); err != nil {
