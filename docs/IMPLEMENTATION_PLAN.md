@@ -2885,6 +2885,17 @@ The constraint is that nobody has needed it yet: the argument for it is a client
 profile, and none has bitten. It depends on §5.3.2, because a second rendering is a profile option and needs
 somewhere to say so.
 
+**Built on `dev`, 2026-11-28 — the node's half, with the server's half still open.** The core carries a
+VLESS inbound on `127.0.0.1:8444` with `network: ws` and its own secret path, the vhost forwards
+`/ws/<16 hex>/` to it with the upgrade headers, and the path is derived from the node's XHTTP one
+(`proto.WebSocketPath`) rather than minted, so nothing new is stored and a re-run converges. Every node
+this build installs serves both renderings and says so in the sync request. What is not there yet: the
+server drops the renderings when it stores a node (`uv_transport` keeps `(uv_id, kind)` only), so a
+subscription still renders the XHTTP link alone; closing that needs a schema version, the replication of
+the field, the second URI in `internal/mn/sub`, and the guide in both languages. Until then the
+rendering is served and unadvertised, which is the safe half: an older client never sees a link it
+cannot use.
+
 ### 5.3 Parked
 
 Understood, wanted, and out of every release's scope: each is waiting for a user or for something outside
@@ -2927,6 +2938,14 @@ no consumer is a schema nobody can check" (§3.6.1). No kind in the mesh varies 
 shipped kinds are the same shape on every node — so the extra field would be written by nobody and read by
 nobody. Un-parks with the first consumer: a kind whose options differ per node, or the second rendering of
 the profile (§5.2.6), which needs somewhere to say which rendering a node serves.
+
+**The consumer arrived on `dev`, 2026-11-28** (§5.2.6): `Transport` grew an additive `Options` with the
+renderings a node serves, `Serves`/`RenderingServed` read it with the kind's default when it is absent,
+and `NodeTransports(hysteria, renderings...)` fills it in. `TransportVersion` was deliberately not bumped:
+the field is in the answer, which is the side the protocol says may grow freely, so an older server
+ignores it and an older node keeps meaning what it always meant. What remains is the rest of a parameter
+set nobody has asked for yet — the XHTTP mode, ALPN and mux are still constants, and each of them waits
+for a consumer the way this field did.
 
 #### 5.3.3 The family on the MASQUE transport
 
