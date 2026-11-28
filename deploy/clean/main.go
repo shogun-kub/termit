@@ -49,6 +49,7 @@ var scratchKeep = map[string]bool{
 	".golangci":        true,
 	"lintcache":        true,
 	"lab.md":           true, // lab coordinates: never in the repository, never regenerable
+	"ru-glossary":      true, // the Russian terminology glossary and its scans, local-only
 	"lab-setup.md":     true, // how that lab is built from scratch, also local-only
 	"lab-termit.md":    true, // installing Termit on it, the way a participant would
 	"prod.md":          true, // the production mesh: coordinates, versions, what was observed there
