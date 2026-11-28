@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/shogun-kub/termit/internal/proto"
 	"github.com/shogun-kub/termit/internal/uv/config"
 	"github.com/shogun-kub/termit/internal/uv/service"
 	"github.com/shogun-kub/termit/internal/uv/state"
@@ -37,6 +38,9 @@ func (s *xrayConfigStep) spec() (xray.Spec, error) {
 		return spec, errors.New("the node identity has not been generated")
 	}
 	spec.Path = "/" + s.e.st.Identity.XHTTPPath + "/"
+	// The second rendering is served by every node this build installs: the path is derived from the
+	// node's own, so nothing new is minted and a re-run converges (proto.WebSocketPath).
+	spec.WebSocketPath = proto.WebSocketPath(spec.Path)
 	spec.BlockBitTorrent = s.e.cfg.Security.BitTorrentBlock
 	warpSpec, err := WarpSpecFor(s.e.cfg)
 	if err != nil {

@@ -310,3 +310,27 @@ func TestAnUnknownRenderingIsRefused(t *testing.T) {
 		t.Error("BuildVLESSUrl accepted a rendering this build does not write")
 	}
 }
+
+// The second rendering's path is derived, not stored: the same node always computes the same one, and it
+// is unguessable without the original path.
+func TestTheWebSocketPathIsDerivedFromTheProfilePath(t *testing.T) {
+	t.Parallel()
+	secret := "/a1b2c3d4e5f60718/"
+	first := proto.WebSocketPath(secret)
+	second := proto.WebSocketPath(secret)
+	if first != second {
+		t.Errorf("the derived path is not stable: %q then %q", first, second)
+	}
+	if first == secret {
+		t.Error("the second rendering reuses the first one's path")
+	}
+	if !strings.HasPrefix(first, "/ws/") || !strings.HasSuffix(first, "/") {
+		t.Errorf("derived path %q does not look like a path", first)
+	}
+	if other := proto.WebSocketPath("/fedcba9876543210/"); other == first {
+		t.Error("two nodes derive the same websocket path")
+	}
+	if body := strings.TrimSuffix(strings.TrimPrefix(first, "/ws/"), "/"); len(body) != 16 {
+		t.Errorf("the derived path carries %d characters of secret, want 16", len(body))
+	}
+}

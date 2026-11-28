@@ -34,6 +34,11 @@ type SiteSpec struct {
 	SecretPath string
 	// XrayAddr is the loopback address of the Xray inbound, e.g. 127.0.0.1:8443.
 	XrayAddr string
+	// WebSocketPath and WebSocketAddr are the second rendering of the same profile: its own path,
+	// forwarded to its own loopback inbound, with the upgrade headers a WebSocket client needs
+	// (docs/IMPLEMENTATION_PLAN.md §5.2.6). Empty means the node serves XHTTP only.
+	WebSocketPath string
+	WebSocketAddr string
 	// ACMEWebroot is the directory served at /.well-known/acme-challenge/.
 	ACMEWebroot string
 	// Fragment is the path of the generated decoy snippet.
@@ -141,6 +146,25 @@ func (s SiteSpec) validate() error {
 		}
 		if s.XrayAddr == "" {
 			problems = append(problems, errors.New("a secret path without an xray address would forward nowhere"))
+		}
+	}
+	if s.WebSocketPath != "" {
+		if !strings.HasPrefix(s.WebSocketPath, "/") || !strings.HasSuffix(s.WebSocketPath, "/") {
+			problems = append(problems, fmt.Errorf("websocket path %q must start and end with /", s.WebSocketPath))
+		}
+		if strings.ContainsAny(s.WebSocketPath, " \t\r\n;{}\"'") {
+			problems = append(problems, fmt.Errorf("websocket path %q contains a character nginx would misread", s.WebSocketPath))
+		}
+		if s.WebSocketPath == s.SecretPath {
+			problems = append(problems, errors.New("the websocket path must differ from the xhttp one"))
+		}
+		if s.WebSocketAddr == "" {
+			problems = append(problems, errors.New("a websocket path without an address would forward nowhere"))
+		}
+	}
+	if s.WebSocketAddr != "" {
+		if !strings.HasPrefix(s.WebSocketAddr, "127.0.0.1:") && !strings.HasPrefix(s.WebSocketAddr, "[::1]:") {
+			problems = append(problems, fmt.Errorf("websocket address %q is not loopback", s.WebSocketAddr))
 		}
 	}
 	if s.XrayAddr != "" {
@@ -292,6 +316,25 @@ server {
         error_page 400 502 504 =404 /404.html;
     }
 {{end}}
+    {{- if .WebSocketPath}}
+    # The second rendering of the same profile: VLESS over WebSocket, for a client that cannot read
+    # the XHTTP one. Same certificate, same client credential, its own path and its own inbound.
+    location ^~ {{.WebSocketPath}} {
+        proxy_pass              http://{{.WebSocketAddr}};
+        proxy_http_version      1.1;
+        proxy_set_header        Upgrade $http_upgrade;
+        proxy_set_header        Connection "upgrade";
+        proxy_set_header        Host $host;
+        proxy_set_header        X-Real-IP $remote_addr;
+        proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header        X-Forwarded-Proto $scheme;
+        proxy_buffering         off;
+        proxy_read_timeout      1h;
+        proxy_send_timeout      1h;
+        proxy_intercept_errors  on;
+        error_page 400 502 504 =404 /404.html;
+    }
+    {{- end}}
     include {{.Fragment}};
 
     access_log {{.AccessLog}};

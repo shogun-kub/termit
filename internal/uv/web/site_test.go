@@ -259,3 +259,66 @@ func TestQUICAdvertisesAltSvc(t *testing.T) {
 		t.Error("the vhost advertises a transport the node does not serve")
 	}
 }
+
+// The vhost carries the second rendering: its own location, its own loopback address, and the upgrade
+// headers a WebSocket client needs. The plain-HTTP shape has neither, because it serves no proxy at all.
+func TestTheVhostForwardsTheSecondRendering(t *testing.T) {
+	t.Parallel()
+	spec := web.SiteSpec{
+		Domain:        "node.example.com",
+		SiteDir:       "/var/www/termit/site",
+		ACMEWebroot:   "/var/www/termit/acme",
+		Fragment:      "/etc/nginx/termit/decoy.conf",
+		AccessLog:     "/var/log/nginx/termit.access.log",
+		ErrorLog:      "/var/log/nginx/termit.error.log",
+		CertPath:      "/etc/termit/uv/certs/fullchain.pem",
+		KeyPath:       "/etc/termit/uv/certs/privkey.pem",
+		SecretPath:    "/a1b2c3d4e5f60718/",
+		XrayAddr:      "127.0.0.1:8443",
+		WebSocketPath: "/ws/0123456789abcdef/",
+		WebSocketAddr: "127.0.0.1:8444",
+		HTTPPort:      80,
+		HTTPSPort:     443,
+	}
+	site, err := web.GenerateSite(spec)
+	if err != nil {
+		t.Fatalf("GenerateSite: %v", err)
+	}
+	text := string(site)
+	for _, want := range []string{
+		"location ^~ /ws/0123456789abcdef/ {",
+		"proxy_pass              http://127.0.0.1:8444;",
+		"proxy_set_header        Upgrade $http_upgrade;",
+		`proxy_set_header        Connection "upgrade";`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the vhost does not contain %q", want)
+		}
+	}
+	if strings.Index(text, "/ws/0123456789abcdef/") > strings.Index(text, "include /etc/nginx/termit/decoy.conf") {
+		t.Error("the websocket location comes after the decoy snippet include")
+	}
+}
+
+func TestThePlainHTTPVhostHasNoSecondRendering(t *testing.T) {
+	t.Parallel()
+	spec := web.SiteSpec{
+		Domain:        "node.example.com",
+		SiteDir:       "/var/www/termit/site",
+		ACMEWebroot:   "/var/www/termit/acme",
+		Fragment:      "/etc/nginx/termit/decoy.conf",
+		AccessLog:     "/var/log/nginx/termit.access.log",
+		ErrorLog:      "/var/log/nginx/termit.error.log",
+		WebSocketPath: "/ws/0123456789abcdef/",
+		WebSocketAddr: "127.0.0.1:8444",
+		HTTPPort:      80,
+		HTTPSPort:     443,
+	}
+	site, err := web.GenerateSite(spec)
+	if err != nil {
+		t.Fatalf("GenerateSite: %v", err)
+	}
+	if strings.Contains(string(site), "upgrade") {
+		t.Error("the plain-HTTP vhost upgrades something")
+	}
+}

@@ -72,7 +72,7 @@ func (a *application) newLoop(cfg *config.Config) *agent.Loop {
 	// that is more than the TLS profile. An older server decodes the sync body strictly and rejects the
 	// field outright, and a node that serves only `vless` has nothing to add: absent means exactly that.
 	if cfg.Hysteria != nil {
-		remote.Transports = proto.NodeTransports(true)
+		remote.Transports = proto.NodeTransports(true, proto.RenderingXHTTP, proto.RenderingWebSocket)
 	}
 	return &agent.Loop{
 		Remote:    remote,

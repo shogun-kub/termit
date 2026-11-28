@@ -3,6 +3,8 @@
 package proto
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
@@ -231,6 +233,15 @@ func ParseVLESSUrl(raw string) (Profile, error) {
 		return Profile{}, err
 	}
 	return profile, nil
+}
+
+// WebSocketPath derives the second rendering's secret path from the profile's own. It is the same node
+// and the same client credential; only the path nginx routes differs, and deriving it means no second
+// secret to mint, store or lose on the way — while a path nobody knows the original of is unguessable
+// (docs/IMPLEMENTATION_PLAN.md §5.2.6).
+func WebSocketPath(secretPath string) string {
+	sum := sha256.Sum256([]byte("termit/ws" + secretPath))
+	return "/ws/" + hex.EncodeToString(sum[:8]) + "/"
 }
 
 // DefaultHappFragment is the fragmentation this project writes when nobody chose: pieces small enough

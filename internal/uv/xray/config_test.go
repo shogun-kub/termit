@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/shogun-kub/termit/internal/proto"
 	"github.com/shogun-kub/termit/internal/uv/xray"
 )
 
@@ -461,5 +462,82 @@ func TestHysteriaHopIsLocalAndSniffed(t *testing.T) {
 	}
 	if found.Sniffing == nil || !found.Sniffing.Enabled || !found.Sniffing.RouteOnly || len(found.Sniffing.DestOverride) != 0 {
 		t.Errorf("the hop does not sniff for the torrent rule: %+v", found.Sniffing)
+	}
+}
+
+// The second rendering is its own inbound: nginx needs somewhere to forward the second location, and the
+// document must not reuse the XHTTP port or path.
+func TestTheWebSocketRenderingIsItsOwnInbound(t *testing.T) {
+	t.Parallel()
+	type streamDoc struct {
+		Network string `json:"network"`
+		XHTTP   struct {
+			Path string `json:"path"`
+		} `json:"xhttpSettings"`
+		WS struct {
+			Path string `json:"path"`
+		} `json:"wsSettings"`
+	}
+	type inboundDoc struct {
+		Tag      string    `json:"tag"`
+		Listen   string    `json:"listen"`
+		Port     int       `json:"port"`
+		Protocol string    `json:"protocol"`
+		Stream   streamDoc `json:"streamSettings"`
+	}
+
+	spec := xray.DefaultSpec()
+	spec.Path = "/a1b2c3d4e5f60718/"
+	spec.WebSocketPath = "/ws/0123456789abcdef/"
+	spec.Clients = []xray.Client{{ID: "8f1c2d3e-4a5b-4c6d-8e7f-90a1b2c3d4e5", Email: "owner"}}
+
+	data, err := xray.Generate(spec)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	var doc struct {
+		Inbounds []inboundDoc `json:"inbounds"`
+	}
+	if err := json.Unmarshal(data, &doc); err != nil {
+		t.Fatalf("the generated config is not JSON: %v", err)
+	}
+	var ws, xhttp *inboundDoc
+	for i := range doc.Inbounds {
+		switch doc.Inbounds[i].Tag {
+		case xray.WebSocketInboundTag:
+			ws = &doc.Inbounds[i]
+		case xray.InboundTag:
+			xhttp = &doc.Inbounds[i]
+		}
+	}
+	if ws == nil {
+		t.Fatalf("no websocket inbound in the document: %s", data)
+	}
+	if ws.Listen != "127.0.0.1" || ws.Port != xray.DefaultWebSocketPort {
+		t.Errorf("the websocket inbound listens on %s:%d", ws.Listen, ws.Port)
+	}
+	if ws.Protocol != "vless" || ws.Stream.Network != "ws" || ws.Stream.WS.Path != spec.WebSocketPath {
+		t.Errorf("the websocket inbound is %+v", ws)
+	}
+	if xhttp == nil || xhttp.Stream.Network != proto.Network || xhttp.Stream.XHTTP.Path != spec.Path {
+		t.Errorf("the xhttp inbound changed: %+v", xhttp)
+	}
+	if ws.Port == xhttp.Port {
+		t.Error("both renderings listen on one port")
+	}
+}
+
+func TestAPathThatCollidesWithTheXHTTPOneIsRefused(t *testing.T) {
+	t.Parallel()
+	spec := xray.DefaultSpec()
+	spec.Path = "/a1b2c3d4e5f60718/"
+	spec.WebSocketPath = spec.Path
+	if _, err := xray.Generate(spec); err == nil {
+		t.Error("a websocket path equal to the xhttp path was accepted")
+	}
+	spec.WebSocketPath = "/ws/0123456789abcdef/"
+	spec.WebSocketPort = spec.Port
+	if _, err := xray.Generate(spec); err == nil {
+		t.Error("a websocket port equal to the xhttp port was accepted")
 	}
 }

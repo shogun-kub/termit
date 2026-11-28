@@ -73,7 +73,7 @@ func (a *application) runSync(args []string) int {
 	// Only what the TLS profile cannot say: an older server decodes the body strictly and rejects the
 	// field, and absent already means `vless`.
 	if cfg.Hysteria != nil {
-		remote.Transports = proto.NodeTransports(true)
+		remote.Transports = proto.NodeTransports(true, proto.RenderingXHTTP, proto.RenderingWebSocket)
 	}
 	answer, err := remote.Fetch(ctx, st.Credentials.AgentKey, proto.SyncRequest{AgentVersion: version.Agent("termit-uv")})
 	if err != nil {

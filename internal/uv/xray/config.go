@@ -33,6 +33,12 @@ const (
 	HysteriaInboundTag = "hysteria-in"
 	// DefaultHysteriaSocksPort is where that inbound listens on loopback.
 	DefaultHysteriaSocksPort = 10801
+	// WebSocketInboundTag names the second rendering of the profile: VLESS over WebSocket on
+	// loopback, which nginx fronts with a location of its own (docs/IMPLEMENTATION_PLAN.md §5.2.6).
+	WebSocketInboundTag = "ws-in"
+	// DefaultWebSocketPort is where that inbound listens on loopback. It is next to the XHTTP one
+	// and never the same number.
+	DefaultWebSocketPort = 8444
 )
 
 var uuidPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
@@ -64,6 +70,36 @@ type Spec struct {
 	// on loopback and the transport dials through it, so its traffic takes the routing decisions below
 	// instead of leaving the node on its own.
 	Hysteria HysteriaHop
+	// WebSocketPath is the secret path nginx forwards the second rendering to. Empty means the node
+	// serves the profile over XHTTP only, which is what a node from before the rendering existed
+	// is.
+	WebSocketPath string
+	// WebSocketPort is that inbound's loopback port; zero means DefaultWebSocketPort.
+	WebSocketPort int
+}
+
+// WebSocketPortOrDefault is the loopback port of the second rendering's inbound.
+func (s Spec) WebSocketPortOrDefault() int {
+	if s.WebSocketPort == 0 {
+		return DefaultWebSocketPort
+	}
+	return s.WebSocketPort
+}
+
+// WebSocketAddress is where the WebSocket inbound listens by default: nginx proxies the second
+// location here.
+func WebSocketAddress() string { return fmt.Sprintf("%s:%d", DefaultListen, DefaultWebSocketPort) }
+
+// Address is where this spec's WebSocket inbound listens, or empty when it has none.
+func (s Spec) WebSocketAddress() string {
+	if s.WebSocketPath == "" {
+		return ""
+	}
+	port := s.WebSocketPort
+	if port == 0 {
+		port = DefaultWebSocketPort
+	}
+	return fmt.Sprintf("%s:%d", DefaultListen, port)
 }
 
 // HysteriaHop is the loopback inbound the QUIC transport's traffic enters the core through. It is a
@@ -252,8 +288,25 @@ func (s Spec) Validate() error {
 		switch {
 		case hop < 1 || hop > 65535:
 			problems = append(problems, fmt.Errorf("hysteria hop port %d is out of range", hop))
-		case hop == s.Port, hop == s.APIPort:
+		case hop == s.Port, hop == s.APIPort, hop == s.WebSocketPortOrDefault():
 			problems = append(problems, fmt.Errorf("hysteria hop port %d collides with another inbound", hop))
+		}
+	}
+	if s.WebSocketPath != "" {
+		switch {
+		case s.WebSocketPath == s.Path:
+			problems = append(problems, errors.New("the websocket path must differ from the xhttp one"))
+		case !strings.HasPrefix(s.WebSocketPath, "/") || !strings.HasSuffix(s.WebSocketPath, "/"):
+			problems = append(problems, fmt.Errorf("websocket path %q must start and end with /", s.WebSocketPath))
+		case strings.ContainsAny(s.WebSocketPath, " \t\"'\\"):
+			problems = append(problems, fmt.Errorf("websocket path %q contains a character a path cannot carry", s.WebSocketPath))
+		}
+		wsPort := s.WebSocketPortOrDefault()
+		switch {
+		case wsPort < 1 || wsPort > 65535:
+			problems = append(problems, fmt.Errorf("websocket port %d is out of range", wsPort))
+		case wsPort == s.Port, wsPort == s.APIPort:
+			problems = append(problems, fmt.Errorf("websocket port %d collides with another inbound", wsPort))
 		}
 	}
 	switch s.LogLevel {
@@ -450,6 +503,31 @@ func Generate(spec Spec) ([]byte, error) {
 		} else {
 			config.Routing.Rules = append(config.Routing.Rules, warpRules(spec.Warp, "")...)
 		}
+	}
+
+	if spec.WebSocketPath != "" {
+		ws := inbound{
+			Tag:      WebSocketInboundTag,
+			Listen:   DefaultListen,
+			Port:     spec.WebSocketPort,
+			Protocol: "vless",
+			Settings: vlessSettings{Clients: clients, Decryption: "none"},
+			Stream: &stream{
+				Network:  "ws",
+				Security: "none",
+				WS:       &wsSettings{Path: spec.WebSocketPath},
+			},
+			Sniffing: &sniffing{Enabled: true, DestOverride: []string{"http", "tls", "quic"}},
+		}
+		if spec.WebSocketPort == 0 {
+			ws.Port = DefaultWebSocketPort
+		}
+		if spec.BlockBitTorrent {
+			// The rendering is a second way in, not a second policy: a torrent that arrives over
+			// WebSocket is blocked like one that arrives over XHTTP.
+			ws.Sniffing = &sniffing{Enabled: true, DestOverride: []string{}, RouteOnly: true}
+		}
+		config.Inbounds = append(config.Inbounds, ws)
 	}
 
 	if spec.Hysteria.Enabled {
@@ -661,6 +739,12 @@ type stream struct {
 	Network  string         `json:"network"`
 	Security string         `json:"security"`
 	XHTTP    *xhttpSettings `json:"xhttpSettings,omitempty"`
+	WS       *wsSettings    `json:"wsSettings,omitempty"`
+}
+
+// wsSettings is the WebSocket rendering's own half of the stream: one path, which nginx forwards.
+type wsSettings struct {
+	Path string `json:"path"`
 }
 
 type xhttpSettings struct {
