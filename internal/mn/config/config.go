@@ -170,6 +170,39 @@ func (m Mesh) LagLimit() int {
 	return m.LagMax
 }
 
+// validateVantage checks the delegation: it names a peer that exists and the domains it is asked about.
+// A delegation to a peer nobody configured would silently do nothing, and a domain that is not one would
+// hand the peer a target the prober cannot dial.
+func (p Prober) validateVantage(mesh Mesh) []error {
+	v := p.Vantage
+	if v == nil {
+		return nil
+	}
+	var problems []error
+	known := false
+	for _, peer := range mesh.Peers {
+		if strings.EqualFold(peer.Name, v.Peer) {
+			known = true
+			break
+		}
+	}
+	switch {
+	case v.Peer == "":
+		problems = append(problems, errors.New("prober.vantage.peer is empty"))
+	case !known:
+		problems = append(problems, fmt.Errorf("prober.vantage.peer %q is not in mesh.peers", v.Peer))
+	}
+	if len(v.Domains) == 0 {
+		problems = append(problems, errors.New("prober.vantage.domains is empty; list the nodes to delegate or drop the block"))
+	}
+	for _, domain := range v.Domains {
+		if err := validateDomain(domain); err != nil {
+			problems = append(problems, fmt.Errorf("prober.vantage.domains: %w", err))
+		}
+	}
+	return problems
+}
+
 // validate checks the mesh block: a peer needs a name a log line can use, a URL the puller can append to,
 // and a pin that is hex if it is there at all. A repeated name is refused because the peer's learned mesh
 // id is stored under it — two peers under one name would overwrite each other's cursor.
@@ -486,6 +519,7 @@ func (c *Config) Validate() error {
 		problems = append(problems, errors.New("policy.mesh_poll cannot be negative; 0 turns the poll off"))
 	}
 	problems = append(problems, c.Mesh.validate()...)
+	problems = append(problems, c.Prober.validateVantage(c.Mesh)...)
 	if c.Enrollment.Attempts < 1 {
 		problems = append(problems, errors.New("enrollment.attempts must be at least 1"))
 	}

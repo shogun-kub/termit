@@ -372,6 +372,9 @@ type uvShowResult struct {
 	// A node that declares two and is probed on one shows the gap instead of hiding it behind "ok".
 	Transports      []string `json:"transports,omitempty"`
 	ProbedTransport string   `json:"probed_transport,omitempty"`
+	// ProbedVantage is the peer that produced the last check, when it came from one: a node this
+	// server could not reach, judged from another network (docs/IMPLEMENTATION_PLAN.md §5.2.4).
+	ProbedVantage string `json:"probed_vantage,omitempty"`
 	// Checks is the node's recent history, newest first: both the server's probes and the node's own
 	// self-reports, because "the box is broken" and "the path to it is broken" look the same in a
 	// single row and different in a series.
@@ -410,6 +413,7 @@ func (s *Service) showUV(ctx context.Context, raw json.RawMessage) (any, *Error)
 	}
 	if result.Check != nil {
 		result.ProbedTransport = checkTransport(result.Check.DetailJSON)
+		result.ProbedVantage = checkVantage(result.Check.DetailJSON)
 	}
 	return result, nil
 }
@@ -425,6 +429,17 @@ func checkTransport(detail string) string {
 		return ""
 	}
 	return payload.Transport
+}
+
+// checkVantage reads the peer a probe row came from. An empty answer means this server measured it.
+func checkVantage(detail string) string {
+	var payload struct {
+		Vantage string `json:"vantage"`
+	}
+	if json.Unmarshal([]byte(detail), &payload) != nil {
+		return ""
+	}
+	return payload.Vantage
 }
 
 // resolveUV accepts either a node id or a domain, because an operator reads domains and copies ids.

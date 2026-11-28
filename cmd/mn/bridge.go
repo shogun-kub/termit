@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/shogun-kub/termit/internal/mn/config"
 	"github.com/shogun-kub/termit/internal/mn/enroll"
+	"github.com/shogun-kub/termit/internal/mn/mesh"
 	"github.com/shogun-kub/termit/internal/mn/probe"
 	"github.com/shogun-kub/termit/internal/mn/sched"
 	"github.com/shogun-kub/termit/internal/mn/store"
@@ -168,6 +170,37 @@ func schedProber(cfg *config.Config, logger *slog.Logger) (sched.Prober, proberS
 		return unknownSchedProber{}, proberState{Detail: err.Error()}
 	}
 	return enrollProberAdapter{inner: inner}, state
+}
+
+// vantageFor builds the delegation the configuration asks for: a named mesh peer, and the nodes it is
+// asked about (docs/IMPLEMENTATION_PLAN.md §5.2.4). Nil when nothing is configured, which is how a
+// single-server mesh keeps judging every node from here alone.
+func vantageFor(cfg *config.Config, masterKey []byte, logger *slog.Logger) func(store.UV) (*probe.Vantage, bool) {
+	if !cfg.Prober.Vantage.Valid() {
+		return nil
+	}
+	var named *config.Peer
+	for i := range cfg.Mesh.Peers {
+		if strings.EqualFold(cfg.Mesh.Peers[i].Name, cfg.Prober.Vantage.Peer) {
+			named = &cfg.Mesh.Peers[i]
+			break
+		}
+	}
+	if named == nil || len(masterKey) == 0 {
+		logger.Warn("prober.vantage names no configured peer; every node is judged here",
+			"peer", cfg.Prober.Vantage.Peer)
+		return nil
+	}
+	vantage := &probe.Vantage{
+		Name:       named.Name,
+		BaseURL:    named.URL,
+		Token:      mesh.PullToken(masterKey),
+		LeafSHA256: named.LeafSHA256,
+	}
+	logger.Info("a second vantage is configured", "peer", named.Name, "domains", cfg.Prober.Vantage.Domains)
+	return func(node store.UV) (*probe.Vantage, bool) {
+		return vantage, cfg.Prober.Vantage.Covers(node.Domain)
+	}
 }
 
 // unknownSchedProber is the scheduler's prober when no worker exists: every node is unknown.

@@ -24,6 +24,7 @@ import (
 	"github.com/shogun-kub/termit/internal/mn/enroll"
 	"github.com/shogun-kub/termit/internal/mn/mesh"
 	"github.com/shogun-kub/termit/internal/mn/metrics"
+	"github.com/shogun-kub/termit/internal/mn/probe"
 	"github.com/shogun-kub/termit/internal/mn/sched"
 	"github.com/shogun-kub/termit/internal/mn/server"
 	"github.com/shogun-kub/termit/internal/mn/store"
@@ -86,6 +87,7 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 	}, db, schedulerProber, newCertChecker(cfg))
 	scheduler.PolicyFn = policyFromSettings(cfg, db)
 	scheduler.Metrics = registry
+	scheduler.Vantage = vantageFor(cfg, mustMasterKey(cfg, logger), logger)
 
 	mask, err := decoySite(ctx, cfg, db)
 	if err != nil {
@@ -94,7 +96,7 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 	}
 	logger.Info("masking site ready", "template", mask.Template, "digest", mask.Digest[:12])
 
-	handler, err := buildHandler(cfg, db, logger, registry, proberInfo, mask)
+	handler, err := buildHandler(cfg, db, logger, registry, proberInfo, mask, schedulerProber)
 	if err != nil {
 		fmt.Fprintf(stderr, "termit-mn serve: %v\n", err)
 		return exitFailure
@@ -248,7 +250,8 @@ func listen(cfg *config.Config, logger *slog.Logger) (net.Listener, error) {
 
 // buildHandler wires the HTTP surface: the enrollment service needs a store, resolvers and a prober.
 func buildHandler(cfg *config.Config, db *store.Store, logger *slog.Logger,
-	registry *metrics.Registry, proberInfo proberState, mask *decoy.Site) (http.Handler, error) {
+	registry *metrics.Registry, proberInfo proberState, mask *decoy.Site,
+	schedulerProber sched.Prober) (http.Handler, error) {
 	resolvers := []enroll.Resolver{dns.System{}}
 	if cfg.DNS.Secondary != "" {
 		resolvers = append(resolvers, dns.Server{Addr: cfg.DNS.Secondary})
@@ -292,8 +295,19 @@ func buildHandler(cfg *config.Config, db *store.Store, logger *slog.Logger,
 		FragmentParam:   cfg.Subscription.HappFragment,
 		Metrics:         registry,
 		ProberUp:        proberInfo.Up,
-		CertPath:        filepath.Join(cfg.CertDir(), "fullchain.pem"),
-		Decoy:           mask,
+		// The peer endpoint answers with this process's own prober, one target at a time.
+		Prober: func(ctx context.Context, target probe.Target) (probe.Result, error) {
+			results, err := schedulerProber.Probe(ctx, []probe.Target{target})
+			if err != nil {
+				return probe.Result{}, err
+			}
+			if len(results) == 0 {
+				return probe.Result{}, errors.New("the prober returned no result")
+			}
+			return results[0], nil
+		},
+		CertPath: filepath.Join(cfg.CertDir(), "fullchain.pem"),
+		Decoy:    mask,
 	})
 }
 

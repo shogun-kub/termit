@@ -449,3 +449,44 @@ func TestLocaleIsRussianByDefaultAndValidated(t *testing.T) {
 		t.Error("Parse accepted an unknown language")
 	}
 }
+
+// The delegation is a hand-written block, so each mistake is refused at load: a peer nobody configured, no
+// domains at all, and a domain that is not one.
+func TestTheVantageIsValidated(t *testing.T) {
+	t.Parallel()
+	base := func() *config.Config {
+		cfg := config.Default()
+		cfg.Domain = "mn.example.com"
+		cfg.Mesh.Peers = []config.Peer{{Name: "mn2", URL: "https://mn2.example.com/p9x"}}
+		return cfg
+	}
+
+	ok := base()
+	ok.Prober.Vantage = &config.Vantage{Peer: "mn2", Domains: []string{"node1.example.com"}}
+	if err := ok.Validate(); err != nil {
+		t.Fatalf("a valid delegation was refused: %v", err)
+	}
+
+	for _, test := range []struct {
+		name    string
+		vantage *config.Vantage
+		want    string
+	}{
+		{name: "unknown peer", vantage: &config.Vantage{Peer: "mn9", Domains: []string{"node1.example.com"}},
+			want: "not in mesh.peers"},
+		{name: "no peer", vantage: &config.Vantage{Domains: []string{"node1.example.com"}},
+			want: "prober.vantage.peer is empty"},
+		{name: "no domains", vantage: &config.Vantage{Peer: "mn2"}, want: "domains is empty"},
+		{name: "not a domain", vantage: &config.Vantage{Peer: "mn2", Domains: []string{"not a domain"}},
+			want: "prober.vantage.domains"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			cfg := base()
+			cfg.Prober.Vantage = test.vantage
+			err := cfg.Validate()
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("Validate = %v, want it to mention %q", err, test.want)
+			}
+		})
+	}
+}

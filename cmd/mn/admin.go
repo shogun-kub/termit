@@ -556,6 +556,7 @@ func runUVShow(args []string, stdout, stderr io.Writer) int {
 		} `json:"checks"`
 		Transports      []string `json:"transports"`
 		ProbedTransport string   `json:"probed_transport"`
+		ProbedVantage   string   `json:"probed_vantage"`
 	}
 	callCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -600,6 +601,11 @@ func runUVShow(args []string, stdout, stderr io.Writer) int {
 		state := "failed (" + result.Check.ErrorClass + ")"
 		if result.Check.OK {
 			state = "ok"
+		}
+		if result.ProbedVantage != "" {
+			// The verdict came from another network: worth saying, because this server could not reach
+			// the node and an operator reading "ok" would otherwise assume it did.
+			state += " via " + result.ProbedVantage
 		}
 		fmt.Fprintf(stdout, "last probe: %s %s\n", result.Check.At.UTC().Format(time.RFC3339), state)
 	}
