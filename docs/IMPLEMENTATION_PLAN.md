@@ -2896,6 +2896,32 @@ either has the inbound this build installs or it does not, and the report is wha
 prober still checks the XHTTP rendering alone, which is enough to tell whether a node serves at all; a
 check per rendering is the obvious next step if a ws-only failure ever needs telling apart.
 
+**Proved on the lab, 2026-11-28.** A node at `dev` regenerated its vhost and core config: the inbound
+listened on `127.0.0.1:8444` with the derived path, `nginx -t` accepted the location, and a real
+client — xray-core with a `ws` outbound through `termit-uv1.lan:443` — fetched
+`https://cp.cloudflare.com/generate_204` and got `204`, exactly as it did over XHTTP. The server
+stored `xhttp,websocket` for the node and the subscription carried both links, with
+`type=ws` and the same path nginx routes; a node still on the previous build kept its single link.
+
+One caveat, from the core's own log: `transport/internet/websocket` prints that WebSocket **is
+deprecated** and might be removed, urging XHTTP instead. It works in 26.11.9, and it stays because
+the client that cannot read XHTTP is the whole point; if a future core drops it, this rendering goes
+with it and a stock-sing-box client has no answer again. That is a reason to keep the client matrix
+in `OPERATIONS.md` §8.1 current, not a reason to remove it now.
+
+**Proved on the lab, 2026-11-28.** A node at `dev` regenerated its vhost and core config: the inbound
+listened on `127.0.0.1:8444` with the derived path, `nginx -t` accepted the location, and a real
+client — xray-core with a `ws` outbound through `termit-uv1.lan:443` — fetched
+`https://cp.cloudflare.com/generate_204` and got `204`, exactly as it did over XHTTP. The server
+stored `xhttp,websocket` for the node and the subscription carried both links, with
+`type=ws` and the same path nginx routes; a node still on the previous build kept its single link.
+
+One caveat, from the core's own log: `transport/internet/websocket` prints that WebSocket **is
+deprecated** and might be removed, urging XHTTP instead. It works in 26.11.9, and it stays because
+the client that cannot read XHTTP is the whole point; if a future core drops it, this rendering goes
+with it and a stock-sing-box client has no answer again. That is a reason to keep the client matrix
+in `OPERATIONS.md` §8.1 current, not a reason to remove it now.
+
 ### 5.3 Parked
 
 Understood, wanted, and out of every release's scope: each is waiting for a user or for something outside

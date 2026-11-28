@@ -47,6 +47,14 @@ picks the higher home term and the loser stops writing, but nothing moves a node
 
 Concrete coordinates for this machine live in the gitignored `.spike-out/lab.md`; the key is a PuTTY
 `.ppk`, so the harness calls `plink`/`pscp` and pins each machine. A missing variable skips the suite.
+
+**An ad-hoc client on the lab pins the leaf, not the authority.** The certificate authority there mints a
+new root on every start, so a host's stored root and the chain a node serves drift apart and a hand-written
+client fails with `x509: certificate signed by unknown authority` for reasons that have nothing to do with
+the node. Take the leaf's fingerprint from the node (`openssl s_client -connect 127.0.0.1:443 -servername
+<domain>` piped into `openssl x509 -noout -fingerprint -sha256`) and pass it as `pinnedPeerCertSha256` — a
+single hex string, no colons. `allowInsecure` no longer exists in xray-core 26.x; a config that still
+carries it is refused outright.
 Beside `lab.md` sit the credentials it lists (`github-token`, `mn-admin.token`, `mn2-admin.token`,
 `sonar-token`) and the scripts that use them; none may appear in the repository, a document, a commit
 message or a log line — this repository is public.
